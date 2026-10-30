@@ -89,3 +89,10 @@ A blocked Phase may be narrowed/deferred only by an explicit user-approved chang
 ## Accepted checklist synchronization — 2026-10-30
 
 Read [accepted C-01–C-22](16_ACCEPTED_PRODUCT_DECISIONS.md) before interpreting historical open questions. Product choices are accepted; exact engineering values, feasibility proofs, Phase 0 amendment acceptance, phase coding authorization and main merge remain separate gates. No result is PASS solely from checklist approval.
+
+
+## P0-01 implementation checkpoint — 2026-10-30
+
+PR #2 integrated the reviewed plan into phase/00-feasibility at f6f77b0; main remains unchanged. Scoped collector hardening and synthetic Windows CI now exist. Attempt 1 at b46107e: 17 PASS / 1 FAIL. Attempt 2 at 1ec43ae: 18 PASS / 0 FAIL, 489 assertions; zero measured handle growth through 52 probes. See [checkpoint evidence](evidence/P0-01-hardening-checkpoint-2026-10-30.md).
+
+P0-01 remains IN_PROGRESS/BLOCKED on target-host HC-09/HC-13; no detailed task is accepted yet (0/10). The prior “no application/CI implementation” snapshot refers to production app CI; a scoped Phase 0 diagnostic test workflow is now present. No Phase 1 production code exists. Do not convert the synthetic PASS into host compatibility or Phase acceptance.

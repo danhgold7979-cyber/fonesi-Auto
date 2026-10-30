@@ -54,3 +54,15 @@ Publish the first testable checkpoint as WIP verification, inspect the actual Wi
 Focused correction under test: replace per-probe managed Thread objects (whose native handles rely on finalization) with shared pool callbacks and explicitly owned/disposed completion events. Add actual baseline/batch/immediate/post-GC handle counts to result evidence. Preserve both original <=16 immediate/post-GC assertions. A rerun, not this explanation, determines whether the defect is fixed.
 
 Windows checkout used different working-tree line endings for raw source hashes in attempt 1. A narrow .gitattributes now pins LF for PowerShell/module/C# source so subsequent working-byte hashes can be compared directly. No UI or historical evidence file is normalized by this rule.
+
+
+## Windows CI attempt 2 — completed, synthetic PASS
+
+- Remote candidate: 1ec43aef23e2f4a1641085cce304b270a06eaf51.
+- Run: https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41090150579.
+- Windows PowerShell Desktop 5.1.20348.5756 on hosted Windows Server 2022.
+- 18 synthetic PASS, 0 FAIL, 2 NOT_RUN; 489 assertions.
+- HC-07.1: baseline 626 handles, every recorded batch through 52 calls 626 handles; immediate and post-GC growth both 0, unchanged limit 16.
+- All six reported source SHA256 hashes match the exact local source bytes after LF normalization.
+- This validates the scoped synthetic collector behavior, not target-host HC-09/HC-13 or overall Phase 0.
+- Infrastructure follow-up: pinned official checkout/upload-artifact v6 refs replace v4 to remove the observed Node 20 deprecation warning. Source under test is unchanged; rerun is required for the final workflow candidate.

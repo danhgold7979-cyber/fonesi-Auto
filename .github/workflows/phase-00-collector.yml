@@ -27,8 +27,8 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
-      # Official v4 refs resolved with git ls-remote on 2026-10-30.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # Official v6 refs resolved with git ls-remote on 2026-10-30.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
       - name: Verify target shell
@@ -49,7 +49,7 @@ jobs:
           if (-not $?) { throw 'Collector test runner failed.' }
       - name: Retain synthetic test evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: phase-00-synthetic-${{ github.sha }}
           path: ${{ runner.temp }}/fonesi-auto-tests
