@@ -33,6 +33,7 @@ All architecture, schemas, adapters, workflow state machines, tests, and impleme
 - [Complete V9 HTML UI reference](ui-reference/Fonesi-Auto-V9-UI-Reference.html)
 - [How to open the V9 UI reference](ui-reference/README.md)
 - [Technology and policy references](docs/07_REFERENCES.md)
+- [Hardware resource manager and stream controls](docs/12_HARDWARE_RESOURCE_AND_STREAM_CONTROLS.md)
 - [Decisions, open questions and 10-round review](docs/08_DECISIONS_AND_OPEN_ITEMS.md)
 
 
