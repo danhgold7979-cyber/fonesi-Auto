@@ -29,6 +29,9 @@ The product scope and V9 interface are sufficiently defined for planning. The te
 | D-013 | Electron + TypeScript desktop shell | RECOMMENDED; needs approval |
 | D-014 | SQLite + Windows secret store | RECOMMENDED; needs approval |
 | D-015 | PaddleOCR as OCR candidate | RECOMMENDED; benchmark required |
+| D-016 | User-adjustable FPS/resolution/bitrate and live host resource warnings | CONFIRMED PRODUCT REQUIREMENT |
+| D-017 | Auto and Manual stream modes with per-device overrides | CONFIRMED PRODUCT REQUIREMENT |
+| D-018 | Emergency throttling of background preview streams | PROPOSED SAFETY DEFAULT; user may opt in/out |
 
 ## 3. Blocking questions (must close before production code)
 
@@ -136,6 +139,27 @@ The product scope and V9 interface are sufficiently defined for planning. The te
 **Recommendation:** Set retention periods, local encryption/backup policy and redaction rules before release.
 
 **Required decision:** Choose retention window and whether backups are encrypted with a user-held password or Windows account protection.
+
+### B-016 — Stream control ranges and profiles
+**Problem:** A universal FPS/bitrate/resolution range may not be supported by every phone, scrcpy build, decoder or PC.
+
+**Recommendation:** Expose user sliders, but derive available ranges and recommended values from device capability plus the current host benchmark. Initial UI may show common presets; exact numeric ranges are pinned after Phase 0/3 tests.
+
+**Required decision:** Approve dynamic ranges rather than promising identical maximum settings on every PC?
+
+### B-017 — Manual mode during critical overload
+**Problem:** A manually selected stream profile may overload the host. Silently changing it violates user intent; refusing to protect the app may destabilize previews.
+
+**Recommendation:** Keep requested settings unchanged. If emergency-throttle is enabled, temporarily reduce/pause background preview streams, show a warning and log requested/effective values. Never interrupt ADB workflow commands. Restore after a stable recovery window if enabled.
+
+**Required decision:** Approve emergency throttling as an opt-in safeguard, enabled by default?
+
+### B-018 — Windows telemetry availability
+**Problem:** GPU utilization/memory, temperature and USB bandwidth are not exposed uniformly by every driver/adapter.
+
+**Recommendation:** Use Windows-supported counters/APIs as baseline, optional vendor adapters where available, and explicit UNKNOWN/Not available states for unsupported sensors. Never treat missing metrics as zero.
+
+**Required decision:** Accept that some host metrics may show Not available on some PCs?
 
 ## 4. Ten-round review programme
 
