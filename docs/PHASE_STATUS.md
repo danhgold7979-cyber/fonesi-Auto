@@ -21,6 +21,15 @@ This is the single status board for the implementation roadmap. Update it only w
 | Phase 0 | NOT_STARTED | Must be authorized after plan review |
 | Phase 1–11 | NOT_STARTED | Must follow Phase 0 exit gate |
 
+## Execution rule
+
+- Only one Phase may be IN_PROGRESS at a time.
+- Before each Phase, read the Master Plan and prepare a detailed Phase Plan using docs/templates/PHASE_PLAN_TEMPLATE.md.
+- The user must approve the Phase Plan before production coding.
+- Implement tasks sequentially. A task must PASS its required tests before the next task begins.
+- Commit and push passing checkpoints to the active Phase branch.
+- Close the Phase with full regression, acceptance evidence and a PR to main.
+
 ## Phase tracker
 
 | Phase | Name | Status | Entry dependency | Evidence / PR |
