@@ -55,11 +55,13 @@ All 12 checkboxes in the approved baseline's §11 remain unaccepted. In particul
 
 ## 4. Phase execution tracker and draft-plan index
 
-**Sequential execution:** Phase N starts only after Phase N−1 is ACCEPTED and merged, its own entry gates are satisfied and its own detailed plan is approved. Additional technical dependencies do not authorize an early start. Drafting all plans is permitted documentation work, not simultaneous Phase execution.
+**Current exception:** DEC-022 / playbook §6 permits independent fully specified work without accepting external gates; the dependency audit selected only the P0-04 offline spike. Production Phase 1 remains NOT_STARTED.
+
+**Sequential acceptance:** Phase N starts only after Phase N−1 is ACCEPTED and merged, its own entry gates are satisfied and its own detailed plan is approved. Additional technical dependencies do not authorize an early start. Drafting all plans is permitted documentation work, not simultaneous Phase execution.
 
 | Phase | Name | Execution status | Entry dependency | Plan / evidence |
 |---|---|---|---|---|
-| 0 | Product, policy and feasibility | BLOCKED on target-host input | P0-01 source + synthetic Windows checks completed; HC-09/13 and physical gates outstanding | [Approved baseline](phases/PHASE-00-feasibility.md), [execution amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md), [current proof](evidence/P0-01-hardening-checkpoint-2026-10-30.md) |
+| 0 | Product, policy and feasibility | IN_PROGRESS offline P0-04; acceptance BLOCKED | P0-01 source + synthetic Windows checks completed; HC-09/13 and physical gates outstanding | [Approved baseline](phases/PHASE-00-feasibility.md), [execution amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md), [current proof](evidence/P0-01-hardening-checkpoint-2026-10-30.md) |
 | 1 | Desktop foundation | NOT_STARTED | Phase 0 ACCEPTED + merged; Phase 1 plan approved | [DRAFT](phases/PHASE-01-desktop-foundation.md) |
 | 2 | ADB and device fleet | NOT_STARTED | Phase 1 ACCEPTED + merged; Phase 2 plan approved | [DRAFT](phases/PHASE-02-adb-device-fleet.md) |
 | 3 | Screen wall and resources | NOT_STARTED | Phase 2 ACCEPTED + merged; Phase 3 plan approved; video/resource decisions resolved | [DRAFT](phases/PHASE-03-screen-wall-resources.md) |
@@ -101,3 +103,10 @@ P0-01 remains IN_PROGRESS/BLOCKED on target-host HC-09/HC-13; no detailed task i
 ## Latest verification — 2026-10-30 16:35 UTC
 
 Final source/workflow candidate f53c97576529ace219160a9083326113d68f07e7: [Windows CI](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41091019200) PASS, 18/18 synthetic cases, 489 assertions; six source hashes match the kit, handle growth 0 over 52 probes, no workflow warnings. HC-09/HC-13 remain NOT_RUN. Task status BLOCKED on target-host evidence; Phase acceptance 0/10. Production app and later phases not started.
+
+
+## Independent offline execution — 2026-10-30 17:13 UTC
+
+Latest owner continuation instructions are recorded in [DEC-022](08_DECISIONS_AND_OPEN_ITEMS.md#9-dec-022--continue-independent-work-without-inventing-gate-acceptance) and playbook §6. They narrowly supersede the earlier stop-all-work instruction in §5 while preserving all acceptance gates. P1-01's stack/version/Windows compatibility inputs remain unresolved; P1-03/P1-11 and remaining foundation tasks transitively depend on them. No Phase 1 production task started and no provisional code is silently promoted.
+
+P0-04 now has a working offline hierarchy selector-analysis spike with **28/28 synthetic tests PASS** on Linux/Python 3.12.14, Expat 2.8.3. [Evidence](evidence/P0-04-offline-selector-2026-10-30.md) distinguishes the tested slice from full P0-04 acceptance: actual selector-driven Android action/read-back, dump-versus-instrumentation choice and broader device/app coverage remain NOT_RUN/BLOCKED. P0-01 source is unchanged/frozen. Historical HC-09 partial hypervisor evidence and pre-hardening HC-13 report do not close current target-host gates. Phase 0 acceptance remains 0/10; no main merge or later-phase acceptance.

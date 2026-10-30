@@ -120,3 +120,40 @@ only its explicitly synthetic, reviewed test-result summary, not these outputs.
 
 Behavioral regression harness: [`tests/phase-00`](../../tests/phase-00/README.md).
 Target-host HC-09/13 and full P0-01 acceptance are separate required evidence.
+
+## P0-04 offline hierarchy selector experiment
+
+`ui_hierarchy_probe.py` is a disposable, standard-library-only analysis module,
+not an Android adapter or production component. It never opens files, starts
+processes, contacts a device or sends input. Call `inspect_hierarchy` with UTF-8
+XML bytes, exact selector fields, capture/current context and an explicit
+freshness budget. The result contains only a fixed state and aggregate counts.
+`UNIQUE_CANDIDATE` is **not** verified identity, visibility, clickability,
+permission, action authorization or success. Supplied metadata is not trusted
+merely because it validates; clock provenance and capture authenticity remain
+caller obligations.
+
+Selectors combine resource ID/content description/text/class/package by exact
+AND matching. At least one ID/description/text predicate is required. Duplicate
+matches remain ambiguous: no first-match, positional or coordinate fallback.
+Missing enabled/password metadata fails closed for the selected node. Bounds
+must be nonempty and inside the declared display. UTF-8 BOM and standard XML
+character escapes are supported; DTDs, entities, processing instructions,
+comments, CDATA, non-1.0 XML declarations, alternate encodings and unexpected hierarchy shapes are refused.
+Offline resource ceilings are 1 MiB input, 10,000 nodes, depth 128 and 10 ASCII
+digits per coordinate; these are defensive spike limits, **not measured Android
+or production capacity claims**. The byte cap applies before parsing; node/depth checks apply
+after parsing and do not promise a strict peak-memory ceiling. Declarations
+must be XML 1.0 with absent or UTF-8 encoding; unknown/mismatched declarations
+are explicitly rejected before ElementTree can ignore them. Parsing is tested on the recorded Python/Expat
+runtime only. No package/version/deployment choice is made for the application.
+
+Run the synthetic suite from the repository root:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase-00 -p 'test_ui_hierarchy_probe.py' -v
+```
+
+Do not publish real hierarchy XML or feed private inputs into test failures/logs.
+See [P0-04 evidence](../../docs/evidence/P0-04-offline-selector-2026-10-30.md)
+for runtime, source hashes, scope and remaining device gates.

@@ -25,6 +25,15 @@ All architecture, schemas, adapters, workflow state machines, tests, and impleme
 
 A complete documentation review, a draft Phase plan, a passing build or a merged documentation PR does **not** authorize production coding. Resolve or explicitly defer gates with recorded consequences, obtain Phase acceptance and merge, then approve the next Phase plan before implementation.
 
+### Latest bounded continuation — 2026-10-30
+
+The owner authorized continued independent coding while empirical gates remain open.
+[DEC-022](docs/08_DECISIONS_AND_OPEN_ITEMS.md#9-dec-022--continue-independent-work-without-inventing-gate-acceptance)
+records the narrow superseding scope. Phase 1 dependencies remain unresolved;
+current new code is the P0-04 offline selector-analysis spike, with 28/28 synthetic
+checks passed, not a production foundation or Android acceptance. The approved
+Phase 0 baseline and host collector are unchanged. See [current status](docs/PHASE_STATUS.md).
+
 ## Documents
 
 - [Master plan](docs/00_MASTER_PLAN.md)

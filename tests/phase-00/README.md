@@ -106,3 +106,18 @@ Run the exact invocation above to produce Windows evidence. Source review,
 are **not** a Windows test pass. At authoring time in the Linux workspace these
 Windows tests were **NOT_RUN**; the authoritative execution result must come from
 the current run's `results.json` and CI process exit status.
+
+## Separate P0-04 offline suite (Linux supplemental evidence)
+
+`test_ui_hierarchy_probe.py` uses synthetic in-memory XML with Python `unittest`;
+it does not run or modify the Windows collector. Command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase-00 -p 'test_ui_hierarchy_probe.py' -v
+```
+
+The 28 cases exercise exact matching, ambiguity, context/freshness checks,
+Unicode/XML escapes, malformed/unsafe input, resource ceilings, bounds and
+privacy-safe results. This is not a UI Automator runtime, instrumentation,
+Windows, physical-device action/read-back or performance pass. All fixture
+strings are synthetic; no private hierarchy or device identifiers are included.

@@ -152,6 +152,17 @@ Trước khi được duyệt, chỉ tiếp tục phần việc đã được ph
 
 **Reconcile Phase 0 hiện tại:** snapshot `34b9649` có P0-01/03/04/05 IN_PROGRESS và sáu task NOT_STARTED. Đây là lịch sử ghi nhận, không phải bằng chứng rằng đã có approval làm song song. Không sửa lịch sử thành PASS hoặc bịa approval. Trước lần thực thi tiếp theo, liệt kê đúng các phần đang chờ, hỏi người dùng xác nhận một task tiếp tục; nếu đề nghị thêm task độc lập thì trình hồ sơ ngoại lệ trên. Ghi quyết định mới bằng timestamp mới, không backdate. Review tài liệu hiện tại không thay đổi trạng thái thực thi đó.
 
+### Recorded exception — DEC-022, 2026-10-30 17:10 UTC
+
+The owner's latest continue-coding/overnight instruction, quoted in [DEC-022](08_DECISIONS_AND_OPEN_ITEMS.md#9-dec-022--continue-independent-work-without-inventing-gate-acceptance), supersedes the pause-all-work rule narrowly. P0-01 remains BLOCKED/frozen; execute P0-04 offline selector-analysis independently on `phase/00-feasibility`. This record does not backdate approval of earlier parallel work or alter the approved Phase 0 baseline.
+
+- Dependency: synthetic hierarchy → bounded parser → exact selector result/negative tests. No Windows, host collector, ADB, device/account, deployment choice or external action dependency.
+- Exclusive owner/scope: Auto engineering task; `tools/phase-00/ui_hierarchy_probe.py`, `tests/phase-00/test_ui_hierarchy_probe.py`, their documentation and sanitized P0-04 evidence. Do not edit the P0-01 collector, UI reference, shared production contracts or any other project.
+- Verification: Python standard-library unit tests and compile/static/diff checks on the named Linux runtime; output only aggregate state/counts. Real Android/Windows/instrumentation/action verification remains NOT_RUN.
+- Integration: review isolated feasibility spike and documentation before publication coordination; no commit/push/merge in this task. Rollback removes only this spike/tests/doc delta, not prior evidence or private inputs.
+- Stop when offline cases are reproducible and reviewed, or when work needs unresolved deployment/version/private-input authorization. P0-04 remains IN_PROGRESS/BLOCKED for its full acceptance. Phase 0 is not accepted and Phase 1 remains NOT_STARTED after dependency audit.
+- Independent, fully specified foundation scaffold/contract/test implementation may be proposed under DEC-022 only with its dependency audit and explicit provisional/rework consequence; this exception selects no production task or stack pin.
+
 ### Không làm
 - Không tạo branch cho mỗi commit.
 - Không tạo sẵn tất cả Phase branches từ đầu.

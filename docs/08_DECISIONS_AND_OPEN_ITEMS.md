@@ -280,3 +280,19 @@ Documentation normalization and a separate documentation branch/draft PR are app
 
 ### Change history addition
 - 2026-10-30: Recorded accepted C-01–C-22, mapped historical B/D questions to selected directions versus remaining empirical gates, and retained the original decision history.
+
+## 9. DEC-022 — Continue independent work without inventing gate acceptance
+
+Recorded 2026-10-30 17:10 UTC; authority: latest owner instructions in the project conversation (exact message timestamps unavailable; this is the recording time):
+
+> Auto cứ tiến hành code đi. đã đủ điều kiện để code chưa, code phase 1 cho đến phase cuối cùng hoàn thiện luôn đi nha
+
+The assistant explicitly limited execution: “Hiện chưa đủ bằng chứng để xác nhận Phase 0 đạt... Mình sẽ tiếp tục những phần code độc lập có đủ đặc tả, đồng thời ghi rõ phần nào còn bị chặn bởi kiểm tra Windows/ảo hóa/thiết bị.” The owner subsequently directed:
+
+> Giờ tao đi ngủ, đợi mày hoàn thiện 3 công việc vào sáng mai t chekc lại, tao trao toàn quyền làm liên tục, ko được ngưng nghe chưa.
+
+**Decision: authorized independent coding, not empirical acceptance.** Supersedes DEC-021's documentation-only restriction and the requirement to stop all work on the first blocked task, only for independent fully specified scaffolding/contracts/tests with unresolved external gates explicitly open. It does not approve Phase 0, merge main, accept the full draft Phase 1–11 plans, choose unresolved implementations, enable capabilities or waive Windows/device/policy tests. Provisional implementation may require rework after actual Windows/physical testing; the owner’s continuation instruction is recorded with that consequence, not a fabricated PASS.
+
+**Dependency audit / selected work:** P1-01 needs exact approved stack/version/compatibility ADRs; P1-03 needs P1-01; P1-11 needs both, and P1-02/04–10 transitively depend on them. Those dependencies remain unresolved, so production Phase 1 stays NOT_STARTED. Do not invent a SQLite binding, secret mechanism, package layout, wire schema, benchmark or supported Windows claim. Execute the genuinely independent **P0-04 offline hierarchy selector-analysis spike** on the existing Phase 0 branch instead (playbook §6 exception below). It consumes synthetic XML, not a device or P0-01 host result. No production component is created.
+
+**Open gates / consequence:** P0-01 source is frozen. HC-09 partial historical evidence reports HypervisorPresent=true alongside contradictory CPU flags, without current optional-feature/boot/emulator acceleration proof. HC-13 historical collection predates hardened candidate f53c975 and cannot certify it. Existing 18/18 synthetic Windows tests remain synthetic. P0-04 still needs real selector-driven action/read-back, deployment comparison and broader supported profiles; offline parsing cannot pass those gates. Engineering owns the spike; owner/test operator supplies authorized empirical evidence. Revisit Phase 1 once the actual stack ADR/host proof is available. No authentication, installation, device command, proxy/security change, live posting, private artifact publication or automatic acceptance is included.
