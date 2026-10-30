@@ -143,7 +143,7 @@ Interaction rules:
 | Setup & content | MediaLibraryService, ContentImportExportService, WorkflowCatalog |
 | Calendar | SchedulerService, QueueCoordinator |
 | Workflow tree | WorkflowCatalogService, CapabilityRegistry |
-| Right phone monitor | ScreenStreamService, DeviceActorService |
+| Right phone monitor | ScreenStreamService, DeviceActorService, HostResourceMonitor, ResourcePolicyEngine |
 | Logs/report | AuditLogService, JobEvidence repository |
 
 ## 11. UI fidelity acceptance
