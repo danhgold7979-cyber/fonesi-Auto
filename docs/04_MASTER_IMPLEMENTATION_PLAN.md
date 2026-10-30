@@ -41,12 +41,19 @@ Tasks:
 - P0-12 Confirm Electron + TypeScript, renderer framework and local database choice.
 - P0-13 Define backup, retention, privacy and secret-storage requirements.
 - P0-14 Create Architecture Decision Records (ADRs) for each decision.
+- P0-15 Define host hardware profiles (minimum / recommended / high-performance) from multiple Windows test machines; the first user PC is a benchmark sample, not a hard-coded product target.
+- P0-16 Prototype realtime Windows telemetry for CPU, RAM, GPU utilization/memory and disk; record which sensors are unavailable on specific adapters/drivers.
+- P0-17 Benchmark host/device stream combinations (FPS, resolution, bitrate, codec, active stream count) and derive per-host safe operating envelopes.
+- P0-18 Define Auto/Manual stream control semantics, user override, emergency throttling, restore behavior, warning thresholds, hysteresis and cooldown.
+- P0-19 Verify resource monitoring overhead and prove it does not delay ADB input or workflow execution.
 
 Exit criteria:
 - No unresolved blocker that would change the core architecture.
 - ADB + UI Automator + Vision pipeline proven on at least one physical Android device.
 - Policy gate has written outcome per Facebook workflow; unsupported actions are disabled.
-- Host minimum and stream concurrency targets are documented.
+- Host minimum/recommended/high profiles and stream concurrency targets are documented from multiple host benchmarks.
+- Realtime telemetry support/limitations and sensor availability are documented.
+- Auto/Manual settings and emergency protection behavior are approved.
 
 **No product code before Phase 0 exit.** Planning documents, test scripts and throwaway feasibility prototypes may be used only to answer Phase 0 questions; they are not production implementation.
 
@@ -105,12 +112,25 @@ Tasks:
 - P3-08 Route pointer/key input only through Device Host actor.
 - P3-09 Add stream backpressure, pause hidden devices and restart failed streams.
 - P3-10 Benchmark CPU, RAM, GPU, USB bandwidth and latency across increasing device counts.
+- P3-11 Add HostResourceMonitor with timestamped CPU/RAM/GPU/disk metrics and sensor availability states.
+- P3-12 Add the Stream / Performance popover to the existing V9 right-side device monitor.
+- P3-13 Add user sliders/selectors for FPS, resolution/scale, bitrate/quality and maximum concurrent streams.
+- P3-14 Add Auto/Manual mode, global defaults, per-device overrides and selected-device batch apply.
+- P3-15 Show requested vs effective vs recommended settings and live GREEN/AMBER/RED/UNKNOWN status with actionable warnings.
+- P3-16 Add emergency throttling of background preview streams and optional automatic restoration after stable recovery.
+- P3-17 Add resource-budget calibration, adaptive stream scheduling and priority for focused/selected devices.
+- P3-18 Test host overload, stale/unavailable sensors, unsupported GPU counters, manual override, emergency throttle and recovery.
+- P3-19 Verify stream controls never take input ownership from Device Host or disrupt running workflows.
 
 Exit criteria:
 - No stream process can send input.
 - Device input remains serialized.
 - Focus/zoom/scroll behavior matches V9.
 - Measured concurrency envelope and overload behavior are documented.
+- User-adjustable FPS, resolution, bitrate and stream-count controls work in Auto and Manual modes.
+- Live hardware telemetry and warnings are timestamped and reflect actual sensor availability.
+- Requested and effective stream settings are distinguishable.
+- Emergency throttling and recovery are auditable and do not disrupt ADB workflows.
 - "Unlimited device records" is supported independently from bounded live streams.
 
 ## 6. Phase 4 — UI Automator and Vision
