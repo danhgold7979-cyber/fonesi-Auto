@@ -66,3 +66,17 @@ Windows checkout used different working-tree line endings for raw source hashes 
 - All six reported source SHA256 hashes match the exact local source bytes after LF normalization.
 - This validates the scoped synthetic collector behavior, not target-host HC-09/HC-13 or overall Phase 0.
 - Infrastructure follow-up: pinned official checkout/upload-artifact v6 refs replace v4 to remove the observed Node 20 deprecation warning. Source under test is unchanged; rerun is required for the final workflow candidate.
+
+
+## Windows CI attempt 3 — final workflow PASS
+
+- Candidate f53c97576529ace219160a9083326113d68f07e7.
+- Run: https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41091019200.
+- Official pinned v6 actions succeeded; no workflow warning was emitted.
+- Windows PowerShell 5.1: 18 PASS, 0 FAIL, 2 NOT_RUN, 489 assertions.
+- HC-07 baseline 627 handles, after each batch and all 52 calls 627; immediate/post-GC growth 0, unchanged limit 16.
+- All six tested source hashes match the diagnostic-kit files exactly. A package CRC/readback/hash check also passed.
+- Diagnostic deliverable: Fonesi-Auto-P0-01-Windows-Check.zip, supplied privately to the owner with source/checksums/CI result and Vietnamese instructions. It is not the production app/installer.
+- HC-09 and HC-13 still require the actual target Windows host. Task P0-01 and Phase 0 remain blocked/not accepted; no production task was started to bypass them.
+
+Subsequent documentation-only status commits do not change the six source files tested above. No target-host or device PASS is inferred from these hosted runs.

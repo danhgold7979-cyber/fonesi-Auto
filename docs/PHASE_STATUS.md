@@ -24,15 +24,15 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | Original Git workflow | ACCEPTED in PR #1 | Current clarifications are documentation-review changes, not retrospective execution approval |
 | V9 UI reference | APPROVED reference; preserved | Full `ui-reference/Fonesi-Auto-V9-UI-Reference.html`; no UI-reference edit in this review |
 | Resource / stream requirements | SPECIFIED; feasibility incomplete | [Resource specification](12_HARDWARE_RESOURCE_AND_STREAM_CONTROLS.md); profile/range/telemetry evidence still required |
-| 2026-10-30 plan normalization | READY_FOR_REVIEW — documentation only | Branch `plan` from `34b9649`; [review report](15_PLAN_READINESS_REVIEW.md) records completeness/check results separately from Phase progress |
+| 2026-10-30 plan normalization | COMPLETED / MERGED INTO PHASE 0 | PR #2 merged at f6f77b0 under the later implementation grant; main unchanged. [Review report](15_PLAN_READINESS_REVIEW.md) records document checks, not Phase acceptance |
 | Product decisions DEC-019 / DEC-020 | ACCEPTED by user in current review | [Decision register](08_DECISIONS_AND_OPEN_ITEMS.md): Manual emergency preview throttle OFF/opt-in; 30-minute gap warning-only; device/account mutual exclusion remains mandatory; QUEUE/default and other scheduler semantics now resolved by accepted C-10/C-11/C-18/C-19; verification remains pending |
-| Documentation publication | AUTHORIZED for branch + draft PR only | Target `phase/00-feasibility`; **merge not authorized**; publication is not Phase acceptance |
-| Phase 0 amendment 01 | PROPOSED / NOT ACCEPTED | [Amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md); mapping/test additions need approval before changing execution baseline |
+| Documentation publication | DONE | Published plan a1e9327 and merged PR #2 into phase/00-feasibility at f6f77b0; no main merge |
+| Phase 0 amendment 01 | P0-01 EXECUTION AUTHORIZED | [Amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md) records the later phased-implementation grant; tests and Phase acceptance are separate |
 | Phase 1–11 detailed plans | DRAFT / NOT APPROVED | Future review artifacts, not permission to begin tasks |
-| Production application code | NOT_STARTED / NOT AUTHORIZED | Existing diagnostic script is feasibility-only; no production app implementation accepted |
+| Production application code | NOT_STARTED / ENTRY GATED | Owner requested full phased implementation, but Phase 0 technical/physical gates remain unmet; current source is feasibility diagnostics only |
 | Phase 0 acceptance | NOT ACCEPTED | 4 tasks IN_PROGRESS, 6 NOT_STARTED; all 12 baseline exit criteria remain unchecked/unaccepted |
 
-## 3. Phase 0 factual execution snapshot
+## 3. Historical Phase 0 snapshot before collector hardening
 
 Source: [preserved approved Phase 0 plan](phases/PHASE-00-feasibility.md) and [sanitized P0-01 evidence](evidence/P0-01-host-preflight-2026-10-30.md), at `34b9649`. This documentation review does not promote any task or rerun any device/Windows test.
 
@@ -59,7 +59,7 @@ All 12 checkboxes in the approved baseline's §11 remain unaccepted. In particul
 
 | Phase | Name | Execution status | Entry dependency | Plan / evidence |
 |---|---|---|---|---|
-| 0 | Product, policy and feasibility | IN_PROGRESS | Approved feasibility plan; physical smoke mandatory | [Approved baseline](phases/PHASE-00-feasibility.md), [proposed amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md) |
+| 0 | Product, policy and feasibility | BLOCKED on target-host input | P0-01 source + synthetic Windows checks completed; HC-09/13 and physical gates outstanding | [Approved baseline](phases/PHASE-00-feasibility.md), [execution amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md), [current proof](evidence/P0-01-hardening-checkpoint-2026-10-30.md) |
 | 1 | Desktop foundation | NOT_STARTED | Phase 0 ACCEPTED + merged; Phase 1 plan approved | [DRAFT](phases/PHASE-01-desktop-foundation.md) |
 | 2 | ADB and device fleet | NOT_STARTED | Phase 1 ACCEPTED + merged; Phase 2 plan approved | [DRAFT](phases/PHASE-02-adb-device-fleet.md) |
 | 3 | Screen wall and resources | NOT_STARTED | Phase 2 ACCEPTED + merged; Phase 3 plan approved; video/resource decisions resolved | [DRAFT](phases/PHASE-03-screen-wall-resources.md) |
@@ -74,13 +74,13 @@ All 12 checkboxes in the approved baseline's §11 remain unaccepted. In particul
 
 A blocked Phase may be narrowed/deferred only by an explicit user-approved change with downstream consequences; do not silently skip it because a later module is technically independent.
 
-## 5. Next review / execution boundary
+## 5. Current next action / execution boundary
 
-1. Finish cross-document review and record exact documentation checks, changed files and remaining decisions. A READY_FOR_REVIEW label applies only to that documentation scope.
-2. Publish the authorized documentation branch/draft PR after checks; no merge without separate approval.
-3. Present Amendment 01 and unresolved Phase 0 questions; preserve the original baseline until approved changes are recorded.
-4. Clarify the active Phase 0 task and obtain any necessary hardware/access evidence; do not begin Phase 1 production code.
-5. For every execution session report start/Phase/task, meaningful elapsed-time checkpoints, and end time/exact evidence/remaining gates. Do not invent historical timing.
+1. P0-01 code and 18 synthetic tests are implemented. Two post-fix Windows runs passed all 18 cases with 489 assertions and no measured handle growth.
+2. Obtain exact target-host HC-13 collector rerun and HC-09 read-only virtualization/acceleration evidence, with any required host permission. The delivered Windows diagnostic kit includes source hashes and instructions; it is not the application installer.
+3. Reconcile actual results and remaining P0 gates. No detailed Phase 0 task is accepted yet (0/10); do not start Phase 1 to hide a blocked prerequisite.
+4. Branch renaming/cleanup is separately waiting on the owner's cloud GitHub login. No remote branch rename/deletion has been verified.
+5. During active work report CODE / TEST / CHECK / WAITING, Phase 0 as position 1 of 12, task and evidence-based accepted-task percentage. While awaiting input, say work is blocked rather than simulate ongoing code.
 
 ## 6. Change history
 
@@ -96,3 +96,8 @@ Read [accepted C-01–C-22](16_ACCEPTED_PRODUCT_DECISIONS.md) before interpretin
 PR #2 integrated the reviewed plan into phase/00-feasibility at f6f77b0; main remains unchanged. Scoped collector hardening and synthetic Windows CI now exist. Attempt 1 at b46107e: 17 PASS / 1 FAIL. Attempt 2 at 1ec43ae: 18 PASS / 0 FAIL, 489 assertions; zero measured handle growth through 52 probes. See [checkpoint evidence](evidence/P0-01-hardening-checkpoint-2026-10-30.md).
 
 P0-01 remains IN_PROGRESS/BLOCKED on target-host HC-09/HC-13; no detailed task is accepted yet (0/10). The prior “no application/CI implementation” snapshot refers to production app CI; a scoped Phase 0 diagnostic test workflow is now present. No Phase 1 production code exists. Do not convert the synthetic PASS into host compatibility or Phase acceptance.
+
+
+## Latest verification — 2026-10-30 16:35 UTC
+
+Final source/workflow candidate f53c97576529ace219160a9083326113d68f07e7: [Windows CI](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41091019200) PASS, 18/18 synthetic cases, 489 assertions; six source hashes match the kit, handle growth 0 over 52 probes, no workflow warnings. HC-09/HC-13 remain NOT_RUN. Task status BLOCKED on target-host evidence; Phase acceptance 0/10. Production app and later phases not started.
