@@ -99,6 +99,7 @@ Phase Plan bắt buộc có:
 13. Security/privacy/platform-policy impact.
 14. Migration, backup và rollback nếu có.
 15. Test matrix: unit, integration, UI, hardware, performance.
+16. If the Phase changes streaming/resource management, include host telemetry availability, Auto/Manual behavior, requested/effective settings, overload and recovery tests.
 16. Definition of Done và Phase exit criteria.
 17. Rủi ro, phương án giảm thiểu và phần chưa cam kết.
 18. Ước lượng theo độ phức tạp/độ phụ thuộc; không bịa deadline.
