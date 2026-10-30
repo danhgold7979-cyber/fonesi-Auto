@@ -30,6 +30,8 @@ All architecture, schemas, adapters, workflow state machines, tests, and impleme
 - [Master implementation plan](docs/04_MASTER_IMPLEMENTATION_PLAN.md)
 - [Acceptance criteria and risk register](docs/05_ACCEPTANCE_AND_RISKS.md)
 - [V9 interface mapping](docs/06_UI_V9_MAPPING.md)
+- [V9 HTML UI reference](ui-reference/Fonesi-Auto-V9-UI-Reference.html)
+- [How to open the V9 UI reference](ui-reference/README.md)
 - [Technology and policy references](docs/07_REFERENCES.md)
 - [Decisions, open questions and 10-round review](docs/08_DECISIONS_AND_OPEN_ITEMS.md)
 
