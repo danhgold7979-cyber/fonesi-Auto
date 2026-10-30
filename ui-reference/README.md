@@ -1,8 +1,8 @@
 # Approved V9 UI reference — complete source
 
-The file [Fonesi-Auto-V9-UI-Reference.html](Fonesi-Auto-V9-UI-Reference.html) is the **complete approved V9 HTML source**, not a simplified redraw or summary mock.
+The file [Fonesi-Auto-V9-UI-Reference.html](Fonesi-Auto-V9-UI-Reference.html) is the **complete V9 HTML/CSS/JavaScript source plus the newly approved Stream / Performance control addendum**. It is not a simplified redraw or summary mock.
 
-It preserves the original V9 document's full HTML structure, CSS, JavaScript, page renderers, controls, event handlers, workflow tree, screen-wall behavior and interaction logic. This is the visual/behavioral baseline that future implementation must follow.
+The original V9 source was imported in full. The only intentional additive UI change in this revision is a compact performance button in the existing right-side monitor header, opening a dialog with Auto/Manual mode, FPS, resolution/scale, bitrate, concurrent stream controls and clearly labeled demo telemetry. Existing V9 page renderers, layout, workflow tree, device wall and interactions are retained.
 
 ## Open it
 1. Open [Fonesi-Auto-V9-UI-Reference.html](Fonesi-Auto-V9-UI-Reference.html) in this repository.
@@ -13,12 +13,12 @@ It preserves the original V9 document's full HTML structure, CSS, JavaScript, pa
 GitHub's source viewer does not execute local HTML/JavaScript. Download and open the file in a browser to inspect the actual interface.
 
 
-## Source integrity check
-- Full source was read from the original uploaded `Fonesi-Auto-V9-UI-Source.html`.
-- Repository copy contains 1,249 lines and 234,631 Unicode characters.
-- Text content was compared against the original upload and matched exactly.
-- The inline JavaScript passed `node --check`.
-- Git blob SHA: `135da3bf7bb3d89a54520952c28341cc68d54064`.
+## Source and revision check
+- Full source was read from the original uploaded `Fonesi-Auto-V9-UI-Source.html` before the additive stream-controls update.
+- Current repository HTML contains 1,296 lines and approximately 240 KB of Unicode text.
+- The original V9 source remains in Git history; the current file adds only the approved Stream / Performance UI control and its demo interactions.
+- The current source must be syntax-checked and visually reviewed in Chrome/Edge before a production renderer is implemented.
+- Demo telemetry is explicitly labeled DEMO; it is not a live hardware reading.
 
 ## Implementation rules
 - Treat this full HTML as the canonical V9 reference.
