@@ -157,3 +157,42 @@ Interaction rules:
 - Verify account/avatar dropdowns.
 - Verify no permanent full-height list of dozens of phones in the side panel.
 - No visual redesign without explicit approval.
+
+
+## 12. Resource & Stream Control panel
+
+Add this as a compact expandable panel/drawer attached to the existing right-side device monitor or its settings entry. Do not permanently widen the right panel or change the V9 three-column layout.
+
+Required controls:
+- FPS slider (target 5–60) with numeric value and effective FPS.
+- Image quality/bitrate slider with Low/Medium/High labels and current bitrate when available.
+- Resolution cap selector: Auto, 480p, 720p, 1080p, Source.
+- Auto/Manual mode.
+- Presets: Eco, Balanced, Smooth, Custom.
+- Apply scope: All, Selected, Current device.
+- Per-device override and reset-to-global-default.
+
+Real-time resource display:
+- CPU utilization.
+- RAM used / available.
+- GPU utilization and memory when supported.
+- Disk free space.
+- Network throughput.
+- Connected devices / active streams.
+- Average delivered FPS and stream backlog.
+- Vision worker queue depth.
+
+Alert behavior:
+- Green: normal headroom.
+- Amber: sustained warning threshold reached; show reason and recommended setting.
+- Red: critical pressure; explain automatic preview degradation.
+- Show metric timestamp and stale/unavailable state.
+- Never show unsupported GPU telemetry as 0%.
+- Alert colors supplement text and icons; do not rely on color alone.
+
+Interactions:
+- Sliders update the selected scope and show the pending/effective values.
+- Applying a setting should be immediate for preview streams, with no confirmation popup for safe changes.
+- If a requested setting exceeds safe limits, explain the constraint and clamp/block the unsafe value.
+- Auto mode may lower preview quality when resource pressure is sustained, then recover gradually.
+- Resource controls affect preview streams, not the Android device's actual resolution or workflow execution.
