@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {spawn} = require('node:child_process');
+const {evaluateRuntimeResult} = require('./runtime-result.cjs');
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('WINDOWS_X64_LAB_ONLY');
 if (process.env.ELECTRON_RUN_AS_NODE || process.env.NODE_OPTIONS) throw new Error('UNSAFE_RUNTIME_OVERRIDE');
 const root = path.resolve(__dirname,'..');
@@ -33,10 +34,9 @@ function launch(executable,args,mode){
       try{
         const result=JSON.parse(fs.readFileSync(path.join(runRoot,mode+'-result.json'),'utf8'));
         report.results.push(result);
-        if(code!==0 || result.passed!==true || Object.keys(result.cases).length!==21 ||
-           !Object.values(result.cases).every(v=>v===true) || result.electron!=='45.1.0' ||
-           result.packaged!==(mode==='package')) throw new Error('RUNTIME_CHECK_FAILED');
-        resolve();
+        // A complete, well-formed failed assertion set may still inform the package
+        // experiment. Launch/parse/version/schema failures remain fail-fast.
+        resolve(evaluateRuntimeResult(result,code,mode));
       }catch{reject(new Error('RUNTIME_CHECK_FAILED'));}
     });
   });
@@ -44,7 +44,7 @@ function launch(executable,args,mode){
 (async()=>{
   try{
     const dist=path.join(root,'node_modules','electron','dist');
-    await launch(path.join(dist,'electron.exe'),[root],'source');
+    const sourcePassed=await launch(path.join(dist,'electron.exe'),[root],'source');
     const packaged=path.join(runRoot,'package');
     fs.cpSync(dist,packaged,{recursive:true,errorOnExist:true,force:false});
     const appDir=path.join(packaged,'resources','app');
@@ -59,8 +59,9 @@ function launch(executable,args,mode){
       if(hash(path.join(dist,file))!==hash(path.join(packaged,file))) throw new Error('NOTICE_COPY_MISMATCH');
     }
     report.electronExecutableSha256=hash(path.join(packaged,'electron.exe'));
-    await launch(path.join(packaged,'electron.exe'),[],'package');
-    report.passed=true;
+    const packagePassed=await launch(path.join(packaged,'electron.exe'),[],'package');
+    report.passed=sourcePassed && packagePassed;
+    if(!report.passed){report.failure='RUNTIME_CHECK_FAILED';process.exitCode=1;}
   }catch(error){
     const codes=['LAUNCH_ERROR','LAUNCH_TIMEOUT','RUNTIME_CHECK_FAILED','PACKAGE_COPY_MISMATCH','NOTICE_COPY_MISMATCH'];
     report.failure=codes.includes(error.message)?error.message:'LAB_IO_FAILED'; process.exitCode=1;

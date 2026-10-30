@@ -14,11 +14,12 @@ const results: Record<string, boolean> = {};
 let finished = false;
 let stage = 'START';
 let diagnostic: { stage: string; kind: string; code?: string } | undefined;
+let navigationEvidence: { denialObserved: boolean; trustedDocumentUnchanged: boolean } | undefined;
 function finish(passed: boolean): void {
   if (finished) return;
   finished = true;
   writeFileSync(join(runRoot!, mode + '-result.json'), JSON.stringify({
-    mode, passed, cases: results, diagnostic, electron: process.versions.electron,
+    mode, passed, cases: results, diagnostic, navigationEvidence, electron: process.versions.electron,
     chromium: process.versions.chrome, node: process.versions.node, packaged: app.isPackaged,
   }));
   for (const window of BrowserWindow.getAllWindows()) window.destroy();
@@ -111,7 +112,8 @@ void app.whenReady().then(async () => {
     const link=document.createElement('a'); link.href='about:blank'; document.body.append(link); link.click(); return true;
   })()`);
   await new Promise(resolve => setTimeout(resolve, 200));
-  results['navigation_denied'] = deniedNavigations > 0 && window.webContents.getURL() === trustedUrl;
+  navigationEvidence = { denialObserved: deniedNavigations > 0, trustedDocumentUnchanged: window.webContents.getURL() === trustedUrl };
+  results['navigation_denied'] = navigationEvidence.denialObserved && navigationEvidence.trustedDocumentUnchanged;
   stage = 'UNTRUSTED_SENDER';
   const untrusted = new BrowserWindow(options);
   guard(untrusted);

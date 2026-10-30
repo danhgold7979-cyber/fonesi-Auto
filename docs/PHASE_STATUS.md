@@ -172,3 +172,21 @@ not an inner diagnostic/watchdog. Installer and owned cleanup still PASS. Harnes
 now separates unchanged read-only checks from unchanged popup/navigation targets,
 preserving earlier observations before potential context loss. Exact upstream
 errors map only to fixed codes. Root cause and package launch remain unverified.
+
+### G0-12 actual blocker — 2026-10-30 18:54 UTC
+
+Hosted attempt5 (41109793231) reaches20/21 source checks PASS; navigation denial
+FAILS and package launch remains NOT_RUN. Installer and owned cleanup PASS.
+Electron/Chromium primary-source review supports a possible about:blank hook gap,
+not a proven runtime trace. Two fixed booleans will distinguish the failing
+subconditions without exposing URLs. Keep the unchanged21x2 gate: no target swap,
+DOM-only substitute, native fork or version guess. G0-12 FAIL/BLOCKED pending
+reviewed navigation containment/upstream candidate; no Phase/target-host acceptance.
+
+Coordinator authorized independent package evidence after a well-formed complete
+failed source set, without accepting it. Aggregate still requires21/21 in BOTH
+modes and nonzero on either failure; malformed/incomplete/launch/version failures
+stay fail-fast. Five new pure result-gate regressions bring local suite to11/11PASS.
+Next hosted run may complete package evidence but cannot erase navigation failure.
+Final pre-publication review hardened exact case-name/plain-object/explicit-mode
+validation; malformed evidence cannot continue. Pure tests now11/11PASS.

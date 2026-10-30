@@ -204,3 +204,61 @@ not counted among the 21 acceptance assertions. It distinguishes API execution
 failure from probe logic. Final local dependency/build/strict checks and 6/6 pure
 contracts PASS at 18:40 UTC; a wrong-working-directory build invocation returned
 MODULE_NOT_FOUND before the correctly scoped successful rerun (no installation).
+
+## Hosted attempt 5 — real navigation gate FAIL, 18:47 UTC
+
+Commit `817bf5f18ed1896f6fd4032799165a0ad86344c9`, desktop
+[41109793231](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41109793231),
+job 124248943465: actual source launch returns **20/21 true**, only
+`navigation_denied=false`. React render, real sandbox/context isolation, absent
+Node globals/process route, typed IPC, all seven malformed payload rejections,
+window denial and untrusted-sender denial PASS. Installer SUCCESS/exit0, both
+owned-tree cleanups true, runtime exit1 and directory cleanup true. Package launch
+is NOT_RUN because source acceptance failed. This is a useful failed experiment,
+not a complete desktop or security PASS.
+
+Primary source review identifies a plausible upstream coverage gap:
+[Electron v45.1.0 navigation throttle](https://github.com/electron/electron/blob/v45.1.0/shell/browser/electron_navigation_throttle.cc#L23-L58)
+emits both cancellable navigation events in WillStartRequest. Current
+[Chromium navigation throttle interface](https://github.com/chromium/chromium/blob/main/content/public/browser/navigation_throttle.h#L180-L196)
+documents about:blank under WillCommitWithoutUrlLoader, mutually exclusive with
+WillStartRequest. Electron main showed the same implementation at review time.
+The exact Chromium runtime-tag source could not be retrieved; this explanation is
+therefore a **source-supported inference**, not a verified trace of the runtime.
+The measured failing boolean is definitive, its two subconditions not yet logged.
+
+A two-boolean metadata addition records denialObserved and
+trustedDocumentUnchanged without paths/URLs. The same about:blank target and exact
+conjunction remain required. No earlier-listener workaround is claimed: both
+Electron events share the same hook. No weaker target, DOM-only navigation guard,
+CSP relaxation, native fork, alternate version or waiver is implemented.
+
+**Stopping boundary:** G0-12 remains FAIL/BLOCKED on navigation-containment design
+or an independently reviewed upstream candidate that passes the existing gate.
+A confirming hosted metadata run is within this experiment; choosing a new design
+or candidate requires coordinating review. Phase 0 acceptance stays 0/10, production
+stack ADR/Phase 1 remain unaccepted, and target-host/device/policy gates remain open.
+
+### Independent package evidence authorization — 18:55 UTC
+
+The coordinator explicitly authorized collecting package evidence after a complete
+failed source assertion set, under unchanged process/deadline/cleanup bounds.
+`run-windows.cjs` now proceeds only when source exit is 0/1 and its evidence has
+exactly 21 boolean cases, expected Electron version and source/package identity.
+A failed boolean set remains false; package results cannot override it. Aggregate
+success is sourcePassed AND packagePassed, otherwise nonzero. Invalid/incomplete
+results, launch errors, timeout or version/mode mismatch remain fail-fast.
+The pure runtime-result gate has five regressions (failed source remains false,
+both modes required, malformed evidence rejected, exit/pass mismatch cannot pass,
+exact named schema and mode required), bringing pure tests to **11/11 PASS**. Strict TS/build/dependency checks PASS locally.
+Both modes' actual navigation observations remain pending the next hosted run.
+This does not infer a privilege escape from a navigation failure: existing IPC
+origin/sender and Node-isolation assertions have passed; wider security conclusions
+require separate evidence. No device or production behavior was added.
+
+Independent review caught an evidence-schema gap before publication: counting
+21 arbitrary/array booleans and only packaged mode was insufficient. The gate
+now requires a plain non-array case object with the exact 21 named assertions,
+explicit result.mode equal to the requested mode, and the original version/
+packaged/exit constraints. Wrong mode, array, renamed/missing/extra and arbitrary
+case names reject. Final pure suite **11/11 PASS**, including five gate regressions.

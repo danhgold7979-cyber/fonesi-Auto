@@ -75,7 +75,7 @@ Windows x64 only, after the above succeeds:
 .\scripts\Invoke-DesktopLab.ps1  # Windows PowerShell 5.1
 ```
 
-Six pure contract cases are supplemental. The real Electron process must report
+Eleven pure cases (six contracts, five runtime-result gates) are supplemental. The real Electron process must report
 **21/21 cases for each of source and unpacked-package launch**:
 - Actual sandbox/context-isolation state from preload, with Node built-ins refused;
   renderer's `require`/`process` absent and attempted process-spawn route unavailable.
@@ -111,3 +111,10 @@ versions, executable hash and sanitized failure codes. No binary, private input,
 profile folder or screenshot is uploaded. Missing results, early exit, timeout,
 failed checks or cleanup are nonzero failures. A pass certifies **only the tested
 hosted runner**. No local-display workaround or target Windows claim is allowed.
+
+Evidence completeness: a completed source launch with the exact version/mode and
+all 21 boolean results may proceed to the same bounded package experiment even
+when an assertion fails. Aggregate success still requires **both** launches to
+pass all 21 cases; either failed set yields nonzero. Launch, timeout, malformed
+result, wrong-version/mode or incomplete-set failures remain fail-fast. This does
+not convert the known about:blank navigation failure into an accepted capability.
