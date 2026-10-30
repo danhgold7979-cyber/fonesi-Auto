@@ -138,3 +138,67 @@ ordering guarantee. Explicitly distinguish initial trusted load, subsequent
 navigation/reload and `document.open()`. If exact-source identity/ordering cannot
 support the claim, retain BLOCKED. Independent design review is required before any
 request to implement a separate experiment.
+
+## Source-feasibility findings — 2026-10-30 19:35 UTC (pending review)
+
+**Current verdict: BLOCKED for the full proposed guarantee; no experiment code.**
+The following narrower logical property is plausible, but is not the requested
+all-document guarantee: once main has irrevocably revoked a view, a synchronous,
+non-reentrant synthetic commit that checks that state cannot accept work from it.
+A check before an await is insufficient. A renderer transition can precede main's
+observation; single-threaded JavaScript does not itself prove cross-process ordering.
+
+Exact-tag sources inspected:
+- [v45.1.0 DEPS](https://raw.githubusercontent.com/electron/electron/v45.1.0/DEPS)
+  selects Chromium156.0.8078.49 and applies patches. Chromium-main is not a substitute
+  for that source plus patch set.
+- [WebContents callback](https://raw.githubusercontent.com/electron/electron/v45.1.0/shell/browser/api/electron_api_web_contents.cc)
+  DidStartNavigation emits its event synchronously under unsafe-to-delete protection.
+  State mutation alone avoids the proposed Stop/destruction hazard; this does not
+  establish event coverage for every document mutation or renderer IPC ordering.
+- [WebFrameMain implementation](https://raw.githubusercontent.com/electron/electron/v45.1.0/shell/browser/api/electron_api_web_frame_main.cc)
+  tracks FrameTreeNode across navigation and separately maps RFH tokens. Its URL
+  accessor reads the last committed URL; frameToken exposes LocalFrameToken. Neither
+  is a documented application-visible document-incarnation identifier. The existing
+  WebFrameMain wrapper can update its RFH/token during a swap (lines229-246 and
+  769-774), so wrapper object equality is not document identity. Rechecking URL/frame
+  is necessary but cannot by itself distinguish same-URL replacement.
+- [IPC handler](https://raw.githubusercontent.com/electron/electron/v45.1.0/shell/browser/electron_api_ipc_handler_impl.cc)
+  binds to RFH identity and constructs events before invoking dispatch. No
+  application revocation generation is supplied by this API. The [IPC event implementation](https://raw.githubusercontent.com/electron/electron/v45.1.0/shell/browser/api/electron_api_ipc_event.cc)
+  captures RFH/FrameTreeNode IDs and resolves senderFrame on each read, rather than
+  exposing an originating Document token. The proposed generation remains main-owned
+  application state, not a native Document token.
+
+| Boundary | Necessary design condition | Unresolved proof obligation |
+|---|---|---|
+| Initial trusted load | Start unauthorized; main deliberately requests one exact owned entry; authorize only its verified completion/handshake | A URL match/first-event exception cannot distinguish an interrupted load or same-URL replacement without lifecycle identity/order proof |
+| Later navigation/reload | Any observed later main-frame transition permanently revokes the view, including same-URL reload; never rearm it | Confirm relevant browser/renderer ordering and coverage on exact bundled source; do not promise revocation at renderer initiation |
+| Queued operation | At commit recheck live view, frame, URL, generation and revocation, with no await/reentrant call between check and synthetic effect | Work already committed before observation cannot be retroactively cancelled; external dispatch/cancellation is out of scope |
+| `document.open()` | Treat separately from ordinary navigation; do not assume new URL/frame/token or navigation-start event | Need a supported main-observable document-incarnation/coverage mechanism, or a separately reviewed narrower threat contract; neither currently established |
+
+The [HTML standard's document-open algorithm](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-open-steps)
+reuses the Document in place, removes its nodes/listeners and updates URL/history
+from the entry document. This is a concrete reason not to equate document content
+replacement with normal navigation. It is standards evidence, not a reproduced
+Electron45.1.0 trace or proof that no other notification exists. The exact
+WebContents source search found no DidOpenDocumentInputStream override; absence of
+that one name is not a complete event-coverage proof.
+
+Access limitation: exact Chromium156 document.cc and web_contents_observer.h raw-tag
+retrieval returned cache miss; the googlesource tagged document.cc endpoint was
+inaccessible through the web tool. No patched runtime source was substituted with
+main and labeled exact. All new runtime checks are NOT_RUN. Remaining action is
+independent source/design review and an explicit decision on these unresolved
+identity/ordering requirements, not another blind CI run or a relaxed old test.
+
+Independent ordering review19:36UTC agrees with the bounded conditional property:
+listener state mutation must be first, synchronous, monotonic and free of awaits,
+API calls or reentrancy; synthetic sink validation and effect must be one synchronous
+non-reentrant step. [Exact-tag IPC dispatch](https://raw.githubusercontent.com/electron/electron/v45.1.0/shell/browser/api/electron_api_ipc_dispatch.cc)
+invokes JavaScript handlers and handles asynchronous completion; an await or queue
+release is not a navigation-notification flush/barrier. Initial bootstrap remains
+one-time/main-owned while authority is denied; never rearm on did-finish-load or
+exempt later same-URL reload/return. Already-admitted native/worker effects cannot be
+retroactively cancelled by the latch. Independent review retains full B BLOCKED;
+this conditional proof does not authorize experiment code.
