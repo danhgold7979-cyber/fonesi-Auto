@@ -158,3 +158,11 @@ with no returned installer result and cleanup unconfirmed. A scalar executable
 resolution/binding candidate fix plus bounded candidate-count diagnostics is
 prepared; actual root cause remains a hypothesis until hosted re-test. Existing
 collector/offline run 41106276557 SUCCESS is independent, not desktop acceptance.
+
+G0-12 hosted attempt 3 (41107363359) confirms two Node candidates and successful
+installer execution after scalar resolution. Actual source Electron45.1.0 launched
+and passed the first3 runtime checks; the source test then FAILED, with18 checks
+unreturned and package mode not reached. Owned installer/runtime cleanup verified.
+A partial-result/fixed-stage marker correction is prepared to isolate the renderer
+failure, with every existing assertion and deadline preserved. Full lab still FAIL;
+no target-host or Phase acceptance.

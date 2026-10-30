@@ -153,3 +153,27 @@ source-supported integration defect; the next Windows candidate count will test
 whether it caused this particular run failure. The original failed invocation is
 retained as regression evidence; the next run must return installer/containment
 results and pass all unchanged source/package assertions, not merely bind a path.
+
+## Hosted attempt 3 — installer/launch advancement, runtime FAIL, 18:30 UTC
+
+Commit `cf6ee7d67910cfc0fd68505c4536c078e3454d07`, desktop
+[41107363359](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41107363359),
+job 124240617390: nodeCandidateCount=2 confirms the multiple command-source
+condition. Scalar resolution now returns installer SUCCESS/exit0/cleanupComplete
+true. An actual source Electron 45.1.0 process reports Chromium 156.0.8078.49,
+Node 24.22.1, packaged=false, and three true cases: secure_runtime_state,
+expected_electron_version, package_mode. Source result is still **FAIL**, with the
+remaining 18 cases not returned and package launch not reached. Installer and
+runtime owned-tree cleanup are both true, runtime exit1 and directory cleanup true.
+The supervisor step lasted approximately 12 seconds including installation.
+
+The monolithic renderer probe did not retain partial progress; its source cannot
+alone distinguish rejection from watchdog termination. No concrete renderer root
+cause is established. A narrow observability correction now retains partial case
+booleans and fixed stage/allowlisted error-name markers, with a distinct watchdog
+marker. Any such diagnostic still immediately fails; all 21 cases for each mode,
+20/30/90-second deadlines, secure flags, exact version, IPC checks and containment
+remain required. No arbitrary exception text, URL, path, console output or stack
+is captured. Local strict TypeScript/build/dependency review and 6/6 contracts
+PASS; hosted behavior remains pending. This is not complete G0-12/P0-09 acceptance
+or a target Windows compatibility claim.
