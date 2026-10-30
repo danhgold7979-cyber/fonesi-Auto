@@ -184,6 +184,16 @@ Under the owner's continued-independent-work grant (DEC-022), the coordinating t
 - Outputs: source/dependency hashes, exact runner/runtime versions, fixed-case results. No raw host inventory, private captures or package artifacts published. Hosted Windows evidence only; current user's Windows/physical/virtualization tests stay NOT_RUN.
 - Rollback/rework: discard only lab-owned files/output. Production path/schema/stack acceptance is undecided; test failures or later actual-host evidence may require redesign. No sudo/security switches, `--no-sandbox`, ADB, device actions, auth, proxy, persistence or live posting. Stop on provenance/runtime blockers rather than weakening security. Publication coordinated separately; no commit/push until review.
 
+### P0-06 hosted telemetry-source experiment — 2026-10-30 19:02 UTC
+
+The coordinator reviewed and authorized the [bounded proposal](evidence/P0-06-hosted-telemetry-PROPOSAL-2026-10-30.md) under the owner's DEC-022 independent-work grant, before implementation. This explicitly permits a hosted-runner-only P0-06/G0-16 input experiment despite the unresolved P0-01 target-host dependency and failed G0-12 navigation gate. Neither gate is waived; full P0-06, architecture and Phase acceptance remain blocked.
+
+- Exclusive scope: new `tools/phase-00/telemetry-lab/**`, separate hosted workflow, sanitized evidence and living status. No collector changes, dependency installation, elevation, device/account/network action, load generation, UI or Auto/Manual policy.
+- Built-in local Get-Counter/CIM only: CPU/RAM/disk/anonymous network samples and GPU source availability. GPU decode/VRAM/temperature are NOT_PROBED/UNKNOWN. No missing-to-zero conversion or performance/support inference.
+- Six fixed groups, three samples/rate group with warm-up handling, one-second lab intervals, 10-second owned-worker deadline plus 5-second cleanup; five-minute workflow bound. Reuse unchanged suspended/owned Job helper. Fixed-schema output only, no counter paths, adapter/process IDs or raw errors.
+- Distinguish observed read UTC from optional provider UTC. CIM total RAM is a capacity snapshot with no invented provider timestamp/advancement. Rate samples require actual provider validity and advancing timestamps. UNKNOWN capability is not a sensor PASS.
+- Independent safety/schema review before coordinated publication. Stop on unconfirmed cleanup or need for installations/privilege/security changes. Target-host/GPU/load/production cadence and all Phase acceptance remain open; lab work may require rework or disposal.
+
 ### Không làm
 - Không tạo branch cho mỗi commit.
 - Không tạo sẵn tất cả Phase branches từ đầu.

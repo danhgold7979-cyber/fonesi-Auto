@@ -196,3 +196,19 @@ metadata false/false and allownedcleanup true. Package-mode failure traced to th
 unrenamed Windows electron.exe basename; owned-copy rebranding+hash verification
 fix prepared, no FORCE_IS_PACKAGED override allowed. Navigation gate remains
 FAIL/BLOCKED, regardless of package-mode correction. No privilege escape inferred.
+
+## Independent telemetry-source increment — 2026-10-30 19:12 UTC
+
+P0-06/G0-16 hosted-only slice authorized under the pre-code playbook19:02 exception;
+[proposal](evidence/P0-06-hosted-telemetry-PROPOSAL-2026-10-30.md) and
+[evidence](evidence/P0-06-hosted-telemetry-2026-10-30.md). Bounded builtinPS workers
+and strict output schema authored;11/11 local Python regressions, YAML/diff PASS.
+Actual hosted sampling/PowerShell execution and7producer regressions NOT_RUN;
+independent safety/schema review closed19:19UTC.
+UNKNOWN remains null/unavailable; CIM observed timestamps are not fabricated
+provider timestamps. No installation, elevation, device or load action. FullP0-06,
+target-host/GPU/load and allPhase acceptance gates remain open.
+
+G0-12 attempt7 (41113076545) settles package identity: source20/21+package20/21,
+only navigationfalseboth, package_mode nowtrue, allownedcleanuptrue. No unchanged
+retry justified; architecture/navigation gate stays FAIL/BLOCKED, not accepted.

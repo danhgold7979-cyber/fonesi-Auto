@@ -285,3 +285,16 @@ not a signed installer or production distribution decision. It explicitly reject
 ELECTRON_FORCE_IS_PACKAGED rather than spoofing the assertion. Existing21x2 cases
 and the unresolved navigation failure remain untouched. Hosted confirmation of
 this substantive packaging fix is pending; no blind unchanged rerun is requested.
+
+## Hosted attempt 7 — packaging corrected, navigation still BLOCKED, 19:11 UTC
+
+Commit `19949377d9ab38f06ba51336f5dd4f8c97d74994`, desktop
+[41113076545](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41113076545),
+job 124260174385: source **20/21**, package **20/21**. Actual package reports
+packaged=true and package_mode=true after owned-copy rename; executable hash is
+unchanged. Only navigation_denied remains false in each mode, with both boolean
+subconditions false. Installer SUCCESS/exit0, both owned Job cleanups true, directory
+cleanup true, aggregate runtime exit1. Existing collector/offline run 41113076394
+succeeded independently. This settles the packaging correction, not the navigation
+requirement. No unchanged retry is useful: G0-12 stays FAIL/BLOCKED on the reviewed
+navigation-containment/upstream decision, with all 21x2 conditions preserved.
