@@ -60,14 +60,16 @@ Follow docs/13_DOCUMENTATION_CHANGE_POLICY.md. Update canonical living documents
 - Before each Phase, re-read the Master Plan and all relevant product/architecture/acceptance documents.
 - Create a detailed Phase Plan from docs/templates/PHASE_PLAN_TEMPLATE.md and obtain explicit user approval before production coding.
 - Work only on the currently authorized Phase and task ID.
-- Complete the full test/review/commit loop for the current task before moving to the next task.
+- Complete the full test/review/commit loop for the current task before moving to the next task. Independent tasks within the same active Phase may run concurrently only under an explicit, recorded user-approved exception in docs/11_PHASE_EXECUTION_PLAYBOOK.md §6; never infer an exception from multiple IN_PROGRESS rows.
+- Drafting or reviewing future Phase plans is documentation work, not permission to execute them. Documentation-review completion is not Phase acceptance.
+- Preserve the approved Phase 0 plan. Gate IDs G0-01..G0-19 in the master plan are not the detailed task IDs P0-01..P0-10; use the proposed amendment mapping without treating the amendment as accepted.
 - Do not implement later phases early.
 - Do not change the approved V9 layout, tab order, screen-wall behavior or workflow structure without explicit approval.
 - Do not mark a task complete without tests and acceptance evidence.
 - If a requirement is ambiguous, state the exact ambiguity and propose options before implementing.
 - If a task depends on an unresolved blocker in docs/08_DECISIONS_AND_OPEN_ITEMS.md, do not guess.
 
-The planning branch is documentation-only. Do not add application source code to it.
+Planning/documentation-review branches are documentation-only. Do not add application source code to them. The 2026-10-30 review branch does not authorize collector changes, device actions, installation, production implementation, publication or merge by itself.
 
 ## 6. Technology boundaries
 
@@ -81,7 +83,7 @@ The planning branch is documentation-only. Do not add application source code to
 - Do not add Meta Graph API posting when the approved scope says ADB-driven app control.
 - Do not bypass CAPTCHA, account checkpoints, 2FA, rate limits, platform access controls or anti-abuse protections.
 
-## 6. UI fidelity
+## 7. UI fidelity
 
 - Canonical UI: ui-reference/Fonesi-Auto-V9-UI-Reference.html.
 - UI behavior mapping: docs/06_UI_V9_MAPPING.md.
@@ -98,7 +100,7 @@ The planning branch is documentation-only. Do not add application source code to
 - Use timeouts, cancellation, structured errors and correlation IDs.
 - Persist intent before external side effects and verify outcomes afterward.
 - Never blindly retry a publish/comment action with an uncertain outcome.
-- No secrets, passwords, OTPs, session cookies or proxy credentials in source, logs or commits.
+- No secrets, passwords, OTPs, session cookies or proxy credentials in source, logs or commits. Do not put raw device serials, local IPs, user paths, unredacted screenshots/UI trees or raw diagnostic ZIPs in the public repository; retain only reviewed, sanitized evidence.
 - Add tests with every feature or bug fix.
 - Keep changes scoped; avoid unrelated refactors.
 
@@ -109,7 +111,7 @@ The planning branch is documentation-only. Do not add application source code to
 - Never merge a pull request without explicit user approval.
 - Push important passing checkpoints only to the authorized Phase branch.
 - The default for one sequential AI/developer is one integration branch per Phase and task-by-task commits on that branch.
-- Create a separate task branch only for parallel work, a large independent feature, or a high-risk isolated change.
+- Create a separate task branch only when justified and authorized; a branch does not grant concurrent-work permission. Parallel work still requires the explicit exception record in the playbook.
 - Follow docs/09_GIT_WORKFLOW.md and docs/11_PHASE_EXECUTION_PLAYBOOK.md.
 - Do not create a branch for every tiny commit.
 - Do not delete existing branches without inspecting them and obtaining approval.
@@ -118,19 +120,27 @@ The planning branch is documentation-only. Do not add application source code to
 ## 10. Required report before and after each task
 
 Before editing, report:
+- Start timestamp with timezone, current Phase/task, and the scope being started (documentation, feasibility or implementation).
 - Verified repository and remote.
 - Current branch and HEAD.
 - Phase/task ID and acceptance criteria.
 - Files expected to change.
 - Tests to run.
 
+At meaningful checkpoints, report the current Phase/task, measured elapsed time, exact files changed since the previous checkpoint, result and blocker; never invent historical start times.
+
 After editing, report:
+- End timestamp with timezone and elapsed time for this session/task (not an estimate of whole-Phase duration).
 - Files changed.
 - Commits created and branch pushed, if authorized.
-- Tests run with exact pass/fail results.
+- Tests with exact PASS / FAIL / NOT_RUN / NOT_APPLICABLE results, commands, environment, actual counts, evidence paths and reasons. BLOCKED is a task/gate state, not a passing test.
 - State whether the current task is PASS, FAIL or BLOCKED.
-- Do not proceed to the next task unless the current task is PASS or the user explicitly defers it.
+- Do not proceed to the next task unless the current task is PASS, the user explicitly defers it with consequences, or a recorded same-Phase independent-task exception applies. Required unrun tests cannot be silently waived.
 - Acceptance criteria met/not met.
-- Known issues and next task.
+- Known issues, feature/requirement coverage, decisions awaiting approval and next authorized task. Do not report an arbitrary completion percentage.
 
 If a command or test was not run, state that explicitly. Never claim success based on assumption.
+
+## 11. Change history
+
+- 2026-10-30: Clarified sequential authorization and approved exceptions, immutable Phase 0 baseline, evidence/privacy requirements, and start/checkpoint/end reporting. This governance change itself grants no production or product-behavior authorization.

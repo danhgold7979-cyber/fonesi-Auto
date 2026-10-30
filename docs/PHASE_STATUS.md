@@ -1,52 +1,91 @@
 # Phase Status — Fonesi-Auto
 
-This is the single status board for the implementation roadmap. Update it only with evidence-backed status changes.
+**Updated:** 2026-10-30 · **Execution evidence baseline:** `34b9649`
 
-## Status definitions
-- NOT_STARTED: no work begun.
-- IN_PROGRESS: authorized work is underway.
-- BLOCKED: a dependency or decision prevents progress.
-- READY_FOR_REVIEW: implementation and tests are complete; awaiting review.
-- ACCEPTED: exit criteria passed and user approved.
-- DEFERRED: explicitly postponed with a recorded reason.
+This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
-## Current repository state
+## 1. Status definitions
 
-| Item | Status | Notes |
+- DRAFT / NOT_APPROVED: planning artifact only; no implementation authorization.
+- NOT_STARTED: execution has not begun.
+- IN_PROGRESS: authorized work has begun; acceptance is incomplete.
+- BLOCKED: a dependency, test environment, permission or decision prevents acceptance/progress.
+- READY_FOR_REVIEW: the stated scope and its checks are ready for review, not yet accepted. Specify **documentation** or **implementation**.
+- ACCEPTED: scoped exit criteria and evidence passed, and user approval is recorded.
+- DEFERRED: explicitly postponed by the user with reason, consequences, owner and revisit gate; not a test PASS.
+
+Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact counts and scope; do not turn required NOT_RUN checks into PASS.
+
+## 2. Current repository and plan-review state
+
+| Item | Status | Evidence / boundary |
 |---|---|---|
-| Clean-slate plan | ACCEPTED | PR #1 merged to main at e85d2c0c67a3aefa11dc390739243653d2b1bbf0 |
-| Hardware resource / stream controls | SPECIFIED | User-adjustable Auto/Manual FPS, resolution, bitrate, concurrency and live warnings documented in docs/12_HARDWARE_RESOURCE_AND_STREAM_CONTROLS.md |
-| Full V9 HTML reference | UPDATED | Complete original V9 plus approved Stream / Performance controls; 1,296 lines |
-| Git workflow rules | ACCEPTED | Merged to main through PR #1 |
-| Application source code | NOT_STARTED | No production app implementation authorized |
-| Phase 0 | IN_PROGRESS | User-approved plan on phase/00-feasibility; physical-device smoke test required before acceptance |
-| Phase 1–11 | NOT_STARTED | Must follow Phase 0 exit gate |
+| Original clean-slate planning baseline | ACCEPTED / MERGED | PR #1; `main` baseline `e85d2c0c67a3aefa11dc390739243653d2b1bbf0` |
+| Original Git workflow | ACCEPTED in PR #1 | Current clarifications are documentation-review changes, not retrospective execution approval |
+| V9 UI reference | APPROVED reference; preserved | Full `ui-reference/Fonesi-Auto-V9-UI-Reference.html`; no UI-reference edit in this review |
+| Resource / stream requirements | SPECIFIED; feasibility incomplete | [Resource specification](12_HARDWARE_RESOURCE_AND_STREAM_CONTROLS.md); profile/range/telemetry evidence still required |
+| 2026-10-30 plan normalization | READY_FOR_REVIEW — documentation only | Branch `plan` from `34b9649`; [review report](15_PLAN_READINESS_REVIEW.md) records completeness/check results separately from Phase progress |
+| Product decisions DEC-019 / DEC-020 | ACCEPTED by user in current review | [Decision register](08_DECISIONS_AND_OPEN_ITEMS.md): Manual emergency preview throttle OFF/opt-in; 30-minute gap warning-only; device/account mutual exclusion remains mandatory; QUEUE/default and other scheduler semantics now resolved by accepted C-10/C-11/C-18/C-19; verification remains pending |
+| Documentation publication | AUTHORIZED for branch + draft PR only | Target `phase/00-feasibility`; **merge not authorized**; publication is not Phase acceptance |
+| Phase 0 amendment 01 | PROPOSED / NOT ACCEPTED | [Amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md); mapping/test additions need approval before changing execution baseline |
+| Phase 1–11 detailed plans | DRAFT / NOT APPROVED | Future review artifacts, not permission to begin tasks |
+| Production application code | NOT_STARTED / NOT AUTHORIZED | Existing diagnostic script is feasibility-only; no production app implementation accepted |
+| Phase 0 acceptance | NOT ACCEPTED | 4 tasks IN_PROGRESS, 6 NOT_STARTED; all 12 baseline exit criteria remain unchecked/unaccepted |
 
-## Execution rule
+## 3. Phase 0 factual execution snapshot
 
-- Only one Phase may be IN_PROGRESS at a time.
-- Before each Phase, read the Master Plan and prepare a detailed Phase Plan using docs/templates/PHASE_PLAN_TEMPLATE.md.
-- The user must approve the Phase Plan before production coding.
-- Implement tasks sequentially. A task must PASS its required tests before the next task begins.
-- Commit and push passing checkpoints to the active Phase branch.
-- Close the Phase with full regression, acceptance evidence and a PR to main.
+Source: [preserved approved Phase 0 plan](phases/PHASE-00-feasibility.md) and [sanitized P0-01 evidence](evidence/P0-01-host-preflight-2026-10-30.md), at `34b9649`. This documentation review does not promote any task or rerun any device/Windows test.
 
-## Phase tracker
+| Task | Status | Observed evidence | Still required; no implied PASS |
+|---|---|---|---|
+| P0-01 | IN_PROGRESS | Host report received; native-version capture fix `e1dc7a7` has static review only | Updated collector Windows parse/runtime rerun, elevated optional-feature state, `emulator -accel-check`, reconciled acceleration result |
+| P0-02 | NOT_STARTED | Two-AVD lab direction approved | Reproducible create/start/stop/snapshot and measured one/two-AVD envelope |
+| P0-03 | IN_PROGRESS | One-device screenshot/hierarchy and reversible brightness 0 → 1 → 0 observed | Serial isolation across devices/AVDs, identity and disconnect/reconnect evidence; no universal fleet certification |
+| P0-04 | IN_PROGRESS | System UI, Launcher, Settings/scroll/Display hierarchies received | Dump vs instrumentation comparison, selector-driven action/read-back and broader app fixtures |
+| P0-05 | IN_PROGRESS | scrcpy 4.1 video failure logged on one Android 9 device | Isolate codec/firmware issue; repeat selected-device test; video-only boundary/license and resource measurements |
+| P0-06 | NOT_STARTED | Host hardware inventory is not a realtime telemetry test | Availability, source/unit/timestamp/freshness, overhead and missing-counter cases |
+| P0-07 | NOT_STARTED | No completed labeled OCR benchmark | Vietnamese/English accuracy/latency/memory/package evidence including physical-device pipeline |
+| P0-08 | NOT_STARTED | Policy questions documented | Dated per-capability policy/permission determination and disabled unsupported capabilities |
+| P0-09 | NOT_STARTED | Candidate stack/privacy/backup directions documented | Approved ADRs, support matrix and dependent decisions; current two product decisions do not complete this task |
+| P0-10 | NOT_STARTED | No Phase 0 acceptance report approved | Review every baseline exit criterion + gate mapping, actual tests/deferrals and explicit user acceptance |
 
-| Phase | Name | Status | Entry dependency | Evidence / PR |
+The four concurrent IN_PROGRESS rows are retained historical facts, **not evidence of an approved parallel-work exception**. Before further execution, clarify the next single authorized task or obtain the explicit independent-task exception in [playbook §6](11_PHASE_EXECUTION_PLAYBOOK.md#6-branch-strategy--đơn-giản-tuần-tự-không-rối). Do not backdate approval or relabel partial work as complete.
+
+All 12 checkboxes in the approved baseline's §11 remain unaccepted. In particular, physical **ADB + UI Automator + Vision** smoke evidence is mandatory under the recorded approval; the reversible ADB setting test alone does not meet that gate. The older “Draft only” sentence and LAB-02 “Proposed” row are preserved historical inconsistencies; the later explicit approval/mandatory physical-test record is not revoked by them. Proposed reconciliation is in Amendment 01, not a silent baseline rewrite.
+
+## 4. Phase execution tracker and draft-plan index
+
+**Sequential execution:** Phase N starts only after Phase N−1 is ACCEPTED and merged, its own entry gates are satisfied and its own detailed plan is approved. Additional technical dependencies do not authorize an early start. Drafting all plans is permitted documentation work, not simultaneous Phase execution.
+
+| Phase | Name | Execution status | Entry dependency | Plan / evidence |
 |---|---|---|---|---|
-| 0 | Product, policy and feasibility | IN_PROGRESS | Phase 0 plan approved by user; physical-device smoke test mandatory | [Phase 0 plan](phases/PHASE-00-feasibility.md) |
-| 1 | Desktop foundation | NOT_STARTED | Phase 0 ACCEPTED | TBD |
-| 2 | ADB and device fleet | NOT_STARTED | Phase 1 ACCEPTED | TBD |
-| 3 | Screen wall and streaming | NOT_STARTED | Phase 2 device contracts stable | TBD |
-| 4 | UI Automator and Vision | NOT_STARTED | Phase 2 device contracts stable | TBD |
-| 5 | Identity, accounts and app inventory | NOT_STARTED | Phase 2 and 4 accepted | TBD |
-| 6 | Media and content | NOT_STARTED | Phase 1 accepted | TBD |
-| 7 | Scheduler and queue | NOT_STARTED | Phase 1 and domain models accepted | TBD |
-| 8 | Workflow runtime and safety | NOT_STARTED | Phases 2, 4, 5, 6 and 7 accepted | TBD |
-| 9 | Facebook pilot | BLOCKED | Policy gate and workflow capability certification | TBD |
-| 10 | Tracking and reports | NOT_STARTED | Permitted data sources established | TBD |
-| 11 | Hardening and release | NOT_STARTED | All release-critical phases accepted | TBD |
+| 0 | Product, policy and feasibility | IN_PROGRESS | Approved feasibility plan; physical smoke mandatory | [Approved baseline](phases/PHASE-00-feasibility.md), [proposed amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md) |
+| 1 | Desktop foundation | NOT_STARTED | Phase 0 ACCEPTED + merged; Phase 1 plan approved | [DRAFT](phases/PHASE-01-desktop-foundation.md) |
+| 2 | ADB and device fleet | NOT_STARTED | Phase 1 ACCEPTED + merged; Phase 2 plan approved | [DRAFT](phases/PHASE-02-adb-device-fleet.md) |
+| 3 | Screen wall and resources | NOT_STARTED | Phase 2 ACCEPTED + merged; Phase 3 plan approved; video/resource decisions resolved | [DRAFT](phases/PHASE-03-screen-wall-resources.md) |
+| 4 | Recognition and Vision | NOT_STARTED | Phase 3 ACCEPTED + merged; Phase 4 plan approved; Phase 2 contracts stable | [DRAFT](phases/PHASE-04-recognition-vision.md) |
+| 5 | Identity, accounts and app inventory | NOT_STARTED | Phase 4 ACCEPTED + merged; Phase 5 plan approved | [DRAFT](phases/PHASE-05-identity-app-inventory.md) |
+| 6 | Media and content | NOT_STARTED | Phase 5 ACCEPTED + merged; Phase 6 plan approved; foundation contracts accepted | [DRAFT](phases/PHASE-06-media-content.md) |
+| 7 | Scheduler and queue | NOT_STARTED | Phase 6 ACCEPTED + merged; Phase 7 plan approved; domain/time/lease contracts accepted | [DRAFT](phases/PHASE-07-scheduler-queue.md) |
+| 8 | Workflow runtime and safety | NOT_STARTED | Phase 7 ACCEPTED + merged; Phase 8 plan approved; Phases 2/4/5/6 contracts accepted | [DRAFT](phases/PHASE-08-workflow-runtime.md) |
+| 9 | Facebook pilot | BLOCKED | Phase 8 ACCEPTED + merged; Phase 9 plan approved; policy/permission and workflow capability certification | [DRAFT — BLOCKED](phases/PHASE-09-facebook-pilot.md) |
+| 10 | Tracking and reports | NOT_STARTED | Phase 9 ACCEPTED + merged; Phase 10 plan approved; permitted/provenance-backed data sources | [DRAFT](phases/PHASE-10-tracking-reports.md) |
+| 11 | Hardening and release | NOT_STARTED | Phase 10 ACCEPTED + merged; Phase 11 plan approved; all release-critical capabilities accepted | [DRAFT](phases/PHASE-11-hardening-release.md) |
 
-## Rule
-Do not mark a Phase ACCEPTED until its exit criteria, tests, evidence and user approval are recorded. A merged PR alone does not mean a Phase is accepted.
+A blocked Phase may be narrowed/deferred only by an explicit user-approved change with downstream consequences; do not silently skip it because a later module is technically independent.
+
+## 5. Next review / execution boundary
+
+1. Finish cross-document review and record exact documentation checks, changed files and remaining decisions. A READY_FOR_REVIEW label applies only to that documentation scope.
+2. Publish the authorized documentation branch/draft PR after checks; no merge without separate approval.
+3. Present Amendment 01 and unresolved Phase 0 questions; preserve the original baseline until approved changes are recorded.
+4. Clarify the active Phase 0 task and obtain any necessary hardware/access evidence; do not begin Phase 1 production code.
+5. For every execution session report start/Phase/task, meaningful elapsed-time checkpoints, and end time/exact evidence/remaining gates. Do not invent historical timing.
+
+## 6. Change history
+
+- 2026-10-30: Separated documentation review, publication and execution acceptance; retained four IN_PROGRESS/six NOT_STARTED Phase 0 tasks and all unaccepted exit criteria; indexed draft future plans, enforced sequential entry and kept Phase 9 BLOCKED. No new Phase acceptance or test execution claimed.
+
+## Accepted checklist synchronization — 2026-10-30
+
+Read [accepted C-01–C-22](16_ACCEPTED_PRODUCT_DECISIONS.md) before interpreting historical open questions. Product choices are accepted; exact engineering values, feasibility proofs, Phase 0 amendment acceptance, phase coding authorization and main merge remain separate gates. No result is PASS solely from checklist approval.
