@@ -9,7 +9,7 @@
 |---|---|---|
 | Desktop shell | Electron | Windows app lifecycle, windowing, secure IPC |
 | UI | TypeScript + HTML/CSS (framework decision in Phase 0) | Preserve V9 layout and interactions |
-| Domain/application | TypeScript | Device registry, jobs, workflows, scheduling, reports |
+| Domain/application | TypeScript | Device registry, jobs, workflows, scheduling, reports and resource policy |
 | Device transport | Android Platform Tools / ADB | USB/Wi-Fi transport and low-level device commands |
 | Semantic UI | UI Automator | UI hierarchy, element selection and cross-app state inspection |
 | Screen streaming | scrcpy (video-only in wall) | Low-latency screen mirroring; no competing input control |
@@ -29,7 +29,7 @@ Pin exact versions only after Phase 0 compatibility and licensing review. Do not
 - Owns application lifecycle and secure IPC.
 - Starts/stops Device Host and Python Vision Worker.
 - Owns SQLite migrations and secret-store access.
-- Enforces job scheduling, device/account leases and permission checks.
+- Enforces job scheduling, device/account leases, permission checks and stream resource policy.
 
 ### 2.2 Renderer
 - Implements the V9 interface.
@@ -79,6 +79,18 @@ Pin exact versions only after Phase 0 compatibility and licensing review. Do not
 - Python must not invoke ADB input or compete with Device Host. It only returns recognition results.
 - Start CPU-first; optional GPU acceleration is a later benchmark decision.
 
+### 2.9 Host Hardware & Resource Manager
+- A dedicated HostResourceMonitor samples Windows host capabilities and live resource usage.
+- Detect CPU model/logical processors, total/available RAM, Fonesi-Auto process memory, GPU adapters and supported utilization/memory counters, disk free space and optional temperature/USB metrics when exposed.
+- Every metric carries value, unit, source, availability state, sample timestamp and staleness information.
+- GPU metrics are adapter/driver-dependent; do not require NVIDIA hardware. Use supported Windows counters/APIs as baseline and optional vendor APIs only as adapters.
+- Missing counters are UNKNOWN/Not available, never zero.
+- ResourcePolicyEngine calculates recommended stream budgets from measured host/device benchmarks, current load, stream profiles and user-selected priority.
+- Expose Auto and Manual modes, FPS, resolution/scale, bitrate/quality, concurrent stream limit, global defaults and per-device overrides.
+- Persist requested settings separately from effective settings and recommendations. Report every temporary throttle and restoration.
+- Apply hysteresis and recovery windows to avoid oscillation. Alert thresholds are calibrated in Phase 0/3, not assumed universal constants.
+- Resource monitoring must be lightweight and must not block Device Host input queues or workflow execution.
+
 ### 2.8 Screen streaming
 - ADB screenshot polling is acceptable for diagnostics but not a good default for a live multi-device wall.
 - Use scrcpy as a supporting stream process after a Windows packaging/licensing/resource spike.
@@ -92,6 +104,7 @@ Pin exact versions only after Phase 0 compatibility and licensing review. Do not
 - DeviceFleetService
 - DeviceActorService
 - ScreenStreamService
+- HostResourceMonitor / ResourcePolicyEngine
 - UiInspectionService
 - VisionRecognitionService
 - AccountRegistryService
