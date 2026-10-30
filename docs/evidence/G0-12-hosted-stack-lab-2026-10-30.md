@@ -177,3 +177,30 @@ remain required. No arbitrary exception text, URL, path, console output or stack
 is captured. Local strict TypeScript/build/dependency review and 6/6 contracts
 PASS; hosted behavior remains pending. This is not complete G0-12/P0-09 acceptance
 or a target Windows compatibility claim.
+
+## Hosted attempt 4 — outer execution rejection, 18:36 UTC
+
+Commit `a33d100f6e6391f2e4c2d69a4875a0d2e77e1dfc`, desktop
+[41108317021](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41108317021),
+job 124243861465: installer SUCCESS and both owned-tree cleanups true; source
+reports the same three true cases, then outer diagnostic RENDERER_CHECKS/Error.
+This is not an inner assertion diagnostic or watchdog marker. Package not reached.
+The root cause remains unresolved: rejected execution or loss of its context can
+prevent even the renderer's internal catch from returning partial observations.
+
+The harness now returns the unchanged non-navigation checks before attempting
+popup/navigation in separate calls with fixed stage boundaries. Both about:blank
+targets, event/URL/window-count assertions, all 21-case requirements and secure
+configuration are unchanged. A navigation can no longer erase earlier returned
+results. Main-process 200ms settling waits replace the same renderer settling wait.
+Exact known upstream error strings map to four fixed codes; arbitrary messages
+remain discarded. Primary code reviewed at Electron v45.1.0:
+[execution result handling](https://github.com/electron/electron/blob/v45.1.0/shell/renderer/electron_api_service_impl.cc#L59-L107)
+and [frame reply handling](https://github.com/electron/electron/blob/v45.1.0/shell/browser/api/electron_api_web_frame_main.cc#L450-L478).
+This improves failure isolation without declaring a guessed runtime fix or
+relaxing CSP. Local strict TypeScript and diff checks PASS; hosted retry pending.
+A primitive `executeJavaScript('true')` smoke stage precedes the core probe and is
+not counted among the 21 acceptance assertions. It distinguishes API execution
+failure from probe logic. Final local dependency/build/strict checks and 6/6 pure
+contracts PASS at 18:40 UTC; a wrong-working-directory build invocation returned
+MODULE_NOT_FOUND before the correctly scoped successful rerun (no installation).

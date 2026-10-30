@@ -13,7 +13,7 @@ app.setPath('userData', join(runRoot, mode + '-user-data'));
 const results: Record<string, boolean> = {};
 let finished = false;
 let stage = 'START';
-let diagnostic: { stage: string; kind: string } | undefined;
+let diagnostic: { stage: string; kind: string; code?: string } | undefined;
 function finish(passed: boolean): void {
   if (finished) return;
   finished = true;
@@ -64,6 +64,8 @@ void app.whenReady().then(async () => {
     preloadState.sandboxed === true && preloadState.nodeBuiltinDenied === true;
   results['expected_electron_version'] = process.versions.electron === '45.1.0';
   results['package_mode'] = app.isPackaged === (mode === 'package');
+  stage = 'RENDERER_API_SMOKE';
+  if (await window.webContents.executeJavaScript('true') !== true) throw new Error('INVALID_EXECUTION_RESULT');
   stage = 'RENDERER_CHECKS';
   const observed: { checks: Record<string, boolean>; diagnostic?: { stage: string; kind: string } } = await window.webContents.executeJavaScript(`(async () => {
     const checks = {};
@@ -91,11 +93,6 @@ void app.whenReady().then(async () => {
       const reply=await window.lab.health(bad[i]);
       checks['invalid_payload_'+i] = reply.ok === false && reply.code === 'INVALID_REQUEST';
     }
-    stage = 'WINDOW_DENIAL';
-    window.open('about:blank');
-    stage = 'NAVIGATION_DENIAL';
-    const link=document.createElement('a'); link.href='about:blank'; document.body.append(link); link.click();
-    await wait(200);
     return { checks };
     } catch(error) {
       const kind = ['TypeError','ReferenceError','SyntaxError','Error','EvalError','RangeError','SecurityError'].includes(error?.name) ? error.name : 'UNEXPECTED_EXCEPTION';
@@ -104,9 +101,18 @@ void app.whenReady().then(async () => {
   })()`);
   Object.assign(results, observed.checks);
   if (observed.diagnostic) { diagnostic = observed.diagnostic; finish(false); return; }
-  stage = 'UNTRUSTED_SENDER';
+  // Persist read-only observations before any navigation can invalidate its context.
+  stage = 'WINDOW_DENIAL';
+  await window.webContents.executeJavaScript("window.open('about:blank'); true");
+  await new Promise(resolve => setTimeout(resolve, 200));
   results['window_open_denied'] = deniedWindows > 0 && BrowserWindow.getAllWindows().length === 1;
+  stage = 'NAVIGATION_DENIAL';
+  await window.webContents.executeJavaScript(`(() => {
+    const link=document.createElement('a'); link.href='about:blank'; document.body.append(link); link.click(); return true;
+  })()`);
+  await new Promise(resolve => setTimeout(resolve, 200));
   results['navigation_denied'] = deniedNavigations > 0 && window.webContents.getURL() === trustedUrl;
+  stage = 'UNTRUSTED_SENDER';
   const untrusted = new BrowserWindow(options);
   guard(untrusted);
   await untrusted.loadFile(join(__dirname, 'untrusted.html'));
@@ -117,6 +123,14 @@ void app.whenReady().then(async () => {
   finish(Object.keys(results).length === 21 && Object.values(results).every(Boolean));
 }).catch((error: unknown) => {
   const name = error instanceof Error ? error.name : '';
-  diagnostic = { stage, kind: ['TypeError','ReferenceError','SyntaxError','Error','EvalError','RangeError','SecurityError'].includes(name) ? name : 'UNEXPECTED_EXCEPTION' };
+  // Exact upstream v45.1.0 strings map to fixed codes; raw text is never retained.
+  const failureCodes = new Map([
+    ['WebFrame was removed before script could run. This normally means the underlying frame was destroyed', 'FRAME_REMOVED'],
+    ['Render frame was disposed before WebFrameMain could be accessed', 'FRAME_DISPOSED'],
+    ['Script failed to execute, this normally means an error was thrown. Check the renderer console for the error.', 'SCRIPT_EXECUTION_FAILED'],
+    ['An object could not be cloned.', 'RESULT_NOT_CLONEABLE'],
+  ]);
+  const code = error instanceof Error ? failureCodes.get(error.message) ?? 'UNKNOWN_EXECUTION_FAILURE' : 'UNKNOWN_EXECUTION_FAILURE';
+  diagnostic = { stage, code, kind: ['TypeError','ReferenceError','SyntaxError','Error','EvalError','RangeError','SecurityError'].includes(name) ? name : 'UNEXPECTED_EXCEPTION' };
   finish(false);
 });

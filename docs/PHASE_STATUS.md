@@ -166,3 +166,9 @@ unreturned and package mode not reached. Owned installer/runtime cleanup verifie
 A partial-result/fixed-stage marker correction is prepared to isolate the renderer
 failure, with every existing assertion and deadline preserved. Full lab still FAIL;
 no target-host or Phase acceptance.
+
+G0-12 hosted attempt4 (41108317021) remains FAIL with outer RENDERER_CHECKS/Error,
+not an inner diagnostic/watchdog. Installer and owned cleanup still PASS. Harness
+now separates unchanged read-only checks from unchanged popup/navigation targets,
+preserving earlier observations before potential context loss. Exact upstream
+errors map only to fixed codes. Root cause and package launch remain unverified.
