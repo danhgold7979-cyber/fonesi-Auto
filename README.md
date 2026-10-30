@@ -43,6 +43,9 @@ All architecture, schemas, adapters, workflow state machines, tests, and impleme
 - [Contribution and commit standards](CONTRIBUTING.md)
 - [GitHub branch / PR / commit workflow](docs/09_GIT_WORKFLOW.md)
 - [AI session starter / project introduction](docs/10_AI_SESSION_STARTER.md)
+- [Phase-by-phase execution playbook](docs/11_PHASE_EXECUTION_PLAYBOOK.md)
+- [Phase plan template](docs/templates/PHASE_PLAN_TEMPLATE.md)
+- [Task checklist template](docs/templates/TASK_TEMPLATE.md)
 - [Phase status tracker](docs/PHASE_STATUS.md)
 - [Pull request template](.github/PULL_REQUEST_TEMPLATE.md)
 
