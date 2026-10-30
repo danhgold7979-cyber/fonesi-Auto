@@ -212,6 +212,21 @@
 :root[data-theme="dark"] .group-target-picker,
 :root[data-theme="dark"] .group-target-option{background:#172337;border-color:#2b3a50;color:#e4ebf6}
 :root[data-theme="dark"] .tree-item.interaction-root{background:#382d1d;border-color:#6c542d;color:#f0d5a5}
+
+/* V9 addendum: adjustable stream quality and live host resource panel */
+.stream-control-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.stream-metric{border:1px solid var(--line);background:#f8faff;border-radius:8px;padding:10px;min-width:0}
+.stream-metric small{display:block;color:var(--muted);font-size:9px}
+.stream-metric b{display:block;font-size:18px;margin:4px 0}
+.stream-range{display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:8px;align-items:center}
+.stream-range input{width:100%;padding:0}
+.stream-range output{text-align:right;font-weight:800;font-size:10px;color:#385fae}
+.stream-setting{border:1px solid var(--line);border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.stream-setting .field{margin-bottom:8px}
+.stream-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #edf1f6;font-size:10px}
+.stream-toggle-row label{display:flex;align-items:center;gap:7px}
+:root[data-theme="dark"] .stream-metric,:root[data-theme="dark"] .stream-setting{background:#172337;border-color:#2b3a50}
+@media(max-width:600px){.stream-control-grid{grid-template-columns:1fr}}
 </style></head>
 <body>
 <div class="shell" id="shell">
@@ -232,7 +247,7 @@
  <main class="main"><header class="topbar"><div class="crumb"><span class="top-logo">Fonesi-W</span><span class="crumbslash">/</span><strong id="page-crumb">Tổng quan</strong></div><div class="top-actions"><span class="top-demo"><span class="green-dot"></span> V9 · DEMO</span><button class="iconbtn" id="theme-toggle" type="button" title="Chuyển Dark / Light" aria-label="Chuyển giao diện"><span id="theme-icon">☾</span></button><button class="iconbtn" id="help-top" type="button" title="Phím tắt" aria-label="Phím tắt"><span data-ico="circle-help"></span></button><div class="user-badge">FW</div></div></header><section class="workspace" id="workspace" aria-live="polite"></section></main>
  <aside class="wall" id="wall" aria-label="Màn hình giám sát điện thoại">
   <div class="wall-resizer" id="wall-resizer" role="separator" title="Kéo ngang để mở rộng hoặc thu hẹp vùng giám sát"></div>
-  <header class="wallhead"><div><div class="walltitle"><span data-ico="monitor-smartphone"></span> <strong>Giám sát điện thoại</strong></div><p><span class="green-dot"></span> <span id="online-text">Đang tải thiết bị…</span> <em>DEMO</em></p></div><div class="rowflex"><button class="iconbtn" id="wall-scan" title="Quét điện thoại" type="button"><span data-ico="scan"></span></button><button class="iconbtn" id="wall-reconnect" title="Kết nối lại" type="button"><span data-ico="refresh"></span></button><button class="iconbtn" id="wall-reset" title="Khôi phục độ rộng panel" type="button"><span data-ico="panel-right"></span></button></div></header>
+  <header class="wallhead"><div><div class="walltitle"><span data-ico="monitor-smartphone"></span> <strong>Giám sát điện thoại</strong></div><p><span class="green-dot"></span> <span id="online-text">Đang tải thiết bị…</span> <em>DEMO</em></p></div><div class="rowflex"><button class="iconbtn" id="wall-performance" title="Hiệu năng và chất lượng stream" type="button" aria-label="Hiệu năng và chất lượng stream"><span data-ico="gauge"></span></button><button class="iconbtn" id="wall-scan" title="Quét điện thoại" type="button"><span data-ico="scan"></span></button><button class="iconbtn" id="wall-reconnect" title="Kết nối lại" type="button"><span data-ico="refresh"></span></button><button class="iconbtn" id="wall-reset" title="Khôi phục độ rộng panel" type="button"><span data-ico="panel-right"></span></button></div></header>
   <div class="wall-controls"><div class="wall-dropdown-wrap"><button class="wall-picker" id="wall-device-picker" type="button" aria-expanded="false"><span data-ico="smartphone"></span><span id="wall-picker-label">Tất cả điện thoại</span><span class="wall-pill" id="wall-picker-count">0</span><span data-ico="chevron-down"></span></button><div class="wall-dropdown" id="wall-dropdown" hidden><input id="wall-search" type="search" placeholder="Tìm tên, serial, nick…"><div class="mini-actions"><button id="wall-all" type="button">Chọn tất cả</button><button id="wall-none" type="button">Bỏ chọn</button><span id="wall-selected-count">0 đã chọn</span></div><div id="wall-options" class="wall-options"></div></div></div><div class="wall-view-controls"><button class="tinybtn active" data-wall-view="all" title="Lưới toàn bộ điện thoại" type="button"><span data-ico="grid-3x3"></span></button><button class="tinybtn" data-wall-view="one" title="Chỉ một điện thoại" type="button"><span data-ico="square"></span></button><button class="tinybtn" id="wall-fit" title="Khớp kích thước màn hình với panel" type="button"><span data-ico="maximize"></span></button></div></div>
   <div class="wall-zoombar"><span id="wall-zoom-desc">Phóng khung đồng bộ</span><div class="zoomactions"><button class="tinybtn" id="wall-zoom-out" type="button" title="Thu nhỏ khung điện thoại"><span data-ico="minus"></span></button><input id="wall-size" type="range" min="70" max="520" step="2" value="150" aria-label="Kích thước toàn bộ màn hình điện thoại"><button class="tinybtn" id="wall-zoom-in" type="button" title="Phóng to khung điện thoại"><span data-ico="plus"></span></button><span class="zoompct" id="wall-size-label">150 px</span></div></div>
   <div class="wall-surface" id="wall-surface" tabindex="0" aria-label="Con lăn trong màn hình: cuộn nội dung Android; Ctrl + con lăn hoặc thanh zoom: thay đổi kích thước toàn bộ khung; nháy đúp: xem riêng một máy."><div class="dot-grid"><div class="screens-grid" id="screens-grid"></div><div id="wall-more-holder"></div></div></div>
@@ -667,6 +682,38 @@ function screenTile(phone,index=1){
   </div>
  </div>`;
 }
+
+function openStreamPerformance(){
+ const body=`<div class="notice warn"><b>DEMO TELEMETRY</b> · Số liệu minh họa trong HTML reference. Ứng dụng Windows thật sẽ lấy sensor realtime từ máy đang chạy và hiển thị thời điểm đo.</div>
+ <div class="stream-control-grid">
+  <div class="stream-metric"><small>CPU HOST</small><b>38%</b><div class="muted" style="font-size:8px">Tải tổng · mẫu demo</div></div>
+  <div class="stream-metric"><small>RAM ĐANG DÙNG</small><b>62%</b><div class="muted" style="font-size:8px">10.0 / 16 GB · mẫu demo</div></div>
+  <div class="stream-metric"><small>GPU ENGINE</small><b>27%</b><div class="muted" style="font-size:8px">Sensor tùy driver</div></div>
+  <div class="stream-metric"><small>STREAM ĐANG CHẠY</small><b>4 / 8</b><div class="muted" style="font-size:8px">Giới hạn benchmark demo</div></div>
+ </div>
+ <div class="rowflex between wrap" style="margin:12px 0 5px"><b>Cấu hình stream</b><span class="pill blue">Đo gần nhất: 10:42:15</span></div>
+ <div class="stream-setting">
+  <div class="formgrid">
+   <label class="field">Chế độ<select id="stream-mode"><option value="auto">Auto · tự cân bằng</option><option value="manual">Manual · tự điều chỉnh</option></select></label>
+   <label class="field">Phạm vi áp dụng<select id="stream-scope"><option value="focused">Điện thoại đang focus</option><option value="selected">Các điện thoại đã chọn</option><option value="all">Tất cả điện thoại</option></select></label>
+  </div>
+  <label class="field"><span class="rowflex between"><b>FPS mục tiêu</b><small id="stream-fps-value">30 FPS</small></span><input id="stream-fps" type="range" min="1" max="60" step="1" value="30"></label>
+  <label class="field"><span class="rowflex between"><b>Độ phân giải / Scale</b><small id="stream-scale-value">75%</small></span><input id="stream-scale" type="range" min="25" max="100" step="5" value="75"></label>
+  <label class="field"><span class="rowflex between"><b>Bitrate</b><small id="stream-bitrate-value">4 Mbps</small></span><input id="stream-bitrate" type="range" min="0.5" max="20" step="0.5" value="4"></label>
+  <label class="field"><span class="rowflex between"><b>Số stream đồng thời tối đa</b><small id="stream-count-value">4 máy</small></span><input id="stream-count" type="range" min="1" max="16" step="1" value="4"></label>
+  <div class="stream-toggle-row"><label><input id="stream-emergency" type="checkbox" checked> Cho phép giảm stream nền khi quá tải nghiêm trọng</label></div>
+  <div class="stream-toggle-row"><label><input id="stream-restore" type="checkbox" checked> Tự khôi phục cấu hình sau khi tài nguyên ổn định</label></div>
+ </div>
+ <div class="notice warn"><b>Cảnh báo tài nguyên · AMBER</b><br>RAM đang ở mức 62%. Có thể giảm stream nền xuống 15 FPS hoặc hạ scale còn 60%. Stream đang focus được ưu tiên. Trong bản thật, cảnh báo được tính từ số đo realtime và ngưỡng benchmark của máy hiện tại.</div>
+ <div class="rowflex between wrap"><small class="muted">Requested: 30 FPS · 75% · 4 Mbps</small><small class="muted">Effective: 30 FPS · 75% · 4 Mbps</small></div>
+ <div class="rowflex" style="margin-top:9px"><button class="btn small" id="stream-recommended" type="button">Dùng cấu hình đề xuất</button><span class="muted" style="font-size:8px">Giới hạn slider thật sẽ phụ thuộc benchmark host/device.</span></div>
+ `;
+ openDialog('Hiệu năng & chất lượng stream',body,`<button class="btn" data-action="close-dialog">Đóng</button><button class="btn primary" id="stream-apply" type="button">Áp dụng cấu hình</button>`, 'Điều chỉnh FPS, độ phân giải, bitrate và số điện thoại stream đồng thời.');
+ const pairs=[['stream-fps','stream-fps-value',v=>v+' FPS'],['stream-scale','stream-scale-value',v=>v+'%'],['stream-bitrate','stream-bitrate-value',v=>v+' Mbps'],['stream-count','stream-count-value',v=>v+' máy']];
+ pairs.forEach(([input,out,format])=>{$('#'+input).addEventListener('input',e=>$('#'+out).textContent=format(e.target.value))});
+ $('#stream-recommended').addEventListener('click',()=>{const values={ 'stream-fps':20,'stream-scale':60,'stream-bitrate':2.5,'stream-count':3};pairs.forEach(([input,out,format])=>{const el=$('#'+input);el.value=values[input];$('#'+out).textContent=format(el.value)});toast('Đã chọn cấu hình đề xuất DEMO.');});
+ $('#stream-apply').addEventListener('click',()=>{const mode=$('#stream-mode').value,scope=$('#stream-scope').value;toast('Đã ghi nhận cấu hình stream DEMO · '+mode.toUpperCase()+' · '+scope+'. Runtime thật sẽ áp dụng qua ScreenStreamService.');closeDialog()});
+}
 function renderWall(){const selected=selectedMonitorPhones();if(state.monitorMode==='one'&&!selected.some(x=>x.id===state.monitorFocus)){state.monitorFocus=selected[0]?.id||''}if(!selected.some(x=>x.id===state.monitorActive))state.monitorActive=selected[0]?.id||'';
  const wall=monitorVisiblePhones(),some=wall.slice(0,state.monitorShown),on=devices.filter(d=>d.status==='ONLINE').length;
  $('#online-text').textContent=`${on} online mẫu / ${devices.length} điện thoại`;
@@ -1051,7 +1098,7 @@ function applyTheme(theme){
 function toggleTheme(){applyTheme(state.theme==='dark'?'light':'dark')}
 
 function initHandlers(){
- $('#open-help').addEventListener('click',openHelp);$('#theme-toggle').addEventListener('click',toggleTheme);applyTheme(state.theme);$('#help-top').addEventListener('click',openHelp);$('#dialog-x').addEventListener('click',closeDialog);$('#dialog-shade').addEventListener('click',e=>{if(e.target.id==='dialog-shade')closeDialog()});
+ $('#wall-performance').addEventListener('click',openStreamPerformance);$('#open-help').addEventListener('click',openHelp);$('#theme-toggle').addEventListener('click',toggleTheme);applyTheme(state.theme);$('#help-top').addEventListener('click',openHelp);$('#dialog-x').addEventListener('click',closeDialog);$('#dialog-shade').addEventListener('click',e=>{if(e.target.id==='dialog-shade')closeDialog()});
  $('#folder-input').addEventListener('change',e=>{folderScan(e.target.files);e.target.value='' });$('#file-input').addEventListener('change',e=>receiveSheet(e.target.files[0]));
  $('#comment-file-input').addEventListener('change',e=>{receiveCommentFile(e.target.files?.[0]);e.target.value=''});$('#apk-input').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;const ids=state.scopePopup?.ids||scopeDeviceIds();openDialog('Xem trước cài APK',`<div class="notice warn">APK đã chọn trên máy tính; chưa được gửi đến điện thoại. Runtime thật cần xác minh APK signature, package, phiên bản và quyền theo serial.</div><p><b>${esc(file.name)}</b> · ${(file.size/1048576).toFixed(2)} MB</p><b>Máy đích: ${ids.length}</b><div class="pills">${ids.map(id=>`<span class="pill blue">${id}</span>`).join('')}</div>`,`<button class="btn" data-action="close-dialog">Hủy</button><button class="btn primary" data-action="log-preview" data-name="Cài APK" data-targets="${esc(ids.join(','))}">Ghi yêu cầu demo</button>`) });
  document.addEventListener('change',e=>{const el=e.target,s=state.setup,c=state.calendar;
