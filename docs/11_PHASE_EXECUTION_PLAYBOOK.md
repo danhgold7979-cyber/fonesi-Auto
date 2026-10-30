@@ -249,7 +249,27 @@ Không làm Phase tiếp theo trên branch cũ sau khi Phase trước đã merge
 - Mọi quyết định kiến trúc mới ghi ADR/decision log, tránh quyết định nằm rải rác trong chat.
 - Mỗi phiên AI chỉ nhận một Task ID rõ ràng; kết thúc phiên phải cập nhật trạng thái, commit SHA và việc tiếp theo.
 
-## 12. Quy tắc riêng cho Resource & Stream tuning\n\n- Phân biệt target FPS/quality/resolution với effective FPS/quality/resolution thực tế.\n- Không hard-code số stream tối đa cho mọi PC; benchmark theo cấu hình và driver.\n- Telemetry phải có nguồn, timestamp, đơn vị và trạng thái availability.\n- Không suy luận GPU=0 khi Windows/driver không cung cấp bộ đếm.\n- Kiểm tra CPU, RAM, GPU decode/encode, USB/network và queue depth cùng lúc; không chỉ nhìn CPU.\n- Dùng rolling window, hysteresis và cooldown cho cảnh báo.\n- Khi quá tải, giảm/pause preview trước; không dừng ADB actor hoặc workflow đang chạy chỉ để giữ FPS.\n- Test Auto/Manual, global/selected/per-device overrides, overload và recovery.\n\n## 13. Báo cáo bắt buộc mỗi phiên
+## 12. Quản lý tài liệu và lịch sử thay đổi
+
+- Khi yêu cầu hiện hành thay đổi, cập nhật canonical living docs tại chỗ; không tạo bản sao `final-v2`.
+- Quyết định mới được thêm vào decision register/ADR; không xóa quyết định cũ, chỉ đánh dấu SUPERSEDED và liên kết quyết định thay thế.
+- Phase Plan đang draft được sửa trực tiếp; sau khi được duyệt, thay đổi scope/acceptance phải có amendment và user approval.
+- Phase Plan đã nghiệm thu được giữ nguyên như hồ sơ lịch sử.
+- Không xóa file plan/UI/evidence cũ; Git history giữ các phiên bản trước.
+- Thực hiện checklist trong docs/13_DOCUMENTATION_CHANGE_POLICY.md cho mọi thay đổi yêu cầu.
+
+## 13. Quy tắc riêng cho Resource & Stream tuning
+
+- Phân biệt target FPS/quality/resolution với effective FPS/quality/resolution thực tế.
+- Không hard-code số stream tối đa cho mọi PC; benchmark theo cấu hình và driver.
+- Telemetry phải có nguồn, timestamp, đơn vị và trạng thái availability.
+- Không suy luận GPU=0 khi Windows/driver không cung cấp bộ đếm.
+- Kiểm tra CPU, RAM, GPU decode/encode, USB/network và queue depth cùng lúc; không chỉ nhìn CPU.
+- Dùng rolling window, hysteresis và cooldown cho cảnh báo.
+- Khi quá tải, giảm/pause preview trước; không dừng ADB actor hoặc workflow đang chạy chỉ để giữ FPS.
+- Test Auto/Manual, global/selected/per-device overrides, overload và recovery.
+
+## 14. Báo cáo bắt buộc mỗi phiên
 
 ### Trước khi làm
 - Repository + remote.
