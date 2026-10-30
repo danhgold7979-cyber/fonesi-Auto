@@ -65,11 +65,11 @@ User-approved direction: Android Studio Emulator, start with two virtual devices
 
 | Task ID | Objective | Dependencies | Expected files/evidence | Acceptance | Status |
 |---|---|---|---|---|---|
-| P0-01 | Verify host Windows, virtualization, permissions and hardware | Hardware ZIP | `tools/phase-00/Collect-HostEnvironment.ps1` + host report | Actual values, sources and unavailable sensors recorded | BLOCKED — awaiting Windows execution |
+| P0-01 | Verify host Windows, virtualization, permissions and hardware | Hardware ZIP | `tools/phase-00/Collect-HostEnvironment.ps1` + sanitized host evidence | OS/CPU/RAM/GPU/storage/runtime/SDK inventory received; virtualization state still requires elevated feature query and `emulator -accel-check` | IN_PROGRESS — report received; acceleration gate unresolved |
 | P0-02 | Verify Android SDK and provision two AVDs | P0-01 | `tools/android-lab/*`, lab guide | Both AVDs reproducibly create/start/stop without changing host settings | NOT_STARTED |
-| P0-03 | Validate multi-AVD ADB isolation | P0-02 | ADB test script + evidence | Each command targets explicit serial; screenshot/reconnect pass | NOT_STARTED |
-| P0-04 | UI Automator feasibility | Physical Samsung UI dumps received | Spike report + fixtures | Select hierarchy/instrumentation approach with evidence | IN_PROGRESS — System UI, Launcher, Settings dashboard, scroll and Display controls observed; selector-driven action verification and broader app fixtures pending |
-| P0-05 | scrcpy video-only feasibility and licensing | P0-03 | Spike report + license inventory | Version, license, video-only boundary and resource impact documented | NOT_STARTED |
+| P0-03 | Validate ADB isolation on physical fleet and AVDs | P0-02 (AVD portion); physical Samsung fleet inventory received | ADB test script + sanitized evidence | Each command targets explicit serial; device identity, screenshot, disconnect/reconnect and no cross-device command leakage pass | IN_PROGRESS — single-device screenshot, hierarchy and reversible setting interaction observed; multi-device isolation/reconnect pending |
+| P0-04 | UI Automator feasibility | Physical Samsung UI dumps received | Spike report + fixtures | Select hierarchy/instrumentation approach with evidence | IN_PROGRESS — System UI, Launcher, Settings dashboard, scroll and Display controls observed; click/read-back was verified through reversible ADB tap + settings read, but selector-driven action and broader app fixtures remain pending |
+| P0-05 | scrcpy video-only feasibility and licensing | P0-03 | Spike report + license inventory | Version, license, video-only boundary and resource impact documented | IN_PROGRESS — scrcpy 4.1 on one Android 9 device logged video capture/encoding `IllegalStateException`; isolate codec/firmware issue and repeat on selected test serial |
 | P0-06 | Windows telemetry feasibility | P0-01 | Telemetry matrix + script | CPU/RAM/GPU/disk/network availability and timestamps validated; missing != zero | NOT_STARTED |
 | P0-07 | OCR candidate benchmark | P0-02 | Labeled fixtures + results | Vietnamese/English accuracy, latency, memory and packaging measured | NOT_STARTED |
 | P0-08 | Facebook policy/capability review | Product scope | Decision matrix | Each capability ALLOWED/BLOCKED/DEFERRED/NEEDS_REVIEW; no bypass | NOT_STARTED |
@@ -158,13 +158,19 @@ Phase 0 diagnostics / disposable feasibility scripts authorized: YES
 
 ## 13. Execution log
 
-| Date | Task | Commit | Tests | Result |
+| Date | Task | Commit | Tests / evidence | Result |
 |---|---|---|---|---|
-| 2026-10-30 | User approved Phase 0 plan; physical-device smoke test mandatory before acceptance | `6578b53` | Plan/entry-gate review | APPROVED |\n| 2026-10-30 | P0-01 host preflight collector authored | `41dc021` | Static source review only; Windows PowerShell execution not available in ChatGPT environment | BLOCKED pending user run |
+| 2026-10-30 | User approved Phase 0 plan; physical-device smoke test mandatory before acceptance | `6578b53` | Plan/entry-gate review | APPROVED |
+| 2026-10-30 | P0-01 host preflight collector authored | `41dc021` | Initial script source review | SCRIPT CREATED |
+| 2026-10-30 | P0-01 host report received and analyzed | `3fb2df1` | User ZIP: Windows/CPU/RAM/GPU/storage/network/runtime/SDK inventory | PARTIAL — virtualization feature state and emulator acceleration unresolved |
+| 2026-10-30 | P0-01 native version probe hardened | `e1dc7a7` | Static review only; target Windows rerun still required | AWAITING WINDOWS RERUN |
+| 2026-10-30 | Physical ADB screenshot and hierarchy samples | `ce256e4`, `aa900ce` | Screenshot; System UI and Launcher hierarchy | PARTIAL PASS |
+| 2026-10-30 | Settings, scroll and Display control hierarchy samples | `852e9b3` | Settings RecyclerView scroll; Display SeekBar and Switch nodes | PARTIAL PASS |
+| 2026-10-30 | Reversible Adaptive brightness interaction | `a63d776` | Read 0 → tap → read 1 → tap → read 0, user confirmed final 0 | PASS — one device/control |
 
 Approval recorded from user on 2026-10-30. Physical-device smoke test is mandatory before Phase 0 acceptance; Emulator-only evidence is insufficient.
 
-P0-01 script is authored at `tools/phase-00/Collect-HostEnvironment.ps1`. It is read-only and packages host prerequisites into a ZIP. It has not been executed on the target Windows host; do not treat P0-01 as PASS until the user runs it and the report is reviewed.
+P0-01 script is authored at `tools/phase-00/Collect-HostEnvironment.ps1`. The user ran it and uploaded a ZIP; sanitized findings are recorded in `docs/evidence/P0-01-host-preflight-2026-10-30.md`. The script's native version capture was hardened in commit `e1dc7a7`, but the updated script has not yet been rerun on Windows. P0-01 remains IN_PROGRESS until elevated Windows feature state and `emulator -accel-check` are captured and reconciled.
 
 ## 14. Phase acceptance report
 
