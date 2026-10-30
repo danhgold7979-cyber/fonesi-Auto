@@ -310,3 +310,12 @@ owner/delegated plan reviewer; implementation remains pending review/authorizati
 2026-10-30 19:34 UTC coordinator review authorizes only ADR-0005 option B design/
 primary-source feasibility research. The ADR remains PROPOSED, old failure/current
 blocker remains, and implementation/experiment/acceptance amendment is not approved.
+
+## Pending G0-13 secret/recovery review — 2026-10-30 20:07 UTC
+
+[Source-backed matrix and synthetic restart proposal](evidence/G0-13-secret-recovery-matrix-PROPOSED-2026-10-30.md)
+records exact candidate async API and Windows user/machine boundaries, unavailable/
+corrupt/missing-profile handling and unresolved backup/key recovery decisions.
+Documentation/source research only; no experiment, production key format, adapter,
+portability or encrypted-backup selection approved. Old host/device/navigation gates
+and P0-09 dependencies remain open. Coordinator review required before further code.

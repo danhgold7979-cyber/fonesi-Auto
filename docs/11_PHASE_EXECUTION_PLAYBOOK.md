@@ -394,3 +394,22 @@ failed21-case desktop lab remain unchanged. ADR-0005 identity/ordering BLOCKED,
 G0-12 navigation FAIL, target-host and full P0-09 gates remain open. Provisional
 results may require rework after target testing. Independent review precedes
 publication; root coordinates publication.
+
+## Independent G0-13 stages1–3 secret-source experiment — 2026-10-30 21:16 UTC
+
+Coordinator explicitly approved only the reviewed standalone stages1–3 in the
+[G0-13 matrix](evidence/G0-13-secret-recovery-matrix-PROPOSED-2026-10-30.md) under
+DEC-022/delegated plan review. This exception is recorded before code: exact pinned
+Electron45.1.0 async safeStorage APIs; three owned main-only processes sharing one
+private profile; positive controls, orderly restart and nonempty prefix-preserving
+tail tamper negatives. Existing trusted pinned provisioning may be reused. Strict
+64KiB evidence/read bounds, existing owned Windows Job deadlines/cleanup and private
+profile traversal apply. Availability alone is not key/recovery proof; typed rotation
+hints are observed, never automatic re-encryption. No real credentials, deliberate
+OS key-store/account/ACL changes or plaintext fallback; normal DPAPI provider access
+under the existing runner identity may read/write OS-managed state and is not claimed
+fully contained by app paths. Stage4, OS revocation, cross-user/machine portability,
+production key/backup-format selection and Phase acceptance remain unapproved.
+P0-09 dependencies, target host/device/policy and failed navigation/containment gates
+stay open. Independent source/schema review precedes root-coordinated publication;
+actual runtime is NOT_RUN until reviewed hosted evidence exists.

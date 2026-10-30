@@ -245,3 +245,12 @@ cleanup true. Downloaded sanitized artifact revalidated; details/sample hashes i
 run41119112459 separately SUCCESS. No desktop rerun or new renderer. Hosted engine
 slice only: no production binding/schema/encrypted-backup/host acceptance; fullP0-09,
 G0-12 navigation and ADR-0005 all-document containment remain BLOCKED. Phase0/10.
+
+### G0-13 stages1–3 source checkpoint — 2026-10-30 21:20 UTC
+
+Independent secret restart experiment authorized21:16 and recorded before code;
+[source matrix](evidence/G0-13-secret-recovery-matrix-PROPOSED-2026-10-30.md) and
+[evidence](evidence/G0-13-secret-restart-lab-2026-10-30.md). Local12/12 Python and5/5
+Node pure tests PASS; syntax/YAML/diff checks PASS, actual runtime/PowerShell/cleanup
+NOT_RUN pending independent review and hosted publication. Stage4/OSrevocation/
+portability/productionbackup NOT_TESTED; old host/device/navigation/Phase gates open.
