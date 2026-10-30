@@ -31,6 +31,7 @@ All architecture, schemas, adapters, workflow state machines, tests, and impleme
 - [Acceptance criteria and risk register](docs/05_ACCEPTANCE_AND_RISKS.md)
 - [V9 interface mapping](docs/06_UI_V9_MAPPING.md)
 - [Technology and policy references](docs/07_REFERENCES.md)
+- [Decisions, open questions and 10-round review](docs/08_DECISIONS_AND_OPEN_ITEMS.md)
 
 ## Non-negotiable engineering principles
 
