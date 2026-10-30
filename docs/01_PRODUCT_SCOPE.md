@@ -101,7 +101,20 @@ The UI may show future workflow entries with a status badge, but it must not all
 - Install/uninstall has per-device progress, cancellation and result.
 - APK source, signature, package name, version and downgrade policy are validated before install.
 
-### 2.9 Proxy
+#### 2.9 Host resource monitor and stream controls
+- Provide a dedicated Resource & Stream Control panel, accessible from the device monitor and settings without changing the approved V9 layout.
+- Display live host CPU usage, RAM used/available, GPU utilization and memory when supported, disk free space, network throughput, active ADB devices, active streams, stream FPS and vision-worker queue depth.
+- Show a timestamp and data freshness for each metric. Unsupported GPU counters must be shown as unavailable, not as zero.
+- User-adjustable stream controls: FPS, image quality/bitrate, maximum stream resolution and per-device stream enable/pause.
+- Scope controls: all devices, selected devices or one device. Support a global default with per-device overrides.
+- Provide Auto and Manual modes. Auto mode applies resource-aware limits; Manual mode respects the user's selected values only within safe host/device limits.
+- Show estimated/observed resource impact and warn before applying a configuration predicted to overload the host.
+- Use configurable warning/critical thresholds with hysteresis and a cooldown to avoid alert flicker.
+- On critical pressure, degrade preview streams first (FPS/bitrate/resolution), pause non-focused streams, and defer nonessential vision work. Never silently interrupt a device workflow or drop an ADB command.
+- User may acknowledge a warning and choose a lower profile. The app must not allow an unsafe setting to silently destabilize the host.
+- Provide recommended profiles (Eco, Balanced, Smooth, Custom); actual values are host-benchmark-derived, not hard-coded universal guarantees.
+
+## 2.10 Proxy
 - Store proxy profiles in encrypted secret storage; UI only displays masked credentials.
 - Validate syntax and endpoint reachability from host.
 - Device-side routing must be separately verified; a host-side "proxy alive" check does not prove Android traffic uses it.
