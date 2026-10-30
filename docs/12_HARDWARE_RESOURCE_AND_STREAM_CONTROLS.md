@@ -73,7 +73,7 @@ The UI must never fabricate unsupported sensor values or show missing values as 
 
 ### 3.2 Resolution
 - User-adjustable max stream resolution or scale.
-- Candidate options may include 360p, 480p, 720p, 1080p and Original, but the available options must be intersected with the device's actual resolution and tested decoder profile.
+- Candidate options may include 360p, 480p, 720p, 1080p and Original, but the available options must be intersected with the device's actual resolution, scrcpy capability and tested decoder profile.
 - Keep aspect ratio; do not distort the device image.
 - UI tile zoom changes display size only; it must not automatically increase Android capture resolution.
 
@@ -91,6 +91,14 @@ The UI must never fabricate unsupported sensor values or show missing values as 
 - User cannot set a limit above the current certified host envelope without an explicit warning and a controlled benchmark mode.
 - Focused device receives priority; selected devices next; background devices last.
 
+### 3.5 Slider bounds and user override
+- Slider ranges are computed from the intersection of backend capability, Android device capability and the current host's tested hard envelope.
+- The UI must distinguish the recommended zone from the technically supported maximum.
+- In Manual mode, the user may move above the recommended zone while remaining inside the tested hard envelope; show AMBER/RED impact warnings and require an explicit Apply confirmation when the selected profile is predicted to overload.
+- Never allow a slider to exceed a hard technical limit reported by scrcpy/device/backend.
+- Maximum concurrent streams is bounded by the current host's certified stream envelope. The user can choose any lower value.
+- The first release does not expose an unsafe "ignore all limits" switch.
+
 ## 4. Auto and Manual modes
 
 ### Auto mode
@@ -105,12 +113,12 @@ The UI must never fabricate unsupported sensor values or show missing values as 
 - The user chooses requested FPS, resolution, bitrate and concurrency.
 - The app shows estimated resource impact and a live warning before applying a setting that is likely to overload the host.
 - The user can choose Use recommended settings.
-- If the emergency-throttle toggle is enabled, the app may temporarily lower or pause background preview streams during critical host pressure. It must:
+- Manual mode must not silently change the user's selected values. The emergency-throttle toggle is OFF by default in Manual mode; the user may explicitly enable it to temporarily lower or pause background preview streams during critical host pressure. It must:
   1. Show an explicit warning/notification.
   2. Record requested vs effective settings.
   3. Record why throttling occurred.
   4. Restore the requested settings only after a stable recovery window if auto-restore is enabled.
-- If emergency throttling is disabled, do not silently change the user's manual stream settings. Continue to warn and protect workflow/device-control resources; stream instability may occur and must be reported.
+- If emergency throttling is disabled, do not silently change the user's manual stream settings. Continue to warn, block new stream starts that exceed hard limits, and protect workflow/device-control resources; existing preview streams may degrade and must be reported.
 - No stream policy may cancel or corrupt an ADB workflow command.
 
 ## 5. Realtime monitoring and alert rules
@@ -195,6 +203,9 @@ The profile is local to that PC and must be recalibrated when major hardware/dri
 ## 9. Acceptance criteria
 
 - User can switch Auto/Manual mode.
+- Slider ranges reflect backend/device/host capability; values above the recommended zone but below the hard limit require a clear warning and Apply confirmation.
+- Values beyond hard technical limits cannot be applied.
+- Manual mode does not silently change user settings; emergency throttling is opt-in and OFF by default.
 - FPS, resolution/scale, bitrate/quality and concurrent stream limit are adjustable.
 - Global and per-device settings behave as specified.
 - Right-side V9 device dock hosts the control panel without redesigning the layout.
