@@ -27,6 +27,7 @@ $collectorPath = Join-Path $repoRoot 'tools\phase-00\Collect-HostEnvironment.ps1
 $wrapperPath = Join-Path $repoRoot 'tools\phase-00\Invoke-PowerShellProbe.ps1'
 $nativeSourcePath = Join-Path $repoRoot 'tools\phase-00\HostProbeNative.cs'
 $script:AssertionCount = 0
+$script:CaseMeasurements = [ordered]@{}
 $setupFailed = $false
 $outputReady = $false
 
@@ -63,6 +64,7 @@ function Invoke-Case {
     $before = $script:AssertionCount
     $status = 'PASS'
     $reason = $null
+    $script:CaseMeasurements = [ordered]@{}
     try { & $Action | Out-Null }
     catch { $status = 'FAIL'; $reason = Get-SafeFailure $_ }
     $timer.Stop()
@@ -70,6 +72,7 @@ function Invoke-Case {
         id = $Id; name = $Name; result = $status; reason = $reason
         assertionCount = $script:AssertionCount - $before
         durationMs = $timer.ElapsedMilliseconds
+        measurements = [pscustomobject]$script:CaseMeasurements
     })
     Write-Host ($status + ' ' + $Id + ' ' + $Name)
 }
@@ -385,6 +388,11 @@ try {
         [GC]::Collect(); [GC]::WaitForPendingFinalizers(); [GC]::Collect()
         $self = [Diagnostics.Process]::GetCurrentProcess()
         $self.Refresh(); $before = $self.HandleCount
+        $samples = New-Object 'System.Collections.Generic.List[object]'
+        $samples.Add([pscustomobject]@{ stage = 'baseline'; completedCalls = 0; handleCount = $before; growth = 0 })
+        $script:CaseMeasurements.handleSamples = $samples
+        $script:CaseMeasurements.maximumAllowedGrowth = 16
+        $script:CaseMeasurements.measurementProcess = 'current-test-process-only'
         try {
             for ($i = 0; $i -lt 24; $i++) {
                 $r = Invoke-NativeFixture @('stdout')
@@ -393,16 +401,34 @@ try {
                 $r = Invoke-NativeFixture @('nonzero')
                 Assert-Equal $r.status 'NONZERO_EXIT' 'Repeated failure must remain explicit'
                 Assert-True ([bool]$r.cleanupComplete) 'Repeated nonzero must release owned resources'
+                if ($i -eq 0 -or (($i + 1) % 6) -eq 0) {
+                    $self.Refresh(); $count = $self.HandleCount
+                    $samples.Add([pscustomobject]@{
+                        stage = 'success-nonzero-pairs'; completedCalls = ($i + 1) * 2
+                        handleCount = $count; growth = $count - $before
+                    })
+                }
             }
             for ($i = 0; $i -lt 4; $i++) {
                 $r = Invoke-NativeFixture @('hang') -TimeoutMilliseconds 300
                 Assert-Equal $r.status 'TIMEOUT' 'Repeated timeout must remain explicit'
                 Assert-True ([bool]$r.cleanupComplete) 'Repeated timeout must clean up'
+                $self.Refresh(); $count = $self.HandleCount
+                $samples.Add([pscustomobject]@{
+                    stage = 'timeout'; completedCalls = 48 + $i + 1
+                    handleCount = $count; growth = $count - $before
+                })
             }
-            $self.Refresh(); $immediateGrowth = $self.HandleCount - $before
-            Assert-True ($immediateGrowth -le 16) 'Immediate handle growth must be bounded without relying on finalizers'
+            $self.Refresh(); $immediateCount = $self.HandleCount; $immediateGrowth = $immediateCount - $before
+            $samples.Add([pscustomobject]@{ stage = 'immediate-end'; completedCalls = 52; handleCount = $immediateCount; growth = $immediateGrowth })
             [GC]::Collect(); [GC]::WaitForPendingFinalizers(); [GC]::Collect()
-            $self.Refresh(); $growth = $self.HandleCount - $before
+            $self.Refresh(); $afterGcCount = $self.HandleCount; $growth = $afterGcCount - $before
+            $samples.Add([pscustomobject]@{ stage = 'after-gc-diagnostic'; completedCalls = 52; handleCount = $afterGcCount; growth = $growth })
+            # Save both measurements before asserting: a failure must expose its
+            # trend. GC never changes the saved immediate-growth acceptance bound.
+            $script:CaseMeasurements.immediateGrowth = $immediateGrowth
+            $script:CaseMeasurements.afterGcGrowth = $growth
+            Assert-True ($immediateGrowth -le 16) 'Immediate handle growth must be bounded without relying on finalizers'
             Assert-True ($growth -le 16) 'Handle growth must stay within documented runtime-noise allowance'
         } finally { $self.Dispose() }
     }

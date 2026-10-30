@@ -79,6 +79,10 @@ would inventory the runner rather than use synthetic input.
 - Handle test: warm up three calls, then allow at most 16 net process handles
   above baseline immediately and after finalizers. This small test-runtime noise
   allowance is not a production hardware/resource threshold or support promise.
+  HC-07.1 records baseline, successive success/nonzero batches, each timeout,
+  immediate-end and post-GC counts from the current test process only. Both end
+  measurements are collected before asserting so failures retain the trend;
+  post-GC reduction never replaces or relaxes the immediate-growth assertion.
 - Only failure-injection cases replace the module's internal
   `Write-CollectorJsonFile` / `Write-CollectorZipFile` with a throwing synthetic
   writer; original functions are restored in `finally`. Successful export cases

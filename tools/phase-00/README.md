@@ -60,8 +60,9 @@ The dependency-free C# helper is compiled with built-in `Add-Type`. It creates a
 Windows Job Object with kill-on-close and **no breakaway**, starts its root
 suspended, assigns that root to the job, and only then resumes it. A restricted
 job/launch that prevents safe ownership fails closed. Only three pipe/NUL handles
-are inherited. Two background readers drain stdout/stderr concurrently into
-bounded buffers. Normal exit, timeout and launch failure all close owned handles;
+are inherited. Two reusable thread-pool readers drain stdout/stderr concurrently
+into bounded buffers; their per-probe completion events are explicitly disposed,
+not dependent on managed Thread finalizers. Normal exit, timeout and launch failure all close owned handles;
 descendants are retired even when the root exits first. Cleanup that cannot be
 confirmed produces `CLEANUP_FAILED`, not success. No PID-name sweep, WMI process
 tree kill, or unrelated-process termination is used.

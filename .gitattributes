@@ -1,0 +1,5 @@
+# Keep executable source bytes stable across Linux authoring and Windows CI.
+# Windows PowerShell accepts LF; the scripts currently contain ASCII source.
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.cs text eol=lf

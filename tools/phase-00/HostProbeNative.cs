@@ -112,7 +112,9 @@ namespace Fonesi.Phase00
             readonly StreamReader reader;
             readonly StringBuilder captured = new StringBuilder();
             readonly int limit;
-            public readonly Thread Worker;
+            readonly ManualResetEvent completion;
+            readonly object completionGate = new object();
+            bool finished, abandoned;
             public bool Truncated;
             public bool Failed;
             public bool Started;
@@ -120,10 +122,30 @@ namespace Fonesi.Phase00
             {
                 limit = maximum;
                 reader = new StreamReader(new FileStream(handle, FileAccess.Read), new UTF8Encoding(false, false), true, 4096);
-                Worker = new Thread(Read); Worker.IsBackground = true;
+                try { completion = new ManualResetEvent(false); }
+                catch { reader.Dispose(); throw; }
             }
-            public void Start() { Worker.Start(); Started = true; }
-            public bool Join(int milliseconds) { if (!Started) { reader.Dispose(); return true; } return Worker.Join(milliseconds); }
+            public void Start()
+            {
+                // A new managed Thread retains a native thread handle until its
+                // finalizer runs even after Join(). Reuse pool workers instead;
+                // each per-probe completion handle has explicit ownership.
+                if (!ThreadPool.QueueUserWorkItem(delegate(object state) { Read(); })) throw new InvalidOperationException("DRAIN_QUEUE_FAILED");
+                Started = true;
+            }
+            public bool Join(int milliseconds)
+            {
+                if (!Started) { DisposeReader(); completion.Dispose(); return true; }
+                completion.WaitOne(milliseconds);
+                lock (completionGate)
+                {
+                    if (finished) { completion.Dispose(); return true; }
+                    // The cleanup deadline remains bounded. If a failed OS read
+                    // ever outlives it, its callback owns final event disposal.
+                    abandoned = true;
+                    return false;
+                }
+            }
             void Read()
             {
                 try
@@ -141,7 +163,25 @@ namespace Fonesi.Phase00
                 }
                 catch (IOException) { Failed = true; }
                 catch (ObjectDisposedException) { Failed = true; }
-                finally { reader.Dispose(); }
+                finally
+                {
+                    try { DisposeReader(); }
+                    finally
+                    {
+                        lock (completionGate)
+                        {
+                            finished = true;
+                            completion.Set();
+                            if (abandoned) completion.Dispose();
+                        }
+                    }
+                }
+            }
+            void DisposeReader()
+            {
+                try { reader.Dispose(); }
+                catch (IOException) { Failed = true; }
+                catch (ObjectDisposedException) { Failed = true; }
             }
             public string Snapshot() { lock (captured) { return captured.ToString(); } }
         }
