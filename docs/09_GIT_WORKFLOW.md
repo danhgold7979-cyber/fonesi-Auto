@@ -164,3 +164,8 @@ Next operation after plan review:
 1. Create a PR from planning/clean-slate-master-plan to main.
 2. Review and merge only after user approval.
 3. Then create phase/00-feasibility from the updated main.
+
+
+## 10. Documentation updates
+
+Follow [Documentation Change & Versioning Policy](13_DOCUMENTATION_CHANGE_POLICY.md). Living canonical documents are edited in place and their previous revisions remain in Git history. Decision records and accepted Phase baselines are preserved; superseding decisions and approved Phase changes are appended as new records/amendments. Never delete historical plans or evidence without explicit user approval.
