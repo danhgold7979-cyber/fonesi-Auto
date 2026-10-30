@@ -45,6 +45,7 @@ Không dựa vào trí nhớ chat. Mỗi lần bắt đầu Phase mới, đọc:
 - docs/05_ACCEPTANCE_AND_RISKS.md
 - docs/06_UI_V9_MAPPING.md
 - docs/08_DECISIONS_AND_OPEN_ITEMS.md
+- docs/13_DOCUMENTATION_CHANGE_POLICY.md
 - docs/09_GIT_WORKFLOW.md
 - docs/PHASE_STATUS.md
 - Complete V9 HTML nếu Phase có tác động UI.
