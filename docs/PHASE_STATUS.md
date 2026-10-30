@@ -254,3 +254,14 @@ Independent secret restart experiment authorized21:16 and recorded before code;
 Node pure tests PASS; syntax/YAML/diff checks PASS, actual runtime/PowerShell/cleanup
 NOT_RUN pending independent review and hosted publication. Stage4/OSrevocation/
 portability/productionbackup NOT_TESTED; old host/device/navigation/Phase gates open.
+
+### G0-13 stages1–3 hosted evidence — 2026-10-30 21:29 UTC
+
+Exactba32bf7 run41131016175 SUCCESS: real create8/8, same-profile restart8/8,
+tamper10/10 checks, all orderly-quit/runtime Job/final-directory cleanup true.
+Electron45.1.0/Node24.22.1;9 observed rotation hints false, no rotation exercise.
+Hosted12/12 Python+5/5 Node tests and PS parse PASS; sanitized artifact revalidated,
+[details/sample hashes](evidence/G0-13-secret-restart-lab-2026-10-30.md). Separate
+collector/offline41131016077 SUCCESS. Stage4/OSrevocation/portability/productionbackup
+NOT_TESTED; normal DPAPI OS access caveat retained. No fullG0-13/P0-09/Phase acceptance
+or navigation/containment waiver; no old desktop retry.
