@@ -104,6 +104,35 @@ Media table:
 - Provide quick actions (Home, Back, screenshot, clear selection, app shortcuts) using icons.
 - ADB reconnect and stream reconnect statuses are separate.
 
+## 9.1 Stream / Performance controls in the right dock
+
+Add controls inside the existing right-side device monitor header as a compact popover/expandable panel. Preserve the V9 shell and dock geometry.
+
+Controls:
+- Auto / Manual mode.
+- Stream scope: focused / selected / all.
+- FPS slider.
+- Resolution/scale slider or supported discrete choices.
+- Bitrate/quality slider or Low / Balanced / High preset plus Advanced.
+- Maximum concurrent stream slider.
+- Apply and Use recommended settings.
+- Global defaults and per-device overrides.
+- Optional emergency throttle and auto-restore toggles.
+
+Live panel:
+- CPU, RAM, GPU (when supported), disk and stream statistics with sample timestamp.
+- GREEN / AMBER / RED / UNKNOWN state.
+- Requested vs effective vs recommended settings.
+- Clear reason and recommended action for every warning.
+
+Interaction rules:
+- Changing tile zoom does not change stream resolution.
+- Ctrl+wheel continues to resize the whole device tile.
+- Normal wheel inside a phone continues to scroll the Android screen.
+- A global change applies only to the selected scope.
+- If a metric is unavailable, display Not available; never substitute 0.
+- Keep the performance popover compact and avoid obscuring phone screens.
+
 ## 10. UI-to-service mapping
 
 | UI area | Service/API boundary |
