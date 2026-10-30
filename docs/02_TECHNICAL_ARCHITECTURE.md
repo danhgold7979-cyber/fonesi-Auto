@@ -72,6 +72,12 @@ Pin exact versions only after Phase 0 compatibility and licensing review. Do not
 - Confidence thresholds are calibrated on a labeled test set. Low confidence blocks the action.
 
 ### 2.7 Python Vision Worker
+- Separate process with versioned JSON/binary IPC.
+- Input: screenshot bytes, device dimensions, locale, task type and optional region of interest.
+- Output: structured detections with bounding boxes, text, confidence, model version and elapsed time.
+- Worker is restartable and resource-limited.
+- Python must not invoke ADB input or compete with Device Host. It only returns recognition results.
+- Start CPU-first; optional GPU acceleration is a later benchmark decision.
 
 ### 2.8 Host Hardware & Resource Manager
 - A dedicated HostResourceMonitor samples Windows host capabilities and live resource usage.
@@ -84,14 +90,6 @@ Pin exact versions only after Phase 0 compatibility and licensing review. Do not
 - Persist requested settings separately from effective settings and recommendations. Report every temporary throttle and restoration.
 - Apply hysteresis and recovery windows to avoid oscillation. Alert thresholds are calibrated in Phase 0/3, not assumed universal constants.
 - Resource monitoring must be lightweight and must not block Device Host input queues or workflow execution.
-
-
-- Separate process with versioned JSON/binary IPC.
-- Input: screenshot bytes, device dimensions, locale, task type and optional region of interest.
-- Output: structured detections with bounding boxes, text, confidence, model version and elapsed time.
-- Worker is restartable and resource-limited.
-- Python must not invoke ADB input or compete with Device Host. It only returns recognition results.
-- Start CPU-first; optional GPU acceleration is a later benchmark decision.
 
 ### 2.9 Screen streaming
 - ADB screenshot polling is acceptable for diagnostics but not a good default for a live multi-device wall.
