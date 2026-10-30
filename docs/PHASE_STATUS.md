@@ -110,3 +110,23 @@ Final source/workflow candidate f53c97576529ace219160a9083326113d68f07e7: [Windo
 Latest owner continuation instructions are recorded in [DEC-022](08_DECISIONS_AND_OPEN_ITEMS.md#9-dec-022--continue-independent-work-without-inventing-gate-acceptance) and playbook §6. They narrowly supersede the earlier stop-all-work instruction in §5 while preserving all acceptance gates. P1-01's stack/version/Windows compatibility inputs remain unresolved; P1-03/P1-11 and remaining foundation tasks transitively depend on them. No Phase 1 production task started and no provisional code is silently promoted.
 
 P0-04 now has a working offline hierarchy selector-analysis spike with **28/28 synthetic tests PASS** on Linux/Python 3.12.14, Expat 2.8.3. [Evidence](evidence/P0-04-offline-selector-2026-10-30.md) distinguishes the tested slice from full P0-04 acceptance: actual selector-driven Android action/read-back, dump-versus-instrumentation choice and broader device/app coverage remain NOT_RUN/BLOCKED. P0-01 source is unchanged/frozen. Historical HC-09 partial hypervisor evidence and pre-hardening HC-13 report do not close current target-host gates. Phase 0 acceptance remains 0/10; no main merge or later-phase acceptance.
+
+## P0-08 independent review checkpoint — 2026-10-30 17:39 UTC
+
+P0-08 is now IN_PROGRESS / BLOCKED for final permission acceptance, independently
+of Windows evidence under DEC-022/playbook §6. [Dated policy review](evidence/P0-08-policy-review-2026-10-30.md)
+records three read official historical newsroom sources and three current
+terms/policy retrievals unavailable (login/temporary-block or HTTP 429), not
+verified policy text. The canonical disabled-only review snapshot covers 18
+capabilities: 7 NEEDS_REVIEW, 9 DEFERRED, 2 BLOCKED, 0 ALLOWED/enabled. A separate
+offline artifact linter has 14/14 tests PASS; combined with unchanged P0-04,
+42/42 Python tests PASS. No runtime permission registry or platform action exists.
+Current execution has five started Phase 0 tasks (P0-01/03/04/05/08), five not
+started; the earlier four/six rows remain historical snapshots. Acceptance is
+still 0/10 and all physical/Windows/policy gates remain open; no later phase starts.
+
+
+CI coverage note: run 41097867227 covered only the existing Windows PowerShell
+collector job, not the offline Python suites. A new separate Linux/Windows
+Python matrix is authored and locally YAML-checked; hosted results remain
+NOT_RUN pending publication. Final local combined suite is 42/42 PASS after independent-review regression coverage.

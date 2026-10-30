@@ -70,3 +70,12 @@ These references support the proposed technology direction and identify constrai
 
 ## Change history
 - 2026-10-30: Distinguished historical source inventory from current compatibility/policy validation; no new dependency version approved.
+
+## Dated P0-08 verification — 2026-10-30
+
+[Review and source register](evidence/P0-08-policy-review-2026-10-30.md) records
+three official newsroom pages actually read, with displayed publication dates,
+and three current policy/terms URLs whose content was unavailable behind
+login/temporary-block or HTTP 429 responses. Unavailable text is not verified;
+no login/bypass was attempted. The disabled-only capability snapshot grants no
+platform permission and does not close the policy gate.

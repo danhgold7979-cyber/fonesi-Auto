@@ -1,0 +1,402 @@
+{
+  "review_date": "2026-10-30",
+  "kind": "DISABLED_REVIEW_ONLY",
+  "capabilities": [
+    {
+      "id": "FB-PAGE-PHOTO",
+      "disposition": "NEEDS_REVIEW",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Candidate scope only; current terms and per-action automated UI permission unresolved, authorized target/content/volume and physical certification missing.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-PAGE-ALBUM",
+      "disposition": "NEEDS_REVIEW",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Candidate scope only; current terms and per-action automated UI permission unresolved, authorized target/content/volume and physical certification missing.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-PAGE-VIDEO",
+      "disposition": "NEEDS_REVIEW",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Candidate scope only; current terms and per-action automated UI permission unresolved, authorized target/content/volume and physical certification missing.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-PAGE-REELS",
+      "disposition": "NEEDS_REVIEW",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Candidate scope only; current terms and per-action automated UI permission unresolved, authorized target/content/volume and physical certification missing.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-PAGE-STORY",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-PROFILE-PHOTO",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-PROFILE-VIDEO",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-PROFILE-REELS",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-GROUP-PHOTO",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-GROUP-VIDEO",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-COMMENT-OWN-CONTENT",
+      "disposition": "NEEDS_REVIEW",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Candidate scope only; current terms and per-action automated UI permission unresolved, authorized target/content/volume and physical certification missing.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-COMMENT-ARBITRARY",
+      "disposition": "BLOCKED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Arbitrary unauthorized interaction or fake/coordinated engagement is excluded; no operational path.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-REACTION",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-SHARE",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-READBACK",
+      "disposition": "NEEDS_REVIEW",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Candidate scope only; current terms and per-action automated UI permission unresolved, authorized target/content/volume and physical certification missing.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "FB-METRICS",
+      "disposition": "NEEDS_REVIEW",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Candidate scope only; current terms and per-action automated UI permission unresolved, authorized target/content/volume and physical certification missing.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "OTHER-NETWORKS",
+      "disposition": "DEFERRED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Outside enabled initial pilot or requires separate certification under C-01/C-02; no scope expansion or permission inferred.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    },
+    {
+      "id": "BULK-FAKE-ENGAGEMENT",
+      "disposition": "BLOCKED",
+      "enabled": false,
+      "technical_state": "UNVERIFIED",
+      "reason": "Arbitrary unauthorized interaction or fake/coordinated engagement is excluded; no operational path.",
+      "source_refs": [
+        "S1",
+        "S2",
+        "S4",
+        "S5",
+        "S6"
+      ],
+      "required_evidence": [
+        "current_terms_review",
+        "exact_authorized_scope",
+        "identity_and_readback",
+        "per_action_permission",
+        "physical_profile_certification",
+        "safe_recovery"
+      ]
+    }
+  ]
+}

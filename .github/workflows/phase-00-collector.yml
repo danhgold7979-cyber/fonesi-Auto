@@ -6,11 +6,13 @@ on:
     paths:
       - 'tools/phase-00/**'
       - 'tests/phase-00/**'
+      - 'docs/evidence/P0-08-capability-matrix.json'
       - '.github/workflows/phase-00-collector.yml'
   pull_request:
     paths:
       - 'tools/phase-00/**'
       - 'tests/phase-00/**'
+      - 'docs/evidence/P0-08-capability-matrix.json'
       - '.github/workflows/phase-00-collector.yml'
   workflow_dispatch:
 
@@ -60,3 +62,36 @@ jobs:
         shell: powershell
         run: |
           'Hosted Windows PowerShell 5.1 synthetic tests only. HC-09 actual host acceleration and HC-13 exact target-host rerun remain NOT_RUN. This is not Phase 0 acceptance.' >> $env:GITHUB_STEP_SUMMARY
+
+  offline-python:
+    name: Offline review checks / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      # Official v6.2.0 release/commit verified 2026-10-30; no third-party packages.
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - name: Record offline runtime
+        run: python -c "import sys, pyexpat; print(sys.version); print(pyexpat.EXPAT_VERSION)"
+      - name: Run offline selector and review artifact tests
+        run: python -m unittest discover -s tests/phase-00 -p "test_*.py" -v
+      - name: State offline evidence boundary
+        if: always()
+        shell: python
+        run: |
+          import os
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('Offline synthetic selector and disabled-only policy artifact tests. '
+                            'No device, account, posting, permission or target-host acceptance. '
+                            'No private input or artifact upload.\n')

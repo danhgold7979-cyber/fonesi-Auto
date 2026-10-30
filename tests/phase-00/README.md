@@ -121,3 +121,26 @@ Unicode/XML escapes, malformed/unsafe input, resource ceilings, bounds and
 privacy-safe results. This is not a UI Automator runtime, instrumentation,
 Windows, physical-device action/read-back or performance pass. All fixture
 strings are synthetic; no private hierarchy or device identifiers are included.
+
+## P0-08 review artifact regression
+
+`test_capability_review_lint.py` adds 14 offline tests for the checked-in disabled
+18-capability review snapshot and malformed/unsafe mutations. No enabled fixture,
+platform requests, private accounts or permission certification are introduced.
+Run both Python suites (42 methods):
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase-00 -p 'test_*.py' -v
+```
+
+A green linter proves structural disabled-only consistency, not that referenced
+sources grant permission or that the project may start any live workflow.
+
+The Phase 0 workflow adds separate offline Python jobs on hosted Windows and
+Linux. The original PowerShell collector job remains separate and unchanged;
+its success alone says nothing about the Python suite. Python jobs log runtime
+versions, run both suites and upload no artifacts. Hosted CI results remain
+pending until the new workflow is published and executes successfully.
+
+The checked-in policy matrix is validated as raw bytes before JSON parsing can
+erase duplicate keys; parsed copies are used only for mutation fixtures.

@@ -163,6 +163,16 @@ The owner's latest continue-coding/overnight instruction, quoted in [DEC-022](08
 - Stop when offline cases are reproducible and reviewed, or when work needs unresolved deployment/version/private-input authorization. P0-04 remains IN_PROGRESS/BLOCKED for its full acceptance. Phase 0 is not accepted and Phase 1 remains NOT_STARTED after dependency audit.
 - Independent, fully specified foundation scaffold/contract/test implementation may be proposed under DEC-022 only with its dependency audit and explicit provisional/rework consequence; this exception selects no production task or stack pin.
 
+### P0-08 continuation under DEC-022 — recorded 2026-10-30 17:21 UTC
+
+After the P0-04 offline increment was reviewed/published (not full task acceptance), continue the independent P0-08 product-scope → official-source review → disabled capability matrix path. The owner's same continued-work grant authorizes this bounded research/test increment; no new empirical acceptance is inferred. The approved baseline lists P0-08's dependency as Product scope, not P0-01 hardware.
+
+- Exclusive owner: Auto engineering task. Files: `docs/evidence/P0-08-policy-review-2026-10-30.md`, `docs/evidence/P0-08-capability-matrix.json`, `tools/phase-00/capability_review_lint.py`, `tests/phase-00/test_capability_review_lint.py`, canonical status/references and existing tool/test guides. The coordinating task subsequently authorized a separate Windows/Linux offline-test job in `.github/workflows/phase-00-collector.yml`; preserve the collector job and avoid private uploads.
+- Only public primary-source reads and offline review-artifact validation. No login, account data, device commands, downloads/installations, publishing or runtime capability registry. Never retry through a different route to defeat a login/rate block.
+- Artifact linter validates a disabled-only review snapshot, not a production permission decision. It has no enable/dispatch path and must reject invented ALLOWED/READY states, unknown capabilities, missing/duplicate rows or privilege-bearing fields.
+- Tests: synthetic positive/negative artifact cases plus P0-04 regression, syntax and diff checks. A passing linter only establishes artifact consistency, never platform permission or technical feasibility.
+- Stop at reviewed matrix/checkpoint or missing source/scope/authorization evidence. Preserve inaccessible terms as UNAVAILABLE and per-action permission as NEEDS_REVIEW; Page ownership and a successful UI test cannot settle it. Rollback only this increment; publication coordinated separately, no main merge.
+
 ### Không làm
 - Không tạo branch cho mỗi commit.
 - Không tạo sẵn tất cả Phase branches từ đầu.

@@ -157,3 +157,20 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase-00 -p 'tes
 Do not publish real hierarchy XML or feed private inputs into test failures/logs.
 See [P0-04 evidence](../../docs/evidence/P0-04-offline-selector-2026-10-30.md)
 for runtime, source hashes, scope and remaining device gates.
+
+## P0-08 disabled-only review artifact linter
+
+`capability_review_lint.py` validates the current offline
+`docs/evidence/P0-08-capability-matrix.json` review artifact, not production
+permissions. Pass bytes to `validate_review`; its fixed result
+`CONSISTENT_DISABLED_REVIEW` means structurally complete and disabled, never
+allowed, compliant, certified or executable. No enable/dispatch API exists.
+Unknown actions, ALLOWED/READY/enabled claims, omitted evidence gates and extra
+privilege fields reject. A new reviewed disposition needs a separately reviewed
+artifact/version, not flipping a boolean. Sources and prose still need human
+substantive review. Run all offline tests with the command below; this does not
+run Windows collector/device/platform tests:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/phase-00 -p 'test_*.py' -v
+```
