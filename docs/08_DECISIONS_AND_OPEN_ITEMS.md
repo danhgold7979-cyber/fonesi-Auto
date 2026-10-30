@@ -296,3 +296,17 @@ The assistant explicitly limited execution: “Hiện chưa đủ bằng chứng
 **Dependency audit / selected work:** P1-01 needs exact approved stack/version/compatibility ADRs; P1-03 needs P1-01; P1-11 needs both, and P1-02/04–10 transitively depend on them. Those dependencies remain unresolved, so production Phase 1 stays NOT_STARTED. Do not invent a SQLite binding, secret mechanism, package layout, wire schema, benchmark or supported Windows claim. Execute the genuinely independent **P0-04 offline hierarchy selector-analysis spike** on the existing Phase 0 branch instead (playbook §6 exception below). It consumes synthetic XML, not a device or P0-01 host result. No production component is created.
 
 **Open gates / consequence:** P0-01 source is frozen. HC-09 partial historical evidence reports HypervisorPresent=true alongside contradictory CPU flags, without current optional-feature/boot/emulator acceleration proof. HC-13 historical collection predates hardened candidate f53c975 and cannot certify it. Existing 18/18 synthetic Windows tests remain synthetic. P0-04 still needs real selector-driven action/read-back, deployment comparison and broader supported profiles; offline parsing cannot pass those gates. Engineering owns the spike; owner/test operator supplies authorized empirical evidence. Revisit Phase 1 once the actual stack ADR/host proof is available. No authentication, installation, device command, proxy/security change, live posting, private artifact publication or automatic acceptance is included.
+
+## Pending security decision — ADR-0005 (2026-10-30)
+
+[Renderer navigation containment proposal](decisions/ADR-0005-renderer-navigation-containment-PROPOSED.md)
+is documentation-only and NOT APPROVED. Option A preserves the current immutable-
+document blocker; option B would require an explicitly separate, reviewed experiment
+for per-document privilege revocation and availability loss. Original G0-12 source
+and package20/21 failures remain FAIL; no test, accepted requirement, Phase baseline
+or execution authority is superseded by this proposal. Decision owner: product
+owner/delegated plan reviewer; implementation remains pending review/authorization.
+
+2026-10-30 19:34 UTC coordinator review authorizes only ADR-0005 option B design/
+primary-source feasibility research. The ADR remains PROPOSED, old failure/current
+blocker remains, and implementation/experiment/acceptance amendment is not approved.
