@@ -3,7 +3,7 @@
 **Revision:** 0.1-draft  
 **Rule:** This document maps product behavior to the approved V9 layout. It is not permission to redesign the interface.
 
-**HTML reference:** [ui-reference/Fonesi-Auto-V9-UI-Reference.html](../ui-reference/Fonesi-Auto-V9-UI-Reference.html) · [Open instructions](../ui-reference/README.md). Download the HTML and open it in Chrome/Edge; GitHub's source viewer does not execute HTML.
+**Canonical full HTML reference:** [ui-reference/Fonesi-Auto-V9-UI-Reference.html](../ui-reference/Fonesi-Auto-V9-UI-Reference.html) · [Open instructions](../ui-reference/README.md). This file contains the complete V9 HTML, CSS and JavaScript. Download it and open in Chrome/Edge; GitHub's source viewer does not execute HTML.
 
 ## 1. Global layout
 
