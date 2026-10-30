@@ -234,3 +234,14 @@ or production schema. Independent review CLEAR,13/13 local schema regressions,
 node syntax/YAML/diff checks PASS; actual Windows/runtime/owned cleanup NOT_RUN.
 Full P0-09 dependencies remain unresolved. G0-12 navigation and ADR-0005 full
 containment proof remain FAIL/BLOCKED; Phase acceptance stays0/10.
+
+### P0-09 hosted engine evidence — 2026-10-30 19:58 UTC
+
+Exactb942eae run41119112530 SUCCESS: PowerShell parse,13/13 schema regressions and
+real Node24.22.1/Electron45.1.0 main probes. SQLite3.53.4 available in both;13/13
+runtime cases each PASS,43 statements each; installer/runtime Job and owned-directory
+cleanup true. Downloaded sanitized artifact revalidated; details/sample hashes in
+[P0-09 evidence](evidence/P0-09-sqlite-source-lab-2026-10-30.md). Collector/offline
+run41119112459 separately SUCCESS. No desktop rerun or new renderer. Hosted engine
+slice only: no production binding/schema/encrypted-backup/host acceptance; fullP0-09,
+G0-12 navigation and ADR-0005 all-document containment remain BLOCKED. Phase0/10.
