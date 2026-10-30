@@ -33,8 +33,36 @@ function Get-CommandVersion {
     }
 
     $versionText = $null
+    $exitCode = $null
     try {
-        $versionText = (& $command.Source @Arguments 2>&1 | Select-Object -First 1 | Out-String).Trim()
+        # Capture stdout and stderr separately through .NET so native tools
+        # (notably java.exe, which writes -version to stderr) do not become
+        # PowerShell NativeCommandError records in the JSON report.
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $command.Source
+        $startInfo.Arguments = [string]::Join(" ", $Arguments)
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        [void]$process.Start()
+
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+
+        $combinedOutput = @($stdout, $stderr) -join "`n"
+        $versionText = ($combinedOutput -split "`r?`n" |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -First 1)
+        if (-not $versionText) {
+            $versionText = "No version output (exit code $exitCode)"
+        }
+        $process.Dispose()
     } catch {
         $versionText = "Version query failed: " + $_.Exception.Message
     }
@@ -43,6 +71,7 @@ function Get-CommandVersion {
         installed = $true
         path = $command.Source
         version = $versionText
+        exitCode = $exitCode
     }
 }
 
