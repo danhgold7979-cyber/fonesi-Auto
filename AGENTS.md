@@ -49,7 +49,11 @@ For UI work, inspect the complete V9 HTML before modifying renderer code.
 
 ## 4. Phase and task authorization
 
+- Work on one Phase at a time; never start a later Phase before the current Phase is accepted and merged.
+- Before each Phase, re-read the Master Plan and all relevant product/architecture/acceptance documents.
+- Create a detailed Phase Plan from docs/templates/PHASE_PLAN_TEMPLATE.md and obtain explicit user approval before production coding.
 - Work only on the currently authorized Phase and task ID.
+- Complete the full test/review/commit loop for the current task before moving to the next task.
 - Do not implement later phases early.
 - Do not change the approved V9 layout, tab order, screen-wall behavior or workflow structure without explicit approval.
 - Do not mark a task complete without tests and acceptance evidence.
@@ -96,8 +100,10 @@ The planning branch is documentation-only. Do not add application source code to
 - Never commit directly to main.
 - Never force-push.
 - Never merge a pull request without explicit user approval.
-- Push only to the authorized feature/phase branch.
-- Follow docs/09_GIT_WORKFLOW.md for branch names and commit messages.
+- Push important passing checkpoints only to the authorized Phase branch.
+- The default for one sequential AI/developer is one integration branch per Phase and task-by-task commits on that branch.
+- Create a separate task branch only for parallel work, a large independent feature, or a high-risk isolated change.
+- Follow docs/09_GIT_WORKFLOW.md and docs/11_PHASE_EXECUTION_PLAYBOOK.md.
 - Do not create a branch for every tiny commit.
 - Do not delete existing branches without inspecting them and obtaining approval.
 - Keep planning documents and application code in their appropriate branches.
@@ -115,6 +121,8 @@ After editing, report:
 - Files changed.
 - Commits created and branch pushed, if authorized.
 - Tests run with exact pass/fail results.
+- State whether the current task is PASS, FAIL or BLOCKED.
+- Do not proceed to the next task unless the current task is PASS or the user explicitly defers it.
 - Acceptance criteria met/not met.
 - Known issues and next task.
 
