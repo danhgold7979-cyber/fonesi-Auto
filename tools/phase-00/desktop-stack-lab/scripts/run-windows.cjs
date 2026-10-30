@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const {spawn} = require('node:child_process');
 const {evaluateRuntimeResult} = require('./runtime-result.cjs');
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('WINDOWS_X64_LAB_ONLY');
-if (process.env.ELECTRON_RUN_AS_NODE || process.env.NODE_OPTIONS) throw new Error('UNSAFE_RUNTIME_OVERRIDE');
+if (process.env.ELECTRON_RUN_AS_NODE || process.env.ELECTRON_FORCE_IS_PACKAGED !== undefined || process.env.NODE_OPTIONS) throw new Error('UNSAFE_RUNTIME_OVERRIDE');
 const root = path.resolve(__dirname,'..');
 process.chdir(root);
 // The PowerShell supervisor owns this root and the suspended Windows Job.
@@ -58,8 +58,12 @@ function launch(executable,args,mode){
     for(const file of ['LICENSE','LICENSES.chromium.html']){
       if(hash(path.join(dist,file))!==hash(path.join(packaged,file))) throw new Error('NOTICE_COPY_MISMATCH');
     }
-    report.electronExecutableSha256=hash(path.join(packaged,'electron.exe'));
-    const packagePassed=await launch(path.join(packaged,'electron.exe'),[],'package');
+    // Windows app.isPackaged uses the executable basename; rebrand only the owned copy.
+    const packageExe=path.join(packaged,'FonesiAutoLab.exe');
+    fs.renameSync(path.join(packaged,'electron.exe'),packageExe);
+    if(hash(packageExe)!==hash(path.join(dist,'electron.exe'))) throw new Error('PACKAGE_COPY_MISMATCH');
+    report.electronExecutableSha256=hash(packageExe);
+    const packagePassed=await launch(packageExe,[],'package');
     report.passed=sourcePassed && packagePassed;
     if(!report.passed){report.failure='RUNTIME_CHECK_FAILED';process.exitCode=1;}
   }catch(error){

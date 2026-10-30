@@ -262,3 +262,26 @@ now requires a plain non-array case object with the exact 21 named assertions,
 explicit result.mode equal to the requested mode, and the original version/
 packaged/exit constraints. Wrong mode, array, renamed/missing/extra and arbitrary
 case names reject. Final pure suite **11/11 PASS**, including five gate regressions.
+
+## Hosted attempt 6 — both modes observed, FAIL, 19:00 UTC
+
+Commit `61fb34916978ae9724e79dad2744dbd44ce8db03`, desktop
+[41111478047](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41111478047),
+job 124254467966: source20/21, package19/21. Both navigation observations are
+`denialObserved=false`, `trustedDocumentUnchanged=false`: the attempted about:blank
+navigation was not stopped by this guard and changed the loaded document.
+Both modes still passed real Node isolation, IPC validation and untrusted-sender
+checks; this is not evidence of privilege escape. Installer SUCCESS/exit0,
+installer/runtime cleanup true, runtime exit1, owned directory cleanup true.
+Copied executable SHA256: `c579acaab64b1c456bda1693cdf1a2ec7e4de7738b0e2d1b6349d60e8087143c`.
+
+Package additionally returned package_mode=false and packaged=false. This is a
+concrete harness packaging defect: [Electron v45.1.0 App::IsPackaged](https://github.com/electron/electron/blob/v45.1.0/shell/browser/api/electron_api_app.cc#L903-L914)
+uses the Windows executable basename. The copied distribution retained electron.exe.
+The runner now renames only its owned copy to FonesiAutoLab.exe, verifies its bytes
+still match the installed Electron executable, and launches it with no app argument.
+This follows the [manual packaging/rebranding direction](https://www.electronjs.org/docs/latest/tutorial/application-distribution),
+not a signed installer or production distribution decision. It explicitly rejects
+ELECTRON_FORCE_IS_PACKAGED rather than spoofing the assertion. Existing21x2 cases
+and the unresolved navigation failure remain untouched. Hosted confirmation of
+this substantive packaging fix is pending; no blind unchanged rerun is requested.

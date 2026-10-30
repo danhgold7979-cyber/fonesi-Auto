@@ -190,3 +190,9 @@ stay fail-fast. Five new pure result-gate regressions bring local suite to11/11P
 Next hosted run may complete package evidence but cannot erase navigation failure.
 Final pre-publication review hardened exact case-name/plain-object/explicit-mode
 validation; malformed evidence cannot continue. Pure tests now11/11PASS.
+
+G0-12 attempt6 (41111478047) measured source20/21 and package19/21, both navigation
+metadata false/false and allownedcleanup true. Package-mode failure traced to the
+unrenamed Windows electron.exe basename; owned-copy rebranding+hash verification
+fix prepared, no FORCE_IS_PACKAGED override allowed. Navigation gate remains
+FAIL/BLOCKED, regardless of package-mode correction. No privilege escape inferred.
