@@ -1,6 +1,8 @@
 # Technology and Policy References
 
-**Revision:** 0.1-draft · **Reviewed:** 2026-10-30
+**Revision:** 0.2-review · **Inventory updated:** 2026-10-30
+
+These are source pointers retained from the planning baseline, not proof that every linked page or version claim was independently revalidated during this documentation edit. Verify exact current versions, licenses and policy text at the corresponding feasibility gate and record retrieval date/evidence.
 
 These references support the proposed technology direction and identify constraints. They do not replace compatibility tests or a formal platform-policy review.
 
@@ -16,7 +18,7 @@ These references support the proposed technology direction and identify constrai
 - Android Developers — Write automated tests with UI Automator: https://developer.android.com/training/testing/other-components/ui-automator
 - Android Developers — UI Automator legacy API: https://developer.android.com/training/testing/other-components/ui-automator-legacy
 - UI Automator is a cross-app UI testing/automation framework, not simply a remote ADB command. Its instrumentation runner and deployment requirements must be evaluated.
-- The modern UI Automator 2.4 API is documented as alpha/development-stage in the current reference. Do not pin an alpha version for production without a compatibility decision.
+- The earlier planning baseline described a UI Automator 2.4 candidate as alpha. Revalidate its current release status in the official source; do not treat the historical label as a current version determination or pin an untested build.
 
 ## 3. scrcpy (supporting screen stream)
 
@@ -38,7 +40,7 @@ These references support the proposed technology direction and identify constrai
 
 - PaddleOCR documentation: https://www.paddleocr.ai/
 - OCR usage and supported languages: https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html
-- Current documentation lists Vietnamese language support in relevant OCR model families. Exact model/version must be benchmarked on real Facebook app screenshots.
+- Check the exact candidate model's Vietnamese/English support in its current model documentation and benchmark it on authorized, sanitized target-app fixtures before choosing it.
 - Record model version, language, confidence, bounding boxes and elapsed time for every OCR result.
 - Check PaddlePaddle/PaddleOCR runtime compatibility, wheel availability, model license and packaged runtime size before selection.
 
@@ -65,3 +67,6 @@ These references support the proposed technology direction and identify constrai
 - Re-check Android/ADB, UI Automator, scrcpy and PaddleOCR versions at Phase 0.
 - Re-check Meta terms and platform rules immediately before enabling each Facebook workflow.
 - Every implementation decision records the checked version/date and evidence.
+
+## Change history
+- 2026-10-30: Distinguished historical source inventory from current compatibility/policy validation; no new dependency version approved.

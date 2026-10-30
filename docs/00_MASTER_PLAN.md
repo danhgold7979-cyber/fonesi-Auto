@@ -1,23 +1,23 @@
 # Master Plan — Fonesi-Auto
 
-**Revision:** 0.1-draft · **Date:** 2026-10-30  
-**Repository:** danhgold7979-cyber/fonesi-Auto  
-**Status:** Planning baseline; not approved for production coding.
+**Revision:** 0.3-review · **Date:** 2026-10-30
+**Repository:** danhgold7979-cyber/fonesi-Auto
+**Status:** Documentation normalization for review. Phase 0 feasibility is approved/in progress; production coding is not authorized.
 
 ## 1. Executive decision
 
 Build Fonesi-Auto as a new Windows desktop application for operating Android phones through ADB. Preserve the approved V9 interface as the product/UI reference. Design all application code, data contracts, runtime, tests and release process from a clean slate in this repository.
 
-Selected technology direction:
-- Windows desktop shell: Electron + TypeScript (recommended; confirm in Phase 0).
+Accepted product/technology directions are recorded in [C-01…C-22](16_ACCEPTED_PRODUCT_DECISIONS.md). They settle preferences, not implementation evidence. Exact versions, mechanisms and benchmarks still require Phase 0/phase-specific proof:
+- Windows desktop shell: Electron + strict TypeScript + React, preserving V9 layout/CSS (C-05).
 - Device transport/control: Android Debug Bridge (ADB).
 - Semantic Android UI inspection/action: UI Automator.
-- Visual fallback: OpenCV + OCR.
+- Visual fallback: OpenCV + PaddleOCR, CPU-first (C-06); exact models/thresholds remain empirical.
 - OCR/vision execution: isolated Python worker, initially CPU-first.
 - Screen-wall video: scrcpy as a supporting display/stream component, subject to version/license/resource spike; it does not own workflow input.
 - Host hardware/resource manager: realtime CPU/RAM/GPU/disk telemetry, Auto/Manual stream controls, user-adjustable FPS/resolution/bitrate/concurrency, and benchmark-based warnings.
-- Persistence: SQLite with migrations, WAL, backup and recovery.
-- Local secrets: Windows Credential Manager / DPAPI-backed secret storage.
+- Persistence: SQLite with migrations, WAL, backup and recovery (C-05); binding/migration tooling and schema require review/tests.
+- Windows-backed secret storage holds proxy secrets; SQLite stores references only (C-14). Key portability/recovery mechanism remains unproven.
 
 ## 1.1 Approved UI baseline
 
@@ -26,7 +26,7 @@ The complete approved V9 HTML/CSS/JavaScript source is stored in [`ui-reference/
 ## 2. Product outcome
 
 A user can:
-1. Connect and manage many Android phones over USB and approved ADB Wireless Debugging.
+1. Connect/manage Android phones over USB first; authenticated Wireless Debugging stays disabled until its dedicated acceptance (C-17).
 2. View connected phones in a resizable screen wall matching V9.
 3. Select one or multiple phones and perform safe device-level actions.
 4. Register multiple social accounts and targets per phone, with verified identity state.
@@ -35,6 +35,8 @@ A user can:
 7. Schedule jobs per phone/account/target/workflow with recurring intervals, conflict detection, queues and recovery.
 8. Monitor execution, logs, device/account health, inventory and metrics where data can be collected lawfully and reliably.
 9. Use APK/app inventory and proxy tools with per-device results and safe rollback.
+
+“Complete tool” means every release-critical requirement is implemented, tested and evidenced for the declared support matrix, with all conditional capabilities either certified READY or explicitly approved as disabled/deferred. A visible workflow, unsupported action or untested hardware profile is not completed functionality. Scope exclusions must be stated honestly; no substitute manual workflow is silently presented as unattended automation.
 
 ## 3. Product scope
 
@@ -49,6 +51,8 @@ A user can:
 - Reporting, audit trail, diagnostics and release tooling.
 
 ### Conditional scope
+The accepted first pilot is owned/administered Page photo/album/video/Reels; Story requires separate certification, Profile/Group/reactions/shares stay off, and other networks are explicitly unsupported (C-01/02). Relevant comments require permitted scope. The user handles initial authorization/login; routine certified work is unattended, while login expiry/security challenges stop and report (C-03). Initial proxy scope is device-level HTTP/HTTPS with real route proof/rollback; SOCKS5/per-app routing is deferred (C-09).
+
 Facebook-specific actions are capability-gated. ADB can technically send input to the Facebook app, but that alone does not establish permission under Meta terms or guarantee account safety. Each automated action requires platform-policy review, feasibility spike and explicit certification. Unsupported actions remain disabled; no manual fallback is silently substituted.
 
 ### Not in scope for the first release
@@ -63,7 +67,7 @@ Facebook-specific actions are capability-gated. ADB can technically send input t
 ## 4. Architecture summary
 
 ```text
-Windows Desktop (Electron + TypeScript)
+Windows Desktop (Electron + strict TypeScript + React)
   ├─ V9 Renderer / UI
   ├─ Application Services
   │   ├─ Device Fleet Manager
@@ -83,7 +87,7 @@ Windows Desktop (Electron + TypeScript)
   │   ├─ OpenCV preprocessing
   │   ├─ PaddleOCR candidate models
   │   └─ structured recognition results
-  └─ SQLite + Windows Secret Store
+  └─ SQLite + Windows-backed Secret Store (bindings/versions pending)
           |
           +---- Android Phone 01
           +---- Android Phone 02
@@ -103,9 +107,11 @@ Windows Desktop (Electron + TypeScript)
 
 ## 6. Master delivery stages
 
+Delivery is strictly sequential: **0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11**. The previous phase must be user-accepted and merged, then the next detailed plan approved. Technical independence does not permit parallel phases; an exception would require explicit user approval and governance/plan amendments. See [master task/dependency contracts](04_MASTER_IMPLEMENTATION_PLAN.md), [draft Phase plans](phases/) and [acceptance gates](05_ACCEPTANCE_AND_RISKS.md).
+
 | Stage | Deliverable | Exit condition |
 |---|---|---|
-| 0 | Product, policy and feasibility gates | Critical platform and device feasibility decisions documented |
+| 0 | Product, policy and feasibility gates | G0-01…19 evidenced through approved P0-01…10; mandatory physical smoke and explicit acceptance |
 | 1 | Clean repository foundation | Desktop shell, build, lint, test, packaging skeleton |
 | 2 | ADB fleet control | Stable USB/Wi-Fi discovery and serialized per-device control |
 | 3 | Screen wall | Multi-device live view, zoom, focus, input and resource management |
@@ -124,16 +130,27 @@ Windows Desktop (Electron + TypeScript)
 Yes. The V9 UI baseline, technology direction and broad product modules are sufficiently clear to create a detailed plan.
 
 ### Ready to start full application coding
-No. Phase 0 must close the blockers below first.
+No. Phase 0 currently has **4 IN_PROGRESS / 6 NOT_STARTED execution tasks**, and no exit gate is accepted. Partial physical ADB/UI observations do not establish a production pipeline. There is no production app or app CI. The [status board](PHASE_STATUS.md) is authoritative; this rewrite is not a new acceptance decision.
 
-### Blocking decisions
-- Confirm supported Windows versions and minimum host specification.
-- Confirm initial Android test-device models/Android versions and whether USB-only is acceptable for the first hardware gate.
-- Confirm whether Facebook automation is only for Pages/accounts owned or administered by the user.
-- Obtain a policy/legal determination for ADB-driven automation of Facebook app actions. Meta terms/policies may restrict automated access, collection and inauthentic engagement; ADB does not exempt the activity.
-- Decide what to do when a requested Facebook action is technically automatable but not permitted or not certifiable: safe behavior is DISABLED/UNAVAILABLE.
-- Approve an initial maximum number of simultaneously streamed phones for benchmark, while keeping the device registry unbounded.
+### Remaining evidence and phase-specific inputs
+- Validate the current Windows host first; establish actual supported Android/host profiles and at least two-physical-device isolation. Two AVDs are for repeatability, initially one running; they do not replace physical acceptance (C-07).
+- Obtain written per-action policy/permission outcomes and supply the actual authorized pilot Page/account/content/audience/volume/stop conditions. Owned/administered scope is accepted; policy permission is not inferred (C-02).
+- Prove selected Electron/React/SQLite, scrcpy and PaddleOCR versions/licenses/compatibility; choose UI Automator deployment, Unicode and proxy mechanisms through tests. Incompatibility requires a new decision, not a silent stack change.
+- Review schema/IPC/security and implement the accepted schedule, retention and backup rules; test numeric performance thresholds, Windows key recovery/portability and local-PC account lease boundaries.
+- Supply the backup folder, exact test profiles and eventual signing identity/release destination at their named gates. Do not request credentials in chat.
+
+No longer open product preferences: C-01…C-22, **DEC-019** (Manual protection OFF/opt-in) and **DEC-020** (30-minute warning-only). In particular, recurrence/DST/row overrides, ordered albums, cleanup, retention and backup cadence now have accepted rules in [the decision record](16_ACCEPTED_PRODUCT_DECISIONS.md). Their implementation/tests, Phase 0 exit, numbered amendment and later Phase authorization remain pending.
 
 ## 8. Approval protocol
 
-This document is a planning baseline, not permission to begin coding. Phase 0 decisions must be recorded in the decision log. Once blockers are resolved, produce a versioned implementation plan with task IDs, dependencies, acceptance tests and rollback notes. No implementation work is authorized by the existence of this plan alone.
+This is a current planning map, not permission to begin production coding. Preserve the approved Phase 0 baseline/history; amend scope or acceptance through the documented approval process. Record decisions/ADRs, attach gate evidence and obtain Phase 0 acceptance before requesting Phase 1 authorization. Draft Phase 1–11 plans are reviewable execution proposals, not approved work orders.
+
+Each task needs a stable ID, dependency/input contract, deliverable, expected failure behavior, acceptance/test/evidence and rollback impact. Each phase needs regression and an acceptance report linked to exact commits and hardware profiles. The [requirements traceability matrix](14_REQUIREMENTS_TRACEABILITY.md) links these to canonical requirements and retains legacy ID mappings. The [acceptance document](05_ACCEPTANCE_AND_RISKS.md) distinguishes plan reviewability, implementation readiness, capability readiness and release authorization. No production test, merge or release is implied by this plan.
+
+## 9. Change history
+
+| Date | Revision | Change |
+|---|---|---|
+| 2026-10-30 | 0.1-draft | Original clean-slate planning baseline, preserved in Git. |
+| 2026-10-30 | 0.2-draft | Aligned actual feasibility status, sequential delivery, conditional completion, pending stack choices, requirement traceability and accepted DEC-019/020; no production authorization or Phase acceptance claimed. |
+| 2026-10-30 | 0.3-review | Synchronized accepted C-01…C-22 product/stack directions; separated unresolved technical proofs/inputs from settled preferences. Physical/Phase acceptance unchanged. |

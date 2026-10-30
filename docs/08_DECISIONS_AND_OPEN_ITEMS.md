@@ -1,6 +1,6 @@
 # Decisions, Open Questions and 10-Round Review
 
-**Revision:** 0.1-draft · **Status:** Open decision register
+**Revision:** 0.2-review · **Updated:** 2026-10-30 · **Status:** Historical decisions plus current resolutions
 
 ## 1. Overall readiness
 
@@ -8,9 +8,11 @@
 - **Ready to start production implementation:** NO.
 - **Reason:** several blockers concern platform-policy permission, real Android UI Automator behavior, account identity/session handling, stream concurrency and automatic-only Facebook requirements.
 
-The product scope and V9 interface are sufficiently defined for planning. The technical stack is selected at the architectural level, but version pins and operational details require Phase 0 proof-of-concept.
+The product scope and V9 interface are sufficiently defined for planning. The desktop/database/OCR directions are selected under C-05/C-06; exact versions, models, bindings and operational details still require Phase 0 evidence and technical review.
 
-## 2. Decisions already recorded
+## 2. Historical decisions already recorded
+
+Current resolutions are in §8 and [accepted checklist C-01–C-22](16_ACCEPTED_PRODUCT_DECISIONS.md). Historical proposed states below do not reopen choices that the user subsequently accepted.
 
 | ID | Decision | State |
 |---|---|---|
@@ -33,7 +35,9 @@ The product scope and V9 interface are sufficiently defined for planning. The te
 | D-017 | Auto and Manual stream modes with per-device overrides | CONFIRMED PRODUCT REQUIREMENT |
 | D-018 | Emergency throttling of background preview streams | PROPOSED SAFETY DEFAULT; user may opt in/out |
 
-## 3. Blocking questions (must close before production code)
+## 3. Historical blocking questions and technical gates
+
+Use the current disposition in §8. A historical “Required decision” sentence is not a fresh request where C-01–C-22 already resolves the choice; unresolved empirical evidence still gates implementation.
 
 ### B-001 — Permission to automate Facebook through its app UI
 **Problem:** ADB can technically tap/type/scroll in Facebook, but this does not prove Meta permits automated access, collection or engagement. Meta publicly describes restrictions on automated data collection without permission and enforcement against spam/fake engagement.
@@ -152,7 +156,9 @@ The product scope and V9 interface are sufficiently defined for planning. The te
 
 **Recommendation:** Keep requested settings unchanged. If emergency-throttle is enabled, temporarily reduce/pause background preview streams, show a warning and log requested/effective values. Never interrupt ADB workflow commands. Restore after a stable recovery window if enabled.
 
-**Required decision:** Approve emergency throttling as an opt-in safeguard, enabled by default?
+**Historical question:** Approve emergency throttling as an opt-in safeguard, enabled by default?
+
+**Resolution (2026-10-30):** Superseded by accepted DEC-019 below. Manual emergency throttling defaults OFF and requires explicit opt-in. The contradictory historical question is retained for traceability.
 
 ### B-018 — Windows telemetry availability
 **Problem:** GPU utilization/memory, temperature and USB bandwidth are not exposed uniformly by every driver/adapter.
@@ -180,9 +186,97 @@ A round is not complete until its open items are resolved or explicitly marked d
 
 ## 5. Final readiness verdict
 
-**CLEAR TO PLAN:** YES.  
+**CLEAR TO PLAN:** YES.
 **CLEAR TO START PRODUCTION CODE:** NO.
 
 The plan may be refined and stored now. The first code implementation should begin only after B-001 through B-010 are either resolved or formally deferred with an agreed product consequence. B-011 through B-015 must be resolved before their dependent modules are implemented.
 
 If a requested automatic Facebook action cannot be shown to be permitted and reliable, the correct result is disabled/unavailable. The no-manual requirement does not justify bypassing platform safeguards.
+
+
+## 6. Plan normalization resolutions — 2026-10-30
+
+Authority: the user requested whole-plan normalization, then accepted the assistant's stated recommendations on 2026-10-30. Approval covers the two behavioral choices below and publishing documentation to a separate branch with a draft PR. It does not accept Phase 0 results, enable Facebook actions, approve a production implementation phase or authorize merging main.
+
+### DEC-019 — Manual emergency throttle default
+- Status: **ACCEPTED**, user decision 2026-10-30.
+- Manual mode preserves requested settings. Emergency throttling defaults **OFF**; only explicit user opt-in permits temporary preview reduction/pause under critical pressure.
+- Always display warnings and effective/requested values. Do not silently turn the toggle on, cancel an ADB job, or overwrite requested settings during recovery.
+- Unsupported input values may be rejected with a reason; this is not permission to silently change an existing profile. Hardware/OS failure can make a stream unavailable and must be reported as such.
+- Supersedes the default-on proposal in B-017. D-018 remains historical; its unresolved default is settled by this resolution.
+- Acceptance: Manual/OFF leaves requested preview policy unchanged under simulated pressure and reports warnings; Manual/ON applies only bounded preview protection, logs/restores according to explicitly configured policy, and leaves device input ownership intact.
+- Related: [stream policy ADR](decisions/ADR-0002-stream-resource-policy.md), G0-18, Phase 3.
+
+### DEC-020 — 30-minute spacing is advisory
+- Status: **ACCEPTED**, user decision 2026-10-30.
+- A gap below 30 minutes emits a visible warning; it does not by itself reject a schedule, shift a timestamp, or cancel a job.
+- Device serialization, account leases, platform capability limits and queue conflict handling remain mandatory and separate from this advisory rule.
+- DEC-020 originally resolved only the gap advisory. Later accepted C-10/C-11/C-18/C-19 select QUEUE, explicit AUTO_SHIFT, missed-run REVIEW and exact recurrence/DST/override rules; technical validation remains pending.
+- Acceptance: a 29-minute gap remains schedulable with warning; 30 minutes has no below-gap warning; jobs that collide on a device/account are still serialized.
+- Related: [scheduler ADR](decisions/ADR-0003-schedule-gap-policy.md), Phase 7.
+
+### DEC-021 — Documentation reconciliation scope
+- Status: **AUTHORIZED DOCUMENTATION WORK**, not product-code authorization.
+- Update living documents in place with Git history. Preserve the accepted Phase 0 execution baseline and add a numbered proposed amendment for changed execution/acceptance requirements.
+- Master feasibility gates use G0-*; approved execution tasks retain P0-*; traceability records aliases, consolidations and outstanding coverage. Do not count an ID migration as completed implementation.
+- Default execution remains one accepted/merged phase at a time. Preparing draft future-phase plans is allowed documentation work, not starting those implementation phases.
+- Publish the reviewed document changes on a separate documentation branch and open a draft PR. Main merge and production coding are outside this grant.
+
+## 7. Historical decision-closure checklist (superseded by §8)
+
+This table predates acceptance of C-01–C-22. Its requests to confirm product preferences are historical, not current blockers; use §8 for resolved choices and remaining evidence.
+
+| Item | What closes it | Owner / timing |
+|---|---|---|
+| B-001, B-003, B-004 | Per-action permission/capability matrix with sources, scope and explicit enable/disable decision; ownership alone is not platform permission | Product owner + competent policy reviewer; Phase 0 and again before Phase 9 |
+| B-002, B-005 | Confirm routine unattended execution versus legitimate provisioning/security-recovery boundaries | Product owner before account/runtime implementation |
+| B-006, B-007 | Sanitized physical fleet matrix and host/AVD/stream benchmark; one host sample is not universal capacity | Windows/device test operator during Phase 0 |
+| B-008, B-009, B-010, B-011 | Reproducible stream, hierarchy/instrumentation, OCR and Unicode evidence, pinned versions/licenses and failure tests | Engineering/test operator during Phase 0; dependent phases blocked until passed |
+| B-012 | Supported proxy types, routing mechanism, permission prompts, device egress and rollback proof | Product owner + device test operator before Phase 5 |
+| B-013 | Collision/overdue/DST policies and deterministic fixtures; DEC-020 resolves advisory gap only | Product owner + engineering before Phase 7 |
+| B-014 | Metric source/availability contract; no inferred zero or invented viral data | Product owner + policy reviewer before tracking |
+| B-015 | Retention, backup encryption/key recovery and deletion policy approved | Product owner before persistence/evidence implementation |
+| B-016 | Capability-derived ranges and measured resource profiles | Device/Windows test operator during Phase 0/3 |
+| B-017 | Default choice closed by DEC-019; thresholds/recovery profile still require benchmark approval | Product owner decision recorded; engineering evidence pending |
+| B-018 | Telemetry source/availability tests; UNKNOWN behavior retained | Windows test operator during Phase 0/3 |
+| Stack/schema/IPC choices | Approved ADRs and contract tests; recommendation is not acceptance | Product owner + engineering before relevant production phase |
+
+A decision record must include status, approver, date, affected task IDs, source evidence and consequences. Do not infer acceptance from this document being merged. Any proposed deferral must state affected features, disabled UI behavior, replacement coverage and a return gate; no blanket gate bypass.
+
+## Change history
+- 2026-10-30: Added accepted DEC-019/020 from the user's explicit confirmation; preserved historical proposals. Added documentation-only scope and evidence ownership. All other open decisions remain unapproved.
+
+
+## 8. Current resolutions after checklist acceptance
+
+The user accepted C-01–C-17 at 2026-10-30 15:22 UTC and C-18–C-22 at 15:30 UTC. See the exact bounded choices in [Accepted Product Decisions](16_ACCEPTED_PRODUCT_DECISIONS.md). These supersede contradictory historical proposals, not physical evidence or Phase acceptance.
+
+| Historical item | Current choice | Still required, without asking the same choice again |
+|---|---|---|
+| D-009 / B-002 / B-005 | C-03: initial legitimate provisioning/login and security recovery are operator prerequisites; routine certified jobs unattended | Identity/session/challenge tests and permissions for actual operations |
+| B-001 | C-02 limits permitted pilot scope; no automatic permission claim | Per-action policy/permission evidence and explicit pilot details |
+| D-008 / B-003 / B-004 | C-01/C-02: Facebook first, owned/admin Page media pilot; other targets/actions disabled as specified | Separate Story/profile/action certification before enabling anything outside initial pilot |
+| B-006 / B-007 | C-07: current host, two physical devices plus repeatable AVD tests; only measured support claims | Exact test profiles, host acceleration, hardware availability, measured envelopes |
+| D-012 / B-008 | C-06 selects video-only scrcpy direction | Version/codec/license/integration/Windows packaging evidence |
+| B-009 | C-06 approves comparing semantic deployment approaches | Dump vs instrumentation choice with real fixtures, deployment permissions and pinned version |
+| D-015 / B-010 | C-06 selects CPU-first OpenCV/PaddleOCR candidate direction | Labeled holdout accuracy/latency/confidence, model/runtime compatibility |
+| B-011 | C-08 exact Unicode round-trip required | Tested input method; approval for any helper installation/permissions |
+| D-013 / D-014 | C-05: Electron + strict TypeScript + React, SQLite and Windows-backed secret direction selected | Exact bindings/version pins, compatibility, migrations, security tests and ADR review |
+| B-012 | C-09: HTTP/HTTPS device proxy first; SOCKS5/per-app deferred | Working Android route/egress and rollback; no host-only false LIVE |
+| B-013 | C-10/C-11/C-18/C-19: QUEUE, explicit bounded AUTO_SHIFT, missed REVIEW, timezone/DST/count/override semantics | Deterministic clock/queue/occurrence tests and performance limits |
+| B-014 | C-15: unavailable metrics explicit; no invented growth/viral result | Permitted metric source, provenance/freshness and device tests |
+| B-015 | C-13/C-14/C-21/C-22: explicit retention classes, encrypted local backup cadence/copies, staged cleanup and restore quarantine | Backup folder, key/portability mechanism and validated restore/migration/privacy implementation |
+| B-016 / B-018 | C-15: dynamic capability/budget-derived ranges and UNKNOWN sensors | Measured limits, telemetry source/interval/overhead and hard envelope |
+| D-018 / B-017 | DEC-019: Manual emergency OFF, explicit opt-in | Measured thresholds/recovery settings, ownership-preserving overload tests |
+| Wireless first release | C-17: USB first; wireless gated | Authenticated pairing/reconnect and security tests before enablement |
+| Album/import shape | C-20: explicit ordered album assets, one post per target | Schema, staging/composer/read-back count/order test coverage |
+| Operation arbitration | C-04: safe pause/takeover, no input/APK/proxy interleaving | Whole-workflow ownership, draining/fencing/reconciliation and negative tests |
+
+No further product preference is left to code by guesswork within this checklist. Concrete test inputs and engineering parameters above remain named evidence gates, not automatically accepted values. If testing disproves the chosen direction, report the conflict and options before changing the product or declaring the gate passed.
+
+### Current authorization boundary
+
+Documentation normalization and a separate documentation branch/draft PR are approved. All application phases remain NOT_STARTED until their entry/acceptance/authorization rules are met. The proposed Phase 0 amendment remains proposed; the accepted checklist does not retroactively validate test results or change the approved Phase 0 execution record. No branch deletion or main merge is authorized here.
+
+### Change history addition
+- 2026-10-30: Recorded accepted C-01–C-22, mapped historical B/D questions to selected directions versus remaining empirical gates, and retained the original decision history.
