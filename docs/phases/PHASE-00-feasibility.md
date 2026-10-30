@@ -65,7 +65,7 @@ User-approved direction: Android Studio Emulator, start with two virtual devices
 
 | Task ID | Objective | Dependencies | Expected files/evidence | Acceptance | Status |
 |---|---|---|---|---|---|
-| P0-01 | Verify host Windows, virtualization, permissions and hardware | Hardware ZIP | Diagnostic script + host report | Actual values, sources and unavailable sensors recorded | NOT_STARTED |
+| P0-01 | Verify host Windows, virtualization, permissions and hardware | Hardware ZIP | `tools/phase-00/Collect-HostEnvironment.ps1` + host report | Actual values, sources and unavailable sensors recorded | BLOCKED — awaiting Windows execution |
 | P0-02 | Verify Android SDK and provision two AVDs | P0-01 | `tools/android-lab/*`, lab guide | Both AVDs reproducibly create/start/stop without changing host settings | NOT_STARTED |
 | P0-03 | Validate multi-AVD ADB isolation | P0-02 | ADB test script + evidence | Each command targets explicit serial; screenshot/reconnect pass | NOT_STARTED |
 | P0-04 | UI Automator feasibility | P0-02/03 | Spike report + fixtures | Select hierarchy/instrumentation approach with evidence | NOT_STARTED |
@@ -160,9 +160,11 @@ Phase 0 diagnostics / disposable feasibility scripts authorized: YES
 
 | Date | Task | Commit | Tests | Result |
 |---|---|---|---|---|
-| 2026-10-30 | User approved Phase 0 plan; physical-device smoke test mandatory before acceptance | TBD | Plan/entry-gate review | APPROVED |
+| 2026-10-30 | User approved Phase 0 plan; physical-device smoke test mandatory before acceptance | `6578b53` | Plan/entry-gate review | APPROVED |\n| 2026-10-30 | P0-01 host preflight collector authored | `41dc021` | Static source review only; Windows PowerShell execution not available in ChatGPT environment | BLOCKED pending user run |
 
 Approval recorded from user on 2026-10-30. Physical-device smoke test is mandatory before Phase 0 acceptance; Emulator-only evidence is insufficient.
+
+P0-01 script is authored at `tools/phase-00/Collect-HostEnvironment.ps1`. It is read-only and packages host prerequisites into a ZIP. It has not been executed on the target Windows host; do not treat P0-01 as PASS until the user runs it and the report is reviewed.
 
 ## 14. Phase acceptance report
 
