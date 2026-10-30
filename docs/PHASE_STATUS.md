@@ -16,7 +16,7 @@ This is the single status board for the implementation roadmap. Update it only w
 |---|---|---|
 | Clean-slate plan | READY_FOR_REVIEW | Stored on planning/clean-slate-master-plan |
 | Hardware resource / stream controls | SPECIFIED | User-adjustable Auto/Manual FPS, resolution, bitrate, concurrency and live warnings documented in docs/12_HARDWARE_RESOURCE_AND_STREAM_CONTROLS.md |
-| Full V9 HTML reference | VERIFIED | Exact text match to uploaded source; 1,249 lines |
+| Full V9 HTML reference | UPDATED | Complete original V9 plus approved Stream / Performance controls; 1,296 lines |
 | Git workflow rules | DRAFT_COMPLETE | Stored on planning branch; not yet merged to main |
 | Application source code | NOT_STARTED | No production app implementation authorized |
 | Phase 0 | NOT_STARTED | Must be authorized after plan review |
