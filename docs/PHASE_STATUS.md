@@ -223,3 +223,14 @@ VRAM andtemperature remain NOT_PROBED/UNKNOWN. Sanitized artifact digest and ret
 sample recorded in dated evidence. This is only the approved hosted-source slice:
 fullP0-06,target-host/load/driver/localization andPhase gates remain BLOCKED.
 Desktop G0-12 source/package20/21 navigationFAIL remains unchanged; no rerun.
+
+### P0-09 independent SQLite source checkpoint — 2026-10-30 19:52 UTC
+
+Bounded hosted-only engine experiment authorized in playbook19:43 before code;
+[proposal/approval](evidence/P0-09-sqlite-source-lab-PROPOSAL-2026-10-30.md) and
+[evidence](evidence/P0-09-sqlite-source-lab-2026-10-30.md). Existing pinned
+Node24.22.1/Electron45.1.0 built-in SQLite candidate only; no new binding, renderer
+or production schema. Independent review CLEAR,13/13 local schema regressions,
+node syntax/YAML/diff checks PASS; actual Windows/runtime/owned cleanup NOT_RUN.
+Full P0-09 dependencies remain unresolved. G0-12 navigation and ADR-0005 full
+containment proof remain FAIL/BLOCKED; Phase acceptance stays0/10.

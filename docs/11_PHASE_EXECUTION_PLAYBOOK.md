@@ -377,3 +377,20 @@ Không được nói "đã test" nếu chỉ đọc code. Không được nói "
 ## 15. Change history
 
 - 2026-10-30: Chuẩn hóa thứ tự Phase, distinction review/draft/acceptance, explicit same-Phase exception/clarification procedure, giữ đúng snapshot Phase 0, evidence/coverage/privacy và báo cáo start/elapsed/end. Không chấp nhận amendment hay Phase 0 thay người dùng.
+
+## Independent P0-09 SQLite source experiment exception — 2026-10-30 19:43 UTC
+
+Under DEC-022 and the coordinator's delegated plan review, the bounded
+[evidence proposal](evidence/P0-09-sqlite-source-lab-PROPOSAL-2026-10-30.md) is
+authorized before code. P0-09 original P0-01..08 dependencies remain unresolved;
+this permits only independent hosted engine-availability/transaction evidence using
+existing pinned Node24.22.1/Electron45.1.0 and reviewed trusted provisioning. No new
+binding/dependency, renderer, device, user data, production schema/migration, secret
+mechanism or phase acceptance. Explicit StatementSync.close API was verified in
+exact-tag documentation/native source before implementation; actual availability
+remains a fail-closed runtime gate. Owned synthetic DBs, typed failures, bounded
+reports/processes and verified cleanup follow the proposal. Existing collector and
+failed21-case desktop lab remain unchanged. ADR-0005 identity/ordering BLOCKED,
+G0-12 navigation FAIL, target-host and full P0-09 gates remain open. Provisional
+results may require rework after target testing. Independent review precedes
+publication; root coordinates publication.
