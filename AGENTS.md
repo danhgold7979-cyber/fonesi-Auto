@@ -47,7 +47,11 @@ Read:
 
 For UI work, inspect the complete V9 HTML before modifying renderer code.
 
-## 4. Phase and task authorization
+## 4. Documentation maintenance
+
+Follow docs/13_DOCUMENTATION_CHANGE_POLICY.md. Update canonical living documents in place, preserve accepted Phase plans and decisions, append superseding decisions instead of erasing history, and never delete historical plan/UI/evidence files without explicit approval.
+
+## 5. Phase and task authorization
 
 - Work on one Phase at a time; never start a later Phase before the current Phase is accepted and merged.
 - Before each Phase, re-read the Master Plan and all relevant product/architecture/acceptance documents.
@@ -62,7 +66,7 @@ For UI work, inspect the complete V9 HTML before modifying renderer code.
 
 The planning branch is documentation-only. Do not add application source code to it.
 
-## 5. Technology boundaries
+## 6. Technology boundaries
 
 - ADB is the Android transport and device-control plane.
 - One serialized Device Actor owns input commands for each device.
@@ -82,7 +86,7 @@ The planning branch is documentation-only. Do not add application source code to
 - Replace demo data and mock handlers with real typed services; do not redesign the visual system.
 - Every UI PR must include before/after screenshots at the same viewport size and a UI parity checklist.
 
-## 7. Coding rules
+## 8. Coding rules
 
 - TypeScript strict mode for desktop/domain code.
 - Typed IPC only; renderer must not spawn arbitrary processes or execute shell commands.
@@ -95,7 +99,7 @@ The planning branch is documentation-only. Do not add application source code to
 - Add tests with every feature or bug fix.
 - Keep changes scoped; avoid unrelated refactors.
 
-## 8. Git rules
+## 9. Git rules
 
 - Never commit directly to main.
 - Never force-push.
@@ -108,7 +112,7 @@ The planning branch is documentation-only. Do not add application source code to
 - Do not delete existing branches without inspecting them and obtaining approval.
 - Keep planning documents and application code in their appropriate branches.
 
-## 9. Required report before and after each task
+## 10. Required report before and after each task
 
 Before editing, report:
 - Verified repository and remote.
