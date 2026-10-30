@@ -15,6 +15,7 @@ Selected technology direction:
 - Visual fallback: OpenCV + OCR.
 - OCR/vision execution: isolated Python worker, initially CPU-first.
 - Screen-wall video: scrcpy as a supporting display/stream component, subject to version/license/resource spike; it does not own workflow input.
+- Host hardware/resource manager: realtime CPU/RAM/GPU/disk telemetry, Auto/Manual stream controls, user-adjustable FPS/resolution/bitrate/concurrency, and benchmark-based warnings.
 - Persistence: SQLite with migrations, WAL, backup and recovery.
 - Local secrets: Windows Credential Manager / DPAPI-backed secret storage.
 
@@ -71,6 +72,7 @@ Windows Desktop (Electron + TypeScript)
   │   ├─ Fixed Workflow Engine
   │   ├─ Scheduler & Queue
   │   ├─ Tracking & Reports
+  │   ├─ Host Resource Monitor / Resource Policy Engine
   │   └─ Audit / Recovery
   ├─ Device Host
   │   ├─ ADB Server/Client
