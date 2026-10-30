@@ -7,6 +7,10 @@
 4. Confirm the issue/task ID and acceptance criteria.
 5. Start from the current approved base branch. Do not use an old or unrelated branch.
 
+## Phase-by-phase execution
+
+Follow docs/11_PHASE_EXECUTION_PLAYBOOK.md. Only one Phase is active at a time. Re-read the Master Plan, create a detailed Phase Plan from the template and obtain user approval before production code. Implement one task at a time; do not proceed while the current task is failing or required tests remain unrun.
+
 ## Branching
 Follow docs/09_GIT_WORKFLOW.md.
 
