@@ -1,6 +1,6 @@
 # PHASE-00 — Product, Policy & Feasibility
 
-Status: DRAFT / PENDING_APPROVAL  
+Status: APPROVED / IN_PROGRESS  
 Branch: `phase/00-feasibility`  
 Base: `main` @ `e85d2c0c67a3aefa11dc390739243653d2b1bbf0`  
 Created: 2026-10-30  
@@ -151,16 +151,18 @@ User-approved direction: Android Studio Emulator, start with two virtual devices
 
 ## 12. Approval
 
-User decision: PENDING  
-Approved scope: PENDING  
-Production application coding authorized: NO  
-Phase 0 diagnostics / disposable feasibility scripts authorized after plan approval: YES
+User decision: APPROVED  
+Approved scope: Phase 0 feasibility, diagnostics, Emulator lab and required physical-device smoke test  
+Production application coding authorized: NO (Phase 0 is feasibility-only)  
+Phase 0 diagnostics / disposable feasibility scripts authorized: YES
 
 ## 13. Execution log
 
 | Date | Task | Commit | Tests | Result |
 |---|---|---|---|---|
-| 2026-10-30 | Draft Phase 0 plan | TBD | Document review | DRAFT / pending approval |
+| 2026-10-30 | User approved Phase 0 plan; physical-device smoke test mandatory before acceptance | TBD | Plan/entry-gate review | APPROVED |
+
+Approval recorded from user on 2026-10-30. Physical-device smoke test is mandatory before Phase 0 acceptance; Emulator-only evidence is insufficient.
 
 ## 14. Phase acceptance report
 
