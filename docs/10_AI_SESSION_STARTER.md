@@ -47,6 +47,20 @@ Read AGENTS.md and these documents before implementation:
 - docs/06_UI_V9_MAPPING.md
 - docs/08_DECISIONS_AND_OPEN_ITEMS.md
 - docs/09_GIT_WORKFLOW.md
+- docs/11_PHASE_EXECUTION_PLAYBOOK.md
+- docs/templates/PHASE_PLAN_TEMPLATE.md
+- docs/templates/TASK_TEMPLATE.md
+
+## Mandatory phase-by-phase workflow
+
+- Only one Phase is active at a time.
+- At the beginning of every Phase, re-read the full Master Plan and relevant specifications.
+- Prepare a detailed Phase Plan using docs/templates/PHASE_PLAN_TEMPLATE.md.
+- Do not write production code until the user approves that Phase Plan.
+- Implement one task at a time. For each task: test, code, test again, self-review, then commit and push when PASS.
+- If a task fails, fix and retest it before moving to the next task. If a required hardware test cannot run, mark BLOCKED, not PASS.
+- Use one Phase branch by default. Task branches are optional for parallel or high-risk work only.
+- Finish the entire Phase regression and acceptance report before opening a PR to main.
 
 ## Mandatory preflight
 
@@ -68,4 +82,4 @@ Task ID: [FILL IN]
 Issue/PR: [FILL IN]
 Acceptance criteria: [PASTE EXACT CRITERIA]
 
-Implement only this task. Do not expand scope. Do not claim completion without test output and acceptance evidence. Push only to the authorized branch and open a PR to the target branch specified in docs/09_GIT_WORKFLOW.md. Do not merge without user approval.
+Implement only this task. Do not expand scope. Follow docs/11_PHASE_EXECUTION_PLAYBOOK.md exactly. Do not claim completion without test output and acceptance evidence. Push only to the authorized branch and open a PR to the target branch specified in docs/09_GIT_WORKFLOW.md. Do not merge without user approval.
