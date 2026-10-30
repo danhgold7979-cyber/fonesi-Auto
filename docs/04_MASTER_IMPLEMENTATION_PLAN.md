@@ -40,7 +40,7 @@ Tasks:
 - P0-11 Benchmark OpenCV + PaddleOCR with Vietnamese/English screenshots and determine CPU performance.
 - P0-12 Confirm Electron + TypeScript, renderer framework and local database choice.
 - P0-13 Define backup, retention, privacy and secret-storage requirements.
-- P0-14 Create Architecture Decision Records (ADRs) for each decision.
+- P0-14 Create Architecture Decision Records (ADRs) for each decision.\n- P0-15 Benchmark host telemetry APIs for CPU/RAM/GPU/disk/network and define unsupported-counter behavior.\n- P0-16 Benchmark FPS, resolution and bitrate profiles at increasing device/stream counts.\n- P0-17 Define resource warning/critical thresholds, hysteresis, cooldown and safe degradation behavior.\n- P0-18 Define global/selected/per-device stream settings and override precedence.
 - P0-15 Define host hardware profiles (minimum / recommended / high-performance) from multiple Windows test machines; the first user PC is a benchmark sample, not a hard-coded product target.
 - P0-16 Prototype realtime Windows telemetry for CPU, RAM, GPU utilization/memory and disk; record which sensors are unavailable on specific adapters/drivers.
 - P0-17 Benchmark host/device stream combinations (FPS, resolution, bitrate, codec, active stream count) and derive per-host safe operating envelopes.
@@ -111,7 +111,7 @@ Tasks:
 - P3-07 Implement fit-to-panel, selected-only, all-devices and double-click focus.
 - P3-08 Route pointer/key input only through Device Host actor.
 - P3-09 Add stream backpressure, pause hidden devices and restart failed streams.
-- P3-10 Benchmark CPU, RAM, GPU, USB bandwidth and latency across increasing device counts.
+- P3-10 Benchmark CPU, RAM, GPU, USB bandwidth and latency across increasing device counts.\n- P3-11 Add user FPS slider and effective-FPS display.\n- P3-12 Add image quality/bitrate slider and resolution cap selector.\n- P3-13 Add global, selected-device and per-device stream profiles with override indicators.\n- P3-14 Add Auto/Manual mode and Eco/Balanced/Smooth/Custom presets.\n- P3-15 Add real-time Host Resource Monitor with CPU/RAM/GPU/disk/network and stream telemetry.\n- P3-16 Add warning/critical alerts with cause, recommendation and estimated impact.\n- P3-17 Add adaptive stream degradation and recovery with hysteresis; protect active workflows.
 - P3-11 Add HostResourceMonitor with timestamped CPU/RAM/GPU/disk metrics and sensor availability states.
 - P3-12 Add the Stream / Performance popover to the existing V9 right-side device monitor.
 - P3-13 Add user sliders/selectors for FPS, resolution/scale, bitrate/quality and maximum concurrent streams.
@@ -126,7 +126,7 @@ Exit criteria:
 - No stream process can send input.
 - Device input remains serialized.
 - Focus/zoom/scroll behavior matches V9.
-- Measured concurrency envelope and overload behavior are documented.
+- Measured concurrency envelope and overload behavior are documented.\n- FPS/quality/resolution controls work globally, for selected devices and per device.\n- Real-time resource telemetry displays freshness and unavailable states correctly.\n- Warning/critical alerts are validated under load and do not flicker.\n- Resource pressure degrades preview/vision work before disrupting active device workflows.
 - User-adjustable FPS, resolution, bitrate and stream-count controls work in Auto and Manual modes.
 - Live hardware telemetry and warnings are timestamped and reflect actual sensor availability.
 - Requested and effective stream settings are distinguishable.
