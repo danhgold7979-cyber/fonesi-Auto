@@ -1,12 +1,12 @@
 # PHASE-00 — Amendment 01: Gate Mapping, Evidence and Execution Clarification
 
-**Status:** PROPOSED / NOT ACCEPTED
+**Status:** EXECUTION AUTHORIZED for P0-01 hardening under the 2026-10-30 continuation grant; Phase acceptance pending
 **Created:** 2026-10-30
 **Baseline:** [Approved Phase 0 plan](PHASE-00-feasibility.md), execution snapshot `34b9649`
 **Review branch:** `plan`
 **Repository:** `danhgold7979-cyber/fonesi-Auto`
 
-> This is a proposal for review, not a new approval or evidence of a completed test. The original Phase 0 file is preserved byte-for-byte. No collector changes, device actions, new task starts, production implementation or Phase acceptance are authorized by this amendment's existence.
+> Originally proposed for review; the user subsequently authorized phase-by-phase implementation on 2026-10-30. The authorization record below permits P0-01 collector hardening and synthetic tests, not a passed test or completed Phase. The original Phase 0 file is preserved byte-for-byte. Actual account/device actions remain subject to their specific permission and evidence gates.
 
 ## 1. Original baseline and reason
 
@@ -106,23 +106,31 @@ Independent agents reviewing disjoint documentation in this authorized normaliza
 - **Proposed execution impact:** clearer coverage and additional collector robustness/privacy tests; possible extra feasibility work must be estimated and approved, not hidden in a documentation task.
 - **No product implementation:** no source/script/UI-reference change, install, device manipulation, benchmark, dependency pin, architecture acceptance or Phase advancement in this amendment.
 - **Unchanged safety:** ADB per-device input owner; Python vision never sends competing input; scrcpy candidate video-only; physical smoke remains mandatory; unsupported/policy-unclear actions remain disabled; no bypass.
-- **Separately accepted decisions:** DEC-019 and DEC-020 in the decision register have their own current user approval. They do not approve this amendment, the collector hardening or Phase 0 acceptance.
+- **Historical proposal boundary:** DEC-019/020 alone did not authorize collector work. The later implementation grant in §7 authorizes scoped P0-01 execution; no grant implies tests or Phase acceptance.
 - **If rejected:** retain this proposal with the rejection/revision decision; continue only the original approved baseline and explicit current task authorization. Do not delete historical evidence or amend past approvals.
 
-## 7. Approval record — pending
+## 7. Current execution authorization record
 
 | Field | Value |
 |---|---|
-| User decision on this amendment | **PENDING — NOT APPROVED** |
-| Approver / decision timestamp / source | Not recorded |
-| Proposed crosswalk/evidence requirements | Awaiting review |
-| Proposed collector hardening/test scope | Awaiting approval; no source edits authorized here |
-| Next active Phase 0 task / concurrency exception | Requires explicit clarification; no new decision recorded here |
+| User decision on this amendment | **Implementation continuation authorized**, applied first to scoped P0-01 hardening/tests; no test/Phase acceptance |
+| Approver / decision timestamp / source | Repository owner in project conversation, 2026-10-30 16:03 and 16:06 UTC, directs continued implementation phase by phase without repeated routine confirmations |
+| Crosswalk/evidence requirements | Adopted for execution tracking; required proof not waived |
+| Collector hardening/test scope | P0-01 authorized: source hardening plus synthetic tests and Windows CI checkpoints |
+| Next active Phase 0 task / concurrency exception | P0-01 only; source/test work may be coordinated within this task. Other Phase tasks do not advance on this record |
 | Phase 0 acceptance | **NOT ACCEPTED** |
-| Production application authorization | **NO** |
+| Production application authorization | User has requested the eventual full tool, but execution of later phases remains gated by preceding acceptance; **not started** |
 
 Acceptance of a documentation PR alone must not fill these approval fields automatically. Record the exact approved revision and any partial approval/rejection explicitly.
 
 ## 8. Change history
 
 - 2026-10-30: Created PROPOSED Amendment 01 for distinct G0/P0 mapping, evidence/coverage/privacy, collector hardening acceptance and clarification of historical concurrent task status. Original baseline preserved; no tests or Phase acceptance claimed.
+
+- 2026-10-30 16:03/16:06 UTC: Owner authorizes continued phase-by-phase implementation. P0-01 is the current task; preserve evidence and safety gates, do not mark HC-09/13 or Phase 0 accepted without actual target-host/physical proof.
+
+## 9. P0-01 implementation checkpoint
+
+Engineering test bounds for the collector only: default native probe deadline 10,000 ms, cleanup budget 2,000 ms and retained output cap 65,536 UTF-16 characters per stream. These are configurable bounded implementation settings to verify with deterministic fixtures, not product performance certification. Drain both output streams even after capture truncation; record truncation. A synthetic CI result on a hosted Windows runner is distinct from the user's exact target host.
+
+Planned checks: Windows PowerShell 5.1 parse/runtime fixtures and HC-01–08/10–12 coverage; HC-09 actual host elevation/acceleration and HC-13 exact target-host rerun remain NOT_RUN until independently evidenced. No execution-policy bypass, system setting change, real-account or device action belongs to synthetic CI.

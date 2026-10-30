@@ -1,0 +1,62 @@
+name: Phase 0 collector checks
+
+on:
+  push:
+    branches: ['phase/**', 'phase-*']
+    paths:
+      - 'tools/phase-00/**'
+      - 'tests/phase-00/**'
+      - '.github/workflows/phase-00-collector.yml'
+  pull_request:
+    paths:
+      - 'tools/phase-00/**'
+      - 'tests/phase-00/**'
+      - '.github/workflows/phase-00-collector.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-00-collector-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-powershell-51:
+    name: Synthetic collector checks / Windows PowerShell 5.1
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      # Official v4 refs resolved with git ls-remote on 2026-10-30.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify target shell
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSEdition -ne 'Desktop' -or
+              $PSVersionTable.PSVersion.Major -ne 5 -or
+              $PSVersionTable.PSVersion.Minor -ne 1) {
+            throw 'This job requires Windows PowerShell Desktop 5.1.'
+          }
+          $PSVersionTable | Format-List | Out-String | Write-Output
+      - name: Run synthetic checks
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tests/phase-00/Test-HostEnvironment.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'fonesi-auto-tests')
+          if (-not $?) { throw 'Collector test runner failed.' }
+      - name: Retain synthetic test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: phase-00-synthetic-${{ github.sha }}
+          path: ${{ runner.temp }}/fonesi-auto-tests
+          retention-days: 7
+          if-no-files-found: warn
+      - name: State evidence boundary
+        if: always()
+        shell: powershell
+        run: |
+          'Hosted Windows PowerShell 5.1 synthetic tests only. HC-09 actual host acceleration and HC-13 exact target-host rerun remain NOT_RUN. This is not Phase 0 acceptance.' >> $env:GITHUB_STEP_SUMMARY
