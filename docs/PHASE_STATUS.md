@@ -143,3 +143,12 @@ runtime PASS is claimed. Independent review closed at 18:07 UTC after containmen
 privacy and installer-cwd fixes; no remaining blocker for the bounded hosted lab. This is not a
 production stack ADR or Phase 1 start; Phase 0 acceptance remains 0/10, with all
 target-host/device/policy gates open. Frozen collector and V9 are unchanged.
+
+### G0-12 hosted attempt 1 — 2026-10-30 18:16 UTC
+
+Run 41104514276 FAILED in the supervisor after restore/strict compile/build and
+6/6 contract tests passed on hosted Windows. Generic sanitized failure does not
+prove installer or Electron runtime outcome; 21x2 assertions remain unverified.
+A narrow fixed-stage diagnostic retry is prepared, not a claimed root-cause fix.
+Existing collector/offline workflow 41104514182 succeeded independently. No
+security/containment weakening or target-host/Phase acceptance. See dated evidence.

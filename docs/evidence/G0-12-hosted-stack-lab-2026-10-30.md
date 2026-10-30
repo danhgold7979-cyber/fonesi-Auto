@@ -93,3 +93,33 @@ for the bounded hosted experiment. PS5.1 and Electron runtime were NOT_RUN by
 reviewer. Hosted Windows outcome: NOT_RUN pending publication. No commit/push or
 main merge performed by the implementing agent. Implementation checkpoint frozen
 at 18:08 UTC (16 minutes since recorded lab start); parent coordinates publication.
+
+## Hosted attempt 1 — FAIL, 2026-10-30 18:10 UTC
+
+Published candidate `a35aafef7de10a75c11e6abbd9f7413dbdc28bbe` ran
+[desktop lab 41104514276](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41104514276),
+job 124230345072, on Windows Server 2022 (10.0.20348), Node 24.22.1,
+npm 11.19.1. Locked restore/review, strict TypeScript, build and 6/6 pure contracts
+PASS. Supervisor step **FAIL** after approximately five seconds with
+`LAB_SUPERVISOR_FAILED`, empty runtime results, `cleanup:true`. The generic code
+does not establish which stage failed, installation success or any Electron
+runtime assertion. Do not infer source/package launch success or absence from it.
+The independent existing workflow
+[41104514182](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41104514182)
+passed its collector and Windows/Linux offline jobs; it is not desktop evidence.
+
+Narrow diagnostic retry prepared 18:16 UTC: retain only fixed supervisor stage,
+allowlisted exception class, numeric source line and installer status/exit/cleanup
+fields; no exception message/stack or captured process output. Mark cleanup
+unconfirmed before each native invocation so unexpected invocation exceptions
+cannot inherit a previous cleanup success. No runtime assertion, provenance rule,
+security flag or owned Job containment is weakened. Root cause remains UNRESOLVED
+pending the diagnostic hosted run; this change is not presented as a proven fix.
+Local dependency/strict compile/build and 6/6 contracts remain PASS; diff check PASS.
+Ignored dependency binaries/cache, build, staging and result paths verified with
+`git check-ignore`; no downloaded runtime or raw logs added to source.
+
+Independent diagnostic review closed at 18:19 UTC: fixed diagnostics/privacy and
+fail-closed cleanup approved for staged hosted retry; no definite root cause
+identified without Windows execution. Invocation source-line extraction is
+null-safe and StrictMode PropertyNotFoundException is explicitly allowlisted.

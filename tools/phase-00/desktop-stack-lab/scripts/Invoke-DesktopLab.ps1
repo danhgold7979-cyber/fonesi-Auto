@@ -10,25 +10,36 @@ $token = [guid]::NewGuid().ToString()
 $cleanupVerified = $true
 $oldRun = $env:FONESI_LAB_RUN; $oldToken = $env:FONESI_LAB_TOKEN
 $report = [pscustomobject][ordered]@{ scope='HOSTED_RUNNER_ONLY'; passed=$false; results=@(); cleanup=$false; failure='LAB_SUPERVISOR_FAILED' }
+$stage = 'PREPARE'
+$installerEvidence = $null
 try {
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'WINDOWS_REQUIRED' }
     New-Item -ItemType Directory -Force -Path (Join-Path $root '.lab-results') | Out-Null
     if (Test-Path -LiteralPath $reportPath) { Remove-Item -LiteralPath $reportPath -Force }
+    $stage = 'IMPORT_HELPER'
     Import-Module (Join-Path $PSScriptRoot '../../HostEnvironmentCollector.psm1') -Force
+    $stage = 'RESOLVE_NODE'
     $node = (Get-Command node.exe -CommandType Application -ErrorAction Stop).Source
+    $stage = 'INSTALL'
+    $cleanupVerified = $false
     $install = Invoke-CollectorProcess -FilePath $node -ArgumentList @((Join-Path $PSScriptRoot 'install-electron.cjs')) -TimeoutMilliseconds 120000 -CleanupMilliseconds 10000 -MaxOutputCharacters 4096
     $cleanupVerified = $install.cleanupComplete
+    $installerEvidence = [ordered]@{ status=$install.status; exitCode=$install.exitCode; cleanupComplete=$install.cleanupComplete }
     if (-not $cleanupVerified -or $install.exitCode -ne 0 -or $install.status -notin @('SUCCESS','EMPTY_OUTPUT')) {
         $report.failure = 'INSTALL_OR_CONTAINMENT_FAILED'; throw 'STOP'
     }
+    $stage = 'CREATE_OWNED_ROOT'
     $owned = Join-Path $root ('.lab-runs/run-' + [guid]::NewGuid().ToString())
     New-Item -ItemType Directory -Path $owned | Out-Null
     [IO.File]::WriteAllText((Join-Path $owned '.owner'), $token)
     $env:FONESI_LAB_RUN = $owned; $env:FONESI_LAB_TOKEN = $token
     # Native helper creates Node suspended, assigns kill-on-close non-breakaway Job,
     # resumes, and verifies zero active descendants on every exit/timeout path.
+    $stage = 'RUNTIME'
+    $cleanupVerified = $false
     $run = Invoke-CollectorProcess -FilePath $node -ArgumentList @((Join-Path $PSScriptRoot 'run-windows.cjs')) -TimeoutMilliseconds 90000 -CleanupMilliseconds 10000 -MaxOutputCharacters 4096
     $cleanupVerified = $run.cleanupComplete
+    $stage = 'READ_RUNTIME_REPORT'
     if (Test-Path -LiteralPath $reportPath) {
         $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
     }
@@ -38,8 +49,13 @@ try {
         $report | Add-Member -NotePropertyName failure -NotePropertyValue 'RUNTIME_OR_CONTAINMENT_FAILED' -Force
     }
 } catch {
-    # Never retain arbitrary exceptions, process output, or absolute runner paths.
+    # Only fixed stage, numeric source line and allowlisted type; never message/stack/output.
     $report.passed = $false
+    $kind = $_.Exception.GetType().Name
+    if ($kind -notin @('RuntimeException','PSInvalidOperationException','PropertyNotFoundException','ParameterBindingException','ParameterBindingValidationException','CommandNotFoundException','ItemNotFoundException','DirectoryNotFoundException','UnauthorizedAccessException','IOException','MethodInvocationException')) { $kind = 'UNEXPECTED_EXCEPTION' }
+    $sourceLine = 0
+    if ($null -ne $_.InvocationInfo) { $sourceLine = [int]$_.InvocationInfo.ScriptLineNumber }
+    $report | Add-Member -NotePropertyName diagnostic -NotePropertyValue ([ordered]@{ stage=$stage; kind=$kind; sourceLine=$sourceLine }) -Force
 } finally {
     $env:FONESI_LAB_RUN = $oldRun; $env:FONESI_LAB_TOKEN = $oldToken
     try {
@@ -54,6 +70,7 @@ try {
         $report.passed = $false
         $report | Add-Member -NotePropertyName failure -NotePropertyValue 'CLEANUP_FAILED' -Force
     }
+    $report | Add-Member -NotePropertyName installer -NotePropertyValue $installerEvidence -Force
     $json = $report | ConvertTo-Json -Depth 8
     try { [IO.File]::WriteAllText($reportPath, $json) } catch { Write-Output 'LAB_REPORT_WRITE_FAILED'; exit 1 }
     Write-Output $json
