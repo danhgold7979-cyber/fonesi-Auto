@@ -28,6 +28,14 @@
 - Ctrl+wheel zooms the whole device tile; normal wheel inside a phone scrolls phone content; outside scrolls the wall.
 - Phone tiles have slight rounded corners, compact spacing, index badge inside the screen and fit-to-panel.
 - Selection and active control target are distinct. Multi-select does not mean every action is broadcast; action scope must be explicit.
+- Add a Stream / Performance panel in the existing right-side device monitor; do not redesign the V9 shell.
+- Provide Auto and Manual modes. In Manual mode the user can adjust FPS, resolution/scale, bitrate/quality and maximum concurrent streams.
+- Support global defaults plus per-device overrides and batch changes for explicitly selected devices.
+- Show live CPU, RAM and supported GPU metrics with timestamps; show unsupported/stale sensors as UNKNOWN/Not available, never as zero.
+- Show requested, effective and recommended stream settings separately.
+- Display GREEN / AMBER / RED / UNKNOWN resource state with evidence-based thresholds, hysteresis and actionable recommendations.
+- In Auto mode, adapt background streams before focused streams. In Manual mode, respect requested settings except an explicitly enabled emergency stream-throttling safeguard.
+- Stream throttling must never cancel, race or corrupt ADB workflow execution.
 
 ### 2.3 Accounts and targets
 - Accounts are scoped by phone and platform.
