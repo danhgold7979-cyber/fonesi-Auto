@@ -30,6 +30,13 @@
 - Single/all/selected modes work.
 - Stream backpressure and overload behavior are measured.
 - Device record count is not hard-capped; active stream count is resource-bounded.
+- User can adjust FPS, resolution/scale, bitrate/quality and maximum concurrent streams.
+- Auto and Manual modes, global defaults and per-device overrides work.
+- Realtime CPU/RAM and supported GPU telemetry is timestamped; unavailable metrics show UNKNOWN.
+- Requested/effective/recommended settings are separately visible.
+- Warnings use benchmark-derived thresholds, hysteresis and actionable recommendations.
+- Emergency throttling is explicit, logged and restores requested settings only after stable recovery when enabled.
+- Stream overload cannot delay/corrupt ADB workflow input.
 
 ### G4 — UI recognition
 - Labeled screenshots and UI trees cover supported app versions/locales.
@@ -140,6 +147,11 @@ Do not claim support for an Android version or OEM until the corresponding test 
 | R-018 | Schedule DST/timezone ambiguity | Wrong execution time | IANA timezone and explicit DST tests |
 | R-019 | Desktop/ADB/worker crash | Lost or duplicate work | Persistent queue, leases, effect journal, recovery |
 | R-020 | User expects fully automatic unsupported flows | Scope conflict | Capability registry and explicit unavailable state |
+| R-021 | Stream settings exceed current PC capacity | Host overload / frozen preview | Live telemetry, benchmarked budgets, warnings and emergency background-stream throttle |
+| R-022 | GPU counters are missing or driver-specific | Incorrect performance status | Sensor availability states, Windows baseline counters and UNKNOWN fallback |
+| R-023 | Auto mode oscillates FPS/quality under fluctuating load | Poor viewing experience | Rolling averages, hysteresis, cooldown and gradual recovery |
+| R-024 | Manual override is silently changed | Loss of user control | Requested vs effective settings, explicit emergency-throttle opt-in and audit log |
+| R-025 | Resource monitor consumes too much CPU | Monitoring worsens overload | Lightweight sampling, profiling and bounded polling |
 
 ## 5. Definition of done for a workflow
 
