@@ -35,6 +35,27 @@ All architecture, schemas, adapters, workflow state machines, tests, and impleme
 - [Technology and policy references](docs/07_REFERENCES.md)
 - [Decisions, open questions and 10-round review](docs/08_DECISIONS_AND_OPEN_ITEMS.md)
 
+
+
+## Development governance
+
+- [AI agent instructions](AGENTS.md)
+- [Contribution and commit standards](CONTRIBUTING.md)
+- [GitHub branch / PR / commit workflow](docs/09_GIT_WORKFLOW.md)
+- [AI session starter / project introduction](docs/10_AI_SESSION_STARTER.md)
+- [Phase status tracker](docs/PHASE_STATUS.md)
+- [Pull request template](.github/PULL_REQUEST_TEMPLATE.md)
+
+## Branch policy
+
+- main is the stable, accepted milestone branch.
+- planning/clean-slate-master-plan contains the current plan and full V9 UI reference.
+- Do not code on the planning branch.
+- Do not use feat/facebook-fixed-workflows; it is a stale legacy branch containing only the old README and is not authorized for implementation.
+- After the plan is reviewed and approved, open a PR from planning/clean-slate-master-plan to main.
+- Only after that PR is merged should Phase 0 be created from main.
+- Never commit directly to main or force-push.
+
 ## Non-negotiable engineering principles
 
 1. ADB is the device transport/control plane; one serialized controller owns input for each device.
