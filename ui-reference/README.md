@@ -12,6 +12,14 @@ It preserves the original V9 document's full HTML structure, CSS, JavaScript, pa
 
 GitHub's source viewer does not execute local HTML/JavaScript. Download and open the file in a browser to inspect the actual interface.
 
+
+## Source integrity check
+- Full source was read from the original uploaded `Fonesi-Auto-V9-UI-Source.html`.
+- Repository copy contains 1,249 lines and 234,631 Unicode characters.
+- Text content was compared against the original upload and matched exactly.
+- The inline JavaScript passed `node --check`.
+- Git blob SHA: `135da3bf7bb3d89a54520952c28341cc68d54064`.
+
 ## Implementation rules
 - Treat this full HTML as the canonical V9 reference.
 - Do not replace it with a hand-written approximation, screenshot-only reference or reduced mockup.
