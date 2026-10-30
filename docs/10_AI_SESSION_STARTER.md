@@ -20,7 +20,7 @@ The desktop app must preserve that interface and replace only demo data/mock han
 - Semantic UI inspection/action: UI Automator.
 - Visual fallback: OpenCV + OCR.
 - Vision processing: isolated Python worker over IPC; it must never issue competing ADB input.
-- scrcpy is a candidate for video-only screen streaming and requires a feasibility/license/resource check.
+- scrcpy is a candidate for video-only screen streaming and requires a feasibility/license/resource check.\n- Stream FPS, quality/bitrate and resolution must be user-adjustable globally, for selected devices and per device.\n- A real-time Host Resource Monitor must read CPU/RAM/GPU/disk/network and stream/worker telemetry, warn on sustained pressure, and adapt preview streams without interrupting active workflows.
 - Local persistence: SQLite candidate.
 - Local secrets: Windows Credential Manager/DPAPI candidate.
 
