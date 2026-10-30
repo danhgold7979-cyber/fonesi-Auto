@@ -212,3 +212,14 @@ target-host/GPU/load and allPhase acceptance gates remain open.
 G0-12 attempt7 (41113076545) settles package identity: source20/21+package20/21,
 only navigationfalseboth, package_mode nowtrue, allownedcleanuptrue. No unchanged
 retry justified; architecture/navigation gate stays FAIL/BLOCKED, not accepted.
+
+### P0-06 hosted source evidence — 2026-10-30 19:24 UTC
+
+Exact0c3cc7d telemetryrun41114623415 SUCCESS:11/11 Python tests,7/7 PowerShell
+producer regressions, real six-group sampling, independent schema and all6 owned
+Job cleanup flags PASS. CPU/RAM/disk/anonymousNIC data available; GPU45validengine
+counterinstances proves only availability, not GPUcount/decode/VRAM. GPUdecode,
+VRAM andtemperature remain NOT_PROBED/UNKNOWN. Sanitized artifact digest and retained
+sample recorded in dated evidence. This is only the approved hosted-source slice:
+fullP0-06,target-host/load/driver/localization andPhase gates remain BLOCKED.
+Desktop G0-12 source/package20/21 navigationFAIL remains unchanged; no rerun.

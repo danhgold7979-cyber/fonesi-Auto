@@ -76,3 +76,62 @@ checks PASS; local telemetry11/11 and unchanged offline42/42 tests PASS at19:18U
 Checkpoint frozen19:20UTC,18minutes after recorded experiment authorization.
 All seven PowerShell producer regressions and real hosted probes remain NOT_RUN.
 Original collector/native implementation and previous workflows are unchanged.
+
+## Hosted execution — scoped experiment PASS, 2026-10-30 19:22 UTC
+
+Exact published source `0c3cc7d6ecd2eea5cd852dd5727aeca9b9bdd03c`,
+[telemetry run41114623415](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41114623415),
+job124265490837, completed SUCCESS on WindowsServer2022 build20348,
+PowerShell5.1.20348.5756 and preinstalled Python3.12.10. No runtime installation.
+
+- PowerShell syntax parse PASS.
+- Python schema/privacy tests11/11PASS (0.014s hosted).
+- PowerShell producer regressions7/7PASS, including frozen per-counter timestamps
+  under advancing batches, inconsistent per-counter times and null cooked values.
+- Six actual worker groups completed; all6 native Job cleanupComplete flags true.
+- Independent output schema and required CPU/RAM useful-data checks PASS.
+
+Artifact13004882555 contains only validated.json,1076compressed bytes, ZIP SHA256
+`d2b2bc769ce8209305115731366f3961e5fdf0eb541288592890caae85523aff`.
+Downloaded bytes matched that digest; archive membership and bounded raw JSON
+were checked, including duplicate-key rejection, then independently revalidated.
+The [sanitized retained sample](P0-06-hosted-telemetry-sample-2026-10-30.json)
+contains no raw counter paths, names, addresses or process/adapter identifiers.
+The GitHub artifact expires2026-11-06; this schema-reviewed sample preserves evidence.
+
+| Source | Actual observation | Scope limit |
+|---|---|---|
+| CPU total | AVAILABLE, two samples approximately0.1422%/0.1228% | Short runner observation, not an approved performance budget |
+| RAM available/total | AVAILABLE; about14.526GB available,17,174,360,064bytes total | Hosted runner only; capacity provider timestamp is correctly null |
+| Disk read/write | AVAILABLE; measured zeros plus nonzero rates | Zero is real valid data, not missing-data substitution |
+| Network receive/send | AVAILABLE, two anonymous interface values per sample, both zero | No physical-network aggregate, stable adapter identity or throughput claim |
+| GPU engine availability | AVAILABLE,45valid engine-counter instances per sample | Not45GPUs, aggregate utilization, video decode or VRAM evidence |
+| GPU decode/VRAM/temperature | NOT_PROBED | Remain UNKNOWN; not treated as zero or available |
+
+All retained counter-provider timestamps advanced inside their observed read
+windows; CIM total capacity uses read timestamps without fabricated provider time.
+Worker elapsed durations were approximately0.473–3.482seconds, including deliberate
+sample intervals; CPU time and working-set fields are own-worker observations only.
+No inference of full-system monitoring overhead, production cadence, stream capacity
+or target-host compatibility is made. The runner used its existing token without
+elevation; standard-user access on the target PC was not verified.
+
+**Outcome:** bounded source experiment PASS; full P0-06/G0-16 acceptance BLOCKED on
+target Windows, broader driver/localization coverage, unavailable metrics and real
+stream/vision-load evaluation. P0-01 HC-09/HC-13, G0-12 navigation, device and policy
+gates remain open; Phase acceptance0/10. Desktop navigation failure was not rerun.
+
+Independent artifact/evidence review closed19:26UTC: before Git newline
+normalization, on-disk downloaded payload and retained sample were byte-identical
+6,280bytes, SHA256
+`48878a2926ea65e8763b6d4dc3e4cf72ed8b6838dbbdea68579e507984d6ebe3`.
+Reviewer independently rejected duplicate keys before normalization, verified the
+derived required-data Boolean, reran the strict schema, checked all6 cleanup flags,
+8 available metrics, provider/read timestamps and fixed-field privacy. Local
+schema11/11PASS again. Reviewer did not separately download the ZIP or rerun
+PowerShell; the hosted execution evidence remains the single cited CI run.
+
+Git staged diff check then caught Windows CRLF line endings in the copied sample.
+The retained sample was normalized to LF only: 6043bytes, SHA256
+`53967de314fd19ddb063c801e9253b10bacf4d00a83ccce3aeb1e11102e775ea`. Parsed JSON equality with the downloaded payload and strict schema
+revalidation PASS; no values changed. Original artifact hash above remains valid.

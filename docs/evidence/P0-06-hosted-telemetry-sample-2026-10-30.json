@@ -1,0 +1,238 @@
+{
+  "scope": "HOSTED_RUNNER_ONLY",
+  "schemaVersion": 1,
+  "complete": true,
+  "supervisorFailure": null,
+  "groups": [
+    {
+      "group": "cpu",
+      "readStartUtc": "2026-10-30T19:22:05.6961055Z",
+      "readEndUtc": "2026-10-30T19:22:09.1841323Z",
+      "durationMs": 3481.9326,
+      "workerCpuMs": 375,
+      "workerWorkingSetBytes": 102739968,
+      "metrics": [
+        {
+          "sourceId": "cpu.total",
+          "unit": "percent",
+          "status": "AVAILABLE",
+          "reason": "OK",
+          "samples": [
+            {
+              "providerSampleUtc": "2026-10-30T19:22:08.0260000Z",
+              "values": [
+                0.14219751074470155
+              ]
+            },
+            {
+              "providerSampleUtc": "2026-10-30T19:22:09.0270000Z",
+              "values": [
+                0.12282894496348229
+              ]
+            }
+          ]
+        }
+      ],
+      "cleanupComplete": true
+    },
+    {
+      "group": "ram",
+      "readStartUtc": "2026-10-30T19:22:10.4512571Z",
+      "readEndUtc": "2026-10-30T19:22:13.8603787Z",
+      "durationMs": 3400.8610000000003,
+      "workerCpuMs": 359.375,
+      "workerWorkingSetBytes": 102772736,
+      "metrics": [
+        {
+          "sourceId": "ram.available",
+          "unit": "bytes",
+          "status": "AVAILABLE",
+          "reason": "OK",
+          "samples": [
+            {
+              "providerSampleUtc": "2026-10-30T19:22:12.7030000Z",
+              "values": [
+                14525960192
+              ]
+            },
+            {
+              "providerSampleUtc": "2026-10-30T19:22:13.7190000Z",
+              "values": [
+                14525587456
+              ]
+            }
+          ]
+        }
+      ],
+      "cleanupComplete": true
+    },
+    {
+      "group": "capacity",
+      "readStartUtc": "2026-10-30T19:22:14.1416357Z",
+      "readEndUtc": "2026-10-30T19:22:14.6249902Z",
+      "durationMs": 472.87050000000005,
+      "workerCpuMs": 187.5,
+      "workerWorkingSetBytes": 102895616,
+      "metrics": [
+        {
+          "sourceId": "ram.total",
+          "unit": "bytes",
+          "status": "AVAILABLE",
+          "reason": "OK",
+          "samples": [
+            {
+              "providerSampleUtc": null,
+              "values": [
+                17174360064
+              ]
+            }
+          ]
+        }
+      ],
+      "cleanupComplete": true
+    },
+    {
+      "group": "disk",
+      "readStartUtc": "2026-10-30T19:22:14.9063164Z",
+      "readEndUtc": "2026-10-30T19:22:18.3217548Z",
+      "durationMs": 3408.1641,
+      "workerCpuMs": 406.25,
+      "workerWorkingSetBytes": 102789120,
+      "metrics": [
+        {
+          "sourceId": "disk.read",
+          "unit": "bytes_per_second",
+          "status": "AVAILABLE",
+          "reason": "OK",
+          "samples": [
+            {
+              "providerSampleUtc": "2026-10-30T19:22:17.1730000Z",
+              "values": [
+                0
+              ]
+            },
+            {
+              "providerSampleUtc": "2026-10-30T19:22:18.1800000Z",
+              "values": [
+                56959.070600879255
+              ]
+            }
+          ]
+        },
+        {
+          "sourceId": "disk.write",
+          "unit": "bytes_per_second",
+          "status": "AVAILABLE",
+          "reason": "OK",
+          "samples": [
+            {
+              "providerSampleUtc": "2026-10-30T19:22:17.1730000Z",
+              "values": [
+                0
+              ]
+            },
+            {
+              "providerSampleUtc": "2026-10-30T19:22:18.1800000Z",
+              "values": [
+                618412.7665238319
+              ]
+            }
+          ]
+        }
+      ],
+      "cleanupComplete": true
+    },
+    {
+      "group": "network",
+      "readStartUtc": "2026-10-30T19:22:18.6187523Z",
+      "readEndUtc": "2026-10-30T19:22:22.0163604Z",
+      "durationMs": 3405.4336000000003,
+      "workerCpuMs": 390.625,
+      "workerWorkingSetBytes": 102666240,
+      "metrics": [
+        {
+          "sourceId": "network.receive",
+          "unit": "bytes_per_second",
+          "status": "AVAILABLE",
+          "reason": "OK",
+          "samples": [
+            {
+              "providerSampleUtc": "2026-10-30T19:22:20.8720000Z",
+              "values": [
+                0,
+                0
+              ]
+            },
+            {
+              "providerSampleUtc": "2026-10-30T19:22:21.8750000Z",
+              "values": [
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "sourceId": "network.send",
+          "unit": "bytes_per_second",
+          "status": "AVAILABLE",
+          "reason": "OK",
+          "samples": [
+            {
+              "providerSampleUtc": "2026-10-30T19:22:20.8720000Z",
+              "values": [
+                0,
+                0
+              ]
+            },
+            {
+              "providerSampleUtc": "2026-10-30T19:22:21.8750000Z",
+              "values": [
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "cleanupComplete": true
+    },
+    {
+      "group": "gpu",
+      "readStartUtc": "2026-10-30T19:22:22.3134680Z",
+      "readEndUtc": "2026-10-30T19:22:25.7374702Z",
+      "durationMs": 3435.1497,
+      "workerCpuMs": 437.5,
+      "workerWorkingSetBytes": 136302592,
+      "metrics": [
+        {
+          "sourceId": "gpu.engineAvailability",
+          "unit": "count",
+          "status": "AVAILABLE",
+          "reason": "OK",
+          "samples": [
+            {
+              "providerSampleUtc": "2026-10-30T19:22:24.5807061Z",
+              "values": [
+                45
+              ]
+            },
+            {
+              "providerSampleUtc": "2026-10-30T19:22:25.5812354Z",
+              "values": [
+                45
+              ]
+            }
+          ]
+        }
+      ],
+      "cleanupComplete": true
+    }
+  ],
+  "notProbed": [
+    "gpu.decode",
+    "gpu.vram",
+    "temperature"
+  ],
+  "requiredCpuRamDataAvailable": true
+}
