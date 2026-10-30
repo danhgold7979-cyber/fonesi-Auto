@@ -1,25 +1,21 @@
-# Approved V9 UI reference
+# Approved V9 UI reference — complete source
 
-The file `Fonesi-Auto-V9-UI-Reference.html` is the repository's browser-openable visual reference for the approved V9 desktop layout.
+The file [Fonesi-Auto-V9-UI-Reference.html](Fonesi-Auto-V9-UI-Reference.html) is the **complete approved V9 HTML source**, not a simplified redraw or summary mock.
+
+It preserves the original V9 document's full HTML structure, CSS, JavaScript, page renderers, controls, event handlers, workflow tree, screen-wall behavior and interaction logic. This is the visual/behavioral baseline that future implementation must follow.
 
 ## Open it
-1. Open this HTML file on GitHub.
-2. Use **Download raw file**.
-3. Save it locally and open it with Chrome or Microsoft Edge.
+1. Open [Fonesi-Auto-V9-UI-Reference.html](Fonesi-Auto-V9-UI-Reference.html) in this repository.
+2. Select **Download raw file**.
+3. Save it locally.
+4. Open the downloaded HTML in Chrome or Microsoft Edge.
 
-GitHub's source viewer does not execute local HTML/JavaScript. Downloading and opening the file is expected.
+GitHub's source viewer does not execute local HTML/JavaScript. Download and open the file in a browser to inspect the actual interface.
 
-## What it captures
-- Left navigation and tab order: Tổng quan, Tài khoản, Theo dõi, Thiết lập & nội dung, Quản lý lịch đăng, Quy trình.
-- Main workspace layout and compact cards.
-- Right-side connected-device monitor.
-- Compact, close-packed phone screen tiles and in-screen index.
-- Dark/Light presentation.
-- Facebook workflow grouping into ĐĂNG and TƯƠNG TÁC.
-
-## Important
-- The values, account names, device list and counters in this reference are illustrative only.
-- This is a visual implementation reference, not the production application.
-- The full interaction behavior is specified in `docs/06_UI_V9_MAPPING.md`.
-- Do not redesign or reorder the approved V9 layout without explicit approval.
-- The HTML file is not copied from the fonesi-W source repository; it is a clean reference artifact authored for this repository.
+## Implementation rules
+- Treat this full HTML as the canonical V9 reference.
+- Do not replace it with a hand-written approximation, screenshot-only reference or reduced mockup.
+- Preserve DOM structure, CSS tokens, component dimensions, navigation order, page renderers and interaction handlers when implementing the production UI.
+- The production app may replace demo data and mock handlers with typed IPC/service calls, but must not change the visible behavior/layout without explicit approval.
+- Keep an explicit UI parity checklist and compare the production renderer against this file at the same viewport sizes.
+- This HTML is a UI artifact only. The new Fonesi-Auto application architecture, runtime, database and source code are designed independently.
