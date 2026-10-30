@@ -6,9 +6,9 @@ Current planning branch: planning/clean-slate-master-plan
 
 ## 1. Recommended model
 
-Use a phase integration branch plus short-lived task branches.
+Use one Phase integration branch as the default. Implement tasks sequentially on that branch and create a commit after each logical task passes its tests. Use short-lived task branches only when parallel development, independent review or risk isolation justifies the extra overhead.
 
-Do NOT create one branch for every commit or tiny edit. Do NOT create all Phase branches at the beginning. Create only the branch for the Phase currently authorized.
+Do NOT create one branch for every commit or tiny edit. Do NOT create all Phase branches at the beginning. Create only the branch for the Phase currently authorized. Only one Phase may be active at a time.
 
 ### Branch roles
 
@@ -41,16 +41,17 @@ The examples are naming examples, not branches to create now.
 4. Keep only one active Phase integration branch at a time for this project.
 
 ### Step C — Implement a task
-1. For a substantial task, create a short-lived branch from the active Phase branch.
-2. Name it feat/pNN-TT-short-name, fix/pNN-TT-short-name, test/pNN-TT-short-name or docs/pNN-TT-short-name.
-3. Make a focused change for one task ID.
-4. Run the relevant tests and inspect the diff.
-5. Commit with a specific Conventional Commit message.
-6. Push the task branch and open a PR into the active Phase branch.
-7. Merge only after review and required checks pass.
-8. Delete the merged task branch after verifying the merge.
+1. Read the approved Phase Plan and select the next task ID.
+2. Implement that task on the active Phase branch by default.
+3. Run the task tests, review the diff and verify acceptance criteria.
+4. Only when the task is PASS, commit with a specific Conventional Commit message and push the Phase branch.
+5. Do not start the next task while the current task is FAIL or has unrun required tests.
+6. If the task is large, independent, parallel or high-risk, create a short-lived task branch named feat/pNN-TT-short-name, fix/pNN-TT-short-name, test/pNN-TT-short-name or docs/pNN-TT-short-name.
+7. A task branch PR targets the active Phase branch, never main.
+8. Merge the task branch into the Phase branch only after review and required checks pass.
+9. Delete a merged task branch after verifying the merge.
 
-For a very small documentation-only correction, a direct commit to the active Phase branch may be allowed if the user explicitly authorizes it. Never do this on main.
+For a sequential solo AI/developer workflow, do not create task branches by default; the Phase branch plus logical commits is simpler and easier to continue across sessions.
 
 ### Step D — Close a Phase
 1. Run the complete Phase test suite.
@@ -64,16 +65,15 @@ For a very small documentation-only correction, a direct commit to the active Ph
 
 ## 3. Should every Phase have its own branch?
 
-Recommended answer: YES for a substantial Phase, but NOT one branch per tiny task or commit.
+Recommended answer: YES, each Phase has one integration branch. For a single AI/developer working sequentially, code tasks directly on that Phase branch and commit after each task passes. Task branches are optional, not mandatory.
 
 Why:
-- The Phase branch isolates unfinished work from the stable main branch.
-- Task branches keep individual changes small and reviewable.
+- The Phase branch isolates unfinished work from stable main.
+- Task-by-task commits create clear checkpoints and simplify rollback.
+- Avoiding unnecessary nested branches reduces merge conflicts and context switching.
 - The Phase PR provides one clear acceptance point.
 - After Phase merge, main represents a working milestone.
 - The next Phase starts from a known stable base.
-
-If a Phase is very small (one or two independent commits), it may be implemented on a single Phase branch without nested task branches.
 
 ## 4. Branch naming rules
 
