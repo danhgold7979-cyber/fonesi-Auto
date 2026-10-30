@@ -248,7 +248,7 @@ Không làm Phase tiếp theo trên branch cũ sau khi Phase trước đã merge
 - Mọi quyết định kiến trúc mới ghi ADR/decision log, tránh quyết định nằm rải rác trong chat.
 - Mỗi phiên AI chỉ nhận một Task ID rõ ràng; kết thúc phiên phải cập nhật trạng thái, commit SHA và việc tiếp theo.
 
-## 12. Báo cáo bắt buộc mỗi phiên
+## 12. Quy tắc riêng cho Resource & Stream tuning\n\n- Phân biệt target FPS/quality/resolution với effective FPS/quality/resolution thực tế.\n- Không hard-code số stream tối đa cho mọi PC; benchmark theo cấu hình và driver.\n- Telemetry phải có nguồn, timestamp, đơn vị và trạng thái availability.\n- Không suy luận GPU=0 khi Windows/driver không cung cấp bộ đếm.\n- Kiểm tra CPU, RAM, GPU decode/encode, USB/network và queue depth cùng lúc; không chỉ nhìn CPU.\n- Dùng rolling window, hysteresis và cooldown cho cảnh báo.\n- Khi quá tải, giảm/pause preview trước; không dừng ADB actor hoặc workflow đang chạy chỉ để giữ FPS.\n- Test Auto/Manual, global/selected/per-device overrides, overload và recovery.\n\n## 13. Báo cáo bắt buộc mỗi phiên
 
 ### Trước khi làm
 - Repository + remote.
