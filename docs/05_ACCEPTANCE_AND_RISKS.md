@@ -38,7 +38,7 @@
 - Emergency throttling is explicit, logged and restores requested settings only after stable recovery when enabled.
 - Stream overload cannot delay/corrupt ADB workflow input.
 
-### G4 — UI recognition
+### G3A — Host resources and stream controls\n- CPU/RAM/GPU/disk/network telemetry updates with timestamp and source.\n- Unsupported telemetry is UNAVAILABLE, never shown as 0%.\n- FPS, resolution and quality controls work at global, selected and per-device scopes.\n- Effective FPS and effective resolution are distinguished from user targets.\n- Warning/critical thresholds use sustained windows and hysteresis.\n- Alerts state the cause and recommended action.\n- Under pressure, preview streams degrade before active workflows; no ADB command is silently dropped.\n- Manual mode cannot exceed hard safety guards.\n- Recovery restores quality gradually without oscillation.\n\n## G4 — UI recognition
 - Labeled screenshots and UI trees cover supported app versions/locales.
 - UI Automator selector success rate meets agreed target.
 - OCR precision/recall and latency meet benchmark.
@@ -146,7 +146,7 @@ Do not claim support for an Android version or OEM until the corresponding test 
 | R-017 | Media basename collisions | Wrong content mapped | Relative path + hash mapping |
 | R-018 | Schedule DST/timezone ambiguity | Wrong execution time | IANA timezone and explicit DST tests |
 | R-019 | Desktop/ADB/worker crash | Lost or duplicate work | Persistent queue, leases, effect journal, recovery |
-| R-020 | User expects fully automatic unsupported flows | Scope conflict | Capability registry and explicit unavailable state |
+| R-020 | User expects fully automatic unsupported flows | Scope conflict | Capability registry and explicit unavailable state |\n| R-021 | Too many high-FPS streams overload host | UI freezes / workflow latency | Real-time telemetry, resource budgets and adaptive preview degradation |\n| R-022 | GPU telemetry differs by vendor/driver | Incorrect alerts | Windows telemetry adapter with source/availability/confidence and vendor test matrix |\n| R-023 | Manual stream settings exceed host capacity | System instability | Hard resource guards, warnings and visible safe degradation |
 | R-021 | Stream settings exceed current PC capacity | Host overload / frozen preview | Live telemetry, benchmarked budgets, warnings and emergency background-stream throttle |
 | R-022 | GPU counters are missing or driver-specific | Incorrect performance status | Sensor availability states, Windows baseline counters and UNKNOWN fallback |
 | R-023 | Auto mode oscillates FPS/quality under fluctuating load | Poor viewing experience | Rolling averages, hysteresis, cooldown and gradual recovery |
