@@ -173,6 +173,17 @@ After the P0-04 offline increment was reviewed/published (not full task acceptan
 - Tests: synthetic positive/negative artifact cases plus P0-04 regression, syntax and diff checks. A passing linter only establishes artifact consistency, never platform permission or technical feasibility.
 - Stop at reviewed matrix/checkpoint or missing source/scope/authorization evidence. Preserve inaccessible terms as UNAVAILABLE and per-action permission as NEEDS_REVIEW; Page ownership and a successful UI test cannot settle it. Rollback only this increment; publication coordinated separately, no main merge.
 
+### G0-12 disposable hosted-stack experiment — 2026-10-30 17:52 UTC
+
+Under the owner's continued-independent-work grant (DEC-022), the coordinating task scoped a provisional G0-12 experiment after P0-04/P0-08 publication. This is a narrow P0-09 input experiment, not starting or accepting the full P0-09 task, Phase 1, an architecture choice or target-host support. Original Phase 0 baseline remains unchanged.
+
+- Dependency independence: selected C-05 Electron/TypeScript/React direction + public package provenance → disposable host-runner build/launch/IPC/package evidence. No P0-01 result, device, account, policy authorization, SQLite binding or secret mechanism is consumed or presumed passed.
+- Exclusive files: `tools/phase-00/desktop-stack-lab/**`, a separate scoped hosted workflow, sanitized G0-12 evidence and canonical references/status. Keep collector and prior offline jobs untouched. Synthetic lab view is not V9 integration or redesign.
+- Candidate proposal: Electron 45.1.0, React/react-dom 19.3.0, TypeScript 7.0.2, esbuild 0.28.2, React type packages 19.3.0, Node types 24.19.2; lab-only, exact lock/integrity. Electron 45.2.0 appeared on release listing but registry returned 404, so no unavailable or guessed pin. Review trusted origin/licenses and lifecycle scripts before execution; install with scripts disabled first.
+- Checks: strict compilation; runtime local React render; main/preload/renderer health roundtrip; malformed/unknown requests rejected; no generic IPC/process API; Node globals/spawn unavailable in renderer; secure sandbox/context-isolation/web-security flags; navigation/window/permission denial; package into newly owned synthetic directory and launch on hosted Windows with bounded timeout/cleanup. Missing launch/results fail, never become a skipped PASS.
+- Outputs: source/dependency hashes, exact runner/runtime versions, fixed-case results. No raw host inventory, private captures or package artifacts published. Hosted Windows evidence only; current user's Windows/physical/virtualization tests stay NOT_RUN.
+- Rollback/rework: discard only lab-owned files/output. Production path/schema/stack acceptance is undecided; test failures or later actual-host evidence may require redesign. No sudo/security switches, `--no-sandbox`, ADB, device actions, auth, proxy, persistence or live posting. Stop on provenance/runtime blockers rather than weakening security. Publication coordinated separately; no commit/push until review.
+
 ### Không làm
 - Không tạo branch cho mỗi commit.
 - Không tạo sẵn tất cả Phase branches từ đầu.

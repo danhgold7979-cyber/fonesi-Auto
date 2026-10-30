@@ -130,3 +130,16 @@ CI coverage note: run 41097867227 covered only the existing Windows PowerShell
 collector job, not the offline Python suites. A new separate Linux/Windows
 Python matrix is authored and locally YAML-checked; hosted results remain
 NOT_RUN pending publication. Final local combined suite is 42/42 PASS after independent-review regression coverage.
+
+## G0-12 independent hosted-stack lab preparation — 2026-10-30 18:06 UTC
+
+The bounded playbook §6 experiment now has a disposable locked Electron/TS/React
+harness, 6/6 local pure contract tests, strict compile/build/dependency checks PASS
+and a scoped Windows workflow. [Evidence](evidence/G0-12-hosted-stack-lab-2026-10-30.md)
+records exact candidates, lifecycle/license review and an interrupted unintended
+lazy installer import. Actual source/package launch (21 runtime cases each),
+Windows supervisor and owned-tree cleanup are NOT_RUN pending hosted CI; no
+runtime PASS is claimed. Independent review closed at 18:07 UTC after containment,
+privacy and installer-cwd fixes; no remaining blocker for the bounded hosted lab. This is not a
+production stack ADR or Phase 1 start; Phase 0 acceptance remains 0/10, with all
+target-host/device/policy gates open. Frozen collector and V9 are unchanged.

@@ -1,0 +1,68 @@
+name: Phase 0 disposable desktop stack lab
+on:
+  push:
+    branches: ['phase/**', 'phase-*']
+    paths:
+      - 'tools/phase-00/desktop-stack-lab/**'
+      - 'tools/phase-00/HostEnvironmentCollector.psm1'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - '.github/workflows/phase-00-desktop-lab.yml'
+  pull_request:
+    paths:
+      - 'tools/phase-00/desktop-stack-lab/**'
+      - 'tools/phase-00/HostEnvironmentCollector.psm1'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - '.github/workflows/phase-00-desktop-lab.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phase-00-desktop-lab-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows-stack-lab:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tools/phase-00/desktop-stack-lab
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      # Official setup-node v7.1.0 release commit, verified 2026-10-30.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Record exact runner runtime
+        run: |
+          node --version
+          npm --version
+          [System.Environment]::OSVersion.Version.ToString()
+      - name: Restore locked registry dependencies without lifecycle execution
+        run: npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
+      - name: Verify dependency review and native bundler checksum
+        run: node scripts/verify-dependencies.cjs
+      - name: Strict TypeScript check
+        run: node node_modules/typescript/bin/tsc --project tsconfig.json
+      - name: Build isolated lab
+        run: node scripts/build.cjs
+      - name: Pure contract regressions
+        run: node --test scripts/contracts.test.cjs
+      - name: Install and launch within bounded owned Windows Jobs
+        shell: powershell
+        run: .\scripts\Invoke-DesktopLab.ps1
+      - name: Retain sanitized fixed-case lab evidence only
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: g0-12-hosted-lab-${{ github.sha }}
+          path: tools/phase-00/desktop-stack-lab/.lab-results/results.json
+          retention-days: 7
+          if-no-files-found: warn
+      - name: State runner-only evidence boundary
+        if: always()
+        run: |
+          'Disposable G0-12 hosted Windows stack experiment only. No application, installer, V9, target-host, device, policy or Phase acceptance. HC-09/HC-13 remain open.' >> $env:GITHUB_STEP_SUMMARY
