@@ -145,7 +145,48 @@ Each service has typed input/output contracts and unit tests. No UI component di
 - Vision requests are queued separately and may be parallelized subject to CPU/RAM budgets.
 - Device registry is unbounded by product policy; streams and workers are bounded by measured resources.
 
-## 6. Failure model
+## 6. Host Resource & Stream Manager
+
+### 6.1 Real-time telemetry
+Collect host metrics through a Windows-specific telemetry adapter:
+- CPU total and per-core utilization, process CPU and load trend.
+- Physical RAM total, available, committed and Fonesi-Auto process working set.
+- GPU engine utilization and dedicated/shared GPU memory when the driver exposes reliable counters.
+- Disk free space and I/O pressure for the app/data volume.
+- Network throughput and ADB transport status.
+- Number of connected devices, active streams, actual delivered FPS, stream queue/backpressure and Python worker queue depth.
+
+Each metric carries value, unit, sampled_at, source, availability and confidence. Poll at a configurable interval (initial target 1–2 seconds); use smoothing for display while retaining raw samples for alert decisions. Do not present unsupported GPU telemetry as 0%.
+
+### 6.2 User controls
+- FPS target: 5–60 FPS, but effective FPS may be lower when the device/host cannot sustain it.
+- Stream resolution cap: source/native, 1080p, 720p, 480p and lower adaptive profiles where supported.
+- Image quality/bitrate: user-facing quality slider mapped to encoder bitrate/quality parameters supported by the pinned stream implementation.
+- Per-device stream enable/pause.
+- Apply scope: all devices, selected devices, or one device.
+- Global defaults with per-device overrides.
+- Auto mode and Manual mode.
+- Presets: Eco, Balanced, Smooth, Custom. Preset values are recommendations derived from benchmark profiles, not fixed guarantees.
+
+### 6.3 Resource policy engine
+- Estimate stream cost from measured device resolution, FPS, bitrate, decoder load and recent host telemetry.
+- Start with conservative profiles; increase quality gradually only when headroom is stable.
+- Use configurable warning and critical thresholds, rolling windows, hysteresis and cooldown.
+- Show the cause of warnings (e.g. CPU sustained high, RAM headroom low, GPU decoder saturated, stream backlog, disk nearly full).
+- At warning level, recommend a specific lower setting and show estimated benefit when measurable.
+- At critical level, reduce non-focused preview FPS/quality/resolution, pause hidden previews and defer nonessential OCR. Preserve active ADB workflow execution and durable job state.
+- Never kill an active device actor or silently cancel a workflow to save stream resources.
+- If the user selects Manual mode, retain their settings while safe; if a hard resource guard is reached, block unsafe increases and explain the limit. Critical safety degradation may still reduce preview-only streams, with a visible event and audit record.
+- Avoid alert flapping by requiring sustained threshold crossing and recovery headroom before clearing alerts.
+
+### 6.4 Separation of control planes
+- Stream quality controls affect video preview only.
+- Device input commands remain owned by the serialized Device Actor.
+- Workflow execution is scheduled separately from stream decoding.
+- Vision worker concurrency has its own resource budget.
+- Lowering or pausing a screen preview must not change the phone's actual display resolution or workflow state unless a separate explicit device setting is requested.
+
+## 7. Failure model
 
 Every step returns one of:
 - SUCCESS_VERIFIED
