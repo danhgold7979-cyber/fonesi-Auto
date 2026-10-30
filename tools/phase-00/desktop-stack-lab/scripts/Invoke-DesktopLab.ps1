@@ -12,6 +12,7 @@ $oldRun = $env:FONESI_LAB_RUN; $oldToken = $env:FONESI_LAB_TOKEN
 $report = [pscustomobject][ordered]@{ scope='HOSTED_RUNNER_ONLY'; passed=$false; results=@(); cleanup=$false; failure='LAB_SUPERVISOR_FAILED' }
 $stage = 'PREPARE'
 $installerEvidence = $null
+$nodeCandidateCount = 0
 try {
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'WINDOWS_REQUIRED' }
     New-Item -ItemType Directory -Force -Path (Join-Path $root '.lab-results') | Out-Null
@@ -19,7 +20,12 @@ try {
     $stage = 'IMPORT_HELPER'
     Import-Module (Join-Path $PSScriptRoot '../../HostEnvironmentCollector.psm1') -Force
     $stage = 'RESOLVE_NODE'
-    $node = (Get-Command node.exe -CommandType Application -ErrorAction Stop).Source
+    $nodeCandidates = @(Get-Command node.exe -CommandType Application -ErrorAction Stop)
+    $nodeCandidateCount = $nodeCandidates.Count
+    if ($nodeCandidateCount -lt 1) { throw 'NODE_COMMAND_MISSING' }
+    # Select the execution-precedence application, not member-enumerated Source[].
+    [string]$node = $nodeCandidates[0].Source
+    if ([string]::IsNullOrWhiteSpace($node) -or -not [IO.Path]::IsPathRooted($node) -or [IO.Path]::GetExtension($node) -ine '.exe' -or -not [IO.File]::Exists($node)) { throw 'INVALID_NODE_EXECUTABLE' }
     $stage = 'INSTALL'
     $cleanupVerified = $false
     $install = Invoke-CollectorProcess -FilePath $node -ArgumentList @((Join-Path $PSScriptRoot 'install-electron.cjs')) -TimeoutMilliseconds 120000 -CleanupMilliseconds 10000 -MaxOutputCharacters 4096
@@ -52,7 +58,7 @@ try {
     # Only fixed stage, numeric source line and allowlisted type; never message/stack/output.
     $report.passed = $false
     $kind = $_.Exception.GetType().Name
-    if ($kind -notin @('RuntimeException','PSInvalidOperationException','PropertyNotFoundException','ParameterBindingException','ParameterBindingValidationException','CommandNotFoundException','ItemNotFoundException','DirectoryNotFoundException','UnauthorizedAccessException','IOException','MethodInvocationException')) { $kind = 'UNEXPECTED_EXCEPTION' }
+    if ($kind -notin @('RuntimeException','PSInvalidOperationException','PropertyNotFoundException','ParameterBindingException','ParameterBindingValidationException','ParameterBindingArgumentTransformationException','ArgumentTransformationMetadataException','ActionPreferenceStopException','SessionStateUnauthorizedAccessException','CommandNotFoundException','ItemNotFoundException','DirectoryNotFoundException','UnauthorizedAccessException','IOException','MethodInvocationException')) { $kind = 'UNEXPECTED_EXCEPTION' }
     $sourceLine = 0
     if ($null -ne $_.InvocationInfo) { $sourceLine = [int]$_.InvocationInfo.ScriptLineNumber }
     $report | Add-Member -NotePropertyName diagnostic -NotePropertyValue ([ordered]@{ stage=$stage; kind=$kind; sourceLine=$sourceLine }) -Force
@@ -70,6 +76,7 @@ try {
         $report.passed = $false
         $report | Add-Member -NotePropertyName failure -NotePropertyValue 'CLEANUP_FAILED' -Force
     }
+    $report | Add-Member -NotePropertyName nodeCandidateCount -NotePropertyValue $nodeCandidateCount -Force
     $report | Add-Member -NotePropertyName installer -NotePropertyValue $installerEvidence -Force
     $json = $report | ConvertTo-Json -Depth 8
     try { [IO.File]::WriteAllText($reportPath, $json) } catch { Write-Output 'LAB_REPORT_WRITE_FAILED'; exit 1 }

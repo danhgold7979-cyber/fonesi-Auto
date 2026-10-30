@@ -123,3 +123,33 @@ Independent diagnostic review closed at 18:19 UTC: fixed diagnostics/privacy and
 fail-closed cleanup approved for staged hosted retry; no definite root cause
 identified without Windows execution. Invocation source-line extraction is
 null-safe and StrictMode PropertyNotFoundException is explicitly allowlisted.
+
+## Hosted attempt 2 — FAIL, narrow binding candidate, 18:25 UTC
+
+Diagnostic commit `6449a3d4ebbab11d8792e04386568c08d04e4939`, desktop run
+[41106276360](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41106276360),
+job 124236827835, failed with stage INSTALL, unexpected exception class, source
+line 25 (the helper invocation), installer=null and cleanup=false. This proves no
+returned installer result; it does not identify the masked exception type. Existing
+collector/offline run 41106276557 succeeded independently.
+
+Independent review identified a matching **hypothesis**: if command resolution
+returns multiple application objects, `.Source` member enumeration produces an
+array and binding to the helper's scalar FilePath fails before its internal catch.
+The narrow candidate fix selects the first execution-precedence application,
+explicitly types its source as string, and validates a nonempty absolute .exe path.
+Only candidate count is recorded, never the executable path. Diagnostic allowlist
+now includes parameter-transformation and action-preference exception classes.
+[Microsoft's Get-Command documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/get-command?view=powershell-5.1)
+says exact-name resolution normally returns one command; therefore this remains a
+candidate, not an empirically proven root cause until the next hosted evidence.
+No security flag, deadline, checksum or runtime assertion is relaxed.
+
+Additional primary-source review resolves the documentation nuance: current
+[PowerShell GetCommandCommand source](https://github.com/PowerShell/PowerShell/blob/master/src/System.Management.Automation/engine/GetCommandCommand.cs#L1000-L1008)
+continues enumeration when CommandType is explicitly specified, even for exact
+names. Our invocation does specify it. Thus multi-result member enumeration is a
+source-supported integration defect; the next Windows candidate count will test
+whether it caused this particular run failure. The original failed invocation is
+retained as regression evidence; the next run must return installer/containment
+results and pass all unchanged source/package assertions, not merely bind a path.

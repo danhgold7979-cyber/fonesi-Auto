@@ -152,3 +152,9 @@ prove installer or Electron runtime outcome; 21x2 assertions remain unverified.
 A narrow fixed-stage diagnostic retry is prepared, not a claimed root-cause fix.
 Existing collector/offline workflow 41104514182 succeeded independently. No
 security/containment weakening or target-host/Phase acceptance. See dated evidence.
+
+G0-12 diagnostic attempt 2 (41106276360) FAILED at installer helper invocation,
+with no returned installer result and cleanup unconfirmed. A scalar executable
+resolution/binding candidate fix plus bounded candidate-count diagnostics is
+prepared; actual root cause remains a hypothesis until hosted re-test. Existing
+collector/offline run 41106276557 SUCCESS is independent, not desktop acceptance.
