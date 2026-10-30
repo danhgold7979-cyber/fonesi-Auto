@@ -30,7 +30,7 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | Phase 0 amendment 01 | P0-01 EXECUTION AUTHORIZED | [Amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md) records the later phased-implementation grant; tests and Phase acceptance are separate |
 | Phase 1–11 detailed plans | DRAFT / NOT APPROVED | Future review artifacts, not permission to begin tasks |
 | Production application code | NOT_STARTED / ENTRY GATED | Owner requested full phased implementation, but Phase 0 technical/physical gates remain unmet; current source is feasibility diagnostics only |
-| Phase 0 acceptance | NOT ACCEPTED | 4 tasks IN_PROGRESS, 6 NOT_STARTED; all 12 baseline exit criteria remain unchecked/unaccepted |
+| Phase 0 acceptance | NOT ACCEPTED | 0/10 tasks accepted; all 12 baseline exits unaccepted; independent slices concluded, remaining gates BLOCKED |
 
 ## 3. Historical Phase 0 snapshot before collector hardening
 
@@ -55,13 +55,13 @@ All 12 checkboxes in the approved baseline's §11 remain unaccepted. In particul
 
 ## 4. Phase execution tracker and draft-plan index
 
-**Current exception:** DEC-022 / playbook §6 permits independent fully specified work without accepting external gates; the dependency audit selected only the P0-04 offline spike. Production Phase 1 remains NOT_STARTED.
+**Current boundary:** DEC-022 / playbook §6 authorized the recorded independent feasibility slices, now concluded with reviewed evidence. [Final handoff](evidence/PHASE-00-independent-work-handoff-2026-10-30.md) separates their results from open gates. Further Auto production coding is BLOCKED at Phase 0; Phase 1 remains NOT_STARTED. No new experiment is authorized by this status update.
 
 **Sequential acceptance:** Phase N starts only after Phase N−1 is ACCEPTED and merged, its own entry gates are satisfied and its own detailed plan is approved. Additional technical dependencies do not authorize an early start. Drafting all plans is permitted documentation work, not simultaneous Phase execution.
 
 | Phase | Name | Execution status | Entry dependency | Plan / evidence |
 |---|---|---|---|---|
-| 0 | Product, policy and feasibility | IN_PROGRESS offline P0-04; acceptance BLOCKED | P0-01 source + synthetic Windows checks completed; HC-09/13 and physical gates outstanding | [Approved baseline](phases/PHASE-00-feasibility.md), [execution amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md), [current proof](evidence/P0-01-hardening-checkpoint-2026-10-30.md) |
+| 0 | Product, policy and feasibility | Independent slice concluded; further production coding/acceptance BLOCKED | P0-01 source + synthetic Windows checks completed; HC-09/13 and physical gates outstanding | [Approved baseline](phases/PHASE-00-feasibility.md), [execution amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md), [current proof](evidence/P0-01-hardening-checkpoint-2026-10-30.md) |
 | 1 | Desktop foundation | NOT_STARTED | Phase 0 ACCEPTED + merged; Phase 1 plan approved | [DRAFT](phases/PHASE-01-desktop-foundation.md) |
 | 2 | ADB and device fleet | NOT_STARTED | Phase 1 ACCEPTED + merged; Phase 2 plan approved | [DRAFT](phases/PHASE-02-adb-device-fleet.md) |
 | 3 | Screen wall and resources | NOT_STARTED | Phase 2 ACCEPTED + merged; Phase 3 plan approved; video/resource decisions resolved | [DRAFT](phases/PHASE-03-screen-wall-resources.md) |
@@ -77,6 +77,8 @@ All 12 checkboxes in the approved baseline's §11 remain unaccepted. In particul
 A blocked Phase may be narrowed/deferred only by an explicit user-approved change with downstream consequences; do not silently skip it because a later module is technically independent.
 
 ## 5. Current next action / execution boundary
+
+**21:49 UTC handoff:** See [verified results, remaining evidence and proposed-only security alternative](evidence/PHASE-00-independent-work-handoff-2026-10-30.md). Independent work is concluded, not Phase acceptance; no unchanged lab reruns or invented activity. Target-host/device/policy/security decisions remain the next dependencies.
 
 1. P0-01 code and 18 synthetic tests are implemented. Two post-fix Windows runs passed all 18 cases with 489 assertions and no measured handle growth.
 2. Obtain exact target-host HC-13 collector rerun and HC-09 read-only virtualization/acceleration evidence, with any required host permission. The delivered Windows diagnostic kit includes source hashes and instructions; it is not the application installer.
