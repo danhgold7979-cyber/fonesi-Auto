@@ -18,6 +18,10 @@ Selected technology direction:
 - Persistence: SQLite with migrations, WAL, backup and recovery.
 - Local secrets: Windows Credential Manager / DPAPI-backed secret storage.
 
+## 1.1 Approved UI baseline
+
+The approved V9 layout is stored in [`ui-reference/Fonesi-Auto-V9-UI-Reference.html`](../ui-reference/Fonesi-Auto-V9-UI-Reference.html). The implementation must preserve its navigation order, compact layout, right-side device monitor, device-tile behavior, Dark/Light mode and fixed workflow tree. See [`docs/06_UI_V9_MAPPING.md`](06_UI_V9_MAPPING.md) for page-by-page mapping. Do not redesign the UI without explicit approval.
+
 ## 2. Product outcome
 
 A user can:
