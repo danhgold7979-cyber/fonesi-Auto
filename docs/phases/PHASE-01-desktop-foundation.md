@@ -1,10 +1,10 @@
 # PHASE-01 — Repository and desktop foundation
 
-**Revision:** 1.2-draft · **Current summary:** 2026-10-31 14:46 UTC
+**Revision:** 1.2-draft · **Current summary:** 2026-10-31 15:45 UTC
 **Full-plan acceptance:** NOT_ACCEPTED · **Execution:** explicitly scoped entries active
 **Current branch:** `phase-01`; no main merge or original Phase 0 acceptance
 **Development entry:** adopted software-first amendment permits scoped development; original formal Phase0 gate remains pending
-**Current verified scope:** P1-01/P1-02/P1-03/P1-04/P1-05/P1-07/P1-08/P1-11 task-specific TECHNICAL_PASS;
+**Current verified scope:** P1-01/P1-02/P1-03/P1-04/P1-05/P1-07/P1-08/P1-09/P1-11 task-specific TECHNICAL_PASS;
 formal Phase 0/predecessor acceptance pending. P1-05 versioned SQLite, encrypted
 backup/restore, native failure matrix and instrumented real first/repeat launcher
 passed exact-head Windows verification; see the
@@ -19,6 +19,9 @@ records all32 reviewed images and the explicit inherited-contrast/data limitatio
 > superseded only by recorded narrow entries, including ADR-0006's real public-read
 > renderer/preload bridge and named Windows evidence. Current code/results are in
 > [status](../PHASE_STATUS.md); this summary is not a full Phase acceptance waiver.
+
+P1-09 explicit demo boundary is TECHNICAL_PASS; [canonical audit](../evidence/P1-09-canonical-criterion-audit-2026-10-31.md).
+Current software implementation remains IN_PROGRESS; P1-06 UNMET and P1-10 launcher/packaging obligations remain.
 
 ## 1. Outcome, scope and sources
 

@@ -256,7 +256,7 @@ private paths and arbitrary partial PNGs are never publication inputs. The owned
 for current test counts and native/visual limitations. Coordinator14:46 accepted the corrected
 all32-image bounded UI scope; this does not accept live services, P1-06 cross-user or full Phase1.
 
-## P1-09 separate demo boundary (prepared; native NOT_RUN)
+## P1-09 separate demo boundary (bounded TECHNICAL_PASS)
 
 `Invoke-Demo.ps1` in this verification directory is distinct from the interactive
 `../launch/Invoke-Demo.ps1`. The verification entry uses exact-hash derived demo copies
@@ -270,5 +270,7 @@ separate `DEMO_SCREENSHOTS_BOUND` marker permits only the five declared1440×900
 Each image is bounded4MiB/total20MiB. No private profile/capture/DB is uploaded. Both
 `.demo-runtime` and `.demo-verification` are ignored. See the
 [contract](../../docs/phases/PHASE-01-P1-09-DEMO-BOUNDARY-CONTRACT.md) and
-[evidence](../../docs/evidence/P1-09-demo-boundary-source-2026-10-31.md); prepared source
-and component fixtures are not native acceptance.
+[evidence](../../docs/evidence/P1-09-demo-boundary-source-2026-10-31.md). Exact run41215952371
+passed all four jobs; source/copy18 each, production7, three denials and isolation/cleanup
+passed. Five strict-bound images reviewed; [canonical audit](../../docs/evidence/P1-09-canonical-criterion-audit-2026-10-31.md)
+retains derived-main/not-launcher-E2E and unpacked-not-installed limitations.

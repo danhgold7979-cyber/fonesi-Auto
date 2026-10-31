@@ -5,8 +5,9 @@
 Coordinator approved [the bounded contract](../phases/PHASE-01-P1-09-DEMO-BOUNDARY-CONTRACT.md)
 at2026-10-31 14:52 UTC after independent design CLEAR, pre-entry SHA256
 `a738ddbe63e7fafb38bd4704962eda6fb3cad45533eb755c335f66020fb7affc`.
-**IN_PROGRESS; hosted demo/native tests NOT_RUN; no P1-09 technical acceptance.**
-Technical8/11=72.7%,8/154=5.2%,formal0 remain. P1-06 cross-user UNMET is not retried.
+**Coordinator15:45 UTC: bounded TECHNICAL_PASS / DEPENDENCIES_PENDING.**
+Technical9/11=81.8%,9/154=5.8%,formal0. Current [canonical audit](P1-09-canonical-criterion-audit-2026-10-31.md)
+and [fixed sample](P1-09-native-sample-2026-10-31.json) supersede historical NOT_RUN checkpoints below. P1-06 cross-user UNMET is not retried.
 
 ## Implemented boundary and focused evidence
 
@@ -176,3 +177,16 @@ retained provenance checks and unchanged main refusal; focused6/6 PASS.
 Independent two-file source correction CLEAR and6/6 focused PASS; author full desktop
 497/497 + DESKTOP_SOURCE_CHECK_PASS at15:39 UTC. Corrected copied-runtime native outcome
 remains NOT_RUN; overall P1-09 remains IN_PROGRESS and counts unchanged.
+
+
+## Final exact-head native disposition — 15:45 UTC
+
+Public `a8deb6f57f2ab2c8f0f02a959c555b1fd1b09a24`, tree
+`19edb9a0739254bf96755022c70bee67ce39874c`, run41215952371 all four jobs SUCCESS.
+Fixed JSON artifact13048445987:6,752 LF bytes, SHA256
+`b77886383e69b441003fc71202376929ea929f75b6585efd2d2a7c9fd74db120`.
+Five PNG artifact13048710439 totals625,453 bytes, strict hashes/CRC/metadata/privacy
+and visual review CLEAR. Source/copy18 each, production7, three native denials, unchanged
+production tree witness, copy and cleanup all true; failure null. Root accepts bounded
+P1-09 TECHNICAL_PASS; formal0/P1-06 UNMET/P1-10 obligations unchanged.
+No new local runtime was rerun for closure. Historical failed attempts remain above.
