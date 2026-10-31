@@ -79,7 +79,9 @@ test('audit correlation sorts directory-independent sequence but rejects duplica
 
 test('native entry control filename admits every exact contract stage and rejects aliases', () => {
   const source = require('node:fs').readFileSync(require.resolve('./vault-probe.cjs'), 'utf8');
-  const matches = [...source.matchAll(/!\/(\^persistence-vault-control-.*?\$)\/\.test\(name\)/g)];
+  const matches = [
+    ...source.matchAll(/!\/(\^persistence-vault-control-.*?\$)\/\.test\(\s*name,?\s*\)/g),
+  ];
   assert.equal(matches.length, 1);
   const accepted = new RegExp(matches[0][1]);
   for (const mode of ['source', 'package']) {

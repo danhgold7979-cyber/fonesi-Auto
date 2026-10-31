@@ -117,3 +117,14 @@ contract stage against the actual entry regex and rejects unknown/aliased names.
 The focused contract suite passes 3/3; native acceptance predicates, ownership,
 identity constraints and deadlines are unchanged. The initial CI remains running
 on the prior exact head and cannot establish this corrected entry's behavior.
+
+The first hosted run `41197082168` produced successful source CREATE/REPLACE
+records, then failed before a DENIED result. This is consistent with the source
+allowlist defect, not proof it was the only possible failure. The next exact-head
+run `41197272146` stopped earlier at QUALITY_FAILED: adding the literal exceeded
+the formatter's line width. Replaying the committed probe through the reviewed
+formatter reproduced its required whitespace-only wrapping. The regression now
+permits that formatter whitespace while still extracting the exact entry regex.
+The corrected base (without pending negative-stage work) passed the full desktop
+pipeline **320/320**, including quality, strict types, build and manifest checks.
+No native or cross-context result is inferred from the failed quality run.
