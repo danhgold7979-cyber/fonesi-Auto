@@ -38,6 +38,9 @@ def decode_runtime(payload, mode, diagnostic):
                     'EMPTY' if line == '' else 'WHITESPACE' if line.isspace() else 'OTHER'
                     for line in lines)
     diagnostic['stdout'] = {'mode': mode, 'count': len(lines), 'otherCount': classes.count('OTHER'), 'classes': classes[:8]}
+    # CI5 observed one exact empty startup line. No whitespace stripping/filtering.
+    if len(lines) == 4 and lines[0] == '':
+        lines = lines[1:]
     if len(lines) != 3 or lines[:2] != ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED'] or not lines[2].startswith('FOUNDATION_RESULT '):
         reject()
     diagnostic['stage'] = 'RUN_' + mode.upper() + '_JSON'

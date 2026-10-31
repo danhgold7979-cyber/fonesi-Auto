@@ -58,14 +58,31 @@ class HostedEvidenceTests(unittest.TestCase):
         self.assertEqual(diagnostic_lines(diagnostic)[1],
                          'FOUNDATION_STDOUT_SOURCE_COUNT_4_OTHER_1_ORDER_READY_CLOSED_RESULT_OTHER')
 
-    def test_blank_and_whitespace_are_classified_but_still_rejected(self):
-        for prefix, expected in (('\n', 'EMPTY'), (' \t\n', 'WHITESPACE')):
+    def test_whitespace_only_line_remains_rejected(self):
+        for prefix, expected in ((' \t\n', 'WHITESPACE'),):
             value = fixture()
             value['runs']['source']['payload'] = prefix + value['runs']['source']['payload']
             diagnostic = {}
             with self.assertRaises(InvalidEvidence):
                 validate(encoded(value), diagnostic)
             self.assertIn('_ORDER_' + expected + '_READY_CLOSED_RESULT', diagnostic_lines(diagnostic)[1])
+
+    def test_exactly_one_empty_startup_line_supported_for_lf_and_crlf(self):
+        for mode in ('source', 'package'):
+            for newline in ('\n', '\r\n'):
+                value = fixture()
+                value['runs'][mode]['payload'] = newline + value['runs'][mode]['payload'].replace('\n', newline)
+                self.assertTrue(validate(encoded(value))['passed'])
+
+    def test_repeated_interleaved_and_extra_trailing_empty_lines_rejected(self):
+        original = fixture()['runs']['source']['payload']
+        for altered in ('\n\n' + original,
+                        original.replace('BOOTSTRAP_READY\n', 'BOOTSTRAP_READY\n\n'),
+                        original + '\n',
+                        'not empty\n' + original, '\r' + original, '\ufeff\n' + original):
+            value = fixture()
+            value['runs']['source']['payload'] = altered
+            self.rejected(value)
 
     def test_stdout_diagnostic_untrusted_summary_cannot_echo_values(self):
         for summary in ({'mode': 'private', 'count': 1, 'otherCount': 0, 'classes': ('OTHER',)},
@@ -159,6 +176,8 @@ class HostedEvidenceTests(unittest.TestCase):
         value = fixture()
         value['runs']['source']['payload'] = value['runs']['source']['payload'].replace(
             '"orderly_quit": true', '"orderly_quit":false,"orderly_quit":true')
+        self.rejected(value)
+        value['runs']['source']['payload'] = '\n' + value['runs']['source']['payload']
         self.rejected(value)
 
     def test_outer_duplicate_false_to_true_rejected(self):

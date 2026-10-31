@@ -143,3 +143,29 @@ Independent incremental-disposal review CLEAR at 03:32 UTC: 40/40 Python, YAML
 and diff checks PASS; all twenty-five PowerShell fixture sources reviewed. Ten new
 fixtures and actual disposal timing remain NOT_RUN locally. Limits and strict
 unexpected-line rejection are unchanged.
+
+## Fifth hosted attempt and observed framing correction — 03:36 UTC
+
+Exact remote head `e9bf0baebf16f292b962061a891b5599ce0080fd`, run
+[41164904968](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41164904968),
+job 124430251921: source **32/32**, Python **40/40**, PowerShell ownership/marker
+**25/25** passed. No cleanup failure or supervisor failure enum was emitted.
+Sanitization still stopped at source lines, now classified exactly
+`EMPTY, READY, CLOSED, RESULT`, with zero unknown lines. Full sanitized runtime and
+cleanup proof remains pending; absence of a failure log alone is not acceptance.
+
+At 03:35 UTC the coordinator approved this narrowly observed transport correction:
+after CRLF-to-LF handling, accept zero or **one exact leading empty line**, followed
+by the same three required markers in exact order and the complete strict JSON
+contract. Whitespace-only, nonempty, repeated, interleaved and extra trailing lines
+remain rejected. No generic strip/filter, case relaxation, runtime predicate,
+process/cleanup bound or original security gate changes. The underlying origin of
+the observed empty line is not asserted from an unproven upstream hypothesis.
+
+Local Python **42/42 PASS**, including positive LF/CRLF cases and the restricted
+negative framing matrix. PowerShell fixtures remain twenty-five. Hosted confirmation
+of the corrected framing and complete runtime result remains pending.
+
+Independent actual framing patch review CLEAR at 03:37 UTC: 42/42 Python tests
+and diff check PASS; bare-CR/BOM and duplicate JSON with accepted prefix also reject.
+No other acceptance or cleanup condition changed.
