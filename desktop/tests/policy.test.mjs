@@ -155,3 +155,15 @@ test('bootstrap explicitly removes default native application menu', () => {
   assert.equal(source.includes('Menu.setApplicationMenu(null)'), true);
   assert.ok(source.indexOf('Menu.setApplicationMenu(null)') < source.indexOf('new BrowserWindow'));
 });
+
+test('failure disposal cannot start ordinary quit through window-all-closed', () => {
+  const source = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
+  const match = source.match(/app\.on\('window-all-closed', (\(\) => \{ if \(!closing\) app\.quit\(\); \})\);/);
+  assert.ok(match);
+  for (const closing of [false, true]) {
+    let quits = 0;
+    const callback = new Function('closing', 'app', `return ${match[1]}`)(closing, { quit() { quits++; } });
+    callback();
+    assert.equal(quits, closing ? 0 : 1);
+  }
+});

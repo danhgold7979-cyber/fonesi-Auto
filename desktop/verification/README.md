@@ -23,8 +23,9 @@ new no-authority observations.
 The 20 named cases describe the proposed source/package smoke boundary. The four
 transition observations are facts, not all-true acceptance requirements. Runtime
 failure before a complete result must not manufacture this document; the future
-supervisor needs separately reviewed fixed failure evidence. This is not yet a
-complete installer/directory-cleanup/crash-negative report contract or upload CLI.
+supervisor needs separately reviewed fixed failure evidence. This was the initial validator-only checkpoint. The later `validate_hosted.py`
+adds the installer/directory-cleanup/crash-negative contract and exclusive-output
+CLI described below.
 
 Version provenance is actual prior Electron execution, not a host-Node assumption:
 [G0-12 retained evidence](../../docs/evidence/G0-12-hosted-stack-lab-2026-10-30.md)
@@ -79,3 +80,63 @@ exact 20-case schema agreement and diff checks PASS. Both navigation-denial even
 paths are observed without changing the policy; the isolated-world check requires
 a successful positive control. Supervisor, package integrity and negative-failure
 evidence remain pending review. No Electron execution occurred.
+
+## Windows execution envelope under review — NOT_RUN
+
+The new `WindowsBoundary.psm1`, `OwnedFiles.psm1`, `Invoke-Foundation.ps1`,
+`install-electron.mjs` and `crash-probe.cjs` are not yet approved for execution.
+They reuse the unchanged suspended-start Job helper, with 120s installer / 30s
+probe deadlines plus 10s cleanup and 32,768-character caps per stream. The wrapper
+marks cleanup unconfirmed before every call; timeout, capture failure/truncation or
+unverified retirement preserves owned trees. Process-local environment inheritance
+is narrowed and restored in `finally`; machine/user settings are never changed.
+No hostile concurrent filesystem-editor/race protection is claimed.
+
+Before Add-Type, the frozen helper must hash to
+`b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89`.
+Before launch, the selected Node executable must be the setup-node tool-cache
+24.22.1/x64 executable and hash to
+`d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5`.
+Provenance: official [Node 24.22.1 SHA256 list](https://nodejs.org/dist/v24.22.1/SHASUMS256.txt),
+`win-x64/node.exe`, fetched directly on 2026-10-31 at 02:55 UTC (the browser fetch
+was unavailable; bounded HTTPS fetch succeeded). This is the executable hash, not
+an assumed archive hash or the host Node version.
+
+The installer refuses preexisting dist/path.txt/cache, because Electron install.js
+can otherwise skip archive verification. It verifies the exact locked metadata and
+reviewed scripts plus current build input/output manifest before explicitly running
+the official installer with bundled checksums. Unknown old outputs are preserved,
+not deleted or blessed. The instrumented package copies every verified distribution
+file with hash comparisons, preserves license notices, renames only its owned exe
+without changing bytes, and loads the same main bundle through the test entry.
+The crash negative uses actual render-process-gone cleanup; the tampered-asset
+negative modifies only a verified owned build copy. Neither is runtime evidence yet.
+
+
+## Runnable checkpoint pending hosted execution — 2026-10-31
+
+Current local source/build check: **32/32 PASS**, including the real bootstrap
+failure-latch regression. Current Python schema/writer suite: **33/33 PASS**.
+Node syntax checks and scoped workflow YAML parsing PASS. Nine PowerShell marker
+regressions, official installer, source/package launches, renderer crash and
+changed-asset negatives are **NOT_RUN** here. There is no local PowerShell 5.1 or
+Electron execution claim.
+
+`validate_hosted.py` checks outer and successful inner JSON duplicates before
+normalization, exact output markers/order, all 20 named cases per mode, actual
+versions/modes, integrity/ownership flags and both typed negatives. It strips raw
+payloads from public output, including incomplete failure logs. It reads at most
+65,537 bytes from a regular owned input, refuses existing output, writes a fixed
+schema of at most 64 KiB exclusively, and only then emits its completion marker.
+The workflow uploads exactly that invocation's sanitized output, not raw logs or
+profiles; missing/invalid evidence fails without an upload marker. A valid failed
+report remains failed and may be retained for diagnosis.
+
+The original navigation result remains FAIL_RETAINED. Passing this hosted-only
+boundary would not close full P1-02, manual/scheduled authority, V9/product UI,
+Phase 0 host/device/policy evidence, or any full Phase acceptance.
+
+Final independent CLI/workflow/documentation review CLEAR at 03:06 UTC on
+2026-10-31: 33/33 Python tests, YAML and staged/unstaged diff checks PASS. The
+report writer refuses an unverified/rejected parent and revalidates before writing.
+No PowerShell/Electron execution occurred; hosted outcomes remain NOT_RUN.

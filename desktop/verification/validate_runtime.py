@@ -43,6 +43,32 @@ def booleans(value, keys):
         reject()
 
 
+def validate_process(process):
+    exact_record(process, ('status', 'exitCode', 'cleanupComplete',
+                           'stdoutTruncated', 'stderrTruncated'))
+    if type(process['status']) is not str or process['status'] not in (
+            'SUCCESS', 'NONZERO_EXIT', 'TIMEOUT', 'CAPTURE_FAILED',
+            'LAUNCH_FAILED', 'ACCESS_DENIED', 'CLEANUP_FAILED', 'EMPTY_OUTPUT'):
+        reject()
+    exit_code = process['exitCode']
+    if exit_code is not None and (type(exit_code) is not int or
+                                  not -2147483648 <= exit_code <= 2147483647):
+        reject()
+    for field in ('cleanupComplete', 'stdoutTruncated', 'stderrTruncated'):
+        if type(process[field]) is not bool:
+            reject()
+    if process['status'] in ('TIMEOUT', 'LAUNCH_FAILED', 'ACCESS_DENIED') and exit_code is not None:
+        reject()
+    if process['status'] == 'CLEANUP_FAILED' and process['cleanupComplete']:
+        reject()
+    if process['status'] in ('SUCCESS', 'EMPTY_OUTPUT') and exit_code != 0:
+        reject()
+    if process['status'] == 'NONZERO_EXIT' and (exit_code is None or exit_code == 0):
+        reject()
+    return (process['status'] == 'SUCCESS' and process['cleanupComplete'] and
+            not process['stdoutTruncated'] and not process['stderrTruncated'])
+
+
 def validate(raw):
     """Accept exact fixed-schema bytes, including truthful false case results.
 
@@ -74,31 +100,8 @@ def validate(raw):
             reject()
         booleans(run['cases'], CASES)
         booleans(run['observations'], OBSERVATIONS)
-        process = run['process']
-        exact_record(process, ('status', 'exitCode', 'cleanupComplete',
-                               'stdoutTruncated', 'stderrTruncated'))
-        if type(process['status']) is not str or process['status'] not in (
-                'SUCCESS', 'NONZERO_EXIT', 'TIMEOUT', 'CAPTURE_FAILED',
-                'LAUNCH_FAILED', 'ACCESS_DENIED', 'CLEANUP_FAILED', 'EMPTY_OUTPUT'):
-            reject()
-        exit_code = process['exitCode']
-        if exit_code is not None and (type(exit_code) is not int or
-                                      not -2147483648 <= exit_code <= 2147483647):
-            reject()
-        for field in ('cleanupComplete', 'stdoutTruncated', 'stderrTruncated'):
-            if type(process[field]) is not bool:
-                reject()
-        if process['status'] in ('TIMEOUT', 'LAUNCH_FAILED', 'ACCESS_DENIED') and exit_code is not None:
-            reject()
-        if process['status'] == 'CLEANUP_FAILED' and process['cleanupComplete']:
-            reject()
-        if process['status'] in ('SUCCESS', 'EMPTY_OUTPUT') and exit_code != 0:
-            reject()
-        if process['status'] == 'NONZERO_EXIT' and (exit_code is None or exit_code == 0):
-            reject()
-        passed = passed and all(run['cases'].values()) and (
-            process['status'] == 'SUCCESS' and process['cleanupComplete'] and
-            not process['stdoutTruncated'] and not process['stderrTruncated'])
+        process_passed = validate_process(run['process'])
+        passed = passed and all(run['cases'].values()) and process_passed
     return {'validation': 'VALID', 'passed': passed, 'evidence': value}
 
 

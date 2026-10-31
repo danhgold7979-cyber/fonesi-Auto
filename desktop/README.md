@@ -61,7 +61,7 @@ metadata → optional scripts-disabled restore → installed checks → strict c
 build → manifest → tests. Any false result or exception stops later stages. No
 semicolon fall-through, generic shell command or automatic runtime download.
 
-The source check currently passes 31/31 tests; full Windows execution is NOT_RUN.
+The source check currently passes 32/32 tests; full Windows execution is NOT_RUN.
 Test tooling uses bounded child invocation (30 seconds/64 KiB, restore 120 seconds),
 not arbitrary-child-tree containment. Runtime/installer Windows supervision is a
 separate upcoming implementation, not claimed from these local tests.
@@ -98,3 +98,8 @@ Original G0-12 source/package 20/21 navigation FAIL remains unchanged. Zero expo
 application authority is useful here but does not solve full manual/scheduled
 service authority or permit those future methods to be enabled. Full V9 and C-03
 remain obligations, not permanently disabled features.
+
+The separately scoped Windows execution envelope and strict artifact contract are
+implemented under [verification](verification/README.md); actual Windows results
+remain NOT_RUN pending reviewed publication/CI. No original navigation gate or
+full P1-02 acceptance follows from source checks.

@@ -65,7 +65,7 @@ try {
     });
     lifecycle.start();
   }).catch(fail);
-  app.on('window-all-closed', () => app.quit());
+  app.on('window-all-closed', () => { if (!closing) app.quit(); });
   app.on('will-quit', () => {
     if (!cleanup()) { console.error('BOOTSTRAP_CLEANUP_FAILED'); app.exit(1); }
     else console.log('BOOTSTRAP_CLOSED');

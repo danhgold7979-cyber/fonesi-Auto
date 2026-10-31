@@ -367,3 +367,13 @@ Reviewed source checkpoint published and verified. Root directed the already-sco
 owned Windows launcher/probe, strict sanitized report validator and separate phase-01
 workflow. Entry recorded before implementation. No runtime/CI run yet; independent
 review and root publication precede execution. Original acceptance gates unchanged.
+
+### 2026-10-31 03:03 UTC — partial P1-02 Windows envelope source
+
+The [owned Windows execution envelope](evidence/P1-02-windows-envelope-source-2026-10-31.md)
+is implemented for reviewed publication: actual main source/package probes, crash
+and changed-asset negatives, strict sanitized evidence, and separate phase-01 CI.
+Local source/build **32/32 PASS** and Python schema/writer **33/33 PASS**. Nine
+PowerShell regressions and all actual Windows behavior remain **NOT_RUN** pending
+exact-head CI. No full task/Phase acceptance, original navigation PASS, or target
+host/device/policy claim. Existing accepted-task percentages are unchanged.

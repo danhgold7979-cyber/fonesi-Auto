@@ -1,0 +1,88 @@
+name: Phase 01 authority-free desktop foundation
+on:
+  workflow_dispatch:
+  push:
+    branches: [phase-01]
+    paths:
+      - 'desktop/**'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - 'tools/phase-00/desktop-stack-lab/package-lock.json'
+      - 'tools/phase-00/desktop-stack-lab/dependency-review.json'
+      - '.github/workflows/phase-01-desktop-foundation.yml'
+permissions:
+  contents: read
+jobs:
+  owned-windows-foundation:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled dependency restore and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Strict raw-schema synthetic tests
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==33; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: PowerShell 5.1 marker regressions
+        run: |
+          try { & ./desktop/verification/Test-WindowsBoundary.ps1 }
+          catch { Write-Output 'FOUNDATION_BOUNDARY_TEST_FAILED'; exit 1 }
+      - name: Syntax-check owned runtime and installer entries
+        run: |
+          node --check desktop/verification/runtime-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/crash-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/install-electron.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned source-package and typed-negative probes
+        id: probes
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'FOUNDATION_SUPERVISOR_FAILED'; exit 1 }
+      - name: Duplicate-aware validation and fixed-field sanitization
+        id: validation
+        if: always() && steps.probes.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'FOUNDATION_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only this invocation's schema-validated fixed evidence
+        if: always() && steps.validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-foundation-${{ github.sha }}
+          path: desktop/.runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Record scope limits
+        if: always()
+        run: |
+          'Hosted runner only. Original navigation FAIL retained; no full task/Phase, target-host, device, account or future authority acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
