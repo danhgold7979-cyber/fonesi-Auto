@@ -49,6 +49,15 @@ async function execute(code) {
   if (!window || window.webContents.getURL() !== URL) throw Error('UI_REFERENCE_ORIGIN');
   return window.webContents.executeJavaScript(code);
 }
+async function closeOwnedWindow(target) {
+  // close() only requests closure; the native closed event is the completion
+  // witness. A canceled/stalled request remains pending under the outer deadline.
+  await new Promise((resolve) => {
+    target.once('closed', resolve);
+    target.close();
+  });
+  if (!target.isDestroyed()) throw Error('UI_REFERENCE_CLOSE');
+}
 async function run() {
   root = process.env.FONESI_PERSISTENCE_RUN_ROOT;
   plain(root);
@@ -199,12 +208,15 @@ async function run() {
   )
     throw Error('UI_REFERENCE_CASES');
   phase = 'CLOSE';
-  complete = true;
   fs.writeSync(2, 'UI_REFERENCE_PROGRESS_CLOSING\n');
-  window.close();
-  closed = window.isDestroyed();
+  await closeOwnedWindow(window);
+  closed = true;
+  complete = true;
   app.quit();
 }
+// Keep this isolated reference app alive until the awaited closed witness above
+// completes; automatic last-window quit must not race the completion flags.
+app.on('window-all-closed', () => {});
 app.on('will-quit', () => {
   try {
     if (!complete || !closed) throw Error('UI_REFERENCE_CLOSE');

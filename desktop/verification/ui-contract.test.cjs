@@ -308,8 +308,56 @@ test('reference progress markers are six fixed stderr literals bound to complete
   assert.ok(at('PREPARED') < source.indexOf('await app.whenReady()'));
   assert.ok(at('LOADED') > source.indexOf('await window.loadURL(URL)'));
   assert.ok(at('CAPTURED') > source.indexOf('images.push(saveImage'));
-  assert.ok(at('CLOSING') < source.indexOf('window.close()'));
+  assert.ok(at('CLOSING') < source.indexOf('await closeOwnedWindow(window)'));
   assert.ok(at('WRITTEN') > source.indexOf("write(path.join(root, 'ui-reference.json'), output)"));
   assert.equal([...source.matchAll(/fs\.writeSync\(1,/g)].length, 1);
   assert.ok(source.includes("fs.writeSync(1, 'UI_REFERENCE_CLOSED\\n')"));
+});
+
+test('reference closure waits for actual closed event and destroyed state before completion', async () => {
+  const source = fs.readFileSync(path.join(__dirname, 'ui-reference-probe.cjs'), 'utf8');
+  const helper = source.slice(
+    source.indexOf('async function closeOwnedWindow('),
+    source.indexOf('async function run()'),
+  );
+  const close = require('node:vm').runInNewContext(`(${helper.trim()})`);
+  const { EventEmitter } = require('node:events');
+  function target() {
+    const value = new EventEmitter();
+    value.requested = 0;
+    value.destroyed = false;
+    value.close = () => {
+      value.requested++;
+    };
+    value.isDestroyed = () => value.destroyed;
+    return value;
+  }
+  const deferred = target();
+  let completed = false;
+  const operation = close(deferred).then(() => {
+    completed = true;
+  });
+  await Promise.resolve();
+  assert.equal(deferred.requested, 1);
+  assert.equal(completed, false);
+  deferred.destroyed = true;
+  deferred.emit('closed');
+  await operation;
+  assert.equal(completed, true);
+  const canceled = target();
+  let canceledCompleted = false;
+  void close(canceled).then(() => {
+    canceledCompleted = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(canceledCompleted, false);
+  const inconsistent = target();
+  const rejected = close(inconsistent);
+  inconsistent.emit('closed');
+  await assert.rejects(rejected, /UI_REFERENCE_CLOSE/);
+  const at = source.indexOf('await closeOwnedWindow(window)');
+  assert.ok(at < source.indexOf('closed = true;', at));
+  assert.ok(at < source.indexOf('complete = true;', at));
+  assert.ok(source.includes("app.on('window-all-closed', () => {})"));
+  assert.ok(source.includes("fs.writeSync(2, 'UI_REFERENCE_DEADLINE\\n')"));
 });
