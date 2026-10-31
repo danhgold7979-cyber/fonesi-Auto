@@ -109,3 +109,15 @@ test('actual reviewed demo output prepares both derived copies without executing
     fs.rmSync(root, { recursive: true, force: false });
   }
 });
+
+test('copied demo runtime preserves official executable identity and packaged-app refusal', () => {
+  const fs = require('node:fs'),
+    path = require('node:path');
+  const supervisor = fs.readFileSync(path.join(__dirname, 'Invoke-Demo.ps1'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '../demo/main.ts'), 'utf8');
+  assert.match(supervisor, /\$packageExe=Join-Path \$package 'electron\.exe'/);
+  assert.doesNotMatch(supervisor, /AutoDemo\.exe|\[IO\.File\]::Move/);
+  assert.match(supervisor, /Copy-VerifiedTree \$dist \$package/);
+  assert.match(supervisor, /Get-FileHash \$exe -Algorithm SHA256/);
+  assert.match(main, /app\.isReady\(\) \|\| app\.isPackaged/);
+});

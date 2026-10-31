@@ -166,8 +166,8 @@ try {
     $failure='PACKAGE_FAILED'
     $package=Join-Path $owner.Path 'package'
     [void](Copy-VerifiedTree $dist $package (512L*1024*1024))
-    $packageExe=Join-Path $package 'AutoDemo.exe'
-    [IO.File]::Move((Join-Path $package 'electron.exe'),$packageExe)
+    # This is a verified unpacked developer runtime, not an installed packaged app.
+    $packageExe=Join-Path $package 'electron.exe'
     [void](Copy-VerifiedTree (Join-Path $desktop 'build') (Join-Path $owner.Path 'production-payload') (8L*1024*1024))
     Write-Private (Join-Path $owner.Path 'persistence-runtime-attestation.json') $manifest
     $report.runtimeCopyVerified=$true

@@ -153,3 +153,26 @@ Author full desktop496/496 + DESKTOP_SOURCE_CHECK_PASS and Python142/142 PASS at
 workflow expected Python count is142. Source-reproduced account measurement defect is
 not represented as a recovered private native case record. No application/fixture data,
 production filtering, strict report schema or native ownership bounds changed.
+
+## Third hosted attempt — copied runtime executable identity
+
+Public `74f3ad5d7a2daa2652e304ae164fd455daeac3c1`, run `41215340652`, passed
+foundation/settings/UI; source demo now passed all18 declared cases with orderly
+SUCCESS0/retirement, alongside production7. Artifact `13048050573` is4,364 bytes,
+SHA256 `a7af2439c0c5bc8a922cac2e581941fd538a0741b6e6e74c3587ff4b01acff37`.
+Copied-runtime mode failed with DEMO_FAILED, NONZERO_EXIT, empty stdout and absent
+result; negative/isolation/final-cleanup evidence remains incomplete.
+
+The supervisor incorrectly renamed its verified copied `electron.exe` to `AutoDemo.exe`.
+[Exact Electron45.1.0 implementation](https://github.com/electron/electron/blob/v45.1.0/shell/browser/api/electron_api_app.cc#L904-L914)
+classifies Windows executables with another basename as packaged applications. The
+unchanged dedicated demo main deliberately rejects `app.isPackaged`; the observed
+source/copy difference therefore has a concrete pinned-source explanation.
+The correction preserves the official basename inside the exclusive verified copied
+runtime, retaining all file-copy/executable-hash checks and the packaged-app refusal.
+This mode is an **unpacked developer runtime copy**, not a branded/installed release
+or a waiver of P1-10 packaging. Regression checks the exact basename, absence of rename,
+retained provenance checks and unchanged main refusal; focused6/6 PASS.
+Independent two-file source correction CLEAR and6/6 focused PASS; author full desktop
+497/497 + DESKTOP_SOURCE_CHECK_PASS at15:39 UTC. Corrected copied-runtime native outcome
+remains NOT_RUN; overall P1-09 remains IN_PROGRESS and counts unchanged.
