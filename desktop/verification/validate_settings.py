@@ -17,6 +17,9 @@ CASES = {
  'before-reopen': COMMON+('primaryUnchanged','integrity','wholeOldState','previousState','orderlyQuit'),
  'after-reopen': COMMON+('primaryUnchanged','integrity','wholeNewState','previousState','orderlyQuit'),
 }
+CASES_V1 = CASES
+CASES_V2 = {**CASES_V1, 'ui': CASES_V1['ui'][:-1]+('foreignSenderDenied','childFrameDenied','heldConfirmationRevoked','delayedReplyDiscarded', 'orderlyQuit')}
+SCOPES = {1:'HOSTED_SETTINGS_SCHEMA3',2:'HOSTED_SETTINGS_SCHEMA3_NATIVE_NEGATIVES'}
 FAILURES=('PREPARE_FAILED','PACKAGE_FAILED','CONTROL_FAILED','PREFLIGHT_FAILED','NATIVE_STAGE_FAILED','STAGE_VALIDATION_FAILED','SEQUENCE_VALIDATION_FAILED','SCREENSHOT_FAILED','CLEANUP_FAILED')
 def parse(raw):
  if type(raw) is not bytes or not 0<len(raw)<=65536:reject()
@@ -24,10 +27,10 @@ def parse(raw):
 def validate_stage(raw,capture,mode,stage):
  if mode not in ('source','package') or stage not in STAGES:reject()
  value=parse(raw);exact_record(value,('version','mode','stage','versions','cases'))
- if type(value['version']) is not int or value['version']!=1 or value['mode']!=mode or value['stage']!=stage:reject()
+ if type(value['version']) is not int or value['version'] not in SCOPES or value['mode']!=mode or value['stage']!=stage:reject()
  exact_record(value['versions'],VERSIONS)
  if value['versions']!=VERSIONS:reject()
- exact_record(value['cases'],CASES[stage])
+ exact_record(value['cases'],(CASES_V1 if value['version']==1 else CASES_V2)[stage])
  if any(type(v) is not bool for v in value['cases'].values()):reject()
  exact_record(capture,('process','stdout','stderr'))
  normal=validate_process(capture['process'])
@@ -91,7 +94,7 @@ def screenshot(raw):
  return {'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'width':width,'height':height}
 def validate_report(raw):
  v=parse(raw);exact_record(v,('version','scope','excludedVaultContext','bootstrap','modes','screenshots','runtimeCopyVerified','directoryCleanup','failure'))
- if type(v['version']) is not int or v['version']!=1 or v['scope']!='HOSTED_SETTINGS_SCHEMA3' or v['excludedVaultContext']!='P106_UNMET_NOT_RERUN':reject()
+ if type(v['version']) is not int or v['version'] not in SCOPES or v['scope']!=SCOPES[v['version']] or v['excludedVaultContext']!='P106_UNMET_NOT_RERUN':reject()
  if any(type(v[k]) is not bool for k in ('runtimeCopyVerified','directoryCleanup')):reject()
  if v['failure'] is not None and (type(v['failure']) is not str or v['failure'] not in FAILURES):reject()
  passed=v['failure'] is None and v['runtimeCopyVerified'] and v['directoryCleanup']
@@ -102,7 +105,9 @@ def validate_report(raw):
  for mode,stages in v['modes'].items():
   if type(stages) is not dict or not set(stages).issubset(STAGES):reject()
   if v['failure'] is None and set(stages)!=set(STAGES):reject()
-  for stage,item in stages.items():passed=validate_public(item,mode,stage) and passed
+  for stage,item in stages.items():
+   if type(item) is not dict or type(item.get('version')) is not int or item['version']!=v['version']:reject()
+   passed=validate_public(item,mode,stage) and passed
  names={f'{mode}-{theme}' for mode in ('source','package') for theme in ('light','dark')}
  if type(v['screenshots']) is not dict or not set(v['screenshots']).issubset(names) or any(type(item) is not dict for item in v['screenshots'].values()):reject()
  if v['failure'] is None and set(v['screenshots'])!=names:reject()

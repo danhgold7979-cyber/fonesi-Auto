@@ -22,7 +22,7 @@ const COMMON = [
   'schema3',
   'migration2BackupAuthenticated',
 ];
-const CASES = Object.freeze({
+const CASES_V1 = Object.freeze({
   ui: Object.freeze([
     ...COMMON,
     'realMainReady',
@@ -67,6 +67,17 @@ const CASES = Object.freeze({
     'orderlyQuit',
   ]),
 });
+const CASES = Object.freeze({
+  ...CASES_V1,
+  ui: Object.freeze([
+    ...CASES_V1.ui.slice(0, -1),
+    'foreignSenderDenied',
+    'childFrameDenied',
+    'heldConfirmationRevoked',
+    'delayedReplyDiscarded',
+    'orderlyQuit',
+  ]),
+});
 function control(raw) {
   const v = exact(raw, [
     'version',
@@ -93,12 +104,13 @@ function control(raw) {
 function result(raw) {
   const v = exact(raw, ['version', 'mode', 'stage', 'versions', 'cases']);
   if (
-    v.version !== 1 ||
+    ![1, 2].includes(v.version) ||
     !['source', 'package'].includes(v.mode) ||
     !STAGES.includes(v.stage) ||
     JSON.stringify(v.versions) !== JSON.stringify(VERSIONS) ||
-    JSON.stringify(Object.keys(v.cases ?? {})) !== JSON.stringify(CASES[v.stage]) ||
-    CASES[v.stage].some((k) => typeof v.cases[k] !== 'boolean')
+    JSON.stringify(Object.keys(v.cases ?? {})) !==
+      JSON.stringify((v.version === 1 ? CASES_V1 : CASES)[v.stage]) ||
+    (v.version === 1 ? CASES_V1 : CASES)[v.stage].some((k) => typeof v.cases[k] !== 'boolean')
   )
     throw Error('SETTINGS_RESULT');
   return v;
@@ -107,6 +119,7 @@ module.exports = {
   STAGES,
   VERSIONS,
   CASES,
+  CASES_V1,
   plain,
   read,
   write,

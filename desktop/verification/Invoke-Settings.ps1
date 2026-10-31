@@ -8,7 +8,7 @@ $owner = $null
 $baseVerified = $false
 $allClean = $true
 $failure = 'PREPARE_FAILED'
-$report = [ordered]@{version=1;scope='HOSTED_SETTINGS_SCHEMA3';excludedVaultContext='P106_UNMET_NOT_RERUN';bootstrap=[ordered]@{};modes=[ordered]@{};screenshots=[ordered]@{};runtimeCopyVerified=$false;directoryCleanup=$false;failure=$null}
+$report = [ordered]@{version=2;scope='HOSTED_SETTINGS_SCHEMA3_NATIVE_NEGATIVES';excludedVaultContext='P106_UNMET_NOT_RERUN';bootstrap=[ordered]@{};modes=[ordered]@{};screenshots=[ordered]@{};runtimeCopyVerified=$false;directoryCleanup=$false;failure=$null}
 function Retired($Probe) {
     return ($Probe.CleanupComplete -and -not $Probe.StdoutTruncated -and -not $Probe.StderrTruncated -and $Probe.Status -in @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT'))
 }
@@ -154,6 +154,10 @@ try {
             }
             $failure='NATIVE_STAGE_FAILED';$allClean=$false
             $native=Invoke-OwnedChild $exe $arguments 120000 $environment
+            foreach($diagnostic in @('SENDER','SUBFRAME','LATE_REPLY','REVOKED_RESET')) {
+                $marker='SETTINGS_NEGATIVE_STAGE_'+$diagnostic
+                if(@($native.Stderr -split '\r?\n' | Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
+            }
             $allClean=Retired $native
             Write-Private (Join-Path $owner.Path ('settings-capture-'+$mode+'-'+$stage+'.json')) ([ordered]@{process=(Process-Evidence $native);stdout=$native.Stdout;stderr=$native.Stderr})
             if(-not $allClean){throw 'NATIVE_UNCONFIRMED'}

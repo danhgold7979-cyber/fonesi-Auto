@@ -2,7 +2,9 @@
 
 The [approved P1-07 contract](../../docs/phases/PHASE-01-P1-07-SETTINGS-CONTRACT.md)
 and [current evidence](../../docs/evidence/P1-07-settings-source-2026-10-31.md)
-control this envelope. Current source review is CLEAR; native execution is NOT_RUN.
+control this envelope. The first version1 native run41201915177 passed and was
+independently reviewed. The authorized version2 native admission-negative increment
+is in progress; its actual execution remains NOT_RUN. Full P1-07 is not yet accepted.
 
 `Invoke-Settings.ps1` uses the unchanged owned Windows Job/provenance/retirement
 helpers and four-stage synthetic key certification controls. It then runs source
@@ -32,3 +34,11 @@ PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s desktop/verification -p
 Native execution is Windows-only and requires the reviewed exact-head workflow,
 verified runtime distribution and coordinator authorization. Never launch it against
 an existing user profile or real credential store.
+
+Version2 adds exactly four UI observations: actual foreign/child-frame metadata
+against the captured unchanged handler, held reset confirmation revoked by real
+reload with unchanged DB, and a real preload read whose returned result is delayed
+past timeout. This is adapter/transport instrumentation, not forged native IPC or
+human-intent proof. Late release is observed for150ms with no UI resuccess/second
+dispatch and composed with direct client tests. Version1 retains its exact case map.
+Only four literal new failure-stage markers may be forwarded; no raw errors/paths.

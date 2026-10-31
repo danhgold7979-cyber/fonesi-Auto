@@ -136,3 +136,81 @@ the maximized native fixture chooses its normal rectangle inside actual workArea
 and still requires exact reopen geometry. Source/envelope/YAML/diff review is CLEAR.
 Root execution approval stands for this exact reviewed candidate; native results
 remain NOT_RUN. This supersedes the402-test candidate, not its historical results.
+
+## First bounded Windows result — 12:42 UTC
+
+[Run41201915177](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41201915177)
+completed SUCCESS in both automatic jobs on public head
+`31e6255b0070c82ab057b4c81fc7aad8e3aa222b`, exact reviewed tree
+`4cb4a16dad6bdfc20de0e5f09c5f98b340d2ea6b` (local candidate `c39ff1d1...`).
+Coordinator accepts **bounded first native-settings PASS only**, not full P1-07.
+The new-channel native admission/late-response increment below remains pending.
+
+Artifact `13042783304`, [retained exact fixed JSON](P1-07-first-native-sample-2026-10-31.json),
+is11,324 LF bytes, SHA256
+`4f6e040bea77104ef3a81fcf8c85d31ea5994ac7aa90a92fb324c74504fd62b6`.
+This hash identifies original artifact/Git-blob bytes, not an unspecified Windows
+working-copy newline conversion. Independent duplicate-aware strict reconstruction,
+fixed-field privacy review and exact image/hash/visual review were CLEAR; reviewer
+did not rerun the runtime or perform a second artifact download.
+
+Both source and unpacked-package modes passed all six stages: UI18/18,
+reopen9/9, before-COMMIT crash6/6+reopen9/9, after-COMMIT crash6/6+reopen9/9.
+Actual crash exit was−36861 in each crash stage; all four-stage key bootstraps,
+process/capture predicates, runtime-copy integrity and directory cleanup passed.
+`failure:null`, `passed:true`; `P106_UNMET_NOT_RERUN` remains explicit.
+Automatic saved-theme/layout hydration, actual maximized/normal-window reopen,
+native encrypted schema-2 migration prerequisite, schema-3 commit durability,
+reset Cancel/Confirm and previous restoration were observed under the stated
+verification instrumentation. No user widget-click or full V9 claim is made.
+
+All four screenshots are1024×768 and report-bound; source/package pairs are
+byte-identical. Light:34,252bytes SHA256
+`6a5be18ade770e3f9c6109fabc270eb0a6beedb01aab7782c77af353e3d4564f`;
+Dark:32,158bytes SHA256
+`57b56879ee75251236bcd6fa9fe8c363a03950b8af02efb5c89ed12d2a05b616`.
+The run's `phase-01-settings-screenshots-31e6255b...` artifact contains these images;
+root retains the downloaded files for user delivery. Images visibly show the
+readable diagnostic theme difference, not full reference-page parity.
+
+## Authorized native admission-negative increment — in progress
+
+Coordinator authorized four additional verification-only observations after the
+first result: actual foreign WebContents and owned child WebFrameMain metadata
+against the captured unchanged preference handler; a held exact reset confirmation
+revoked by real reload with unchanged DB; and one actual preload read whose returned
+transport result is delayed past timeout, without automatic success/retry afterward.
+Captured-handler metadata probes are explicitly **adapter instrumentation**, not
+forged native IPC transport or genuine-human/immutable-Document proof.
+
+New result/report version2 uses a separate exact case map and scope; historical
+version1 is retained and the first artifact still validates unchanged. No production
+IPC, authority, schema or settings behavior is added. Actual new native outcomes
+remain NOT_RUN until independent source review and exact-head execution.
+
+### Native-negative version2 source checkpoint — 12:47 UTC
+
+Four fixed UI cases are now implemented: `foreignSenderDenied`, `childFrameDenied`,
+`heldConfirmationRevoked`, and `delayedReplyDiscarded`. The actual handler remains
+registered and receives all original arguments/receiver unchanged. Only one read's
+returned transport result is held after real handling; the fourth exact RESET
+confirmation is held until actual reload revokes the session. Neither instrumentation
+path changes production main/preload/renderer or introduces new authority.
+
+The late-response native observation is deliberately bounded: TIMEOUT/reconcile is
+visible, the held result is released, and UI stays unchanged/no second dispatch for
+150ms. This is composed with exact preload-client timeout/late-settlement tests;
+it is not a hidden renderer acknowledgment or a timeless no-later-effect claim.
+Sender/frame cases use real native objects through captured-handler instrumentation,
+not fabricated origin fields and not an assertion that renderer can forge native IPC.
+
+Author full desktop409/409 and Python121/121 passed; focused independent native
+contract6/6 and validator14/14 passed, including unchanged first-version artifact
+validation. Final independent aggregate passed409/409 with DESKTOP_SOURCE_CHECK_PASS and
+Python121/121 at12:48UTC. Existing foundation109 remains unchanged independentPASS.
+Source/envelope review is CLEAR. New native execution is NOT_RUN and full P1-07
+acceptance/count increase remains pending.
+
+At12:48UTC coordinator approved the exact reviewed version2 bounded hosted execution.
+This is verification-only authorization, not task acceptance or a change to production
+caller authority. Actual new outcomes remain pending.

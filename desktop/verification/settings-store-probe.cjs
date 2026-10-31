@@ -60,7 +60,7 @@ function primary() {
 }
 function output() {
   const v = {
-    version: 1,
+    version: 2,
     mode: state.c.mode,
     stage: state.c.stage,
     versions: {

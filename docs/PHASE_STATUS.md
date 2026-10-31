@@ -786,3 +786,17 @@ geometry is gated until first successful admitted GET, without retrying mutation
 final close capture stays unconditional. Source/envelope CLEAR and coordinator
 bounded execution approval recorded. Windows observations and task acceptance
 remain pending; six technical scopes/formal zero unchanged.
+
+P1-07 bounded first native result — 12:42 UTC: run41201915177/public31e6255b
+SUCCESS, strict artifact and same-viewport Light/Dark images independently CLEAR.
+Both modes passed key bootstrap, actual UI/reopen and COMMIT crash/reopen; root
+accepts bounded native-settings PASS only. Full task remains pending the authorized
+new-channel native admission/late-response increment; historical v1 result is retained.
+P106_UNMET_NOT_RERUN and six technical scopes/formal zero remain unchanged.
+
+P1-07 native-negative source increment — 12:47 UTC: author409/409 desktop and
+121/121 Python PASS; four extra native admission/late-response cases implemented
+without production changes. Historical first-pass v1 evidence remains strictly valid;
+independent final409/409 and Python121/121 also PASS with source/envelopeCLEAR.
+New v2 actual execution remains pending publication. Counts
+remain six technical scopes/formal zero.

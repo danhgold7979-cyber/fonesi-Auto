@@ -4,7 +4,7 @@ const test = require('node:test'),
   { randomUUID } = require('node:crypto'),
   fs = require('node:fs'),
   path = require('node:path');
-const { STAGES, VERSIONS, CASES, control, result } = require('./settings-contract.cjs');
+const { STAGES, VERSIONS, CASES, CASES_V1, control, result } = require('./settings-contract.cjs');
 function input(stage = 'ui') {
   return {
     version: 1,
@@ -36,36 +36,40 @@ test('all six exact private stages accept canonical control only', () => {
   }
 });
 test('public native result exact stage cases booleans and pinned versions', () => {
-  for (const stage of STAGES) {
-    const r = {
-      version: 1,
-      mode: 'package',
-      stage,
-      versions: VERSIONS,
-      cases: Object.fromEntries(CASES[stage].map((k) => [k, true])),
-    };
-    assert.deepEqual(result(JSON.stringify(r)), r);
-    for (const mutate of [
-      (v) => {
-        v.cases.extra = true;
-      },
-      (v) => {
-        delete v.cases.ownedRoot;
-      },
-      (v) => {
-        v.cases.ownedRoot = 1;
-      },
-      (v) => {
-        v.versions.node = '24.22.2';
-      },
-    ]) {
-      const bad = JSON.parse(JSON.stringify(r));
-      mutate(bad);
-      assert.throws(() => result(JSON.stringify(bad)));
+  for (const [version, map] of [
+    [1, CASES_V1],
+    [2, CASES],
+  ])
+    for (const stage of STAGES) {
+      const r = {
+        version,
+        mode: 'package',
+        stage,
+        versions: VERSIONS,
+        cases: Object.fromEntries(map[stage].map((k) => [k, true])),
+      };
+      assert.deepEqual(result(JSON.stringify(r)), r);
+      for (const mutate of [
+        (v) => {
+          v.cases.extra = true;
+        },
+        (v) => {
+          delete v.cases.ownedRoot;
+        },
+        (v) => {
+          v.cases.ownedRoot = 1;
+        },
+        (v) => {
+          v.versions.node = '24.22.2';
+        },
+      ]) {
+        const bad = JSON.parse(JSON.stringify(r));
+        mutate(bad);
+        assert.throws(() => result(JSON.stringify(bad)));
+      }
+      r.cases.ownedRoot = false;
+      assert.equal(result(JSON.stringify(r)).cases.ownedRoot, false);
     }
-    r.cases.ownedRoot = false;
-    assert.equal(result(JSON.stringify(r)).cases.ownedRoot, false);
-  }
 });
 test('fixed cases distinguish crash admission from separately proved reopened durability', () => {
   for (const stage of ['before-crash', 'after-crash']) {
@@ -170,4 +174,88 @@ test('trusted control build gate precedes compiled helper imports; native entrie
     { x: 0, y: 0, width: 100, height: NaN },
   ])
     assert.throws(() => bounds(area), /SETTINGS_WORK_AREA/);
+});
+
+test('historical v1 exact UI fields cannot gain or omit the v2 negative witnesses', () => {
+  assert.equal(CASES_V1.ui.length, 18);
+  assert.equal(CASES.ui.length, 22);
+  assert.deepEqual(CASES.ui, [
+    ...CASES_V1.ui.slice(0, -1),
+    'foreignSenderDenied',
+    'childFrameDenied',
+    'heldConfirmationRevoked',
+    'delayedReplyDiscarded',
+    'orderlyQuit',
+  ]);
+  for (const [version, map] of [
+    [1, CASES],
+    [2, CASES_V1],
+  ])
+    assert.throws(() =>
+      result(
+        JSON.stringify({
+          version,
+          mode: 'source',
+          stage: 'ui',
+          versions: VERSIONS,
+          cases: Object.fromEntries(map.ui.map((k) => [k, true])),
+        }),
+      ),
+    );
+});
+test('real handler registration is preserved; delay delegates exact success and waits without changing response', async () => {
+  const { runInNewContext } = require('node:vm');
+  const source = fs.readFileSync(path.join(__dirname, 'settings-main-probe.cjs'), 'utf8');
+  const start = source.indexOf('let actualHandler'),
+    end = source.indexOf('async function direct', start);
+  assert.ok(start >= 0 && end > start);
+  const { settingsSuccess, parseSettingsResponse } = require('../build/settings-contract.cjs');
+  const response = settingsSuccess(
+    'r',
+    'OBSERVED',
+    { revision: 0, theme: 'LIGHT', dockWidth: null, tileWidth: 150, persistence: 'PERSISTED' },
+    'AVAILABLE',
+  );
+  const registered = new Map();
+  const ipcMain = {
+    handle(channel, handler) {
+      registered.set(channel, handler);
+    },
+  };
+  const original = ipcMain.handle;
+  const api = runInNewContext(
+    source.slice(start, end) +
+      `;({arm:()=>{delayNextRead=true;},ready:()=>delayedReadReady,release:()=>releaseDelayedRead(),count:()=>readDispatches})`,
+    { ipcMain, parseSettingsResponse },
+  );
+  let calls = 0;
+  const event = { sender: {}, senderFrame: {} },
+    receiver = { native: true };
+  ipcMain.handle('unrelated', () => 'untouched');
+  ipcMain.handle('foundation:preferences:v1', async function (actual, wire, ...extra) {
+    assert.equal(this, receiver);
+    assert.equal(actual, event);
+    assert.equal(JSON.parse(wire).method, 'preferences.get');
+    assert.deepEqual(extra, ['preserved-extra']);
+    calls++;
+    return response;
+  });
+  assert.equal(ipcMain.handle, original);
+  assert.equal(registered.get('unrelated')(), 'untouched');
+  const handler = registered.get('foundation:preferences:v1'),
+    wire = JSON.stringify({ method: 'preferences.get' });
+  assert.equal(await handler.call(receiver, event, wire, 'preserved-extra'), response);
+  api.arm();
+  let settled = false;
+  const pending = handler.call(receiver, event, wire, 'preserved-extra').then((value) => {
+    settled = true;
+    return value;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(api.ready(), true);
+  assert.equal(settled, false);
+  assert.equal(calls, 2);
+  api.release();
+  assert.equal(await pending, response);
+  assert.equal(api.count(), 2);
 });

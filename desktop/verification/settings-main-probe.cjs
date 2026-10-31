@@ -1,19 +1,76 @@
 'use strict';
 // Verification wrapper: actual compiled main/preload/React. Native answers are
 // fixed injected responses, not claimed genuine user widget interaction.
-const { app, BrowserWindow, dialog, safeStorage, screen } = require('electron');
+const { app, BrowserWindow, dialog, safeStorage, screen, ipcMain } = require('electron');
 const fs = require('node:fs'),
   path = require('node:path');
 const { CASES, read, write, exact, result } = require('./settings-contract.cjs');
 const { preflight, authenticated } = require('./settings-native.cjs');
 const { FoundationDatabase } = require('../build/foundation-database.cjs');
 const { parseSettingsResponse } = require('../build/settings-contract.cjs');
+const { securePreferences } = require('../build/window-policy.cjs');
+let actualHandler,
+  delayNextRead = false,
+  delayedReadReady = false,
+  releaseDelayedRead,
+  readDispatches = 0,
+  releaseConfirmation,
+  confirmationHeld = false;
+const originalHandle = ipcMain.handle;
+ipcMain.handle = function (channel, handler) {
+  if (channel !== 'foundation:preferences:v1') return originalHandle.call(this, channel, handler);
+  if (actualHandler) throw Error('SETTINGS_DUPLICATE_HANDLER');
+  actualHandler = handler;
+  ipcMain.handle = originalHandle;
+  return originalHandle.call(this, channel, async function (...args) {
+    const wire = args[1];
+    let isRead = false;
+    try {
+      isRead = JSON.parse(wire)?.method === 'preferences.get';
+    } catch {}
+    if (isRead) readDispatches++;
+    const delay = isRead && delayNextRead;
+    if (delay) delayNextRead = false;
+    const value = await handler.apply(this, args);
+    if (delay) {
+      const response = parseSettingsResponse(value);
+      if (response?.ok !== true || response.outcome !== 'OBSERVED')
+        throw Error('SETTINGS_DELAY_BASELINE');
+      delayedReadReady = true;
+      await new Promise((resolve) => {
+        releaseDelayedRead = resolve;
+      });
+    }
+    return value;
+  });
+};
+async function direct(contents, frame, request) {
+  if (typeof actualHandler !== 'function') throw Error('SETTINGS_HANDLER');
+  const value = parseSettingsResponse(
+    await actualHandler({ sender: contents, senderFrame: frame }, JSON.stringify(request)),
+  );
+  if (!value) throw Error('SETTINGS_DIRECT');
+  return value;
+}
+function dbWitness() {
+  const database = new FoundationDatabase(
+    path.join(state.data, 'active.sqlite'),
+    state.c.storeId,
+    true,
+  );
+  try {
+    return { fingerprint: database.fingerprint(), settings: database.readSettings() };
+  } finally {
+    database.close();
+  }
+}
 let state,
   cases,
   completed = false,
   ready = 0,
   closed = 0,
   expectedWindow;
+let negativeStage = null;
 const originalLog = console.log,
   originalError = console.error;
 const deadline = setTimeout(() => {
@@ -22,6 +79,8 @@ const deadline = setTimeout(() => {
 }, 110000);
 function failed() {
   clearTimeout(deadline);
+  if (['SENDER', 'SUBFRAME', 'LATE_REPLY', 'REVOKED_RESET'].includes(negativeStage))
+    fs.writeSync(2, `SETTINGS_NEGATIVE_STAGE_${negativeStage}\n`);
   fs.writeSync(2, 'SETTINGS_FAILED\n');
   app.exit(1);
 }
@@ -176,6 +235,66 @@ async function run() {
     cases.previousRestored =
       current.theme === 'DARK' && current.dockWidth === 510 && current.tileWidth === 151;
     if (answerIndex !== 3) throw Error('SETTINGS_CONFIRMATION');
+    negativeStage = 'SENDER';
+    const readRequest = { version: 1, requestId: 'native-denial', method: 'preferences.get' };
+    const stranger = new BrowserWindow({
+      show: false,
+      webPreferences: securePreferences(window.webContents.session),
+    });
+    try {
+      const denied = await direct(
+        stranger.webContents,
+        stranger.webContents.mainFrame,
+        readRequest,
+      );
+      cases.foreignSenderDenied = denied.ok === false && denied.code === 'UNTRUSTED_SENDER';
+    } finally {
+      stranger.destroy();
+    }
+    negativeStage = 'SUBFRAME';
+    await execute(
+      window,
+      "(() => { const frame=document.createElement('iframe'); frame.id='settings-owned-empty-frame'; document.body.append(frame); return true; })()",
+    );
+    let childFrame;
+    await poll(() => {
+      childFrame = window.webContents.mainFrame.frames.find(
+        (frame) => frame.parent === window.webContents.mainFrame,
+      );
+      return childFrame !== undefined;
+    });
+    const childDenied = await direct(window.webContents, childFrame, readRequest);
+    cases.childFrameDenied = childDenied.ok === false && childDenied.code === 'UNTRUSTED_SENDER';
+    await execute(window, "document.getElementById('settings-owned-empty-frame').remove(); true");
+    // Delay only one response after the actual registered handler completes.
+    negativeStage = 'LATE_REPLY';
+    const readsBefore = readDispatches;
+    delayNextRead = true;
+    await execute(window, "document.getElementById('preferences-read').click()");
+    await poll(() => delayedReadReady && typeof releaseDelayedRead === 'function');
+    await poll(() =>
+      execute(
+        window,
+        "document.getElementById('preferences-status').textContent.startsWith('TIMEOUT / ') && document.getElementById('preferences-theme').disabled",
+      ),
+    );
+    const timedOutStatus = await execute(
+      window,
+      "document.getElementById('preferences-status').textContent",
+    );
+    releaseDelayedRead();
+    await pause(150);
+    cases.delayedReplyDiscarded =
+      readDispatches === readsBefore + 1 &&
+      (await execute(window, "document.getElementById('preferences-status').textContent")) ===
+        timedOutStatus;
+    await execute(window, "document.getElementById('preferences-read').click()");
+    await poll(() =>
+      execute(
+        window,
+        "document.getElementById('preferences-status').textContent.startsWith('OBSERVED / PERSISTED / ') && !document.getElementById('preferences-theme').disabled",
+      ),
+    );
     const targetBounds = fixtureBounds(screen.getDisplayMatching(window.getBounds()).workArea);
     window.setBounds(targetBounds);
     window.maximize();
@@ -184,6 +303,42 @@ async function run() {
     cases.windowObserved =
       expectedWindow.maximized &&
       JSON.stringify(expectedWindow.normalBounds) === JSON.stringify(targetBounds);
+    await poll(
+      () =>
+        JSON.stringify({
+          normalBounds: dbWitness().settings.normalBounds,
+          maximized: dbWitness().settings.maximized,
+        }) === JSON.stringify(expectedWindow),
+    );
+    await pause(400);
+    const before = dbWitness();
+    await pause(100);
+    if (dbWitness().fingerprint !== before.fingerprint) throw Error('SETTINGS_GEOMETRY_BUSY');
+    negativeStage = 'REVOKED_RESET';
+    const pendingReset = direct(window.webContents, window.webContents.mainFrame, {
+      version: 1,
+      requestId: 'held-reset',
+      method: 'preferences.reset',
+      expectedRevision: before.settings.revision,
+    });
+    await poll(() => confirmationHeld && typeof releaseConfirmation === 'function');
+    const loaded = new Promise((resolve, reject) => {
+      const deadline = setTimeout(() => reject(Error('SETTINGS_RELOAD_DEADLINE')), 5000);
+      window.webContents.once('did-finish-load', () => {
+        clearTimeout(deadline);
+        resolve();
+      });
+    });
+    window.webContents.reload();
+    await loaded;
+    releaseConfirmation({ response: 1, checkboxChecked: false });
+    const revoked = await pendingReset;
+    cases.heldConfirmationRevoked =
+      revoked.ok === false &&
+      revoked.code === 'SESSION_REVOKED' &&
+      dbWitness().fingerprint === before.fingerprint &&
+      answerIndex === 4;
+    negativeStage = null;
     cases.vaultUnchanged =
       read(path.join(state.root, `settings-vault-before-${state.c.mode}.json`)) ===
       JSON.stringify(vaultWitness());
@@ -248,19 +403,26 @@ try {
           type: 'question',
           buttons: [
             'Cancel',
-            answerIndex < 2 ? 'Reset preferences' : 'Restore previous preferences',
+            answerIndex === 2 ? 'Restore previous preferences' : 'Reset preferences',
           ],
           defaultId: 0,
           cancelId: 0,
           noLink: true,
           message:
-            answerIndex < 2
-              ? 'Reset nonsecret UI preferences?'
-              : 'Restore the previous preference revision?',
+            answerIndex === 2
+              ? 'Restore the previous preference revision?'
+              : 'Reset nonsecret UI preferences?',
         }) ||
-      answerIndex >= 3
+      answerIndex >= 4
     )
       throw Error('SETTINGS_DIALOG');
+    if (answerIndex === 3) {
+      answerIndex++;
+      confirmationHeld = true;
+      return new Promise((resolve) => {
+        releaseConfirmation = resolve;
+      });
+    }
     return { response: [0, 1, 1][answerIndex++], checkboxChecked: false };
   };
   console.log = (...args) => {
@@ -309,7 +471,7 @@ try {
       }
       cases.orderlyQuit = true;
       const output = {
-        version: 1,
+        version: 2,
         mode: state.c.mode,
         stage: state.c.stage,
         versions: {

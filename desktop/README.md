@@ -235,6 +235,8 @@ window persistence without changing legacy public v1/v2 wire schemas. The diagno
 renderer now hydrates persisted Light/Dark/layout once after main admission; it is
 still not the full V9 interface. Native confirmation uses Cancel by default.
 [Exact evidence](../docs/evidence/P1-07-settings-source-2026-10-31.md) records independent
-407 desktop/109 foundation/119 Python PASS and pending Windows observations.
+407 desktop/109 foundation/119 Python PASS and the first bounded Windows
+UI/reopen/COMMIT/screenshot PASS. Additional native admission-negative observations
+remain pending; full P1-07 acceptance is not inferred.
 [Scoped native verification](verification/SETTINGS-NATIVE.md) explicitly excludes
 P1-06's unmet cross-user criterion; neither task nor Phase acceptance is implied.
