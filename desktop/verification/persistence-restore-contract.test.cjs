@@ -56,7 +56,12 @@ test('public result permits only exact fixed versions and boolean case set', () 
   assert.equal(result(JSON.stringify(v)).cases.source_unchanged, false);
 });
 function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'persistence-restore-'));
+  // Production async realpath uses the native binding; Windows TEMP may use
+  // an 8.3 spelling which the JS synchronous walker retains. Admit the newly
+  // exclusively created fixture through that same native canonicalization.
+  const root = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'persistence-restore-')),
+  );
   const storeId = randomUUID(),
     runParentToken = randomUUID(),
     sourceOwnerToken = randomUUID(),
@@ -152,6 +157,8 @@ test('owned control creates fresh retained restored lease/checkpoint without tou
     console.log(`TEST_CONTEXT_CODE_${code}`);
   };
   try {
+    assert.equal(await fs.promises.realpath(f.root), f.root);
+    assert.equal(await fs.promises.realpath(f.restored), f.restored);
     const before = sourceWitness(f.source);
     stage = 'PREPARE';
     const c = await prepare(f.root, 'source');
@@ -187,7 +194,11 @@ test('missing/corrupt copied material fail preflight without original key mutati
         file = path.join(f.restored, 'key-profile', 'Local State');
       if (missing) fs.unlinkSync(file);
       else fs.writeFileSync(file, '{}');
-      await assert.rejects(prepare(f.root, 'source'));
+      await assert.rejects(prepare(f.root, 'source'), (error) =>
+        missing
+          ? error?.code === 'ENOENT'
+          : error instanceof Error && error.message === 'KEY_PROFILE_MATERIAL_REJECTED',
+      );
       assert.equal(sourceWitness(f.source), before);
       assert.equal(
         fs.existsSync(path.join(f.root, 'persistence-restore-control-source.json')),

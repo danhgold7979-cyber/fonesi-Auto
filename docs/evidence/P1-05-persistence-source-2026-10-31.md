@@ -348,3 +348,24 @@ relaxed. Native stages remain unexecuted on both failed Windows attempts.
 Independent narrow source/diagnostic review CLEAR at 10:12 UTC; four focused tests
 passed independently. Cleanup diagnostics preserve the original failure and do not
 replace it with a later cleanup error. The full 251-test run is author evidence.
+
+### Restore fixture canonical input — 10:17 UTC
+
+Run [41191859518](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41191859518)
+on `583f71f636e15593f92e4416275a740a59309ed5` produced **251 tests, 250 pass,
+1 fail**. The portable inventory correction passed. Remaining ordinal 242 mapped
+to the same restore positive fixture, with fixed `PREPARE` /
+`PERSISTENCE_FILES_REJECTED`; no cancellation/skip or native execution occurred.
+
+The fixture now resolves its newly and exclusively created temporary root through
+`fs.realpathSync.native`, matching the native canonicalization used by production
+`fs.promises.realpath`, and explicitly asserts async canonical identity before
+preparation. The ordinary synchronous JS path walker and native binding can differ
+for Windows path spelling; the exact hosted alias was not logged or proven. This
+is a canonical fixture-input correction, not relaxation of production ownership,
+no-link, lease, profile or recovery checks. Missing/corrupt copied-profile negatives
+now require `ENOENT` / `KEY_PROFILE_MATERIAL_REJECTED` respectively, so an unrelated
+ownership failure cannot satisfy them. Focused **6/6** and full local **251/251**
+pass; exact-head Windows confirmation remains required.
+Independent fixture-only review CLEAR at 10:17 UTC with a separate 6/6 focused
+rerun; the full 251-test result remains author evidence.
