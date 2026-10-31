@@ -1,12 +1,12 @@
 # PHASE-01 — Repository and desktop foundation
 
-**Revision:** 1.2-draft · **Current summary:** 2026-10-31 05:40 UTC
+**Revision:** 1.2-draft · **Current summary:** 2026-10-31 05:57 UTC
 **Full-plan acceptance:** NOT_ACCEPTED · **Execution:** explicitly scoped entries active
 **Current branch:** `phase-01`; no main merge or original Phase 0 acceptance
 **Full-phase execution base:** remains conditional on the original Phase 0 gate
-**Current verified scope:** P1-01/P1-02/P1-03 task-specific TECHNICAL_PASS;
-formal Phase0/predecessor acceptance pending. P1-11 pure-contract completion entered at 05:45 UTC; source/fixture verification
-is in progress under its exact approved development-only schema.
+**Current verified scope:** P1-01/P1-02/P1-03/P1-11 task-specific TECHNICAL_PASS;
+formal Phase0/predecessor acceptance pending. P1-11 pure contracts now pass exact-head Windows verification; no new service,
+transport or DDL is exposed. Full foundation/UI/persistence acceptance is incomplete.
 
 > Phase 0 remains unfinished. Historical pure-source restrictions below were
 > superseded only by recorded narrow entries, including ADR-0006's real public-read

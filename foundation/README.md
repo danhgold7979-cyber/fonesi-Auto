@@ -174,4 +174,8 @@ of physical identity, secret existence, safe dispatch or external success.
 compiles the pure sources into a fresh owned output and runs the synthetic fixtures.
 The aggregate foundation harness includes this file alongside every earlier suite.
 Use the real admitted npm version for `node foundation/scripts/check.mjs <version>`.
-New exact-head Windows execution remains pending publication.
+Exact P1-11 Windows head `b3bc190348fd427dea96c4b3fd5b929a286e6a23` now passes
+all five foundation stages and **109/109** tests (86 retained + 23 new); desktop
+85/Python43/PowerShell25 and actual public source/package25 each also pass.
+[Contract evidence and limits](../docs/evidence/P1-11-contract-completion-source-2026-10-31.md)
+separate pure domain validation from existing public IPC and formal acceptance.

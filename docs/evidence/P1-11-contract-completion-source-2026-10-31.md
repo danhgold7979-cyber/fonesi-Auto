@@ -1,6 +1,6 @@
 # P1-11 — Pure contract completion source evidence
 
-**2026-10-31 05:54 UTC · local source verified; new Windows run pending, not task/phase acceptance.**
+**2026-10-31 05:58 UTC · exact-head Windows verification PASS; formal task/phase acceptance separate.**
 Coordinator approved the independently reviewed [exact development fixture schema](../phases/PHASE-01-P1-11-CONTRACT-COMPLETION-PROPOSAL.md),
 entry recorded at 05:45 before source. Current branch `phase-01`; P1-01/P1-03
 technical prerequisites verified, formal Phase 0/predecessor gates remain pending.
@@ -96,3 +96,45 @@ Final independent closure at 05:54 UTC: source/docs CLEAR, all 118 staged local
 links resolve, working/staged whitespace checks PASS, reviewed source hashes
 unchanged. New exact-head Windows execution remains pending; no application
 runtime or second hosted run was performed during this source review.
+
+## Exact-head Windows verification — 2026-10-31 05:57 UTC
+
+Published head `b3bc190348fd427dea96c4b3fd5b929a286e6a23`, exact source tree
+`1a657b21a7976204f6986f652f5bf1b5f790753d`.
+[Run 41174482528](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41174482528),
+job **124459080053**, SUCCESS. Coordinator retrieved terminal job logs: desktop
+**85/85**, foundation **109/109**, Python **43/43**, PowerShell **25/25** PASS.
+Named Windows development verification reuses the explicitly approved isolated
+runner method; this is not the user's PC, Windows 10 support or a Phase 0 waiver.
+
+Artifact **13031924553**, retained
+[validated sample](P1-11-contract-runtime-sample-2026-10-31.json) is byte-identical
+to the coordinator-provided downloaded JSON: **4,380 LF bytes**, SHA256
+`8c8b5c87eea1830417b01c8da6b83c84136f1ceb6f70457a43eecf755552a711`.
+Hash describes artifact/Git bytes, not uncontrolled checkout conversion. No second
+download was performed by the source author or reviewer. Original-byte
+duplicate-aware parse, strict reconstructed-envelope validation and exact public
+output equality PASS independently; this is content validation, not another
+runtime execution. Reviewer also validated exact runtime schema and privacy.
+
+Source/package **25/25** each; source/profile **1,231,398 / 1,231,400** bytes, crash
+**1,231,390**, tamper **557,458**, package **374,873,181** bytes. Crash/tamper retain
+expected NONZERO_EXIT/1 and required observations; all process/capture/directory
+cleanup, build, binary and copy verification predicates pass; failure=null.
+Original aboutBlank changed=true/denial=false remains **FAIL_RETAINED**. Fixed
+report contains no raw logs, paths, credentials, serials or caller identifiers.
+
+Independent source/schema/threat/docs review CLEAR at 05:54 and exact artifact
+content/privacy CLEAR at 05:57. The criterion table is now supported by both pure
+fixtures on Windows and reused actual public main/preload serialization, never by
+a new domain transport. No P1-11-specific gap remains within this approved pure
+contract/definition scope; coordinator accepted **TECHNICAL_PASS** at 05:57 UTC, with formal
+**DEPENDENCIES_PENDING** through Phase 0. P1-02's technical P1-03/P1-11
+prerequisites are complete; formal acceptance remains separate.
+Formal predecessor/Phase 0 acceptance remains pending; no main merge follows.
+Earlier NOT_RUN/source-count notes are historical checkpoints, superseded only by
+this exact-head execution.
+
+Five-file hosted documentation/sample closure independently CLEAR at 05:59 UTC:
+retained bytes/hash, 86 local links, whitespace, source hashes and original Phase 0
+baseline verified unchanged. Reviewer did not redownload or rerun the runtime.
