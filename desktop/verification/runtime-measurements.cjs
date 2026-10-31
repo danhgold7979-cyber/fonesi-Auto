@@ -21,4 +21,13 @@ function preloadEvidence(configured, registered) {
     !Object.hasOwn(configured, 'preload') && Array.isArray(registered) && registered.length === 0
   );
 }
-module.exports = { securePreferenceEvidence, preloadEvidence };
+const VISIBLE_UNAVAILABLE =
+  "(() => { const banner=document.querySelector('.top-demo'); return banner !== null && banner.textContent === 'Dịch vụ chưa khả dụng' && banner.getClientRects().length > 0; })()";
+const MOUNT_DIAGNOSTICS =
+  "(() => { if (!document.getElementById('health-read')) document.getElementById('help-top')?.click(); const read=document.getElementById('health-read'), status=document.getElementById('bridge-status'); return read !== null && status !== null && read.getClientRects().length > 0 && status.getClientRects().length > 0; })()";
+module.exports = {
+  securePreferenceEvidence,
+  preloadEvidence,
+  VISIBLE_UNAVAILABLE,
+  MOUNT_DIAGNOSTICS,
+};

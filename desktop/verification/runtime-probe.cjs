@@ -3,7 +3,11 @@
 // No runtime execution until the supervisor and complete evidence path are reviewed.
 const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('node:path');
-const { securePreferenceEvidence } = require('./runtime-measurements.cjs');
+const {
+  securePreferenceEvidence,
+  VISIBLE_UNAVAILABLE,
+  MOUNT_DIAGNOSTICS,
+} = require('./runtime-measurements.cjs');
 const { mkdirSync } = require('node:fs');
 const { scan } = require('./logging-evidence.cjs');
 const { createLifecycle } = require('../build/lifecycle.cjs');
@@ -294,15 +298,19 @@ async function runInitialChecks(window) {
     (await contents.executeJavaScript(
       "typeof foundation === 'object' && Object.keys(foundation).sort().join(',') === 'health,settings'",
     )) === true;
+  // Observe the actual visible V9 unavailable banner, not retired diagnostic-page text.
+  const diagnosticDeadline = Date.now() + 3000;
+  do {
+    cases.diagnostic_rendered = (await contents.executeJavaScript(VISIBLE_UNAVAILABLE)) === true;
+    if (!cases.diagnostic_rendered) await new Promise((resolve) => setTimeout(resolve, 10));
+  } while (!cases.diagnostic_rendered && Date.now() < diagnosticDeadline);
   // These are ordinary renderer observations, not OS sandbox-token measurement.
   const initial = await contents.executeJavaScript(`(() => ({
-    diagnostic: document.body.textContent.includes('UNAVAILABLE'),
     noNode: typeof require === 'undefined' && typeof process === 'undefined' &&
       typeof module === 'undefined' && typeof Buffer === 'undefined',
     noBridge: typeof foundation === 'object' && Object.keys(foundation).sort().join(',') === 'health,settings' && !('electron' in globalThis) && !('lab' in globalThis) &&
       !('fonesi' in globalThis) && !('api' in globalThis)
   }))()`);
-  cases.diagnostic_rendered = initial.diagnostic === true;
   cases.no_node_globals = initial.noNode === true;
   // Must be paired with complete source/bundle audit: absent names alone are not proof.
   cases.bounded_public_bridge = initial.noBridge === true;
@@ -390,10 +398,7 @@ async function runInitialChecks(window) {
   const mountDeadline = Date.now() + 3000;
   let mounted = false;
   do {
-    mounted =
-      (await contents.executeJavaScript(
-        "(() => { if (!document.getElementById('health-read')) document.getElementById('help-top')?.click(); return document.getElementById('health-read') !== null && document.getElementById('bridge-status') !== null; })()",
-      )) === true;
+    mounted = (await contents.executeJavaScript(MOUNT_DIAGNOSTICS)) === true;
     if (!mounted) await new Promise((resolve) => setTimeout(resolve, 10));
   } while (!mounted && Date.now() < mountDeadline);
   if (!mounted) throw new Error('REACT_NOT_MOUNTED');

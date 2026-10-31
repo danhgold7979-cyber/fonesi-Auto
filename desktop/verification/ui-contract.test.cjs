@@ -160,3 +160,62 @@ test('visible help readiness accepts prior persisted mutations but rejects unkno
     assert.equal(evaluate(state), false);
   assert.equal(evaluate('OBSERVED / PERSISTED / REVISION 3', true), false);
 });
+test('foundation unavailable observation requires exact visible V9 banner rather than hidden text', () => {
+  const { VISIBLE_UNAVAILABLE } = require('./runtime-measurements.cjs');
+  const { runInNewContext } = require('node:vm');
+  let banner = null;
+  const document = {
+    querySelector(selector) {
+      assert.equal(selector, '.top-demo');
+      return banner;
+    },
+  };
+  const observe = () => runInNewContext(VISIBLE_UNAVAILABLE, { document });
+  assert.equal(observe(), false);
+  banner = { textContent: 'UNAVAILABLE', getClientRects: () => [1] };
+  assert.equal(observe(), false);
+  banner.textContent = 'Dịch vụ chưa khả dụng';
+  banner.getClientRects = () => [];
+  assert.equal(observe(), false);
+  banner.getClientRects = () => [1];
+  assert.equal(observe(), true);
+});
+test('foundation and degraded probes open genuine help before explicit visible diagnostic read', () => {
+  const { MOUNT_DIAGNOSTICS } = require('./runtime-measurements.cjs');
+  const { runInNewContext } = require('node:vm');
+  const nodes = new Map();
+  let opens = 0;
+  const document = {
+    getElementById(id) {
+      return nodes.get(id) ?? null;
+    },
+  };
+  const mount = () => runInNewContext(MOUNT_DIAGNOSTICS, { document });
+  assert.equal(mount(), false);
+  nodes.set('help-top', {
+    click() {
+      opens++;
+    },
+  });
+  assert.equal(mount(), false);
+  assert.equal(opens, 1);
+  nodes.set('health-read', { getClientRects: () => [1] });
+  nodes.set('bridge-status', { getClientRects: () => [] });
+  assert.equal(mount(), false);
+  nodes.set('bridge-status', { getClientRects: () => [1] });
+  assert.equal(mount(), true);
+  assert.equal(opens, 1);
+  for (const name of ['runtime-probe.cjs', 'logging-degraded-probe.cjs']) {
+    const source = fs.readFileSync(path.join(__dirname, name), 'utf8');
+    assert.ok(
+      source.includes('executeJavaScript(\n              MOUNT_DIAGNOSTICS') ||
+        source.includes('executeJavaScript(MOUNT_DIAGNOSTICS'),
+    );
+  }
+  const degraded = fs.readFileSync(path.join(__dirname, 'logging-degraded-probe.cjs'), 'utf8');
+  assert.ok(
+    degraded.includes(
+      "status.getClientRects().length > 0 && status.textContent.includes('LOGGING DEGRADED — diagnostics may be incomplete')",
+    ),
+  );
+});

@@ -3,6 +3,7 @@
 const { app, ipcMain } = require('electron');
 const path = require('node:path');
 const { scanArtifacts } = require('./logging-evidence.cjs');
+const { MOUNT_DIAGNOSTICS } = require('./runtime-measurements.cjs');
 let ready = false,
   handler,
   window,
@@ -60,12 +61,7 @@ app.once('browser-window-created', (_event, created) => {
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(error.diagnosticId);
         const mounted = Date.now() + 3000;
         while (Date.now() < mounted) {
-          if (
-            await created.webContents.executeJavaScript(
-              "document.getElementById('health-read') !== null",
-            )
-          )
-            break;
+          if (await created.webContents.executeJavaScript(MOUNT_DIAGNOSTICS)) break;
           await new Promise((resolve) => setTimeout(resolve, 10));
         }
         await created.webContents.executeJavaScript(
@@ -75,7 +71,7 @@ app.once('browser-window-created', (_event, created) => {
         while (Date.now() < rendered) {
           cases.visibleDegradation =
             (await created.webContents.executeJavaScript(
-              "document.getElementById('bridge-status')?.textContent.includes('LOGGING DEGRADED — diagnostics may be incomplete')",
+              "(() => { const status=document.getElementById('bridge-status'); return status !== null && status.getClientRects().length > 0 && status.textContent.includes('LOGGING DEGRADED — diagnostics may be incomplete'); })()",
             )) === true;
           if (cases.visibleDegradation) break;
           await new Promise((resolve) => setTimeout(resolve, 10));
