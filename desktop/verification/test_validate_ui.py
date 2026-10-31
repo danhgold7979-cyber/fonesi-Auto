@@ -81,6 +81,11 @@ class UiValidationTests(unittest.TestCase):
   markers=re.findall(r"'(UI_(?:REFERENCE_)?STAGE_[A-Z]+)'",source)
   self.assertEqual(len(markers),12);self.assertEqual(len(set(markers)),12)
   self.assertIn('$_ -ceq $marker',source);self.assertNotIn('Write-Output $Probe.Stderr',source)
+  self.assertIn("@('OVERVIEW','ACCOUNTS','TRACKING','SETUP','CALENDAR','WORKFLOWS')",source)
+  self.assertIn("@('LIGHT','DARK')",source)
+  self.assertIn("@('THEME','NAVIGATE','STRUCTURE','EMPTY','GEOMETRY','CAPTURE')",source)
+  self.assertIn("$marker='UI_PAGE_'+$page+'_'+$theme+'_'+$step",source)
+  self.assertIn('Write-Output $marker;return',source)
  def test_actual32_image_publish_is_exclusive_and_changed_or_missing_files_never_authorize(self):
   import io
   from contextlib import redirect_stdout

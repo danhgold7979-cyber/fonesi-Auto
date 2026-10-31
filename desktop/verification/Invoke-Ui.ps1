@@ -19,6 +19,14 @@ function Show-FixedUiDiagnostic($Probe) {
     foreach($marker in @('UI_STAGE_PREPARE','UI_STAGE_HYDRATE','UI_STAGE_PAGES','UI_STAGE_DROPDOWN','UI_STAGE_MODAL','UI_STAGE_DIMENSIONS','UI_STAGE_RESPONSIVE','UI_STAGE_CLOSE','UI_REFERENCE_STAGE_PREPARE','UI_REFERENCE_STAGE_LOAD','UI_REFERENCE_STAGE_PAGES','UI_REFERENCE_STAGE_CLOSE')){
         if(@($Probe.Stderr -split '\r?\n' | Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
     }
+    foreach($page in @('OVERVIEW','ACCOUNTS','TRACKING','SETUP','CALENDAR','WORKFLOWS')){
+        foreach($theme in @('LIGHT','DARK')){
+            foreach($step in @('THEME','NAVIGATE','STRUCTURE','EMPTY','GEOMETRY','CAPTURE')){
+                $marker='UI_PAGE_'+$page+'_'+$theme+'_'+$step
+                if(@($Probe.Stderr -split '\r?\n' | Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker;return}
+            }
+        }
+    }
 }
 function Write-Private([string]$Path,$Value) {
     Assert-PlainDirectory ([IO.Path]::GetDirectoryName($Path))

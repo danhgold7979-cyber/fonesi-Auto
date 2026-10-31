@@ -235,3 +235,62 @@ test('foundation and degraded probes open genuine help before explicit visible d
     ),
   );
 });
+
+test('page failure diagnostics emit only fixed page theme and step literals', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'ui-main-probe.cjs'), 'utf8');
+  const functionText = source.slice(
+    source.indexOf('function pageFailureCode('),
+    source.indexOf('function fail()'),
+  );
+  const classify = require('node:vm').runInNewContext(`(${functionText.trim()})`, {
+    PAGES,
+    THEMES: ['light', 'dark'],
+  });
+  for (const page of PAGES)
+    for (const theme of ['light', 'dark'])
+      for (const step of ['THEME', 'NAVIGATE', 'STRUCTURE', 'EMPTY', 'GEOMETRY', 'CAPTURE']) {
+        assert.equal(
+          classify({ page, theme, step }),
+          `UI_PAGE_${page.toUpperCase()}_${theme.toUpperCase()}_${step}`,
+        );
+      }
+  for (const value of [
+    null,
+    {},
+    { page: 'private path', theme: 'light', step: 'EMPTY' },
+    { page: 'overview', theme: 'private', step: 'EMPTY' },
+    { page: 'overview', theme: 'light', step: 'raw error' },
+  ])
+    assert.equal(classify(value), null);
+  assert.ok(source.includes("phase === 'PAGES' ? pageFailureCode(pageDiagnostic) : null"));
+});
+
+test('theme mutation reconciles the visible renderer revision after native geometry writes', async () => {
+  const source = fs.readFileSync(path.join(__dirname, 'ui-main-probe.cjs'), 'utf8');
+  const text = source.slice(
+    source.indexOf('async function theme('),
+    source.indexOf('async function page('),
+  );
+  const calls = [];
+  const context = {
+    THEMES: ['light', 'dark'],
+    execute: async (code) => (code === 'document.documentElement.dataset.theme' ? 'light' : true),
+    help: async () => calls.push('help'),
+    click: async (selector) => calls.push(selector),
+    poll: async (predicate) => {
+      assert.equal(await predicate(), true);
+    },
+    noModal: async () => calls.push('close'),
+    readSettings: async () => ({ theme: 'DARK' }),
+  };
+  const run = require('node:vm').runInNewContext(`(${text.trim()})`, context);
+  await run('dark');
+  assert.deepEqual(calls, ['#help-top', '#preferences-read', 'close', '#theme-toggle']);
+  calls.length = 0;
+  context.click = async (selector) => {
+    calls.push(selector);
+    if (selector === '#theme-toggle') throw Error('STALE_REVISION');
+  };
+  await assert.rejects(run('dark'), /STALE_REVISION/);
+  assert.equal(calls.filter((value) => value === '#theme-toggle').length, 1);
+});

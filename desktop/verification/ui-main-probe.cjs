@@ -25,14 +25,27 @@ let state,
   ready = 0,
   closed = 0,
   phase = 'PREPARE';
+let pageDiagnostic = null;
 const images = [],
   originalLog = console.log;
 const deadline = setTimeout(() => {
   fs.writeSync(2, 'UI_DEADLINE\n');
   app.exit(74);
 }, 110000);
+function pageFailureCode(value) {
+  if (
+    !value ||
+    !PAGES.includes(value.page) ||
+    !THEMES.includes(value.theme) ||
+    !['THEME', 'NAVIGATE', 'STRUCTURE', 'EMPTY', 'GEOMETRY', 'CAPTURE'].includes(value.step)
+  )
+    return null;
+  return `UI_PAGE_${value.page.toUpperCase()}_${value.theme.toUpperCase()}_${value.step}`;
+}
 function fail() {
   clearTimeout(deadline);
+  const pageCode = phase === 'PAGES' ? pageFailureCode(pageDiagnostic) : null;
+  if (pageCode) fs.writeSync(2, `${pageCode}\n`);
   if (
     [
       'PREPARE',
@@ -106,7 +119,25 @@ async function viewport(width, height) {
 async function theme(value) {
   if (!THEMES.includes(value)) throw Error('UI_THEME');
   const current = await execute('document.documentElement.dataset.theme');
-  if (current !== value) await click('#theme-toggle');
+  if (current !== value) {
+    // Native viewport persistence can advance the shared revision after startup
+    // hydration. Reconcile through the genuine visible read before one mutation;
+    // never retry a rejected toggle or replace its admission result.
+    await click('#help-top');
+    await poll(() =>
+      execute(
+        "!!document.getElementById('preferences-read') && !document.getElementById('preferences-read').disabled",
+      ),
+    );
+    await click('#preferences-read');
+    await poll(() =>
+      execute(
+        "!document.getElementById('preferences-read').disabled && document.getElementById('preferences-status').textContent.startsWith('OBSERVED / PERSISTED / REVISION ')",
+      ),
+    );
+    await noModal();
+    await click('#theme-toggle');
+  }
   await poll(() =>
     execute(
       `document.documentElement.dataset.theme===${JSON.stringify(value)} && !document.getElementById('theme-toggle').disabled`,
@@ -161,6 +192,7 @@ async function page(value) {
     ],
     workflows: ['Quy trình Facebook', '.workflow-tree', '.tree-root'],
   }[value];
+  if (phase === 'PAGES' && pageDiagnostic) pageDiagnostic.step = 'STRUCTURE';
   const structure = await execute(
     `(() => { const required=${JSON.stringify(required)};return document.querySelector('#workspace h1').textContent===required[0]&&required.slice(1).every(selector=>document.querySelector('#workspace '+selector)); })()`,
   );
@@ -243,21 +275,27 @@ async function run() {
     JSON.stringify(tabs.map((v) => v.label)) === JSON.stringify(LABELS);
   phase = 'PAGES';
   for (const tone of THEMES) {
+    pageDiagnostic = { page: PAGES[0], theme: tone, step: 'THEME' };
     await theme(tone);
     for (const name of PAGES) {
+      pageDiagnostic = { page: name, theme: tone, step: 'NAVIGATE' };
       await page(name);
+      pageDiagnostic.step = 'EMPTY';
       const shown = await execute(
         "document.querySelectorAll('#screens-grid .wall-screen,.account-row,.job-block').length===0 && !document.body.textContent.includes('PHONE-01') && !document.body.textContent.includes('SCHEDULED_DEMO')",
       );
       if (!shown) throw Error('UI_PRODUCTION_DATA');
+      pageDiagnostic.step = 'GEOMETRY';
       await geometry(1440, 900);
       pages[`${name}-${tone}`] = true;
       const spec = imageSpecs(state.c.mode).find(
         (item) => item.name === `ui-${state.c.mode}-${name}-${tone}.png`,
       );
+      pageDiagnostic.step = 'CAPTURE';
       if (spec) await screenshot(spec);
     }
   }
+  pageDiagnostic = null;
   cases.productionEmpty = true;
   cases.allPagesBothThemes = Object.values(pages).every(Boolean);
   cases.themePersisted = true;
