@@ -4,7 +4,8 @@ P1-10 local source work is now authorized for an unsigned offline Windows packag
 known-retired launch recovery. [Package verification/entry guide](PACKAGE-NATIVE.md),
 [contract](../../docs/phases/PHASE-01-P1-10-PACKAGING-CONTRACT.md) and
 [source evidence](../../docs/evidence/P1-10-package-recovery-source-2026-10-31.md).
-Native package execution remains NOT_RUN; nine technical scopes/formal0 and P1-06
+First hosted package execution FAILED at first-Cancel observation; no bundle promotion.
+Nine technical scopes/formal0 and P1-06
 cross-user UNMET remain unchanged. No installer, signing or device-service claim.
 
 This directory contains a strict parser, synthetic tests and the reviewed runtime

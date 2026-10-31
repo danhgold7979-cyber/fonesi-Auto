@@ -12,7 +12,26 @@ function Evidence($p){return [ordered]@{process=[ordered]@{status=$p.Status;exit
 function Write-Private([string]$file,$value){Assert-PlainDirectory ([IO.Path]::GetDirectoryName($file));$bytes=[Text.Encoding]::UTF8.GetBytes(($value|ConvertTo-Json -Depth 24 -Compress));if($bytes.Length -gt 65536){throw 'CAPTURE_LIMIT'};$f=[IO.File]::Open($file,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$f.Write($bytes,0,$bytes.Length);$f.Flush($true)}finally{$f.Dispose()}}
 function Read-Private([string]$name){Assert-OwnedRun $owner;if([IO.Path]::GetFileName($name) -cne $name){throw 'NAME'};$f=Get-Item -LiteralPath (Join-Path $owner.Path $name) -Force;if($f.PSIsContainer -or ($f.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $f.Length -gt 65536){throw 'FILE'};return ([IO.File]::ReadAllText($f.FullName)|ConvertFrom-Json)}
 function Require($p,[string]$marker){if(-not (Retired $p) -or $p.Status -cne 'SUCCESS' -or $p.ExitCode -ne 0 -or (($p.Stdout -replace '\r\n',"`n").TrimEnd("`n") -cne $marker)){throw 'CONTROL'}}
-function Node-Control([string]$name,[string[]]$arguments,[string]$marker){$script:allClean=$false;$p=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot $name))+$arguments) 120000 @{};$script:allClean=Retired $p;Require $p $marker}
+function Show-ControlDiagnostic($p,[string]$expected){
+    # Only finite classifications and exact allowlisted full stderr lines escape.
+    $status='INVALID';if($p.Status -cin @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT','TIMEOUT','CAPTURE_FAILED','LAUNCH_FAILED','ACCESS_DENIED','CLEANUP_FAILED')){$status=$p.Status}
+    Write-Output ('PACKAGE_CONTROL_PROCESS_'+$status)
+    $exit='NONZERO';if($null -eq $p.ExitCode){$exit='NONE'}elseif($p.ExitCode -eq 0){$exit='ZERO'}
+    Write-Output ('PACKAGE_CONTROL_EXIT_'+$exit)
+    $retirement='UNCONFIRMED';if(Retired $p){$retirement='CONFIRMED'}
+    Write-Output ('PACKAGE_CONTROL_RETIREMENT_'+$retirement)
+    $stdout='OTHER';if($p.Stdout.Length -eq 0){$stdout='EMPTY'}elseif((($p.Stdout -replace '\r\n',"`n").TrimEnd("`n")) -ceq $expected){$stdout='EXACT'}
+    Write-Output ('PACKAGE_CONTROL_STDOUT_'+$stdout)
+    $phases=@('ADMISSION','CAPTURE','BEFORE_STATE','MODULES','PRODUCT','JOURNAL','COMPLETED','OBSERVER','RESULT')
+    $codes=@('RESTORE_CONTROL','RESTORE_DESCENDANT','RESTORE_FILE','RESTORE_LIMIT','RESTORE_OWNER','RESTORE_READBACK','RESTORE_RESULT','RESTORE_SCHEMA','RESTORE_SOURCE','PACKAGE_STATE_REJECTED','LAUNCH_JOURNAL_REJECTED','ENOENT','UNCLASSIFIED')
+    $shown=0
+    foreach($prefix in @('PACKAGE_OBSERVE_','PACKAGE_OBSERVE_ERROR_')){
+        $values=$phases;if($prefix -ceq 'PACKAGE_OBSERVE_ERROR_'){$values=$codes}
+        foreach($value in $values){$literal=$prefix+$value;if(@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count -eq 1){Write-Output $literal;$shown++;break}}
+        if($shown -ge 2){break}
+    }
+}
+function Node-Control([string]$name,[string[]]$arguments,[string]$marker){$script:allClean=$false;$p=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot $name))+$arguments) 120000 @{};$script:allClean=Retired $p;if(-not $script:allClean -or $p.Status -cne 'SUCCESS' -or $p.ExitCode -ne 0 -or (($p.Stdout -replace '\r\n',"`n").TrimEnd("`n") -cne $marker)){Show-ControlDiagnostic $p $marker};Require $p $marker}
 function Validate([string[]]$arguments){$script:allClean=$false;$p=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_package.py'))+$arguments) 120000 @{};$script:allClean=Retired $p;Require $p 'PACKAGE_VALIDATION_PASS'}
 function Launcher([string[]]$arguments){
  $original=[Environment]::GetEnvironmentVariables('Process')

@@ -170,3 +170,179 @@ test('actual SQLite settings facts exclude native geometry and reject corrupt CU
     f.close();
   }
 });
+
+test('first-cancel observe composes real owned journal with explicitly synthetic package/native admission', () => {
+  const f = fixture();
+  try {
+    const module = { exports: {} };
+    const pkg = path.join(f.root, 'relocated-package');
+    const journal = require('../launch/launch-journal.cjs');
+    const source = fs.readFileSync(
+      new URL('../verification/package-state-control.cjs', import.meta.url),
+      'utf8',
+    );
+    const actualRequire = createRequire(
+      new URL('../verification/package-state-control.cjs', import.meta.url),
+    );
+    const fixtureRequire = (name) => {
+      if (name === '../launch/package-admission.cjs')
+        return {
+          verifyPackage: () => ({ fixtureOnly: true }),
+          assertDataOutsidePackage: (pkg, target) =>
+            assert.ok(!target.startsWith(`${pkg}${path.sep}`)),
+        };
+      if (name === path.join(pkg, 'app/build/foundation-database.cjs'))
+        return {
+          FoundationDatabase: class {
+            constructor() {
+              assert.fail('cancel must not inspect SQLite');
+            }
+          },
+          statement() {
+            assert.fail('cancel must not query SQLite');
+          },
+        };
+      if (name === path.join(pkg, 'app/build/backup-service.cjs'))
+        return {
+          parseBackupReceipt() {
+            assert.fail('cancel has no backup');
+          },
+        };
+      if (name === path.join(pkg, 'app/launch/launch-journal.cjs')) return journal;
+      return actualRequire(name);
+    };
+    // Only this test loader substitutes package/native admission; no production hook exists.
+    new Function('require', 'module', source)(fixtureRequire, module);
+    const controller = module.exports;
+    fs.mkdirSync(pkg);
+    fs.writeFileSync(path.join(f.root, '.owner'), randomUUID());
+    controller.prepare(f.root, pkg, 'first-cancel');
+    const parent = path.join(f.root, 'products', `Fonesi-Auto-${randomUUID()}`);
+    fs.mkdirSync(parent);
+    fs.writeFileSync(path.join(parent, '.owner'), randomUUID());
+    const launch = path.join(parent, `launch-${randomUUID()}`);
+    fs.mkdirSync(launch);
+    fs.writeFileSync(path.join(launch, '.owner'), randomUUID());
+    const data = path.join(parent, 'data-main');
+    const h = journal.plan(parent, launch, data, 'PACKAGE', 'NORMAL', 'a'.repeat(64));
+    const process = {
+      status: 'SUCCESS',
+      exitCode: 0,
+      cleanupComplete: true,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    };
+    const stages = ['SETUP', 'PREPARE_PROVISION', 'PROVISION', 'OBSERVE_PROVISION', 'RELEASE'];
+    for (const [index, stage] of stages.entries()) {
+      const n = index + 1;
+      journal.appendIntent(parent, launch, n, stage);
+      if (stage === 'SETUP') {
+        fs.mkdirSync(data);
+        write(path.join(data, '.persistence-owner.json'), {
+          version: 1,
+          storeId: h.storeId,
+          kind: 'FRESH',
+          restoreReceiptId: null,
+        });
+        fs.mkdirSync(path.join(data, '.writer-lock'));
+        write(path.join(data, '.writer-lock/owner.json'), {
+          version: 1,
+          storeId: h.storeId,
+          ownerToken: h.ownerToken,
+        });
+        journal.recordAcquired(parent, launch);
+      }
+      if (stage === 'RELEASE') {
+        write(path.join(data, `.released-${h.ownerToken}.json`), {
+          version: 1,
+          storeId: h.storeId,
+          ownerToken: h.ownerToken,
+        });
+        fs.unlinkSync(path.join(data, '.writer-lock/owner.json'));
+        fs.rmdirSync(path.join(data, '.writer-lock'));
+      }
+      write(path.join(launch, `capture-${String(n).padStart(2, '0')}.json`), {
+        process,
+        stdout: stage === 'OBSERVE_PROVISION' ? 'PERSISTENCE_LAUNCH_CANCELLED\n' : 'FIXTURE_ONLY\n',
+        stderr: '',
+      });
+      journal.settle(parent, launch, n);
+    }
+    const outer = path.join(f.root, 'package-probe-first-cancel');
+    fs.mkdirSync(outer);
+    const { witness } = require('../verification/package-launch-observer.cjs');
+    write(
+      path.join(outer, 'observer-provision.json'),
+      witness({ stage: 'first-cancel' }, 'provision', {
+        closed: true,
+        opens: 1,
+        confirms: 0,
+        cancelled: true,
+      }),
+    );
+    write(path.join(f.root, 'package-capture-first-cancel.json'), {
+      process,
+      stdout: 'PERSISTENCE_DESKTOP_CANCELLED\r\n',
+      stderr: '',
+    });
+    const result = controller.observe(f.root, pkg, 'first-cancel');
+    assert.equal(Object.values(result.cases).every(Boolean), true);
+    assert.equal(fs.existsSync(path.join(f.root, 'package-state-first-cancel.json')), true);
+  } finally {
+    f.close();
+  }
+});
+
+test('observe failure emits only the fixed boundary diagnostic, never the supplied path', () => {
+  const { spawnSync } = require('node:child_process');
+  const secret = fileURLToPath(
+    new URL('../.test-output/PRIVATE_MISSING_OBSERVE_CANARY', import.meta.url),
+  );
+  const r = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('../verification/package-state-control.cjs', import.meta.url)),
+      'observe',
+      secret,
+      path.join(secret, 'relocated-package'),
+      'first-cancel',
+    ],
+    { encoding: 'utf8', timeout: 5000, maxBuffer: 4096 },
+  );
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, 'PACKAGE_STATE_FAILED\n');
+  assert.equal(r.stderr, 'PACKAGE_OBSERVE_ADMISSION\nPACKAGE_OBSERVE_ERROR_ENOENT\n');
+  assert.equal((r.stdout + r.stderr).includes(secret), false);
+});
+
+test('private callback exceptions select fixed diagnostic codes without echo or getter access', () => {
+  const { fixedObservationError } = require('../verification/package-state-control.cjs');
+  function invoke(callback) {
+    try {
+      callback();
+    } catch (error) {
+      return fixedObservationError(error);
+    }
+  }
+  assert.equal(
+    invoke(() => {
+      throw Error('PRIVATE_PATH_TOKEN_CANARY');
+    }),
+    'UNCLASSIFIED',
+  );
+  assert.equal(
+    invoke(() => {
+      throw Error('RESTORE_SCHEMA');
+    }),
+    'RESTORE_SCHEMA',
+  );
+  assert.equal(
+    fixedObservationError({
+      get message() {
+        return assert.fail('getter executed');
+      },
+    }),
+    'UNCLASSIFIED',
+  );
+  assert.equal(fixedObservationError(Error('restore_schema')), 'UNCLASSIFIED');
+});

@@ -1,6 +1,6 @@
 # Internal package verification — P1-10
 
-Current status: source implementation in progress; hosted package execution NOT_RUN.
+Current status: first hosted package attempt FAILED at first-Cancel observation; no bundle promotion. The existing four regression jobs passed.
 See the [approved contract](../../docs/phases/PHASE-01-P1-10-PACKAGING-CONTRACT.md) and
 [measured source evidence](../../docs/evidence/P1-10-package-recovery-source-2026-10-31.md).
 

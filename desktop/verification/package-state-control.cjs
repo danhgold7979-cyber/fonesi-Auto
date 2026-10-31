@@ -385,9 +385,48 @@ function prepare(root, packageRoot, stage) {
   write(path.join(root, `package-stage-${stage}.json`), seed);
   return seed;
 }
+const OBSERVE_PHASES = Object.freeze([
+  'ADMISSION',
+  'CAPTURE',
+  'BEFORE_STATE',
+  'MODULES',
+  'PRODUCT',
+  'JOURNAL',
+  'COMPLETED',
+  'OBSERVER',
+  'RESULT',
+]);
+const OBSERVE_ERRORS = Object.freeze([
+  'RESTORE_CONTROL',
+  'RESTORE_DESCENDANT',
+  'RESTORE_FILE',
+  'RESTORE_LIMIT',
+  'RESTORE_OWNER',
+  'RESTORE_READBACK',
+  'RESTORE_RESULT',
+  'RESTORE_SCHEMA',
+  'RESTORE_SOURCE',
+  'PACKAGE_STATE_REJECTED',
+  'LAUNCH_JOURNAL_REJECTED',
+]);
+function fixedObservationError(error) {
+  try {
+    if (!error || typeof error !== 'object') return 'UNCLASSIFIED';
+    const descriptors = Object.getOwnPropertyDescriptors(error);
+    const known = OBSERVE_ERRORS.find((code) => descriptors.message?.value === code);
+    if (known) return known;
+    return descriptors.code?.value === 'ENOENT' ? 'ENOENT' : 'UNCLASSIFIED';
+  } catch {
+    return 'UNCLASSIFIED';
+  }
+}
+let observationPhase = null;
 function observe(root, packageRoot, stage) {
+  observationPhase = 'ADMISSION';
   const { packageHash } = admission(root, packageRoot, stage);
+  observationPhase = 'CAPTURE';
   capture(root, stage);
+  observationPhase = 'BEFORE_STATE';
   const before = exact(read(path.join(root, `package-before-${stage}.json`)), [
     'version',
     'state',
@@ -397,6 +436,7 @@ function observe(root, packageRoot, stage) {
   ]);
   let s = validateState(root, before.state);
   if (s.packageHash !== packageHash) fail();
+  observationPhase = 'MODULES';
   const m = modules(packageRoot),
     cases = Object.fromEntries(CASES[stage].map((k) => [k, false]));
   cases.packageVerified = true;
@@ -406,13 +446,17 @@ function observe(root, packageRoot, stage) {
   const unchanged = () =>
     equal(s.source, witness(data())) && equal(s.backup.witness, backupWitness(s.backup.file));
   if (stage === 'first-cancel' || stage === 'first-launch') {
+    observationPhase = 'PRODUCT';
     const added = names(path.join(root, 'products')).filter((n) => !before.products.includes(n));
     if (added.length !== 1 || !added[0].startsWith('Fonesi-Auto-') || !uuid(added[0].slice(12)))
       fail();
     const managed = path.join(root, 'products', added[0]);
     owned(managed);
+    observationPhase = 'JOURNAL';
     const j = current(managed, m.journal);
+    observationPhase = 'COMPLETED';
     m.journal.completed(managed, j.launch);
+    observationPhase = 'OBSERVER';
     const provision = observer(root, stage, 'provision');
     if (stage === 'first-cancel') {
       cases.provisioningCancelled =
@@ -528,6 +572,7 @@ function observe(root, packageRoot, stage) {
       }
     }
   }
+  observationPhase = 'RESULT';
   const result = { version: 1, stage, versions: VERSIONS, cases };
   contract.result(JSON.stringify(result));
   write(path.join(root, `package-result-${stage}.json`), result);
@@ -541,7 +586,11 @@ if (require.main === module) {
     if (extra.length || !['prepare', 'observe'].includes(action)) fail();
     (action === 'prepare' ? prepare : observe)(root, pkg, stage);
     process.stdout.write(`PACKAGE_STATE_${action === 'prepare' ? 'PREPARED' : 'OBSERVED'}\n`);
-  } catch {
+  } catch (error) {
+    if (OBSERVE_PHASES.includes(observationPhase)) {
+      process.stderr.write(`PACKAGE_OBSERVE_${observationPhase}\n`);
+      process.stderr.write(`PACKAGE_OBSERVE_ERROR_${fixedObservationError(error)}\n`);
+    }
     process.stdout.write('PACKAGE_STATE_FAILED\n');
     process.exitCode = 1;
   }
@@ -555,4 +604,7 @@ module.exports = {
   candidate,
   capture,
   validateState,
+  fixedObservationError,
+  OBSERVE_PHASES,
+  OBSERVE_ERRORS,
 };

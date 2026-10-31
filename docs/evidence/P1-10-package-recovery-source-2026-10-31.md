@@ -1,6 +1,6 @@
 # P1-10 — internal package and known-retired launch recovery
 
-**IN PROGRESS — local source checkpoint, no Windows package acceptance.**
+**IN PROGRESS — first Windows package attempt FAILED; no package promotion or task acceptance.**
 Source entry was approved at15:55UTC on2026-10-31 against the independently reviewed
 [contract](../phases/PHASE-01-P1-10-PACKAGING-CONTRACT.md), pre-entry SHA256
 `014e5ebef5449543c911deb1fc4be986ff731face6d7f947fddb06d3d666e4a6`.
@@ -127,3 +127,46 @@ supervisor/validator/workflow hashes above and driver SHA256
 This authorizes the reviewed synthetic, owned Windows package experiment only. No
 identity/device access, signing, main merge or task PASS follows; native remains NOT_RUN
 until actual exact-head evidence is observed and independently reviewed.
+
+## First hosted attempt — actual FAIL
+
+After the first publication tool call was cancelled before approval, the user explicitly
+renewed continuation and the exact reviewed tree was published as
+`e3b21b1c3da7b51cf4c2d08cd3d71b7a98a57178` / tree
+`c7dac84da2bd31290786333c6967b2d334e0a751`. Run
+[41225645543](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41225645543)
+completed with the existing four foundation/settings/UI/demo jobs SUCCESS, but package
+job124609575149 FAILED. The cancellation was a publication-tool event, not a source or
+Windows test failure.
+
+The exact ZIP candidate had124 files,470210687 bytes and SHA256
+`e036279a79b0a0ee952e4846354078ce299cf640dbf330e430b815dbdacf937f`.
+All15 packaging negatives and extracted/relocated copy verification passed. The first
+Cancel outer process reported SUCCESS, then its OBSERVE control failed; no native stage
+result was admitted. This does not establish exact Cancel framing, observer presence or
+full launcher success. No package was promoted. Cleanup is false because the failed
+collection retained private evidence, not proof of a cleanup malfunction.
+
+The [strict fixed failure report](P1-10-native-first-failure-2026-10-31.json), artifact
+13051477669, is exactly1110 bytes/SHA256
+`15be83ae583232196634fe0549aab791129a24a8a57a84fec47400ccb0d908dd`;
+independent reconstruction/privacy review confirmed truthful aggregate FAIL. No raw
+capture, user path, key/profile material or private ZIP is retained in this document.
+
+A new actual owned first-Cancel controller regression reconstructs the real journal,
+lease acquisition/release and exact observer record, with synthetic native/package
+admission explicitly labeled; it passes. No functional cause is established from that
+local result. The next scoped diagnostic adds finite boundary/error/process markers,
+not a guessed runtime change, acceptance relaxation or blind unchanged rerun.
+
+Diagnostic checkpoint at17:50UTC: author full desktop **567/567 PASS** and
+DESKTOP_SOURCE_CHECK_PASS; independent focused **16/16 PASS** from the actual desktop
+working directory. Test-fixture path portability was corrected before the aggregate;
+no production path check changed. Python157/157 is the unchanged prior reviewed suite,
+not rerun for this CJS/PowerShell-only diagnostic change. Coordinator17:49 approved the
+same bounded diagnostic retry after the passing aggregate. Exact controller SHA256
+`86e73579080c4e6a4da34c180be5777ddff23b58fe3ccb85c6037422c5813b77`
+and supervisor SHA256
+`098a277b7492713cd6ce64ccad8cd88e38c1f505ad1b5ddf4bcda83f85e9dac9`.
+The known hosted failure remains unresolved until the next actual boundary observation;
+no successful recovery or full native Cancel result is inferred from local tests.

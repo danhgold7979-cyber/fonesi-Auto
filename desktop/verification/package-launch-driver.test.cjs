@@ -141,3 +141,28 @@ test('missing or malformed restored receipt prevents all cleanup including earli
     fs.rmdirSync(root);
   }
 });
+test('package control diagnostics forward only complete finite markers before unchanged admission', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'Invoke-Package.ps1'), 'utf8');
+  const diagnostic = source.slice(
+    source.indexOf('function Show-ControlDiagnostic('),
+    source.indexOf('function Node-Control('),
+  );
+  const values = (name) => {
+    const raw = diagnostic.match(new RegExp(`\\$${name}=@\\(([^)]*)\\)`))[1];
+    return [...raw.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
+  };
+  const { OBSERVE_PHASES, OBSERVE_ERRORS } = require('./package-state-control.cjs');
+  assert.deepEqual(values('phases'), [...OBSERVE_PHASES]);
+  assert.deepEqual(values('codes'), [...OBSERVE_ERRORS, 'ENOENT', 'UNCLASSIFIED']);
+  assert.ok(diagnostic.includes('$_ -ceq $literal'));
+  assert.ok(diagnostic.includes('.Count -eq 1'));
+  assert.ok(diagnostic.includes('if($shown -ge 2){break}'));
+  assert.ok(diagnostic.includes('if(Retired $p)'));
+  assert.ok(!diagnostic.includes('Write-Output $p.'));
+  const call = source.slice(
+    source.indexOf('function Node-Control('),
+    source.indexOf('function Validate('),
+  );
+  assert.ok(call.indexOf('Show-ControlDiagnostic $p $marker') < call.indexOf('Require $p $marker'));
+  assert.ok(call.includes('120000 @{}'));
+});
