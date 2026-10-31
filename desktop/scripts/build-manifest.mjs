@@ -1,7 +1,7 @@
 import { readFileSync, lstatSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-export const outputs = ['main.cjs', 'asset-policy.cjs', 'lifecycle.cjs', 'profile-owner.cjs', 'window-policy.cjs', 'foundation-bridge.cjs', 'preload.cjs', 'renderer.js', 'status.html'];
+export const outputs = ['main.cjs', 'asset-policy.cjs', 'lifecycle.cjs', 'profile-owner.cjs', 'window-policy.cjs', 'foundation-bridge.cjs', 'ipc-contract.cjs', 'preload.cjs', 'renderer.js', 'status.html'];
 export const inputs = ['package.json', 'package-lock.json', 'dependency-review.json', 'tsconfig.json',
   'src/main.ts', 'src/foundation-bridge.ts', 'src/ipc-contract.ts', 'src/view-session.ts',
   'src/preload-client.ts', 'src/preload.ts', 'src/renderer.tsx', 'src/main/asset-policy.ts', 'src/main/lifecycle.ts', 'src/main/profile-owner.ts',

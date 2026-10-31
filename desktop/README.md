@@ -63,7 +63,8 @@ metadata → optional scripts-disabled restore → installed checks → strict c
 build → manifest → tests. Any false result or exception stops later stages. No
 semicolon fall-through, generic shell command or automatic runtime download.
 
-The current source check passes 50/50 tests. The prior zero-bridge source
+The current local source check passes 52/52 tests (including bounded seeded fuzz
+and fresh-view recreation); Windows last executed 50/50 before that increment. The prior zero-bridge source
 checkpoint passed 36/36 tests. Hosted CI7 passed source/package 20/20 each, Python 42/42 and PowerShell 25/25;
 corrected preference/preload measurements now have actual Windows runner evidence.
 See the [runtime evidence](../docs/evidence/P1-02-windows-envelope-source-2026-10-31.md).

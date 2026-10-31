@@ -42,7 +42,7 @@ try {
     if (manifest === null || typeof manifest !== 'object' || !('schema' in manifest) || manifest.schema !== 1 ||
       !('outputs' in manifest) || manifest.outputs === null || typeof manifest.outputs !== 'object') throw new Error('BUILD_UNVERIFIED');
     const hashes = manifest.outputs as Record<string, unknown>;
-    const required = ['main.cjs', 'asset-policy.cjs', 'lifecycle.cjs', 'profile-owner.cjs', 'window-policy.cjs', 'foundation-bridge.cjs', 'preload.cjs', 'renderer.js', 'status.html'];
+    const required = ['main.cjs', 'asset-policy.cjs', 'lifecycle.cjs', 'profile-owner.cjs', 'window-policy.cjs', 'foundation-bridge.cjs', 'ipc-contract.cjs', 'preload.cjs', 'renderer.js', 'status.html'];
     if (Object.keys(hashes).length !== required.length) throw new Error('BUILD_UNVERIFIED');
     for (const name of required) {
       const file = join(__dirname, name), stat = lstatSync(file);

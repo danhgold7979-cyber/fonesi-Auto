@@ -128,3 +128,37 @@ Phase 1 acceptance, target-host/Android support, persistent settings, V9 parity,
 service authority or a main merge. Full-task disposition belongs to the coordinator
 against canonical P1-02 and its explicitly reviewed prerequisites; no automatic
 accepted-task numerator change is made in this evidence record.
+
+## Bounded generated-input verification increment — 04:30 UTC
+
+Coordinator approved the specific remaining P1-02 fuzz verification increment at
+04:27 UTC; no new architecture/dependency/service. The normal source pipeline now
+runs a fixed-seed `0x5a17c0de` xorshift campaign of **4,096 inputs** against the emitted
+parser and **16,384 actual-dispatcher calls** across INITIALIZING/ACTIVE/REVOKED/CLOSED.
+Sixteen mutation classes cover valid/whitespace reads, duplicate escaped keys,
+malformed JSON, nested/nonstring values, invalid methods/versions, secret-field
+canaries, UTF-8 boundaries, 511/512/513-byte boundaries and nonfinite numeric parsing.
+Every accepted result must equal the exact allowed public JSON; rejected results
+must be fixed errors, never throw, echo the synthetic canary or reach an effect API.
+
+One generated input is retained at a time, maximum 1,024 UTF-16 units /2,048 UTF-8
+bytes. Campaign deadline 5 seconds checked each iteration and after the final iteration;
+Node test deadline 10 seconds. These checks/timers are cooperative, not preemptive
+for a synchronously hung parser. The trusted child runner supplies the outer
+30-second termination bound and 64 KiB capture cap. This bounds the finite
+corpus/work, not whole-V8 peak allocation or hostile native transport. No random
+network target, real credential/device, unbounded fuzz duration or new package.
+Finite deterministic fuzz is additional evidence, not exhaustive correctness proof.
+The pure parser bundle is now explicitly included in build integrity requirements.
+
+A small existing-adapter regression closes the view-recreation composition check:
+one handler admits first view, rejects it after close/removal, admits a freshly
+initialized second view, and never rearms the old one. This is actual compiled
+adapter logic with synthetic event emitters, not a claimed original-window native
+reopen trace. It complements already measured native helper-window lifecycle and
+fresh source/package app launches. No additional service or generic IPC was added.
+
+Local complete pipeline **52/52 PASS**, Python **43/43 PASS**. Independent review
+CLEAR at 04:32 UTC: fresh 52/52 and 43/43, diff and 9 local links PASS; finite oracle/
+bounds/reopen qualifications verified. New exact-head Windows run remains pending. Prior actual runtime25/25
+is retained separately; current formal task/prerequisite acceptance remains pending.

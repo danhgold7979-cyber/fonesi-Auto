@@ -265,3 +265,101 @@ test('observed denied navigation also revokes the actual view before return', ()
   assert.equal(response.code, 'SESSION_REVOKED'); bridge.dispose();
  }
 });
+
+test('bounded seeded IPC campaign: seed 0x5a17c0de, 4096 inputs and 16384 dispatches', { timeout: 10000 }, () => {
+  const { performance } = require('node:perf_hooks');
+  const { EventEmitter } = require('node:events');
+  const { installFoundationBridge } = require('../build/foundation-bridge.cjs');
+  // Use the exact bundled parser exported by the normal pure build.
+  const { parseRequest } = require('../build/ipc-contract.cjs');
+  const started = performance.now();
+  let seed = 0x5a17c0de;
+  const random = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return seed >>> 0; };
+  const codes = new Set(['INVALID_TRANSPORT', 'PAYLOAD_TOO_LARGE', 'INVALID_JSON', 'INVALID_SHAPE', 'UNSUPPORTED_VERSION', 'UNKNOWN_METHOD', 'UNTRUSTED_SENDER', 'SESSION_UNAVAILABLE', 'SESSION_REVOKED', 'BUSY', 'TIMEOUT', 'INTERNAL_FAILURE']);
+  const setups = ['INITIALIZING', 'ACTIVE', 'REVOKED', 'CLOSED'].map(state => {
+    let handler;
+    const bridge = installFoundationBridge({ handle(_channel, fn) { handler = fn; }, removeHandler() {} });
+    const contents = new EventEmitter(); contents.isDestroyed = () => false;
+    contents.mainFrame = { origin: 'auto-foundation://app', url: ENTRY_URL };
+    const window = new EventEmitter(); window.webContents = contents;
+    const view = bridge.attach(window);
+    if (state !== 'INITIALIZING') { contents.emit('did-start-navigation', { isMainFrame: true, url: ENTRY_URL }); assert.equal(view.arm(), true); }
+    if (state === 'REVOKED') contents.emit('will-navigate', {});
+    if (state === 'CLOSED') window.emit('closed');
+    return { state, bridge, handler, event: { sender: contents, senderFrame: contents.mainFrame } };
+  });
+  try {
+    for (let index = 0; index < 4096; index++) {
+      if (performance.now() - started > 5000) throw new Error('FUZZ_DEADLINE');
+      const id = `r${random().toString(16)}`, method = random() % 2 ? 'health.get' : 'settings.get';
+      const good = JSON.stringify({ version: 1, requestId: id, method });
+      const canary = `PRIVATE_CANARY_${random().toString(16)}`;
+      let raw, expectedValid = false;
+      switch (index % 16) {
+        case 0: raw = good; expectedValid = true; break;
+        case 1: raw = `{"version":2,"version":1,"requestId":"${id}","method":"${method}"}`; break;
+        case 2: raw = `{"version":1,"requestId":"bad","\\u0072equestId":"${id}","method":"${method}"}`; break;
+        case 3: raw = 'x'.repeat(513 + random() % 512); break;
+        case 4: raw = '#' + Array.from({ length: random() % 128 }, () => String.fromCharCode(random() % 128)).join(''); break;
+        case 5: raw = JSON.stringify({ version: 1, requestId: id, method: `blocked_${random()}` }); break;
+        case 6: raw = JSON.stringify({ version: 1, requestId: id, method, secret: canary }); break;
+        case 7: raw = JSON.stringify({ version: 2 + random() % 8, requestId: id, method }); break;
+        case 8: raw = JSON.stringify({ version: 1, requestId: { nested: [canary] }, method }); break;
+        case 9: raw = JSON.stringify({ version: 1, requestId: 'é'.repeat(1 + random() % 32), method }); break;
+        case 10: raw = ' \t\r\n' + good; expectedValid = true; break;
+        case 11: { const size = 511 + random() % 3; raw = good + ' '.repeat(size - good.length); expectedValid = size <= 512; break; }
+        case 12: raw = `{"\\u0076ersion":0,"version":1,"requestId":"${id}","method":"${method}"}`; break;
+        case 13: raw = `{"version":1e309,"requestId":"${id}","method":"${method}"}`; break;
+        case 14: raw = 'é'.repeat(257 + random() % 32); break;
+        default: raw = random() % 2 ? null : { secret: canary }; break;
+      }
+      assert.ok(typeof raw !== 'string' || (raw.length <= 1024 && Buffer.byteLength(raw) <= 2048));
+      const parsed = parseRequest(raw);
+      assert.equal(parsed.ok, expectedValid);
+      if (!parsed.ok) assert.ok(codes.has(parsed.code));
+      for (const setup of setups) {
+        const output = setup.handler(setup.event, raw);
+        assert.equal(typeof output, 'string'); assert.ok(Buffer.byteLength(output) <= 1024);
+        assert.equal(output.includes(canary), false);
+        const result = JSON.parse(output);
+        if (setup.state === 'ACTIVE' && expectedValid) {
+          const expected = method === 'health.get' ? { kind: 'health', status: 'READY', services: 'UNAVAILABLE' }
+            : { kind: 'settings', revision: 0, persistence: 'NOT_PERSISTED', theme: 'LIGHT' };
+          assert.equal(output, JSON.stringify({ version: 1, ok: true, requestId: id, result: expected }));
+        } else {
+          assert.deepEqual(Object.keys(result), ['version', 'ok', 'code']);
+          assert.equal(result.version, 1); assert.equal(result.ok, false); assert.ok(codes.has(result.code));
+          if (setup.state === 'INITIALIZING') assert.equal(result.code, 'SESSION_UNAVAILABLE');
+          if (setup.state === 'REVOKED') assert.equal(result.code, 'SESSION_REVOKED');
+          if (setup.state === 'CLOSED') assert.equal(result.code, 'UNTRUSTED_SENDER');
+        }
+      }
+    }
+    assert.ok(performance.now() - started <= 5000, 'FUZZ_DEADLINE');
+  } finally { for (const setup of setups) setup.bridge.dispose(); }
+});
+
+test('same actual adapter disposes an old view and admits only a fresh reopened view', () => {
+  const { EventEmitter } = require('node:events');
+  const { installFoundationBridge } = require('../build/foundation-bridge.cjs');
+  let handler;
+  const bridge = installFoundationBridge({ handle(_channel, fn) { handler = fn; }, removeHandler() {} });
+  const make = () => {
+    const contents = new EventEmitter(); contents.isDestroyed = () => false;
+    contents.mainFrame = { origin: 'auto-foundation://app', url: ENTRY_URL };
+    const window = new EventEmitter(); window.webContents = contents;
+    const view = bridge.attach(window);
+    const event = { sender: contents, senderFrame: contents.mainFrame };
+    return { window, contents, view, event };
+  };
+  const wire = JSON.stringify({ version: 1, requestId: 'reopen', method: 'health.get' });
+  const first = make(); first.contents.emit('did-start-navigation', { isMainFrame: true, url: ENTRY_URL });
+  assert.equal(first.view.arm(), true); assert.equal(JSON.parse(handler(first.event, wire)).ok, true);
+  first.window.emit('close'); assert.equal(JSON.parse(handler(first.event, wire)).code, 'SESSION_REVOKED');
+  first.window.emit('closed'); assert.equal(JSON.parse(handler(first.event, wire)).code, 'UNTRUSTED_SENDER');
+  const second = make(); assert.equal(JSON.parse(handler(second.event, wire)).code, 'SESSION_UNAVAILABLE');
+  second.contents.emit('did-start-navigation', { isMainFrame: true, url: ENTRY_URL });
+  assert.equal(second.view.arm(), true); assert.equal(JSON.parse(handler(second.event, wire)).ok, true);
+  assert.equal(first.view.arm(), false); assert.equal(JSON.parse(handler(first.event, wire)).code, 'UNTRUSTED_SENDER');
+  bridge.dispose(); assert.equal(JSON.parse(handler(second.event, wire)).code, 'UNTRUSTED_SENDER');
+});

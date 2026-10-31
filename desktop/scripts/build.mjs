@@ -22,7 +22,7 @@ try {
     sourcemap: false, logLevel: 'silent', write: false };
   const outputs = await build({ ...options, entryPoints: [resolve(root, 'src/main.ts')], external: ['electron'] });
   const pure = await build({ ...options, entryPoints: [resolve(root, 'src/main/asset-policy.ts'), resolve(root, 'src/main/lifecycle.ts'),
-    resolve(root, 'src/main/profile-owner.ts'), resolve(root, 'src/main/window-policy.ts'), resolve(root, 'src/foundation-bridge.ts')], outdir: output });
+    resolve(root, 'src/main/profile-owner.ts'), resolve(root, 'src/main/window-policy.ts'), resolve(root, 'src/foundation-bridge.ts'), resolve(root, 'src/ipc-contract.ts')], outdir: output });
   const preload = await build({ ...options, entryPoints: [resolve(root, 'src/preload.ts')], external: ['electron'], outfile: resolve(output, 'preload.js') });
   const renderer = await build({ ...options, platform: 'browser', target: 'chrome156', format: 'iife',
     entryPoints: [resolve(root, 'src/renderer.tsx')], define: { 'process.env.NODE_ENV': '"production"' }, outfile: resolve(output, 'renderer.js') });

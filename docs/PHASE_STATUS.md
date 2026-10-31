@@ -431,3 +431,12 @@ CLEAR; reviewed JSON retained. The approved bridge now has actual Windows eviden
 not merely a source checkpoint. Full P1-02/task-prerequisite acceptance disposition
 remains with coordinator; no full Phase acceptance or main merge. Old G0-12 FAIL,
 Phase 0 exits and target-host/device/policy requirements are preserved.
+
+### P1-02 named verification gap — 2026-10-31 04:30 UTC
+
+[Canonical criterion audit](evidence/P1-02-canonical-criterion-audit-2026-10-31.md)
+separates task-specific verification from full P1-03/P1-11 prerequisite acceptance.
+Root approved the missing finite generated-input campaign: local 52/52 source tests
+now include 4,096 seeded inputs/16,384 dispatcher checks and fresh-view-after-close
+regression; Python 43/43 PASS. Independent review CLEAR at 04:32 UTC; incremental Windows execution pending, while
+prior actual runtime 25/25 remains retained. No new service, task or phase invented.
