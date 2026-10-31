@@ -167,3 +167,48 @@ test('failure disposal cannot start ordinary quit through window-all-closed', ()
     assert.equal(quits, closing ? 0 : 1);
   }
 });
+
+test('actual bootstrap uses audited preference factory without preload override', () => {
+  const source = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
+  assert.match(source, /webPreferences: securePreferences\(ownedSession\)/);
+  assert.doesNotMatch(source, /preload\s*:/);
+  const bundle = readFileSync(resolve(root, 'build/main.cjs'), 'utf8');
+  assert.doesNotMatch(bundle, /preload\s*:/);
+});
+test('runtime probe does not mistake omitted devTools or preload fields for disabled settings', () => {
+  const probe = readFileSync(resolve(root, 'verification/runtime-probe.cjs'), 'utf8');
+  assert.equal(probe.includes('preferences.devTools === false'), false);
+  assert.equal(probe.includes('preferences.preload'), false);
+  for (const operation of ['contents.openDevTools(', 'opened: contents.isDevToolsOpened()',
+    'contents.devToolsWebContents === null', 'contents.session.getPreloadScripts()',
+    'preloadEvidence(configured, registeredPreloads)', 'securePreferenceEvidence(preferences, configured']) {
+    assert.equal(probe.includes(operation), true);
+  }
+});
+
+test('secure preference evidence rejects enabled, opened, observed and missing DevTools states', () => {
+  const { securePreferenceEvidence } = require('../verification/runtime-measurements.cjs');
+  const configured = securePreferences({});
+  const saved = { ...configured }; delete saved.devTools;
+  const state = { eventObserved: false, opened: false, contentsAbsent: true };
+  assert.equal(securePreferenceEvidence(saved, configured, state), true);
+  assert.equal(securePreferenceEvidence(saved, { ...configured, devTools: true }, state), false);
+  assert.equal(securePreferenceEvidence(saved, {}, state), false);
+  for (const field of ['eventObserved', 'opened', 'contentsAbsent']) {
+    assert.equal(securePreferenceEvidence(saved, configured, { ...state, [field]: !state[field] }), false);
+    assert.equal(securePreferenceEvidence(saved, configured, { ...state, [field]: undefined }), false);
+  }
+  for (const field of ['sandbox', 'contextIsolation', 'webSecurity', 'nodeIntegration',
+    'nodeIntegrationInWorker', 'nodeIntegrationInSubFrames', 'webviewTag', 'allowRunningInsecureContent']) {
+    assert.equal(securePreferenceEvidence({ ...saved, [field]: !saved[field] }, configured, state), false);
+  }
+});
+test('preload evidence rejects registered scripts and any configured preload property', () => {
+  const { preloadEvidence } = require('../verification/runtime-measurements.cjs');
+  const configured = securePreferences({});
+  assert.equal(preloadEvidence(configured, []), true);
+  for (const registered of [[{}], null, {}, undefined]) assert.equal(preloadEvidence(configured, registered), false);
+  for (const value of ['', undefined, 'synthetic-preload']) {
+    assert.equal(preloadEvidence({ ...configured, preload: value }, []), false);
+  }
+});

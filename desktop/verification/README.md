@@ -1,8 +1,10 @@
-# Runtime evidence contract (partial implementation)
+# Runtime evidence contract and hosted results
 
 This directory contains a strict parser, synthetic tests and the reviewed runtime
-probe source. No Windows probe, supervisor or workflow has executed; runtime
-remains **NOT_RUN**.
+probe source. Windows CI6 executed and retained a valid failed report: source and
+package each reported 19/20, with secure_preferences false. Corrected DevTools and
+preload measurements remain **NOT_RUN** pending the next exact-head CI. Earlier
+NOT_RUN sections below describe their historical pre-execution checkpoints.
 Run without writing bytecode:
 
 ```sh
@@ -48,7 +50,7 @@ for timeout/launch/access-denied outcomes. This count is not Windows evidence.
 Independent read-only review CLEAR at 02:43 UTC on 2026-10-31: 16/16 tests
 rerun PASS; raw duplicate/status/privacy boundaries verified. No runtime executed.
 
-## Probe implementation in progress — not executed
+## Historical probe-only implementation checkpoint
 
 `runtime-probe.cjs` is a test-only entry that requires the unchanged verified
 `build/main.cjs`, observes its actual first window, and later requests ordinary
@@ -81,7 +83,7 @@ paths are observed without changing the policy; the isolated-world check require
 a successful positive control. Supervisor, package integrity and negative-failure
 evidence remain pending review. No Electron execution occurred.
 
-## Windows execution envelope under review — NOT_RUN
+## Historical pre-CI Windows execution-envelope review
 
 The new `WindowsBoundary.psm1`, `OwnedFiles.psm1`, `Invoke-Foundation.ps1`,
 `install-electron.mjs` and `crash-probe.cjs` are not yet approved for execution.
@@ -113,9 +115,9 @@ The crash negative uses actual render-process-gone cleanup; the tampered-asset
 negative modifies only a verified owned build copy. Neither is runtime evidence yet.
 
 
-## Runnable checkpoint pending hosted execution — 2026-10-31
+## Initial runnable checkpoint and later local regressions — 2026-10-31
 
-Current local source/build check: **32/32 PASS**, including the real bootstrap
+Current local source/build check: **36/36 PASS**, including the real bootstrap
 failure-latch regression. Current Python schema/writer/checkout/diagnostic suite: **42/42 PASS**.
 Node syntax checks and scoped workflow YAML parsing PASS. Nine PowerShell marker
 regressions, official installer, source/package launches, renderer crash and
@@ -171,3 +173,12 @@ leading empty line after CRLF normalization, then require the same exact READY,
 CLOSED, RESULT sequence and strict inner schema. Nonempty/whitespace-only, repeated,
 interleaved or extra trailing lines still fail. No generic whitespace filtering or
 runtime/cleanup/security predicate changes; the empty line origin is not asserted.
+
+CI6 finally produced strict sanitized failure evidence: source/package each 19/20,
+only secure_preferences false; all negative/process/directory cleanup conditions
+true. Exact Electron source proves saved preferences omit devTools and preload.
+Corrected measurements combine audited explicit configuration with bounded actual
+DevTools open-denial observation and supported empty session preload inventory.
+They do not infer false/absence from omitted keys, do not add a preload, and do not
+claim OS-token or unbounded future behavior proof. Four pure/source regressions
+bring source/build tests to 36/36; corrected runtime measurements remain NOT_RUN.

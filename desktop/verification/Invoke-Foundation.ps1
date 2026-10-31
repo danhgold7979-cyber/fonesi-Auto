@@ -73,9 +73,12 @@ try {
     $verification = Join-Path $appRoot 'verification'
     [void][IO.Directory]::CreateDirectory($verification)
     $probeSource = Join-Path $PSScriptRoot 'runtime-probe.cjs'
-    $probeCopy = Join-Path $verification 'runtime-probe.cjs'
-    [IO.File]::Copy($probeSource,$probeCopy,$false)
-    if ((Get-FileHash $probeSource -Algorithm SHA256).Hash -cne (Get-FileHash $probeCopy -Algorithm SHA256).Hash) { throw 'PROBE_COPY_MISMATCH' }
+    foreach ($name in @('runtime-probe.cjs','runtime-measurements.cjs')) {
+        $original = Join-Path $PSScriptRoot $name
+        $copy = Join-Path $verification $name
+        [IO.File]::Copy($original,$copy,$false)
+        if ((Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash) { throw 'PROBE_COPY_MISMATCH' }
+    }
     [IO.File]::WriteAllText((Join-Path $appRoot 'package.json'),'{"name":"auto-foundation-instrumented-test","version":"0.0.0","main":"verification/runtime-probe.cjs"}')
     $report.packageBytes = (Get-BoundedOwnedEntries $package (512L * 1024 * 1024)).Bytes
     $report.runtimeCopyVerified = $true
@@ -89,6 +92,17 @@ try {
         $allClean = $false
         $probe = Invoke-OwnedChild $exe $arguments 30000 @{FONESI_BOOTSTRAP_ROOT=$profile; FONESI_BOOTSTRAP_MODE=$mode}
         $allClean = Confirm-RetiredCapture $probe
+        # Only canonical known-key/Boolean-or-missing diagnostics; never raw stderr.
+        foreach ($key in @('sandbox','contextIsolation','webSecurity','nodeIntegration',
+            'nodeIntegrationInWorker','nodeIntegrationInSubFrames','webviewTag',
+            'allowRunningInsecureContent','devTools')) {
+            foreach ($value in @('TRUE','FALSE','MISSING')) {
+                $literal = 'FOUNDATION_PREF_' + $key + '_' + $value
+                if (Test-ExactlyOneLine $probe.Stderr $literal) {
+                    Write-Output ('FOUNDATION_' + $mode.ToUpperInvariant() + '_PREF_' + $key + '_' + $value)
+                }
+            }
+        }
         $report.runs[$mode] = [ordered]@{ process=(Process-Evidence $probe); payload=$probe.Stdout; ownedBytes=$null }
         Assert-RetiredCapture $probe
         $report.runs[$mode].ownedBytes = (Get-BoundedOwnedEntries $profile (8L * 1024 * 1024)).Bytes

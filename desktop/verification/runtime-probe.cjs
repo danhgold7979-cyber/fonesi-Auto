@@ -3,6 +3,7 @@
 // No runtime execution until the supervisor and complete evidence path are reviewed.
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('node:path');
+const { securePreferenceEvidence, preloadEvidence } = require('./runtime-measurements.cjs');
 const { mkdirSync } = require('node:fs');
 const { createLifecycle } = require('../build/lifecycle.cjs');
 const { securePreferences, installWindowPolicy } = require('../build/window-policy.cjs');
@@ -147,12 +148,31 @@ async function runInitialChecks(window) {
     (mode !== 'package' || app.getAppPath() === path.join(process.resourcesPath, 'app'));
   cases.native_menu_absent = Menu.getApplicationMenu() === null;
   const preferences = contents.getLastWebPreferences();
-  cases.secure_preferences = preferences.sandbox === true &&
-    preferences.contextIsolation === true && preferences.webSecurity === true &&
-    preferences.nodeIntegration === false && preferences.nodeIntegrationInWorker === false &&
-    preferences.nodeIntegrationInSubFrames === false && preferences.webviewTag === false &&
-    preferences.allowRunningInsecureContent === false && preferences.devTools === false;
-  cases.no_preload = preferences.preload === undefined || preferences.preload === '';
+  for (const key of ['sandbox', 'contextIsolation', 'webSecurity', 'nodeIntegration',
+    'nodeIntegrationInWorker', 'nodeIntegrationInSubFrames', 'webviewTag',
+    'allowRunningInsecureContent', 'devTools']) {
+    const value = preferences[key];
+    console.error('FOUNDATION_PREF_' + key + '_' +
+      (value === true ? 'TRUE' : value === false ? 'FALSE' : 'MISSING'));
+  }
+  // SaveLastPreferences omits devTools/preload; missing is not a disabled value.
+  const configured = securePreferences(contents.session);
+  let devToolsOpened = false;
+  const observeDevTools = () => { devToolsOpened = true; };
+  contents.on('devtools-opened', observeDevTools);
+  try {
+    contents.openDevTools({ mode: 'detach', activate: false });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  } finally {
+    contents.removeListener('devtools-opened', observeDevTools);
+  }
+  cases.secure_preferences = securePreferenceEvidence(preferences, configured, {
+    eventObserved: devToolsOpened, opened: contents.isDevToolsOpened(),
+    contentsAbsent: contents.devToolsWebContents === null });
+  const registeredPreloads = contents.session.getPreloadScripts();
+  // Combined reviewed configuration/bundle evidence + actual session inventory,
+  // not a general proof from an omitted preference field or absent global name.
+  cases.no_preload = preloadEvidence(configured, registeredPreloads);
   // These are ordinary renderer observations, not OS sandbox-token measurement.
   const initial = await contents.executeJavaScript(`(() => ({
     diagnostic: document.body.textContent.includes('UNAVAILABLE'),

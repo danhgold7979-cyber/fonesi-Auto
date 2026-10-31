@@ -169,3 +169,47 @@ of the corrected framing and complete runtime result remains pending.
 Independent actual framing patch review CLEAR at 03:37 UTC: 42/42 Python tests
 and diff check PASS; bare-CR/BOM and duplicate JSON with accepted prefix also reject.
 No other acceptance or cleanup condition changed.
+
+## Sixth hosted attempt: valid failed runtime evidence — 03:52 UTC
+
+Exact remote head `1a802090f02e6ac46b4d4cd5521bda18cc5c57cc`, run
+[41165225014](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41165225014),
+job 124431225250 produced sanitized artifact 13029226716. ZIP SHA256:
+`bd4c7aa03a6ee0ce6e4dbe93a8006652fecf72665b200d63b1dc8f7144e63b98` (970 bytes).
+The retained JSON is 4,005 bytes, SHA256
+`930b8a360ad3d23e9735acf4dfbd9871ec3dd1c386cd295f87790e7e24f2933d`.
+
+Both source/package report **19/20**, with only `secure_preferences=false`.
+Installer, build/binary/copy verification, every process/capture cleanup and final
+directory cleanup are true; typed crash and changed-asset negatives are correct.
+Both original windows changed to about:blank with no observed denial; old navigation
+FAIL remains. This is a truthful failed result, not full runtime or task acceptance.
+
+Exact Electron 45.1.0 [SaveLastPreferences](https://github.com/electron/electron/blob/v45.1.0/shell/browser/web_contents_preferences.cc)
+does not serialize devTools or preload; its getter returns that saved subset.
+The former `devTools === false` check was therefore a measurement error, and the
+reported no-preload success based on field absence was not meaningful proof.
+[OpenDevTools](https://github.com/electron/electron/blob/v45.1.0/shell/browser/api/electron_api_web_contents.cc)
+uses a separate native enable flag. The correction keeps all eight actual saved
+security flags exact, then combines explicit audited false configuration with an
+actual open attempt, a bounded 250 ms no-open event/state observation and no DevTools
+WebContents. This is bounded behavior plus configuration evidence, not a proof
+that no future event can ever occur or an OS sandbox-token measurement.
+
+No-preload evidence now combines the actual audited constructor/build manifest,
+no preload property in its compiled preference factory, and the supported pinned
+`session.getPreloadScripts()` empty runtime inventory. No test preload is added;
+this is scoped configuration/session evidence, not a generic absence proof from
+missing fields/globals. The package hash-verifies the same pure measurement helper.
+Fixed per-key TRUE/FALSE/MISSING diagnostics contain no raw preference values.
+
+Local source/build **36/36 PASS**, including actual constructor/bundle audit and
+executable negative predicates for DevTools enabled/opened/event/missing state and
+configured/registered preload. Python **42/42 PASS**; syntax/diff PASS. Corrected
+measurements still require hosted execution; no application security configuration,
+resource bound, old gate or acceptance numerator changed.
+
+Independent actual measurement patch review CLEAR at 03:55 UTC: source/build
+36/36, Python 42/42 and diff check PASS. Actual constructor/factory and package
+probe/helper identity verified. README status now distinguishes executed CI6 failure
+from corrected measurements still NOT_RUN. No full task or phase acceptance follows.

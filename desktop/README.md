@@ -61,10 +61,12 @@ metadata → optional scripts-disabled restore → installed checks → strict c
 build → manifest → tests. Any false result or exception stops later stages. No
 semicolon fall-through, generic shell command or automatic runtime download.
 
-The source check currently passes 32/32 tests; full Windows execution is NOT_RUN.
+The source check currently passes 36/36 tests. Hosted CI6 executed source/package
+and returned a valid 19/20 failed result for each; corrected preference/preload
+measurements are NOT_RUN until the next exact-head run.
 Test tooling uses bounded child invocation (30 seconds/64 KiB, restore 120 seconds),
-not arbitrary-child-tree containment. Runtime/installer Windows supervision is a
-separate upcoming implementation, not claimed from these local tests.
+not arbitrary-child-tree containment. Runtime/installer Windows supervision is implemented separately and has hosted
+evidence; it is not inferred from these local tests.
 
 ## Build/launch integrity and owned outputs
 
@@ -72,7 +74,7 @@ Build checks the fixed fixture hash before writing bundles. It invalidates the o
 success marker before dependency/build work, then records a fresh manifest of exact
 source inputs and output hashes only on success. A partial/missing/stale manifest
 fails verification. Main validates its own built files and fixed asset before load;
-a future trusted launcher must also call verifyBuild against current source before
+the owned launcher also calls verifyBuild against current source before
 packaging/launch. Remaining files after a failed build are not successful artifacts.
 No signing or malicious-editor/hostile-filesystem-race guarantee is implied.
 
@@ -100,6 +102,6 @@ service authority or permit those future methods to be enabled. Full V9 and C-03
 remain obligations, not permanently disabled features.
 
 The separately scoped Windows execution envelope and strict artifact contract are
-implemented under [verification](verification/README.md); actual Windows results
-remain NOT_RUN pending reviewed publication/CI. No original navigation gate or
+implemented under [verification](verification/README.md); CI6 actual Windows results are a valid failed report; corrected measurement
+results remain NOT_RUN pending the next reviewed exact-head CI. No original navigation gate or
 full P1-02 acceptance follows from source checks.
