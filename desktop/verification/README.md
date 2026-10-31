@@ -240,7 +240,7 @@ strict validation and a fresh output marker before upload. These new native path
 are NOT_RUN until exact-head hosted execution; see
 [P1-05 evidence](../../docs/evidence/P1-05-persistence-source-2026-10-31.md).
 
-## P1-08 complete V9 interface (first native PASS; visual corrections pending)
+## P1-08 complete V9 interface (bounded technical PASS)
 
 `Invoke-Ui.ps1` is the separate owned Windows source/package/reference verification
 entry. It never invokes the unresolved P1-06 cross-user helper. Production loads the
@@ -253,4 +253,5 @@ and hashes (4MiB each/64MiB total). `UI_VALIDATION_WRITTEN` permits fixed JSON u
 `UI_SCREENSHOTS_BOUND` separately permits the complete image set. Raw captures/profiles,
 private paths and arbitrary partial PNGs are never publication inputs. The owned
 `.ui-runtime` is ignored. See [source/evidence](../../docs/evidence/P1-08-v9-ui-source-2026-10-31.md)
-for current test counts and native/visual limitations; a complete capture is not by itself task acceptance.
+for current test counts and native/visual limitations. Coordinator14:46 accepted the corrected
+all32-image bounded UI scope; this does not accept live services, P1-06 cross-user or full Phase1.

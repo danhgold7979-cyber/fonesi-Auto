@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-10-31 14:35 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-10-31 14:46 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -34,12 +34,12 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | Application source | PROVISIONAL PHASE 1 WORK AUTHORIZED | Actual foundation/desktop source exists under recorded exceptions; no device/account service or full phase acceptance |
 | P1-01 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Actual map/bindings/cycles/absence/fresh Windows bootstrap verified on 5e4fa521, run41173386584; original Phase0 formal gate still pending. [Criteria/evidence](evidence/P1-01-module-graph-source-2026-10-31.md) |
 | P1-02 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific scope at 04:36 UTC on ff25bee; P1-03/P1-11 technical prerequisites now pass; formal chain remains pending through Phase 0. [Criterion audit](evidence/P1-02-canonical-criterion-audit-2026-10-31.md); accepted full-task counts unchanged |
-| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; P1-01 architecture now TECHNICAL_PASS; formal predecessor chain through Phase0 still pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Seven canonical technical scopes now pass including P1-05/P1-07/P1-11, not formally accepted tasks |
+| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; P1-01 architecture now TECHNICAL_PASS; formal predecessor chain through Phase0 still pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Eight canonical technical scopes now pass including P1-05/P1-07/P1-08/P1-11, not formally accepted tasks |
 | P1-11 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted canonical definitions/fixtures/threat review at 05:57 UTC on b3bc1903, run41174482528; formal Phase 0/predecessor chain remains pending. [Evidence/criteria](evidence/P1-11-contract-completion-source-2026-10-31.md) |
 | P1-04 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted foundation logging at 06:54 UTC on fcb1366b, run 41178227952; formal Phase 0 chain remains pending. [Evidence/criteria](evidence/P1-04-logging-source-2026-10-31.md) |
 | P1-05 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted foundation persistence at 10:54 UTC on 2e8c08b7, run 41194352059; exact native matrix, owned write denial and instrumented real launcher passed. [Criterion audit](evidence/P1-05-canonical-criterion-audit-2026-10-31.md). Formal Phase 0 chain remains pending |
 | P1-07 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator13:14 accepted qualified scope on7568f727/run41204195482; actual settings/admission/crash and legitimate-lease corruption restore pass. [Canonical audit](evidence/P1-07-canonical-criterion-audit-2026-10-31.md). P1-06 cross-user UNMET, formal Phase0 chain and P1-10/P1-08 launcher usability obligations remain |
-| P1-08 | IN_PROGRESS | First complete native32-image/source+package/reference run41209856793 PASS; visual review found seven finite corrections, now author466 source tests PASS and corrected native confirmation pending. [Scope/evidence](evidence/P1-08-v9-ui-source-2026-10-31.md); no technical count increase or new domain IPC |
+| P1-08 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator14:46 accepted bounded six-page V9 scope onbf1709c3/run41211023670 after corrected all32-image strict/visual CLEAR. [Canonical/page audit](evidence/P1-08-canonical-criterion-audit-2026-10-31.md); inherited contrast and empty-data limits explicit; no device/backend/installed-package claim |
 | Phase 0 acceptance | NOT ACCEPTED | 0/10 tasks accepted; all 12 baseline exits unaccepted; independent slices concluded, remaining gates BLOCKED |
 
 ## 3. Historical Phase 0 snapshot before collector hardening
@@ -830,3 +830,13 @@ run41204195482 after strict independent artifact CLEAR. Seven task-specific tech
 scopes now pass: **7/11=63.6%,7/154=4.5%**; formal accepted zero. P1-06 remains
 UNMET, not counted. [Canonical audit and qualifications](evidence/P1-07-canonical-criterion-audit-2026-10-31.md).
 P1-08 full V9 contract is proposed/reviewing; no source entry or next branch implied.
+
+### P1-08 corrected native/visual technical closure — 2026-10-31 14:46 UTC
+
+Exact publicbf1709c367f94709b998dd530379876c587c9a54/tree55eb8eb2879119ca085db64a864b40ba3454ca44,
+run41211023670 completed SUCCESS. Independent strict report/all32 PNG review confirms
+all seven finite corrections resolved. [Canonical page audit](evidence/P1-08-canonical-criterion-audit-2026-10-31.md)
+retains inherited-reference contrast and intentional empty-service differences.
+Coordinator accepts task-specific TECHNICAL_PASS: **8/11=72.7%,8/154=5.2%**, formal0.
+P1-06 cross-user UNMET, P1-10 launcher/reentry usability and formal hardware/release
+gates remain; no main merge. P1-09 contract planning is next, not source entry.
