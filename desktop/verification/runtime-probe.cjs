@@ -392,7 +392,7 @@ async function runInitialChecks(window) {
   do {
     mounted =
       (await contents.executeJavaScript(
-        "document.getElementById('health-read') !== null && document.getElementById('bridge-status') !== null",
+        "(() => { if (!document.getElementById('health-read')) document.getElementById('help-top')?.click(); return document.getElementById('health-read') !== null && document.getElementById('bridge-status') !== null; })()",
       )) === true;
     if (!mounted) await new Promise((resolve) => setTimeout(resolve, 10));
   } while (!mounted && Date.now() < mountDeadline);

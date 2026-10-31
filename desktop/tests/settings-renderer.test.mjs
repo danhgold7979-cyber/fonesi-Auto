@@ -79,6 +79,7 @@ function mount(api, width = 1600) {
           }),
         };
       if (name === './settings-contract.js') return contract;
+      if (name === './ui/ui-shell.tsx') return { UiShell: 'UiShell' };
       throw Error('UNKNOWN_MODULE');
     },
     window: hostWindow,
@@ -91,7 +92,7 @@ function mount(api, width = 1600) {
   const find = (id, node = render()) => {
     if (!node || typeof node !== 'object') return null;
     if (node.props?.id === id) return node;
-    for (const child of [node.props?.children].flat(Infinity)) {
+    for (const child of [node.props?.children, node.props?.settings].flat(Infinity)) {
       const found = find(id, child ?? null);
       if (found) return found;
     }
@@ -137,7 +138,8 @@ test('actual transformed React source before effects permits explicit read and a
   assert.equal(m.find('preference-panel').props['data-theme'], 'DARK');
   assert.equal(m.find('preference-preview').props.style.width, '700px');
   assert.equal(m.find('preference-tile').props.style.width, '151px');
-  assert.equal(m.render().props.style.backgroundColor, '#171a21');
+  assert.equal(m.render().type, 'UiShell');
+  assert.equal(m.render().props.theme, 'DARK');
   assert.equal(m.find('preferences-theme').props.disabled, false);
 });
 test('theme update uses observed revision; timeout blocks mutations until explicit reconciliation without retry', async () => {
@@ -295,5 +297,38 @@ test('failed mount hydration stays explicit-read-only without automatic retry', 
   assert.equal(reads, 1);
   assert.equal(m.find('preferences-theme').props.disabled, true);
   assert.match(m.find('preferences-status').props.children, /OUTCOME UNKNOWN/);
+  m.dispose();
+});
+
+test('actual shell dimension callback persists exact observed revision once without opening settings', async () => {
+  const calls = [];
+  const current = settings({ revision: 8, theme: 'DARK', dockWidth: 700 });
+  const m = mount({
+    read: async () => contract.settingsSuccess('p', 'OBSERVED', current, 'AVAILABLE'),
+    update: async (revision, patch) => {
+      calls.push({ revision, patch });
+      return contract.settingsSuccess(
+        'p2',
+        'COMMITTED',
+        settings({ ...current, revision: 9, ...patch }),
+        'AVAILABLE',
+      );
+    },
+  });
+  m.effects();
+  await flush();
+  assert.equal(m.render().props.theme, 'DARK');
+  assert.equal(m.render().props.ready, true);
+  assert.equal(m.render().props.requestedDockWidth, 700);
+  m.render().props.onDimensions(650, 180);
+  await flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].revision, 8);
+  assert.equal(calls[0].patch.dockWidth, 650);
+  assert.equal(calls[0].patch.tileWidth, 180);
+  assert.equal(m.render().props.tileWidth, 180);
+  m.effects();
+  await flush();
+  assert.equal(calls.length, 1);
   m.dispose();
 });

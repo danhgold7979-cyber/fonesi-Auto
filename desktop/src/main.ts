@@ -41,7 +41,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createLifecycle, disposeResources } from './main/lifecycle.js';
 import { prepareOwnedProfile } from './main/profile-owner.js';
-import { ENTRY_URL, SCHEME, ASSET_SHA256 } from './main/asset-policy.js';
+import { ENTRY_URL, SCHEME, ASSET_SHA256, STYLE_SHA256 } from './main/asset-policy.js';
 import {
   securePreferences,
   installSessionPolicy,
@@ -188,6 +188,7 @@ try {
         'preload.cjs',
         'renderer.js',
         'status.html',
+        'v9.css',
       ];
       if (Object.keys(hashes).length !== required.length) throw new Error('BUILD_UNVERIFIED');
       for (const name of required) {
@@ -280,12 +281,16 @@ try {
       if (createHash('sha256').update(asset).digest('hex') !== ASSET_SHA256)
         throw new Error('ASSET_CHANGED');
       const html = asset.toString('utf8');
+      const stylesheet = readFileSync(join(__dirname, 'v9.css'));
+      if (createHash('sha256').update(stylesheet).digest('hex') !== STYLE_SHA256)
+        throw new Error('STYLE_CHANGED');
       Menu.setApplicationMenu(null);
       const ownedSession = session.fromPartition('auto-foundation-owned', { cache: false });
       disposeSession = installSessionPolicy(
         ownedSession,
         html,
         readFileSync(join(__dirname, 'renderer.js'), 'utf8'),
+        stylesheet.toString('utf8'),
       );
       bridge = installFoundationBridge(ipcMain, logger);
       const settingsDb = persistence?.settingsAdapter();

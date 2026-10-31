@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { parseSettingsResponse, type PublicSettings } from './settings-contract.js';
+import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
   interface Window {
@@ -25,10 +26,15 @@ function Diagnostic() {
   const [dockInput, setDockInput] = useState('');
   const [tileInput, setTileInput] = useState('150');
   const preferenceAction = useCallback(
-    async (kind: 'read' | 'theme' | 'dimensions' | 'reset' | 'restore') => {
+    async (
+      kind: 'read' | 'theme' | 'dimensions' | 'reset' | 'restore',
+      dimensions?: Readonly<{ dockWidth: number | null; tileWidth: number }>,
+    ) => {
       if (inFlight.current || (kind !== 'read' && (!preferences || reconcile))) return;
       let patch: unknown;
-      if (kind === 'dimensions') {
+      if (kind === 'dimensions' && dimensions) {
+        patch = dimensions;
+      } else if (kind === 'dimensions') {
         if (
           !/^(?:[1-9]\d*)$/.test(tileInput) ||
           (dockInput !== '' && !/^(?:[1-9]\d*)$/.test(dockInput))
@@ -155,136 +161,146 @@ function Diagnostic() {
     }
   }
   return (
-    <main
-      style={{
-        backgroundColor: dark ? '#171a21' : '#ffffff',
-        color: dark ? '#eef1f7' : '#18202d',
-        minHeight: '100vh',
+    <UiShell
+      theme={dark ? 'DARK' : 'LIGHT'}
+      ready={preferences !== null}
+      pending={pending}
+      reconcile={reconcile}
+      status={preferenceStatus}
+      dockWidth={dockWidth}
+      requestedDockWidth={preferences?.dockWidth ?? null}
+      tileWidth={preferences?.tileWidth ?? 150}
+      onTheme={() => {
+        void preferenceAction('theme');
       }}
-    >
-      <h1>UNAVAILABLE</h1>
-      <p>Foundation bridge diagnostic only. This is not the V9 product interface.</p>
-      <button
-        type="button"
-        id="health-read"
-        onClick={() => {
-          void read('health');
-        }}
-      >
-        Read public health
-      </button>
-      <button
-        type="button"
-        id="settings-read"
-        onClick={() => {
-          void read('settings');
-        }}
-      >
-        Read public settings
-      </button>
-      <section
-        aria-label="Persisted preference diagnostic"
-        id="preference-panel"
-        data-theme={preferences?.theme ?? 'NOT_READY'}
-      >
-        <h2>Persisted preferences — diagnostic controls, not the V9 interface</h2>
-        <button
-          type="button"
-          id="preferences-read"
-          disabled={pending}
-          onClick={() => {
-            void preferenceAction('read');
-          }}
-        >
-          Read persisted preferences
-        </button>
-        <button
-          type="button"
-          id="preferences-theme"
-          disabled={pending || !preferences || reconcile}
-          onClick={() => {
-            void preferenceAction('theme');
-          }}
-        >
-          Toggle LIGHT / DARK
-        </button>
-        <label>
-          Requested dock width (empty = responsive default)
-          <input
-            id="preferences-dock"
-            value={dockInput}
-            inputMode="numeric"
-            disabled={pending || !preferences || reconcile}
-            onChange={(event) => setDockInput(event.currentTarget.value)}
-          />
-        </label>
-        <label>
-          Tile width
-          <input
-            id="preferences-tile"
-            value={tileInput}
-            inputMode="numeric"
-            disabled={pending || !preferences || reconcile}
-            onChange={(event) => setTileInput(event.currentTarget.value)}
-          />
-        </label>
-        <button
-          type="button"
-          id="preferences-dimensions"
-          disabled={pending || !preferences || reconcile}
-          onClick={() => {
-            void preferenceAction('dimensions');
-          }}
-        >
-          Save dimensions
-        </button>
-        <button
-          type="button"
-          id="preferences-reset"
-          disabled={pending || !preferences || reconcile}
-          onClick={() => {
-            void preferenceAction('reset');
-          }}
-        >
-          Confirm UI defaults
-        </button>
-        <button
-          type="button"
-          id="preferences-restore"
-          disabled={pending || !preferences || reconcile}
-          onClick={() => {
-            void preferenceAction('restore');
-          }}
-        >
-          Confirm previous preferences
-        </button>
-        <p id="preferences-status" aria-live="polite">
-          {preferenceStatus}
-        </p>
-        <div
-          id="preference-preview"
-          style={{
-            width: viewportWidth <= 1120 ? '100%' : `${dockWidth}px`,
-            maxWidth: '100%',
-            border: '1px solid currentColor',
-          }}
-        >
-          <div
-            id="preference-tile"
-            style={{
-              width: `${preferences?.tileWidth ?? 150}px`,
-              maxWidth: '100%',
-              border: '1px solid currentColor',
+      onDimensions={(dockWidth, tileWidth) => {
+        void preferenceAction('dimensions', { dockWidth, tileWidth });
+      }}
+      settings={
+        <>
+          <button
+            type="button"
+            id="health-read"
+            onClick={() => {
+              void read('health');
             }}
           >
-            Preference size preview
-          </div>
-        </div>
-      </section>
-      <p id="bridge-status" aria-live="polite">
-        {status}
-      </p>
-    </main>
+            Read public health
+          </button>
+          <button
+            type="button"
+            id="settings-read"
+            onClick={() => {
+              void read('settings');
+            }}
+          >
+            Read public settings
+          </button>
+          <section
+            aria-label="Persisted preference diagnostic"
+            id="preference-panel"
+            data-theme={preferences?.theme ?? 'NOT_READY'}
+          >
+            <h2>Thiết lập giao diện và trạng thái lưu</h2>
+            <button
+              type="button"
+              id="preferences-read"
+              disabled={pending}
+              onClick={() => {
+                void preferenceAction('read');
+              }}
+            >
+              Read persisted preferences
+            </button>
+            <button
+              type="button"
+              id="preferences-theme"
+              disabled={pending || !preferences || reconcile}
+              onClick={() => {
+                void preferenceAction('theme');
+              }}
+            >
+              Toggle LIGHT / DARK
+            </button>
+            <label>
+              Requested dock width (empty = responsive default)
+              <input
+                id="preferences-dock"
+                value={dockInput}
+                inputMode="numeric"
+                disabled={pending || !preferences || reconcile}
+                onChange={(event) => setDockInput(event.currentTarget.value)}
+              />
+            </label>
+            <label>
+              Tile width
+              <input
+                id="preferences-tile"
+                value={tileInput}
+                inputMode="numeric"
+                disabled={pending || !preferences || reconcile}
+                onChange={(event) => setTileInput(event.currentTarget.value)}
+              />
+            </label>
+            <button
+              type="button"
+              id="preferences-dimensions"
+              disabled={pending || !preferences || reconcile}
+              onClick={() => {
+                void preferenceAction('dimensions');
+              }}
+            >
+              Save dimensions
+            </button>
+            <button
+              type="button"
+              id="preferences-reset"
+              disabled={pending || !preferences || reconcile}
+              onClick={() => {
+                void preferenceAction('reset');
+              }}
+            >
+              Confirm UI defaults
+            </button>
+            <button
+              type="button"
+              id="preferences-restore"
+              disabled={pending || !preferences || reconcile}
+              onClick={() => {
+                void preferenceAction('restore');
+              }}
+            >
+              Confirm previous preferences
+            </button>
+            <p id="preferences-status" aria-live="polite">
+              {preferenceStatus}
+            </p>
+            <div
+              id="preference-preview"
+              style={{
+                width: viewportWidth <= 1120 ? '100%' : `${dockWidth}px`,
+                maxWidth: '100%',
+                border: '1px solid currentColor',
+              }}
+            >
+              <div
+                id="preference-tile"
+                style={{
+                  width: `${preferences?.tileWidth ?? 150}px`,
+                  maxWidth: '100%',
+                  border: '1px solid currentColor',
+                }}
+              >
+                Preference size preview
+              </div>
+            </div>
+          </section>
+          <p id="bridge-status" aria-live="polite">
+            {status}
+          </p>
+        </>
+      }
+    />
   );
 }
 const root = document.getElementById('root');

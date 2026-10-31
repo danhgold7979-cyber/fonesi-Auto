@@ -19,6 +19,8 @@ class CheckoutBytesTests(unittest.TestCase):
             'tools/phase-00/desktop-stack-lab/dependency-review.json': review['sourceReviewSha256'],
             'desktop/tests/fixtures/unavailable.html': asset_hash,
         }
+        style_hash = re.search(r"STYLE_SHA256 = '([0-9a-f]{64})'", asset_source).group(1)
+        expected['desktop/assets/v9.css'] = style_hash
         biome = json.loads((root / 'desktop/biome-review.json').read_text())
         expected['biome.json'] = biome['configurationSha256']
         for name in ('foundation/src/contracts/validate.ts', 'foundation/scripts/check.mjs',

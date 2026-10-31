@@ -43,6 +43,10 @@ try {
   const hash = createHash('sha256').update(fixture).digest('hex');
   const policy = readFileSync(resolve(root, 'src/main/asset-policy.ts'), 'utf8');
   if (!policy.includes(`ASSET_SHA256 = '${hash}'`)) throw new Error('FIXTURE_CHANGED');
+  const styleHash = createHash('sha256')
+    .update(readFileSync(resolve(root, 'assets/v9.css')))
+    .digest('hex');
+  if (!policy.includes(`STYLE_SHA256 = '${styleHash}'`)) throw new Error('STYLE_CHANGED');
   const options = {
     bundle: true,
     platform: 'node',
@@ -128,6 +132,13 @@ try {
   if (exists(asset) && (!lstatSync(asset).isFile() || lstatSync(asset).isSymbolicLink()))
     throw new Error('OUTPUT_REJECTED');
   copyFileSync(resolve(root, 'tests/fixtures/unavailable.html'), asset);
+  const styleAsset = resolve(output, 'v9.css');
+  if (
+    exists(styleAsset) &&
+    (!lstatSync(styleAsset).isFile() || lstatSync(styleAsset).isSymbolicLink())
+  )
+    throw new Error('OUTPUT_REJECTED');
+  copyFileSync(resolve(root, 'assets/v9.css'), styleAsset);
   writeFileSync(marker, JSON.stringify(createManifest(root)), { flag: 'wx' });
   if (!verifyBuild(root)) {
     unlinkSync(marker);

@@ -16,6 +16,9 @@
         "./settings-contract.js": {
           "parseSettingsResponse": "value",
           "PublicSettings": "type"
+        },
+        "./ui/ui-shell.tsx": {
+          "UiShell": "value"
         }
       }
     },
@@ -145,8 +148,8 @@
           "preparedPersistenceEntry": "value",
           "configurePersistenceSession": "value",
           "openPreparedPersistence": "value",
-          "assertPreparedPersistenceLease": "value",
-          "openPreparedPersistenceRecovery": "value"
+          "openPreparedPersistenceRecovery": "value",
+          "assertPreparedPersistenceLease": "value"
         },
         "./main/foundation-persistence.js": {
           "FoundationPersistence": "type"
@@ -194,7 +197,8 @@
         "./main/asset-policy.js": {
           "ENTRY_URL": "value",
           "SCHEME": "value",
-          "ASSET_SHA256": "value"
+          "ASSET_SHA256": "value",
+          "STYLE_SHA256": "value"
         },
         "./main/window-policy.js": {
           "securePreferences": "value",
@@ -243,6 +247,7 @@
           "CSP": "value",
           "ENTRY_URL": "value",
           "RENDERER_URL": "value",
+          "STYLE_URL": "value",
           "permitsAsset": "value",
           "SCHEME": "value"
         }
@@ -951,6 +956,119 @@
         "../settings-contract.ts": {
           "snapshotNativeWindowState": "value",
           "NativeWindowState": "type"
+        }
+      }
+    },
+    "ui/icon-data.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "ui/primary-pages.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value"
+        },
+        "./ui-model.js": {
+          "UI_EXPORT_ACTION": "value",
+          "PageProps": "type"
+        },
+        "./ui-shared.tsx": {
+          "UnavailableButton": "value",
+          "EmptyPanel": "value",
+          "PageHeader": "value",
+          "StatCard": "value"
+        }
+      }
+    },
+    "ui/social-data.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "ui/ui-model.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "ui/ui-shared.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useRef": "value",
+          "useEffect": "value",
+          "createElement": "value",
+          "ReactNode": "type"
+        },
+        "./icon-data.js": {
+          "ICONS": "value"
+        },
+        "./social-data.js": {
+          "SOCIAL_ICONS": "value",
+          "SocialNode": "type"
+        },
+        "./ui-model.js": {
+          "DomainAction": "type",
+          "UiSnapshot": "type"
+        }
+      }
+    },
+    "ui/ui-shell.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value",
+          "useRef": "value",
+          "useEffect": "value",
+          "ReactNode": "type",
+          "CSSProperties": "type"
+        },
+        "./ui-model.js": {
+          "PAGES": "value",
+          "NETWORKS": "value",
+          "unavailableAction": "value",
+          "unavailableSnapshot": "value",
+          "PageKey": "type",
+          "DomainAction": "type",
+          "UiSnapshot": "type"
+        },
+        "./ui-shared.tsx": {
+          "Icon": "value",
+          "SocialIcon": "value",
+          "UnavailableButton": "value",
+          "EmptyPanel": "value",
+          "UiModal": "value"
+        },
+        "./primary-pages.tsx": {
+          "OverviewPage": "value",
+          "AccountsPage": "value",
+          "TrackingPage": "value"
+        },
+        "./work-pages.tsx": {
+          "SetupPage": "value",
+          "CalendarPage": "value",
+          "WorkflowsPage": "value",
+          "WORKFLOW_LABELS": "value"
+        }
+      }
+    },
+    "ui/work-pages.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value",
+          "ReactNode": "type"
+        },
+        "./ui-model.js": {
+          "PageProps": "type",
+          "DomainAction": "type",
+          "NETWORKS": "value",
+          "UI_IMPORT_ACTION": "value",
+          "UI_EXPORT_ACTION": "value"
+        },
+        "./ui-shared.tsx": {
+          "Icon": "value",
+          "SocialIcon": "value",
+          "UnavailableButton": "value",
+          "UiModal": "value"
         }
       }
     }

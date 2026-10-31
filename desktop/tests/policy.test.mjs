@@ -18,7 +18,14 @@ import { inputs, outputs, createManifest, verifyBuild } from '../scripts/build-m
 import { runStages } from '../scripts/stages.mjs';
 const require = createRequire(import.meta.url);
 // NEVER import main.cjs or Electron in Node tests (Electron can auto-install).
-const { permitsAsset, ENTRY_URL, ASSET_SHA256, CSP } = require('../build/asset-policy.cjs');
+const {
+  permitsAsset,
+  ENTRY_URL,
+  ASSET_SHA256,
+  STYLE_URL,
+  STYLE_SHA256,
+  CSP,
+} = require('../build/asset-policy.cjs');
 const { createLifecycle, disposeResources } = require('../build/lifecycle.cjs');
 const { prepareOwnedProfile, OWNER_MARKER } = require('../build/profile-owner.cjs');
 const {
@@ -125,7 +132,7 @@ function fakeSession() {
 }
 test('session denies permissions/network/download and serves only exact fixed asset', async () => {
   const session = fakeSession(),
-    dispose = installSessionPolicy(session, 'OWNED', 'OWNED_JS');
+    dispose = installSessionPolicy(session, 'OWNED', 'OWNED_JS', 'OWNED_CSS');
   let permitted;
   session.state.request(null, 'any', (value) => {
     permitted = value;
@@ -152,11 +159,26 @@ test('session denies permissions/network/download and serves only exact fixed as
   const ok = session.state.protocol({ url: ENTRY_URL, method: 'GET' });
   assert.equal(await ok.text(), 'OWNED');
   assert.equal(ok.headers.get('content-security-policy'), CSP);
+  const css = session.state.protocol({ url: STYLE_URL, method: 'GET' });
+  assert.equal(await css.text(), 'OWNED_CSS');
+  assert.equal(css.headers.get('content-type'), 'text/css; charset=utf-8');
+  assert.equal(css.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(css.headers.get('content-security-policy'), CSP);
+  assert.match(CSP, /style-src 'self'/);
+  assert.equal(CSP.includes('unsafe-inline'), false);
+  assert.equal(
+    createHash('sha256')
+      .update(readFileSync(resolve(root, 'assets/v9.css')))
+      .digest('hex'),
+    STYLE_SHA256,
+  );
   const js = session.state.protocol({ url: 'auto-foundation://app/renderer.js', method: 'GET' });
   assert.equal(await js.text(), 'OWNED_JS');
   assert.equal(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
   assert.equal(js.headers.get('x-content-type-options'), 'nosniff');
   for (const [url, method] of [
+    [STYLE_URL + '?x', 'GET'],
+    [STYLE_URL, 'POST'],
     ['auto-foundation://app/renderer.js?x', 'GET'],
     ['auto-foundation://app/renderer.js', 'POST'],
   ])
@@ -371,7 +393,7 @@ test('approved public bridge has no effect service or arbitrary renderer API', (
   assert.match(preload, /health: \(\) => client.health\(\)/);
   assert.match(preload, /settings: \(\) => client.settings\(\)/);
   assert.equal(preload.includes("exposeInMainWorld('ipcRenderer'"), false);
-  assert.equal(html.includes('UNAVAILABLE'), true); // This is a review aid, not a hostile-source sandbox proof.
+  assert.equal(html.includes('Dịch vụ chưa khả dụng'), true); // This is a review aid, not a hostile-source sandbox proof.
 });
 
 function copyBuildFixture(directory) {

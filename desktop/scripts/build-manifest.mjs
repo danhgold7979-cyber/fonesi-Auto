@@ -31,6 +31,7 @@ export const outputs = [
   'preload.cjs',
   'renderer.js',
   'status.html',
+  'v9.css',
 ];
 export const inputs = [
   'launch/Invoke-Desktop.ps1',
@@ -83,6 +84,14 @@ export const inputs = [
   'src/preload-client.ts',
   'src/preload.ts',
   'src/renderer.tsx',
+  'src/ui/icon-data.ts',
+  'src/ui/primary-pages.tsx',
+  'src/ui/social-data.ts',
+  'src/ui/ui-model.ts',
+  'src/ui/ui-shared.tsx',
+  'src/ui/ui-shell.tsx',
+  'assets/v9.css',
+  'src/ui/work-pages.tsx',
   'src/main/asset-policy.ts',
   'src/main/lifecycle.ts',
   'src/main/profile-owner.ts',

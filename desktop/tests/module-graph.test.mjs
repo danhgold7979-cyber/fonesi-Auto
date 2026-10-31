@@ -26,8 +26,8 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual forty-four modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 44, runtimeInputs: 44 });
+test('actual fifty-one modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 51, runtimeInputs: 51 });
 });
 test('renderer cannot import native, Electron, or main-owned profile services', async () => {
   for (const statement of [
@@ -120,7 +120,7 @@ test('comments strings regex templates and actual JSX do not fabricate imports',
   );
   assert.deepEqual(
     (await sourceImports(actual()['renderer.tsx'], 'tsx')).map((edge) => edge.specifier),
-    ['react-dom/client', 'react', './settings-contract.js'],
+    ['react-dom/client', 'react', './settings-contract.js', './ui/ui-shell.tsx'],
   );
 });
 test('allowed-edge value and type cycles are independently rejected', async () => {

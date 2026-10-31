@@ -120,11 +120,11 @@ async function operation(window, name, args, expected) {
 async function screenshot(window, theme) {
   const actual = await execute(
     window,
-    "({theme:document.getElementById('preference-panel').dataset.theme,color:getComputedStyle(document.querySelector('main')).backgroundColor})",
+    "({theme:document.getElementById('preference-panel').dataset.theme,color:getComputedStyle(document.body).backgroundColor})",
   );
   if (
     actual.theme !== theme.toUpperCase() ||
-    actual.color !== (theme === 'dark' ? 'rgb(23, 26, 33)' : 'rgb(255, 255, 255)')
+    actual.color !== (theme === 'dark' ? 'rgb(17, 26, 41)' : 'rgb(245, 247, 251)')
   )
     throw Error('SETTINGS_STYLE');
   const image = await window.webContents.capturePage();
@@ -168,6 +168,8 @@ async function run() {
   if (windows.length !== 1) throw Error('SETTINGS_WINDOW');
   const window = windows[0];
   cases.realMainReady = true;
+  await poll(() => execute(window, "!!document.getElementById('help-top')"));
+  await execute(window, "document.getElementById('help-top').click()");
   await poll(() =>
     execute(
       window,

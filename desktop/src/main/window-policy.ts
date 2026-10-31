@@ -1,5 +1,5 @@
 import type { Session, BrowserWindow } from 'electron';
-import { CSP, ENTRY_URL, RENDERER_URL, permitsAsset, SCHEME } from './asset-policy.js';
+import { CSP, ENTRY_URL, RENDERER_URL, STYLE_URL, permitsAsset, SCHEME } from './asset-policy.js';
 
 export function securePreferences(session: Session) {
   return {
@@ -17,7 +17,12 @@ export function securePreferences(session: Session) {
     devTools: false,
   } as const;
 }
-export function installSessionPolicy(session: Session, html: string, renderer: string): () => void {
+export function installSessionPolicy(
+  session: Session,
+  html: string,
+  renderer: string,
+  stylesheet: string,
+): () => void {
   session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.setPermissionCheckHandler(() => false);
   session.webRequest.onBeforeRequest((details, callback) =>
@@ -27,16 +32,21 @@ export function installSessionPolicy(session: Session, html: string, renderer: s
   session.on('will-download', denyDownload);
   session.protocol.handle(SCHEME, (request) => {
     if (!permitsAsset(request.url, request.method)) return new Response('DENIED', { status: 403 });
-    return new Response(request.url === RENDERER_URL ? renderer : html, {
-      headers: {
-        'content-type':
-          request.url === RENDERER_URL
-            ? 'text/javascript; charset=utf-8'
-            : 'text/html; charset=utf-8',
-        'content-security-policy': CSP,
-        'x-content-type-options': 'nosniff',
+    return new Response(
+      request.url === RENDERER_URL ? renderer : request.url === STYLE_URL ? stylesheet : html,
+      {
+        headers: {
+          'content-type':
+            request.url === RENDERER_URL
+              ? 'text/javascript; charset=utf-8'
+              : request.url === STYLE_URL
+                ? 'text/css; charset=utf-8'
+                : 'text/html; charset=utf-8',
+          'content-security-policy': CSP,
+          'x-content-type-options': 'nosniff',
+        },
       },
-    });
+    );
   });
   return () => {
     session.protocol.unhandle(SCHEME);
