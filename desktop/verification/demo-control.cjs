@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { plain, read, write, exact } = require('./demo-contract.cjs');
 const desktop = path.resolve(__dirname, '..');
 const INJECTION = '\nrequire("../verification/demo-probe.cjs");\n';
-const PREFIX = '"use strict";';
+const PREFIX = '// demo-owned:demo/main.ts\nvar import_electron = require("electron");\n';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 function instrument(original) {
   if (!Buffer.isBuffer(original) || original.length > 8388608) throw Error('DEMO_SOURCE');

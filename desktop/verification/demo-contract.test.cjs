@@ -36,11 +36,17 @@ test('fixed demo report rejects caller fields, wrong geometry and truthy nonbool
 
 test('derived observer transformation preserves every original byte and rejects ambiguous anchors', () => {
   const { instrument, INJECTION } = require('./demo-control.cjs');
-  const original = Buffer.from('"use strict";\nconst unchanged=1;\n');
+  const original = Buffer.from(
+    '// demo-owned:demo/main.ts\nvar import_electron = require("electron");\nconst unchanged=1;\n',
+  );
   const derived = instrument(original);
   assert.equal(derived.toString().replace(INJECTION, ''), original.toString());
   assert.equal(derived.toString().split(INJECTION).length, 2);
-  for (const bad of ['const changed=1;', '"use strict";\n"use strict";', '\ufeff"use strict";'])
+  for (const bad of [
+    'const changed=1;',
+    '// demo-owned:demo/main.ts\nvar import_electron = require("electron");\n// demo-owned:demo/main.ts\nvar import_electron = require("electron");\n',
+    '\ufeff// demo-owned:demo/main.ts\nvar import_electron = require("electron");\n',
+  ])
     assert.throws(() => instrument(Buffer.from(bad)));
   assert.throws(() => instrument(derived));
 });
@@ -58,4 +64,48 @@ test('developer launcher keeps interactive lifetime separate and ownership befor
   );
   assert.match(source, /8L\*1024\*1024/);
   assert.doesNotMatch(source, /Remove-Item|Recurse|RunCmd/);
+});
+
+test('actual reviewed demo output prepares both derived copies without executing application code', async () => {
+  const fs = require('node:fs'),
+    path = require('node:path');
+  const { randomUUID, createHash } = require('node:crypto');
+  const { prepare, INJECTION } = require('./demo-control.cjs');
+  const parent = path.resolve(__dirname, '../.test-output');
+  assert.equal(fs.lstatSync(parent).isDirectory(), true);
+  assert.equal(fs.lstatSync(parent).isSymbolicLink(), false);
+  assert.equal(fs.realpathSync.native(parent), parent);
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(parent, 'demo-prepare-')));
+  const token = randomUUID();
+  fs.writeFileSync(path.join(root, '.owner'), token, { flag: 'wx' });
+  const original = fs.readFileSync(path.resolve(__dirname, '../demo-build/main.cjs'));
+  const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  try {
+    for (const mode of ['source', 'package']) {
+      const outer = await prepare(root, mode);
+      const derived = fs.readFileSync(path.join(outer, 'demo-build/main.cjs'));
+      assert.equal(derived.toString().split(INJECTION).length, 2);
+      assert.deepEqual(Buffer.from(derived.toString().replace(INJECTION, '')), original);
+      const proof = JSON.parse(
+        fs.readFileSync(path.join(outer, '.verification-provenance.json'), 'utf8'),
+      );
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(outer, 'demo-build/.verified-demo-build.json'), 'utf8'),
+      );
+      assert.equal(proof.originalMainSha256, hash(original));
+      assert.equal(proof.derivedMainSha256, hash(derived));
+      assert.equal(manifest.outputs['main.cjs'], hash(derived));
+      assert.deepEqual(fs.readdirSync(path.join(outer, 'session')).sort(), [
+        '.demo-owner.json',
+        'profile',
+      ]);
+      assert.deepEqual(fs.readdirSync(path.join(outer, 'session/profile')), []);
+      await assert.rejects(prepare(root, mode));
+    }
+  } finally {
+    assert.equal(fs.lstatSync(root).isSymbolicLink(), false);
+    assert.equal(fs.realpathSync.native(root), root);
+    assert.equal(fs.readFileSync(path.join(root, '.owner'), 'utf8'), token);
+    fs.rmSync(root, { recursive: true, force: false });
+  }
 });

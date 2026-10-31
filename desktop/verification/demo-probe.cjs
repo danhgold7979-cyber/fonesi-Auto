@@ -240,7 +240,9 @@ try {
     hash(current) !== proof.derivedMainSha256 ||
     hash(Buffer.from(INJECTION)) !== proof.injectionSha256 ||
     text.split(INJECTION).length !== 2 ||
-    !text.startsWith('"use strict";' + INJECTION) ||
+    !text.startsWith(
+      '// demo-owned:demo/main.ts\nvar import_electron = require("electron");\n' + INJECTION,
+    ) ||
     hash(Buffer.from(text.replace(INJECTION, ''))) !== proof.originalMainSha256 ||
     hash(fs.readFileSync(__filename)) !== proof.observerSha256
   )

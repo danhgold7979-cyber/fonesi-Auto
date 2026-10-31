@@ -94,3 +94,28 @@ validator `e7ffc0e5ab2d313d291959036901a3ccdda4df0f5990d5fd34fbb435dd1b8b55`,
 workflow `1e7b7316607d5e54a0fa5d62f00e2779507647f2c0eed116ba026186ecac3a0f`.
 Final95 local links, YAML and staged diff checks PASS; frozen reference/native helpers
 unchanged. Execution approval is not a native result, P1-09 acceptance or launcher E2E.
+
+
+## First hosted attempt and bounded instrumentation correction — 15:22 UTC
+
+Exact public `86f60c9e632feccbd6dd291ed3e5d210d9d647c0`, tree
+`3e1f69d8b3131203ac6afb0d9ca18b380364d667`, run `41214122950` passed
+foundation, settings and UI jobs, but the new demo job failed before its first demo
+launch. Retained fixed artifact `13047373652` is 3,173 bytes, SHA256
+`1b6f40faf25299921dcb7770048107f446b6a5396b46dd0febb1ae8123839303`.
+Bootstrap four stages and actual production seven cases passed; demo modes/negative
+cases were absent, aggregate FAIL/PREFLIGHT_FAILED and cleanup false. This is not
+a demo-runtime success or proof that cleanup itself malfunctioned.
+
+The exact source preparation failure was reproduced locally against the actual verified
+bundle: `DEMO_INJECTION`. Esbuild emits the leading entry comment
+`// demo-owned:demo/main.ts`, while the verification helper and its synthetic unit
+fixture incorrectly assumed a leading strict-mode directive. The correction binds the
+one exact unique two-line entry-comment/Electron-import sentinel and retains original-byte reconstruction, derived hash
+and observer provenance checks; production bundling/runtime behavior is unchanged.
+Actual verified built-output preparation now passes for both source and package copies,
+including exact original-byte recovery, derived manifest/provenance hashes, fresh session
+inventory and exclusive duplicate refusal. Independent focused5/5 CLEAR; author full
+desktop495/495 + DESKTOP_SOURCE_CHECK_PASS at15:23 UTC. No source application,
+production builder, acceptance schema or runtime permission was changed.
+Corrected native execution remains NOT_RUN; technical counts remain eight/formal zero.
