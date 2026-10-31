@@ -88,3 +88,28 @@ meaningfully instrumented retry, not a blind rerun or an inferred runtime succes
 Independent diagnostic-only review CLEAR at 03:18 UTC: 37/37 Python tests and
 diff check PASS; fixed allowlists/privacy and unchanged rejection rules verified.
 The underlying Windows rejection remains unproven pending the next actual result.
+
+## Third hosted attempt: exact rejected boundaries — 03:23 UTC
+
+Exact remote head `e0f93e72626b561c0c5730d8daeab92ab6159013`, run
+[41163846066](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41163846066),
+job 124427028546: source **32/32**, Python **37/37**, and PowerShell **9/9** passed.
+The sanitizer rejected `RUN_SOURCE_LINES`; its already-validated supervisor failure
+was `DIRECTORY_CLEANUP_FAILED`. No artifact was uploaded and runtime acceptance is
+not established. No raw stdout/private path was exposed for diagnosis.
+
+The next bounded diagnostic records only total/unknown line counts and the first
+eight fixed marker classes, never line content. Cleanup emits exact allowlisted
+bound/ownership codes or fixed exception-type/native-code categories; arbitrary
+messages/spelling are not echoed. A preexisting primary failure is retained when
+cleanup also fails. Exact stdout acceptance, process controls and all resource
+bounds are unchanged. No speculative shutdown change is made.
+
+Local Python **39/39 PASS**. PowerShell diagnostic fixtures total **15**, comprising
+nine previously run fixtures plus six new fixtures that remain **NOT_RUN** until
+hosted execution. These diagnostics must establish the cause before remediation;
+neither duplicate shutdown nor aggregate entry overflow is claimed as proven.
+
+Independent diagnostic review CLEAR at 03:24 UTC: 39/39 Python tests PASS;
+fixed literal/exception classification and all fifteen PowerShell fixture sources
+reviewed, with six new fixtures still NOT_RUN. No underlying cause claim or gate change.

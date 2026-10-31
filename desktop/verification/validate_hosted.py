@@ -32,6 +32,11 @@ def decode_runtime(payload, mode, diagnostic):
     lines = payload.replace('\r\n', '\n').split('\n')
     if lines and lines[-1] == '':
         lines.pop()
+    classes = tuple('READY' if line == 'BOOTSTRAP_READY' else
+                    'CLOSED' if line == 'BOOTSTRAP_CLOSED' else
+                    'RESULT' if line.startswith('FOUNDATION_RESULT ') else 'OTHER'
+                    for line in lines)
+    diagnostic['stdout'] = {'mode': mode, 'count': len(lines), 'otherCount': classes.count('OTHER'), 'classes': classes[:8]}
     if len(lines) != 3 or lines[:2] != ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED'] or not lines[2].startswith('FOUNDATION_RESULT '):
         reject()
     diagnostic['stage'] = 'RUN_' + mode.upper() + '_JSON'
@@ -178,6 +183,16 @@ def diagnostic_lines(diagnostic):
     stage = diagnostic.get('stage')
     safe_stage = stage if type(stage) is str and stage in DIAGNOSTIC_STAGES else 'UNKNOWN'
     lines = ['FOUNDATION_VALIDATION_STAGE_' + safe_stage]
+    summary = diagnostic.get('stdout')
+    if (type(summary) is dict and set(summary) == {'mode', 'count', 'otherCount', 'classes'} and
+            type(summary['mode']) is str and summary['mode'] in ('source', 'package') and
+            type(summary['count']) is int and 0 <= summary['count'] <= 32769 and
+            type(summary['otherCount']) is int and 0 <= summary['otherCount'] <= summary['count'] and
+            type(summary['classes']) is tuple and len(summary['classes']) <= 8 and
+            all(type(item) is str and item in ('READY', 'CLOSED', 'RESULT', 'OTHER')
+                for item in summary['classes'])):
+        lines.append('FOUNDATION_STDOUT_' + summary['mode'].upper() + '_COUNT_' +
+                     str(summary['count']) + '_OTHER_' + str(summary['otherCount']) + '_ORDER_' + '_'.join(summary['classes']))
     failure = diagnostic.get('failure')
     if type(failure) is str and failure in FAILURES:
         lines.append('FOUNDATION_SUPERVISOR_STAGE_' + failure)

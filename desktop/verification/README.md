@@ -116,7 +116,7 @@ negative modifies only a verified owned build copy. Neither is runtime evidence 
 ## Runnable checkpoint pending hosted execution — 2026-10-31
 
 Current local source/build check: **32/32 PASS**, including the real bootstrap
-failure-latch regression. Current Python schema/writer/checkout/diagnostic suite: **37/37 PASS**.
+failure-latch regression. Current Python schema/writer/checkout/diagnostic suite: **39/39 PASS**.
 Node syntax checks and scoped workflow YAML parsing PASS. Nine PowerShell marker
 regressions, official installer, source/package launches, renderer crash and
 changed-asset negatives are **NOT_RUN** here. There is no local PowerShell 5.1 or
@@ -151,3 +151,9 @@ CI2 passed Windows source32/Python34/PowerShell9 but rejected the private raw
 report before artifact upload. Fixed allowlisted validation stage diagnostics now
 locate that rejection without echoing payloads or relaxing any predicate. Actual
 runtime/cleanup outcomes are not inferred from the supervisor step exit status.
+
+CI3 localized rejection to source stdout shape plus directory cleanup failure.
+Bounded fixed marker counts/order and exact allowlisted cleanup categories are
+added without changing acceptance or bounds. Fifteen PS regression fixtures are
+now present; only the original nine have run on Windows so far. Private raw lines
+remain excluded, and a cleanup failure no longer overwrites an earlier failure.

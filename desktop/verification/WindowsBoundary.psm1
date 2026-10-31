@@ -76,4 +76,14 @@ function Test-ExactlyOneLine([string]$Text, [string]$Line) {
 function Test-AnyLine([string]$Text, [string]$Line) {
     return @($Text -split '\r?\n' | Where-Object {$_ -ceq $Line}).Count -gt 0
 }
-Export-ModuleMember -Function Assert-PlainDirectory,Get-BoundedOwnedEntries,Invoke-OwnedChild,Test-ExactlyOneLine,Test-AnyLine
+function Get-FixedCleanupReason([string]$Message, [string]$Kind = '', [int]$NativeCode = 0) {
+    if ($Message -cin @('OWNED_DEPTH_EXCEEDED','OWNED_COUNT_EXCEEDED','OWNED_BYTES_EXCEEDED',
+        'OWNED_REPARSE_REJECTED','UNSAFE_DIRECTORY','OWNER_PARENT_MISMATCH',
+        'OWNER_MARKER_REJECTED','OWNER_TOKEN_MISMATCH','OWNED_DELETE_FAILED')) { return $Message }
+    if ($Kind -eq 'IOException' -and $NativeCode -in @(32,33)) { return 'FILE_IN_USE' }
+    if ($Kind -eq 'UnauthorizedAccessException') { return 'ACCESS_DENIED' }
+    if ($Kind -in @('FileNotFoundException','DirectoryNotFoundException')) { return 'PATH_MISSING' }
+    if ($Kind -eq 'IOException') { return 'IO_FAILURE' }
+    return 'UNCLASSIFIED'
+}
+Export-ModuleMember -Function Assert-PlainDirectory,Get-BoundedOwnedEntries,Invoke-OwnedChild,Test-ExactlyOneLine,Test-AnyLine,Get-FixedCleanupReason

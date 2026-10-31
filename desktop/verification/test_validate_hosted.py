@@ -46,7 +46,24 @@ class HostedEvidenceTests(unittest.TestCase):
         diagnostic = {}
         with self.assertRaises(InvalidEvidence):
             validate(encoded(value), diagnostic)
-        self.assertEqual(diagnostic_lines(diagnostic), ['FOUNDATION_VALIDATION_STAGE_RUN_SOURCE_LINES'])
+        self.assertEqual(diagnostic_lines(diagnostic), ['FOUNDATION_VALIDATION_STAGE_RUN_SOURCE_LINES',
+                         'FOUNDATION_STDOUT_SOURCE_COUNT_1_OTHER_1_ORDER_OTHER'])
+
+    def test_stdout_diagnostic_reports_only_fixed_classes_not_content(self):
+        value = fixture()
+        value['runs']['source']['payload'] += 'private path and identifiers\n'
+        diagnostic = {}
+        with self.assertRaises(InvalidEvidence):
+            validate(encoded(value), diagnostic)
+        self.assertEqual(diagnostic_lines(diagnostic)[1],
+                         'FOUNDATION_STDOUT_SOURCE_COUNT_4_OTHER_1_ORDER_READY_CLOSED_RESULT_OTHER')
+
+    def test_stdout_diagnostic_untrusted_summary_cannot_echo_values(self):
+        for summary in ({'mode': 'private', 'count': 1, 'otherCount': 0, 'classes': ('OTHER',)},
+                        {'mode': 'source', 'count': 1, 'otherCount': 0, 'classes': ('private',)},
+                        {'mode': 'source', 'count': True, 'otherCount': 0, 'classes': ('OTHER',)}):
+            self.assertEqual(diagnostic_lines({'stdout': summary}),
+                             ['FOUNDATION_VALIDATION_STAGE_UNKNOWN'])
 
     def test_diagnostic_allowlist_rejects_private_or_malformed_values(self):
         for value in ('private host path', {}, [], None, 1):

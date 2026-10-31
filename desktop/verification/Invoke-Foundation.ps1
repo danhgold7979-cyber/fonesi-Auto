@@ -130,7 +130,11 @@ try {
 finally {
     if ($null -ne $owner -and $allClean) {
         try { Remove-VerifiedOwnedRun $owner $allClean; $report.directoryCleanup=$true }
-        catch { $report.failure='DIRECTORY_CLEANUP_FAILED' }
+        catch {
+            if ($null -eq $report.failure) { $report.failure='DIRECTORY_CLEANUP_FAILED' }
+            $cause = $_.Exception.GetBaseException()
+            Write-Output ('FOUNDATION_CLEANUP_REASON_' + (Get-FixedCleanupReason $_.Exception.Message $cause.GetType().Name ($cause.HResult -band 65535)))
+        }
     }
 }
 # Private raw record only. Never print captured stdout/stderr or upload this file.
