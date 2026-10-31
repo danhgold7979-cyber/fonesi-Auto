@@ -377,3 +377,15 @@ Local source/build **32/32 PASS** and Python schema/writer **33/33 PASS**. Nine
 PowerShell regressions and all actual Windows behavior remain **NOT_RUN** pending
 exact-head CI. No full task/Phase acceptance, original navigation PASS, or target
 host/device/policy claim. Existing accepted-task percentages are unchanged.
+
+### P1-02 hosted bootstrap slice — 2026-10-31 03:58 UTC
+
+Exact-head CI7 **SUCCESS**: source/build 36/36, Python 42/42, PowerShell 25/25;
+actual source/package each 20/20, typed crash/tamper negatives and all process/
+directory cleanup PASS. [Evidence](evidence/P1-02-windows-envelope-source-2026-10-31.md)
+records head, run, artifact hashes and independent fixed-field review. This accepts
+only the authorized bootstrap slice; full P1-02 still lacks its reviewed versioned
+preload/React/IPC health boundary and associated sender/payload tests. Original
+navigation FAIL, Phase 0 exits, full V9 and all activation gates remain unchanged.
+No whole task/Phase acceptance or main merge; accepted counts remain 0/11 Phase 1
+and 0/154 total tasks. Canonical authority-requirement review is documentation only.

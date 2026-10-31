@@ -40,8 +40,8 @@ original navigation 20/21 FAIL and ADR-0005 authority blockers remain unchanged.
   PASS. The rejected-parent report-write path was fixed before publication; no
   PowerShell or Electron execution occurred during review.
 
-All actual Windows installer/profile/runtime/cleanup behavior is **NOT_RUN** until
-an exact-head hosted run. No accepted-task numerator changes; full P1-02 and all
+At this original source checkpoint, all actual Windows installer/profile/runtime/
+cleanup behavior was **NOT_RUN**; later exact-head results are recorded below. No accepted-task numerator changes; full P1-02 and all
 original activation/acceptance gates remain open. A hosted PASS would establish
 only this authority-free, instrumented runner boundary—not production package,
 manual device control, trusted human intent, confidentiality of future services,
@@ -213,3 +213,42 @@ Independent actual measurement patch review CLEAR at 03:55 UTC: source/build
 36/36, Python 42/42 and diff check PASS. Actual constructor/factory and package
 probe/helper identity verified. README status now distinguishes executed CI6 failure
 from corrected measurements still NOT_RUN. No full task or phase acceptance follows.
+
+## Seventh hosted attempt: bootstrap slice PASS — 03:58 UTC
+
+Exact remote head `85c190ea5ea969955d48afa3776c0c3dc3fcfa13`, source tree
+`47773fe61c0896464674711725dce5570d4221fb`,
+[run 41166487558](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41166487558),
+job 124435062956 completed SUCCESS. Windows source/build **36/36**, Python **42/42**
+and PowerShell **25/25 PASS**; actual source and instrumented package each **20/20**.
+
+Artifact 13029149206 is the schema-validated fixed-field report only. Downloaded
+ZIP: 959 bytes, SHA256 `08834c47485d5e04d034c9df573ced4fff1c0ac1313bc0d0b386074521ed42e4`.
+Original JSON: 4,002 bytes, SHA256
+`9d0cb0cff793a9b49bad4444d142499bce62f16a88a50fe085487272d1aebb62`.
+ZIP digest, exact single entry and bounded size were checked before duplicate-aware
+JSON parsing. This hash identifies downloaded evidence; no raw private report is retained publicly.
+
+- Actual Electron 45.1.0 / embedded Node 24.22.1 / Chromium 156.0.8078.49 in both modes.
+- Source/package exit 0 with actual orderly-quit case true, all Job cleanup true,
+  no truncated captures; each owned profile measured 1,231,398 bytes.
+- Crash: expected NONZERO_EXIT 1, armed/observed/bootstrapFailed true,
+  unexpectedQuit false; owned bytes 1,231,392.
+- Changed asset: expected NONZERO_EXIT 1, changed/bootstrapFailed true,
+  unexpectedReady false; owned bytes 557,458.
+- Installer official marker, build verification, binary hash, runtime copy and
+  directory cleanup all true; package 374,133,205 bytes; failure null, passed true.
+- Both about:blank observations still changed URL, with no denial observed.
+  `oldNavigationGate=FAIL_RETAINED`; no immutable-document proof is claimed.
+
+Independent artifact review CLEAR at 03:58 UTC: duplicate-aware original-byte parse,
+strict fixed-schema reconstruction/equality and privacy review passed. Reviewer did
+not relaunch runtime or independently redownload ZIP. No raw logs, host/user paths,
+credentials or arbitrary preference values occur in the reviewed fixed report.
+
+This closes only the authorized authority-free bootstrap/lifecycle slice. Full
+P1-02 still requires reviewed React/preload/versioned health IPC boundaries, sender/
+payload/fuzz denials and prerequisite contract/tooling closure. Full V9 integration,
+settings persistence and privileged services remain their canonical tasks. Neither
+this result nor a new authority design erases old G0-12 failures or accepts Phase 0,
+target-host support, full Phase 1 or main merge. The original 12 exits stay unchecked.

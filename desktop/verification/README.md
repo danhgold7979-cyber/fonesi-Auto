@@ -182,3 +182,13 @@ DevTools open-denial observation and supported empty session preload inventory.
 They do not infer false/absence from omitted keys, do not add a preload, and do not
 claim OS-token or unbounded future behavior proof. Four pure/source regressions
 bring source/build tests to 36/36; corrected runtime measurements remain NOT_RUN.
+
+## Current hosted result — 2026-10-31 03:58 UTC
+
+CI7 at exact head `85c190ea5ea969955d48afa3776c0c3dc3fcfa13` passed source/build
+36/36, Python 42/42 and PowerShell 25/25, then source/package 20/20 each. Crash
+and tamper negatives, all process retirement and owned-directory cleanup passed.
+Earlier nine/fifteen-case and NOT_RUN notes above describe historical checkpoints.
+[Full evidence](../../docs/evidence/P1-02-windows-envelope-source-2026-10-31.md)
+retains every failed attempt and the original navigation FAIL. This is instrumented
+hosted bootstrap evidence only, not full P1-02, V9, service or target-host acceptance.

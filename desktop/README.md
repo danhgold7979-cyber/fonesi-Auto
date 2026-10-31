@@ -61,9 +61,9 @@ metadata → optional scripts-disabled restore → installed checks → strict c
 build → manifest → tests. Any false result or exception stops later stages. No
 semicolon fall-through, generic shell command or automatic runtime download.
 
-The source check currently passes 36/36 tests. Hosted CI6 executed source/package
-and returned a valid 19/20 failed result for each; corrected preference/preload
-measurements are NOT_RUN until the next exact-head run.
+The source check currently passes 36/36 tests. Hosted CI7 passed source/package 20/20 each, Python 42/42 and PowerShell 25/25;
+corrected preference/preload measurements now have actual Windows runner evidence.
+See the [runtime evidence](../docs/evidence/P1-02-windows-envelope-source-2026-10-31.md).
 Test tooling uses bounded child invocation (30 seconds/64 KiB, restore 120 seconds),
 not arbitrary-child-tree containment. Runtime/installer Windows supervision is implemented separately and has hosted
 evidence; it is not inferred from these local tests.
@@ -85,8 +85,8 @@ must be fresh, named `fonesi-auto-foundation-*`, contain only the exact `.owner`
 marker and no reparse/symlink alias. No default/user profile or arbitrary root is
 accepted. Ownership validation is not a concurrent malicious-local-user race proof.
 
-Do not launch Electron manually at this checkpoint: the trusted bounded launcher,
-actual runtime probes and separate phase-01 workflow are still pending review/code.
+Do not launch Electron manually: use the reviewed bounded launcher and separate
+phase-01 workflow. Hosted evidence does not authorize arbitrary local profiles.
 No --no-sandbox fallback is allowed. Main's switch/environment guards are defense in
 depth; they cannot undo effects of native startup flags before application code.
 
@@ -102,6 +102,6 @@ service authority or permit those future methods to be enabled. Full V9 and C-03
 remain obligations, not permanently disabled features.
 
 The separately scoped Windows execution envelope and strict artifact contract are
-implemented under [verification](verification/README.md); CI6 actual Windows results are a valid failed report; corrected measurement
-results remain NOT_RUN pending the next reviewed exact-head CI. No original navigation gate or
-full P1-02 acceptance follows from source checks.
+implemented under [verification](verification/README.md). CI6 remains a valid failed
+report; CI7 passes the corrected bounded measurements. No original navigation gate
+or full P1-02 acceptance follows from this bootstrap slice.
