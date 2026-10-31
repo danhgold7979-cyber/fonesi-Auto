@@ -163,11 +163,12 @@ test('visible help readiness accepts prior persisted mutations but rejects unkno
 test('foundation unavailable observation requires exact visible V9 banner rather than hidden text', () => {
   const { VISIBLE_UNAVAILABLE } = require('./runtime-measurements.cjs');
   const { runInNewContext } = require('node:vm');
-  let banner = null;
+  let banner = null,
+    empty = null;
   const document = {
     querySelector(selector) {
-      assert.equal(selector, '.top-demo');
-      return banner;
+      assert.ok(['.top-demo', '#workspace .empty[role="status"] .muted'].includes(selector));
+      return selector === '.top-demo' ? banner : empty;
     },
   };
   const observe = () => runInNewContext(VISIBLE_UNAVAILABLE, { document });
@@ -179,6 +180,21 @@ test('foundation unavailable observation requires exact visible V9 banner rather
   assert.equal(observe(), false);
   banner.getClientRects = () => [1];
   assert.equal(observe(), true);
+  // V9 intentionally hides the header badge below1120px; the genuine overview
+  // empty-state remains rendered in the foundation640px window.
+  banner.getClientRects = () => [];
+  empty = {
+    textContent: 'Chưa có điện thoại phù hợp. Dịch vụ thiết bị chưa khả dụng.',
+    getClientRects: () => [1],
+  };
+  assert.equal(observe(), true);
+  empty.getClientRects = () => [];
+  assert.equal(observe(), false);
+  empty.getClientRects = () => [1];
+  empty.textContent = 'UNAVAILABLE';
+  assert.equal(observe(), false);
+  const css = fs.readFileSync(path.join(__dirname, '../assets/v9.css'), 'utf8');
+  assert.match(css, /@media\(max-width:1120px\)[^@]*\.top-demo\{display:none\}/);
 });
 test('foundation and degraded probes open genuine help before explicit visible diagnostic read', () => {
   const { MOUNT_DIAGNOSTICS } = require('./runtime-measurements.cjs');
