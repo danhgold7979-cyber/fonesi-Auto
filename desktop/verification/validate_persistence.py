@@ -307,8 +307,8 @@ def ready_files(root, mode):
 def validate_report(raw):
     value = _parse(raw)
     version = value.get('schemaVersion') if type(value) is dict else None
-    exact_record(value, ('schemaVersion', 'scope', 'modes', 'runtimeCopyVerified', 'directoryCleanup', 'failure') + (('ready',) if version in (2, 3) else ()) + (('store', 'maintenance', 'restore') if version == 3 else ()))
-    scopes = {1: 'HOSTED_KEY_MECHANISM_ONLY', 2: 'HOSTED_KEY_AND_MAIN_READY', 3: 'HOSTED_KEY_MAIN_STORE_MAINTENANCE_RESTORE'}
+    exact_record(value, ('schemaVersion', 'scope', 'modes', 'runtimeCopyVerified', 'directoryCleanup', 'failure') + (('ready',) if version in (2, 3, 4) else ()) + (('store', 'maintenance', 'restore') if version in (3, 4) else ()) + (('vault','context') if version == 4 else ()))
+    scopes = {1: 'HOSTED_KEY_MECHANISM_ONLY', 2: 'HOSTED_KEY_AND_MAIN_READY', 3: 'HOSTED_KEY_MAIN_STORE_MAINTENANCE_RESTORE', 4: 'HOSTED_PERSISTENCE_AND_VAULT'}
     if type(version) is not int or version not in scopes or value['scope'] != scopes[version]:
         reject()
     if type(value['modes']) is not dict or not set(value['modes']).issubset({'source', 'package'}):
@@ -322,7 +322,7 @@ def validate_report(raw):
     passed = value['failure'] is None and value['runtimeCopyVerified'] and value['directoryCleanup']
     for mode, item in value['modes'].items():
         passed = validate_public_mode(item, mode) and passed
-    if version in (2, 3):
+    if version in (2, 3, 4):
         if type(value['ready']) is not dict or not set(value['ready']).issubset({'source', 'package'}):
             reject()
         if value['failure'] is None and set(value['ready']) != {'source', 'package'}:
@@ -335,7 +335,7 @@ def validate_report(raw):
             if type(item['passed']) is not bool or (item['passed'] and not rebuilt['passed']):
                 reject()
             passed = item['passed'] and passed
-    if version == 3:
+    if version in (3, 4):
         from validate_persistence_store import validate_public as validate_store
         from validate_persistence_maintenance import validate_public as validate_maintenance
         from validate_persistence_restore import validate_public as validate_restore
@@ -360,6 +360,16 @@ def validate_report(raw):
             passed = validate_maintenance(item, mode) and passed
         for mode, item in value['restore'].items():
             passed = validate_restore(item, mode) and passed
+    if version == 4:
+        from validate_vault import STAGES as VAULT_STAGES, validate_public as validate_vault, validate_context_public
+        for field in ('vault','context'):
+            if type(value[field]) is not dict or not set(value[field]).issubset({'source','package'}):reject()
+            if value['failure'] is None and set(value[field])!={'source','package'}:reject()
+        for mode, stages in value['vault'].items():
+            if type(stages) is not dict or not set(stages).issubset(VAULT_STAGES):reject()
+            if value['failure'] is None and set(stages)!=set(VAULT_STAGES):reject()
+            for stage,item in stages.items():passed=validate_vault(item,mode,stage) and passed
+        for mode,item in value['context'].items():passed=validate_context_public(item,mode) and passed
     return {**value, 'passed': passed}
 
 

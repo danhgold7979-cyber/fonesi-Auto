@@ -32,7 +32,7 @@ export type LogCode =
   | 'HOLDS_UNAVAILABLE'
   | 'CLOCK_REGRESSION'
   | 'RECOVERED';
-export type LogRecord = Readonly<{
+export type LegacyLogRecord = Readonly<{
   schemaVersion: 1;
   runId: string;
   sequence: number;
@@ -44,6 +44,82 @@ export type LogRecord = Readonly<{
   diagnosticId: string | null;
   code: LogCode;
 }>;
+export type VaultOperation = 'CREATE' | 'READ' | 'REPLACE' | 'DELETE' | 'STATUS';
+export type VaultAuditCode =
+  | 'OK'
+  | 'AUDIT_UNAVAILABLE'
+  | 'INVALID_REQUEST'
+  | 'UNSUPPORTED_VERSION'
+  | 'UNAUTHORIZED'
+  | 'STALE_REFERENCE'
+  | 'NOT_FOUND'
+  | 'DELETED'
+  | 'BUSY'
+  | 'KEY_UNAVAILABLE'
+  | 'DECRYPTION_FAILED'
+  | 'STORE_INVALID'
+  | 'WRITE_FAILED'
+  | 'OWNER_REVOKED'
+  | 'REVISION_EXHAUSTED';
+export type VaultAuditFields = Readonly<{
+  operation: VaultOperation;
+  phase: 'INTENT' | 'RESULT';
+  diagnosticId: string;
+  secretId: string | null;
+  revision: number | null;
+  code: VaultAuditCode;
+}>;
+export type VaultLogRecord = VaultAuditFields &
+  Readonly<{
+    schemaVersion: 2;
+    runId: string;
+    sequence: number;
+    utc: string;
+    severity: 'INFO' | 'WARN';
+    component: 'MAIN';
+    task: 'P1-06';
+    event: 'SECRET_OPERATION';
+  }>;
+export type LogRecord = LegacyLogRecord | VaultLogRecord;
+const vaultCodes: readonly string[] = [
+  'OK',
+  'AUDIT_UNAVAILABLE',
+  'INVALID_REQUEST',
+  'UNSUPPORTED_VERSION',
+  'UNAUTHORIZED',
+  'STALE_REFERENCE',
+  'NOT_FOUND',
+  'DELETED',
+  'BUSY',
+  'KEY_UNAVAILABLE',
+  'DECRYPTION_FAILED',
+  'STORE_INVALID',
+  'WRITE_FAILED',
+  'OWNER_REVOKED',
+  'REVISION_EXHAUSTED',
+];
+function vaultTuple(record: Record<string, unknown>): boolean {
+  return (
+    record.component === 'MAIN' &&
+    record.task === 'P1-06' &&
+    record.event === 'SECRET_OPERATION' &&
+    typeof record.operation === 'string' &&
+    ['CREATE', 'READ', 'REPLACE', 'DELETE', 'STATUS'].includes(record.operation) &&
+    ['INTENT', 'RESULT'].includes(record.phase as string) &&
+    diagnosticId(record.diagnosticId) &&
+    typeof record.code === 'string' &&
+    vaultCodes.includes(record.code) &&
+    (record.phase !== 'INTENT' || record.code === 'OK') &&
+    record.severity === (record.code === 'OK' ? 'INFO' : 'WARN') &&
+    ((record.secretId === null && record.revision === null) ||
+      (diagnosticId(record.secretId) &&
+        typeof record.revision === 'number' &&
+        Number.isSafeInteger(record.revision) &&
+        record.revision > 0)) &&
+    (!['INVALID_REQUEST', 'UNSUPPORTED_VERSION'].includes(record.code) ||
+      (record.secretId === null && record.revision === null))
+  );
+}
 export const LOG_RECORD_BYTES = 2048;
 const publicCodes: readonly string[] = [
   'INVALID_TRANSPORT',
@@ -150,6 +226,10 @@ export function encodeLogRecord(input: unknown): string | null {
       'diagnosticId',
       'code',
     ];
+    const version = Object.getOwnPropertyDescriptor(input, 'schemaVersion');
+    if (!version || !Object.hasOwn(version, 'value')) return null;
+    if (version.value === 2) fields.push('operation', 'phase', 'secretId', 'revision');
+    else if (version.value !== 1) return null;
     if (Object.getOwnPropertyNames(input).length !== fields.length) return null;
     const record: Record<string, unknown> = {};
     for (const key of fields) {
@@ -159,14 +239,12 @@ export function encodeLogRecord(input: unknown): string | null {
       record[key] = descriptor.value;
     }
     if (
-      record.schemaVersion !== 1 ||
       !diagnosticId(record.runId) ||
       typeof record.sequence !== 'number' ||
       !Number.isSafeInteger(record.sequence) ||
       record.sequence <= 0 ||
       !utcTimestamp(record.utc) ||
-      record.task !== 'P1-04' ||
-      !tuple(record)
+      !(record.schemaVersion === 1 ? record.task === 'P1-04' && tuple(record) : vaultTuple(record))
     )
       return null;
     const encoded = JSON.stringify(record) + '\n';

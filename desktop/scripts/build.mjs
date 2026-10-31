@@ -68,6 +68,7 @@ try {
       resolve(root, 'src/ipc-contract.ts'),
       resolve(root, 'src/log-contract.ts'),
       resolve(root, 'src/main/log-store.ts'),
+      resolve(root, 'src/main/logging.ts'),
       resolve(root, 'src/main/log-recovery.ts'),
       resolve(root, 'src/main/foundation-persistence.ts'),
       resolve(root, 'src/main/backup-key-profile.ts'),
@@ -77,6 +78,9 @@ try {
       resolve(root, 'src/main/persistence-native.ts'),
       resolve(root, 'src/persistence-proof.ts'),
       resolve(root, 'src/main/persistence-entry.ts'),
+      resolve(root, 'src/main/secret-store.ts'),
+      resolve(root, 'src/main/secret-provider.ts'),
+      resolve(root, 'src/secret-contract.ts'),
     ],
     outdir: output,
   });

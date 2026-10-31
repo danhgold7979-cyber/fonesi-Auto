@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { LogStore } from './log-store.ts';
 import type { LogLocation } from './log-files.ts';
-import { diagnosticId } from '../log-contract.ts';
-import type { LogCode, LogEvent, LogHealth, LogRecord } from '../log-contract.ts';
+import { diagnosticId, encodeLogRecord } from '../log-contract.ts';
+import type { LogCode, LogEvent, LogHealth, LogRecord, VaultAuditFields } from '../log-contract.ts';
 export type LogClock = () => string;
 export type LogNotice = (marker: 'LOGGING_DEGRADED') => void;
 // Main-owned only. Caller content, request IDs and native errors never enter emit().
@@ -145,6 +145,70 @@ export class ApplicationLogger {
       this.denialRecorded = true;
     }
     this.emit('BRIDGE_RESULT', code, reference);
+  }
+  async vaultAudit(input: VaultAuditFields): Promise<LogHealth> {
+    try {
+      if (
+        this.closing ||
+        this.health !== 'AVAILABLE' ||
+        !this.store ||
+        this.runId === null ||
+        !Number.isSafeInteger(this.sequence + 1)
+      )
+        return 'DEGRADED';
+      const fields = ['operation', 'phase', 'diagnosticId', 'secretId', 'revision', 'code'];
+      if (
+        input === null ||
+        typeof input !== 'object' ||
+        Object.getPrototypeOf(input) !== Object.prototype ||
+        Object.getOwnPropertySymbols(input).length ||
+        Object.getOwnPropertyNames(input).length !== fields.length
+      )
+        throw new Error('AUDIT_INVALID');
+      const snapshot: Record<string, unknown> = {};
+      for (const field of fields) {
+        const descriptor = Object.getOwnPropertyDescriptor(input, field);
+        if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable)
+          throw new Error('AUDIT_INVALID');
+        snapshot[field] = descriptor.value;
+      }
+      const utc = this.clock();
+      if (this.lastUtc !== null && utc < this.lastUtc && !this.regressionRecorded) {
+        this.regressionRecorded = true;
+        this.emit('LOGGING_DEGRADED', 'CLOCK_REGRESSION');
+      }
+      const record = {
+        schemaVersion: 2,
+        runId: this.runId,
+        sequence: this.sequence + 1,
+        utc,
+        severity: snapshot.code === 'OK' ? 'INFO' : 'WARN',
+        component: 'MAIN',
+        task: 'P1-06',
+        event: 'SECRET_OPERATION',
+        diagnosticId: snapshot.diagnosticId,
+        code: snapshot.code,
+        operation: snapshot.operation,
+        phase: snapshot.phase,
+        secretId: snapshot.secretId,
+        revision: snapshot.revision,
+      };
+      const encoded = encodeLogRecord(record);
+      if (encoded === null) throw new Error('AUDIT_INVALID');
+      ++this.sequence;
+      this.lastUtc = utc;
+      if (
+        this.store.enqueue(JSON.parse(encoded) as LogRecord) !== 'QUEUED' ||
+        (await this.store.flush()) !== 'FLUSHED' ||
+        this.health !== 'AVAILABLE'
+      )
+        throw new Error('AUDIT_UNAVAILABLE');
+      return 'AVAILABLE';
+    } catch {
+      this.broken = true;
+      this.reportHealth();
+      return 'DEGRADED';
+    }
   }
   close(): Promise<'FLUSHED' | 'FAILED'> {
     if (this.closing) return this.closing;

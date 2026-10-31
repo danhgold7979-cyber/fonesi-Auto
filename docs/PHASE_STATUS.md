@@ -720,3 +720,17 @@ Six canonical technical scopes pass: **6/11 = 54.5%** of Phase 1 tasks and
 weighted implementation/feature progress. Formal accepted tasks remain **0**;
 original Phase 0 criteria/all 12 exits and historical navigation FAIL are unchanged.
 P1-06 is next contract planning only, not source-approved by this disposition.
+
+## P1-06 source entry — 2026-10-31 11:02 UTC
+
+Coordinator approved the independently reviewed [secret-store contract](phases/PHASE-01-P1-06-SECRET-STORE-CONTRACT.md)
+under the same development-only exception. Main-only synthetic CRUD/revision/audit
+implementation may proceed; no new public IPC or real credentials. Cross-context
+execution remains contingent on reviewed helper source and actual bounded controls.
+Technical counts remain six; formal zero and original Phase 0 gates unchanged.
+
+P1-06 first native-envelope checkpoint — 11:27 UTC: independent full source/build
+319/319, foundation109/109 and Python104/104 PASS. Exact reviewed source/context
+wrapper is authorized for its first bounded hosted run; actual C#/PowerShell/native
+identity behavior is still NOT_RUN. [Evidence and remaining qualifications](evidence/P1-06-secret-store-source-2026-10-31.md).
+No P1-06 acceptance/count change; six technical tasks and formal zero remain.

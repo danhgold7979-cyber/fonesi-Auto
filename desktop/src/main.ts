@@ -1,3 +1,5 @@
+import { openMainSecretStore } from './main/secret-entry.js';
+import type { SecretStore } from './main/secret-store.js';
 import { createPersistenceLifecycle } from './main/persistence-lifecycle.js';
 import { runNativePersistenceMaintenance } from './main/persistence-native.js';
 import {
@@ -43,6 +45,7 @@ let mainReady = false;
 let loggingNotice = false;
 let persistence: FoundationPersistence | undefined;
 const persistenceLifecycle = createPersistenceLifecycle<FoundationPersistence>();
+const secretLifecycle = createPersistenceLifecycle<SecretStore>();
 let backupTimer: ReturnType<typeof setInterval> | undefined;
 function reportLoggingDegraded(): void {
   if (!loggingNotice) {
@@ -143,6 +146,7 @@ try {
         'ipc-contract.cjs',
         'log-contract.cjs',
         'log-store.cjs',
+        'logging.cjs',
         'log-recovery.cjs',
         'foundation-persistence.cjs',
         'backup-key-profile.cjs',
@@ -152,6 +156,9 @@ try {
         'persistence-native.cjs',
         'persistence-proof.cjs',
         'persistence-entry.cjs',
+        'secret-store.cjs',
+        'secret-provider.cjs',
+        'secret-contract.cjs',
         'preload.cjs',
         'renderer.js',
         'status.html',
@@ -199,6 +206,19 @@ try {
           if (persistence.restored) throw new Error('RESTORED_MAINTENANCE_ONLY');
           await persistence.backup(Date.now(), true);
           if (closing) {
+            await persistenceLifecycle.stop();
+            return;
+          }
+          await secretLifecycle.open(() =>
+            openMainSecretStore(
+              persistenceEntry,
+              safeStorage,
+              (fields) => logger?.vaultAudit(fields) ?? Promise.resolve('DEGRADED'),
+              () => closing,
+            ),
+          );
+          if (closing) {
+            await secretLifecycle.stop();
             await persistenceLifecycle.stop();
             return;
           }
@@ -275,6 +295,7 @@ try {
     stop: cleanup,
     flush: async () => {
       try {
+        await secretLifecycle.stop();
         await persistenceLifecycle.stop();
       } catch {
         cleanupComplete = false;

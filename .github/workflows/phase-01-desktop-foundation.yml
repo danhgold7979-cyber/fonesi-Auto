@@ -63,7 +63,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==93; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==104; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: PowerShell 5.1 marker and ownership regressions
         run: |
@@ -92,12 +92,12 @@ jobs:
           $tokens=$null; $parseErrors=$null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'desktop/verification/Invoke-Persistence.ps1'),[ref]$tokens,[ref]$parseErrors)
           if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_SUPERVISOR_SYNTAX_FAILED'; exit 1 }
-          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1')) {
+          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1')) {
             $tokens=$null; $parseErrors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd $file),[ref]$tokens,[ref]$parseErrors)
             if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_LAUNCHER_SYNTAX_FAILED'; exit 1 }
           }
-          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs')) {
+          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs')) {
             node --check $file
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

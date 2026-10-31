@@ -95,6 +95,12 @@
     "main.ts": {
       "role": "main",
       "imports": {
+        "./main/secret-entry.js": {
+          "openMainSecretStore": "value"
+        },
+        "./main/secret-store.js": {
+          "SecretStore": "type"
+        },
         "./main/persistence-lifecycle.js": {
           "createPersistenceLifecycle": "value"
         },
@@ -359,10 +365,12 @@
         },
         "../log-contract.ts": {
           "diagnosticId": "value",
+          "encodeLogRecord": "value",
           "LogCode": "type",
           "LogEvent": "type",
           "LogHealth": "type",
-          "LogRecord": "type"
+          "LogRecord": "type",
+          "VaultAuditFields": "type"
         }
       }
     },
@@ -694,6 +702,119 @@
     "persistence-proof.ts": {
       "role": "contract",
       "imports": {}
+    },
+    "secret-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "main/secret-files.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value",
+          "open": "value",
+          "opendir": "value",
+          "mkdir": "value",
+          "rename": "value"
+        },
+        "node:path": {
+          "join": "value",
+          "dirname": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "./persistence-files.ts": {
+          "plainPersistenceDirectory": "value",
+          "readPersistenceFile": "value",
+          "writePersistenceFile": "value"
+        }
+      }
+    },
+    "main/secret-provider.ts": {
+      "role": "main-adapter",
+      "imports": {}
+    },
+    "main/secret-store.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:path": {
+          "join": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "./persistence-files.ts": {
+          "readPersistenceFile": "value"
+        },
+        "./secret-provider.ts": {
+          "SecretProviderError": "value",
+          "createSecretProvider": "value",
+          "NativeSecretProvider": "type"
+        },
+        "./secret-files.ts": {
+          "initializeVaultFiles": "value",
+          "vaultInventory": "value",
+          "readVaultCiphertext": "value",
+          "writeVaultCiphertext": "value",
+          "replaceVaultIndex": "value",
+          "VAULT_ENTRY_LIMIT": "value",
+          "VAULT_TOTAL_LIMIT": "value"
+        },
+        "../secret-contract.ts": {
+          "snapshotRef": "value",
+          "snapshotBytes": "value",
+          "parseIndex": "value",
+          "serializeIndex": "value",
+          "parseInitializationReceipt": "value",
+          "serializeInitializationReceipt": "value",
+          "encodeSecretPayload": "value",
+          "decodeSecretPayload": "value",
+          "secretRevisionFilename": "value",
+          "validSecretId": "value",
+          "makeSecretSuccess": "value",
+          "makeSecretFailure": "value",
+          "SecretRef": "type",
+          "SecretIndex": "type",
+          "SecretIndexEntry": "type",
+          "SecretOperation": "type",
+          "SecretResult": "type",
+          "SecretFailureCode": "type"
+        },
+        "../log-contract.ts": {
+          "VaultAuditFields": "type",
+          "LogHealth": "type"
+        }
+      }
+    },
+    "main/secret-entry.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value"
+        },
+        "node:path": {
+          "join": "value"
+        },
+        "./secret-store.ts": {
+          "createNativeSecretStore": "value",
+          "SecretStore": "type"
+        },
+        "./secret-provider.ts": {
+          "NativeSecretProvider": "type"
+        },
+        "./persistence-files.ts": {
+          "assertBorrowedPersistenceLease": "value",
+          "verifyPersistenceRoot": "value"
+        },
+        "./persistence-entry.ts": {
+          "PersistenceEntry": "type"
+        },
+        "../log-contract.ts": {
+          "VaultAuditFields": "type",
+          "LogHealth": "type"
+        }
+      }
     }
   }
 }

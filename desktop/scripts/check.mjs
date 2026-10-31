@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { verify } from './verify-dependencies.mjs';
 import { runStages } from './stages.mjs';
 import { testDiagnostics } from './test-diagnostics.mjs';
+import { runTestBatches } from './test-batches.mjs';
 import { verifyBuild } from './build-manifest.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const nodeDir = dirname(process.execPath);
@@ -127,65 +128,12 @@ try {
     [
       'TESTS',
       () => {
-        const result = run([
-          '--test',
-          '--test-reporter=tap',
-          'tests/policy.test.mjs',
-          'tests/test-diagnostics.test.mjs',
-          'tests/ipc-contract.test.mjs',
-          'tests/log-contract.test.mjs',
-          'tests/persistence-contract.test.mjs',
-          'tests/persistence-proof.test.mjs',
-          'tests/persistence-process.test.mjs',
-          'tests/persistence-launcher.test.mjs',
-          'tests/persistence-launch-control.test.mjs',
-          'tests/foundation-database.test.mjs',
-          'tests/backup-container.test.mjs',
-          'tests/backup-service.test.mjs',
-          'tests/persistence-files.test.mjs',
-          'tests/backup-key-profile.test.mjs',
-          'tests/backup-catalog.test.mjs',
-          'tests/foundation-persistence.test.mjs',
-          'tests/persistence-entry.test.mjs',
-          'tests/persistence-native.test.mjs',
-          'tests/persistence-maintenance.test.mjs',
-          'tests/persistence-lifecycle.test.mjs',
-          'tests/log-files.test.mjs',
-          'tests/logging.test.mjs',
-          'verification/logging-evidence.test.cjs',
-          'verification/persistence-envelope.test.cjs',
-          'verification/persistence-store-contract.test.cjs',
-          'verification/persistence-maintenance-contract.test.cjs',
-          'verification/persistence-matrix-control.test.cjs',
-          'verification/persistence-restore-contract.test.cjs',
-          'verification/persistence-launch-e2e-control.test.cjs',
-          'tests/ipc-diagnostic.test.mjs',
-          'tests/quality-tool.test.mjs',
-          'tests/module-graph.test.mjs',
-        ]);
-        const diagnostic = () => {
-          for (const line of testDiagnostics(result.stdout, result.outcome)) console.log(line);
-          return false;
-        };
-        const counts = {};
-        for (const field of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
-          const matches = [...result.stdout.matchAll(new RegExp(`^# ${field} (.*)$`, 'gm'))];
-          if (matches.length !== 1 || !/^(0|[1-9]\d*)$/.test(matches[0][1])) return diagnostic();
-          counts[field] = Number(matches[0][1]);
-          if (!Number.isSafeInteger(counts[field])) return diagnostic();
-        }
-        if (
-          !result.ok ||
-          counts.tests < 1 ||
-          counts.pass !== counts.tests ||
-          counts.fail ||
-          counts.cancelled ||
-          counts.skipped ||
-          counts.todo
-        )
-          return diagnostic();
-        console.log(`TESTS_PASS ${counts.pass}/${counts.tests}`);
-        return true;
+        return runTestBatches(run, {
+          emit: (line) => console.log(line),
+          diagnostic: (stdout, outcome) => {
+            for (const line of testDiagnostics(stdout, outcome)) console.log(line);
+          },
+        });
       },
     ],
   );
