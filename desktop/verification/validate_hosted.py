@@ -34,7 +34,8 @@ def decode_runtime(payload, mode, diagnostic):
         lines.pop()
     classes = tuple('READY' if line == 'BOOTSTRAP_READY' else
                     'CLOSED' if line == 'BOOTSTRAP_CLOSED' else
-                    'RESULT' if line.startswith('FOUNDATION_RESULT ') else 'OTHER'
+                    'RESULT' if line.startswith('FOUNDATION_RESULT ') else
+                    'EMPTY' if line == '' else 'WHITESPACE' if line.isspace() else 'OTHER'
                     for line in lines)
     diagnostic['stdout'] = {'mode': mode, 'count': len(lines), 'otherCount': classes.count('OTHER'), 'classes': classes[:8]}
     if len(lines) != 3 or lines[:2] != ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED'] or not lines[2].startswith('FOUNDATION_RESULT '):
@@ -189,7 +190,7 @@ def diagnostic_lines(diagnostic):
             type(summary['count']) is int and 0 <= summary['count'] <= 32769 and
             type(summary['otherCount']) is int and 0 <= summary['otherCount'] <= summary['count'] and
             type(summary['classes']) is tuple and len(summary['classes']) <= 8 and
-            all(type(item) is str and item in ('READY', 'CLOSED', 'RESULT', 'OTHER')
+            all(type(item) is str and item in ('READY', 'CLOSED', 'RESULT', 'EMPTY', 'WHITESPACE', 'OTHER')
                 for item in summary['classes'])):
         lines.append('FOUNDATION_STDOUT_' + summary['mode'].upper() + '_COUNT_' +
                      str(summary['count']) + '_OTHER_' + str(summary['otherCount']) + '_ORDER_' + '_'.join(summary['classes']))

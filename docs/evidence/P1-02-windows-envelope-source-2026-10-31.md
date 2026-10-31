@@ -113,3 +113,33 @@ neither duplicate shutdown nor aggregate entry overflow is claimed as proven.
 Independent diagnostic review CLEAR at 03:24 UTC: 39/39 Python tests PASS;
 fixed literal/exception classification and all fifteen PowerShell fixture sources
 reviewed, with six new fixtures still NOT_RUN. No underlying cause claim or gate change.
+
+## Fourth hosted attempt: confirmed accumulation boundary — 03:31 UTC
+
+Exact remote head `49369099823ca83bb837245f88eba4a638dba576`, run
+[41164320223](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41164320223),
+job 124428467490: source **32/32**, Python **39/39**, PowerShell **15/15** passed.
+Cleanup reported `OWNED_COUNT_EXCEEDED`. Source stdout had four lines in fixed
+classes `OTHER, READY, CLOSED, RESULT`, with exactly one OTHER; no duplicate close
+marker was observed. Its content remains undisclosed/unidentified. Artifact upload
+was correctly denied; no runtime acceptance is established.
+
+Coordinator approved incremental disposal at 03:28 UTC, not an aggregate-cap
+increase. Each fixed owned profile is fully validated and retired after its own
+verified Job/capture and retained evidence; the tampered build is retired after its
+negative, and package only after all uses. The unchanged per-tree limits remain
+256 entries/depth16/8 MiB for profiles/build and 512 MiB for runtime copy. Final root
+cleanup is marker-only: it refuses any leftover/rejected part, never falls back to
+a weaker aggregate deletion. Wrong owner/name/case/profile marker, unretired Job
+and count/byte/depth failures must preserve the rejected fixture.
+
+The stdout classifier now distinguishes EMPTY/WHITESPACE/OTHER, while unexpected
+lines still fail exact framing. No blanket strip/filter or shutdown change was
+made. Local Python **40/40 PASS**; PowerShell fixture count is **25** (fifteen already
+run plus ten new ownership/bounds fixtures currently NOT_RUN). Actual timing-fix
+and startup framing outcomes require the next hosted attempt.
+
+Independent incremental-disposal review CLEAR at 03:32 UTC: 40/40 Python, YAML
+and diff checks PASS; all twenty-five PowerShell fixture sources reviewed. Ten new
+fixtures and actual disposal timing remain NOT_RUN locally. Limits and strict
+unexpected-line rejection are unchanged.

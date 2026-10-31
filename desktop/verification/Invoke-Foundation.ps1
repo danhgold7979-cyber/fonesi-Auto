@@ -92,6 +92,7 @@ try {
         $report.runs[$mode] = [ordered]@{ process=(Process-Evidence $probe); payload=$probe.Stdout; ownedBytes=$null }
         Assert-RetiredCapture $probe
         $report.runs[$mode].ownedBytes = (Get-BoundedOwnedEntries $profile (8L * 1024 * 1024)).Bytes
+        Remove-VerifiedOwnedPart $owner ('fonesi-auto-foundation-' + $mode) $allClean
         if ($probe.Status -ne 'SUCCESS' -or $probe.ExitCode -ne 0) { throw 'RUNTIME_FAILED' }
     }
     $stage = 'NEGATIVE_PROBE_FAILED'
@@ -106,6 +107,7 @@ try {
         unexpectedQuit=(Test-AnyLine $crash.Stdout 'CRASH_UNEXPECTED_ORDERLY_QUIT'); ownedBytes=$null}
     Assert-RetiredCapture $crash
     $report.negatives.crash.ownedBytes = (Get-BoundedOwnedEntries $crashProfile (8L * 1024 * 1024)).Bytes
+    Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-crash' $allClean
     if ($crash.Status -ne 'NONZERO_EXIT' -or $crash.ExitCode -ne 1) { throw 'CRASH_RESULT_REJECTED' }
     $tamperBuild = Join-Path $owner.Path 'tampered-build'
     [void](Copy-VerifiedTree (Join-Path $desktop 'build') $tamperBuild (8L * 1024 * 1024))
@@ -125,7 +127,10 @@ try {
     Assert-RetiredCapture $tamper
     $report.negatives.tamper.ownedBytes = (Get-BoundedOwnedEntries $tamperProfile (8L * 1024 * 1024)).Bytes
     [void](Get-BoundedOwnedEntries $tamperBuild (8L * 1024 * 1024))
+    Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-tamper' $allClean
+    Remove-VerifiedOwnedPart $owner 'tampered-build' $allClean
     if ($tamper.Status -ne 'NONZERO_EXIT' -or $tamper.ExitCode -ne 1) { throw 'TAMPER_RESULT_REJECTED' }
+    Remove-VerifiedOwnedPart $owner 'package' $allClean
 } catch { $report.failure = $stage }
 finally {
     if ($null -ne $owner -and $allClean) {

@@ -65,17 +65,46 @@ function Copy-VerifiedTree([string]$Source, [string]$Destination, [long]$MaxByte
 function Remove-VerifiedOwnedRun($Owner, [bool]$AllJobsRetired) {
     if (-not $AllJobsRetired) { throw 'JOB_RETIREMENT_UNCONFIRMED' }
     Assert-OwnedRun $Owner
-    # Preserve the whole tree if any entry is unsafe. Never recursive bulk-delete.
-    $inventory = Get-BoundedOwnedEntries $Owner.Path (512L * 1024 * 1024)
-    foreach ($entry in $inventory.Entries) {
-        if (-not $entry.PSIsContainer -and $entry.FullName -cne (Join-Path $Owner.Path '.owner')) { [IO.File]::Delete($entry.FullName) }
-    }
-    foreach ($entry in @($inventory.Entries | Where-Object {$_.PSIsContainer} | Sort-Object {$_.FullName.Length} -Descending)) {
-        [IO.Directory]::Delete($entry.FullName,$false)
-    }
+    # Final root is marker-only. Never fall back to deleting a rejected/leftover part.
+    $enumerator = [IO.Directory]::EnumerateFileSystemEntries($Owner.Path).GetEnumerator()
+    try {
+        if (-not $enumerator.MoveNext() -or $enumerator.Current -cne (Join-Path $Owner.Path '.owner')) { throw 'OWNER_PARTS_REMAIN' }
+        if ($enumerator.MoveNext()) { throw 'OWNER_PARTS_REMAIN' }
+    } finally { $enumerator.Dispose() }
     [IO.File]::Delete((Join-Path $Owner.Path '.owner'))
     [IO.Directory]::Delete($Owner.Path,$false)
     if (Test-Path -LiteralPath $Owner.Path) { throw 'OWNED_DELETE_FAILED' }
 }
 
-Export-ModuleMember -Function New-OwnedRun,Assert-OwnedRun,New-OwnedProfile,Copy-VerifiedTree,Remove-VerifiedOwnedRun
+function Remove-VerifiedOwnedPart($Owner, [string]$Name, [bool]$AllJobsRetired) {
+    if (-not $AllJobsRetired) { throw 'JOB_RETIREMENT_UNCONFIRMED' }
+    $limits = @{'package'=536870912L; 'tampered-build'=8388608L;
+        'fonesi-auto-foundation-source'=8388608L; 'fonesi-auto-foundation-package'=8388608L;
+        'fonesi-auto-foundation-crash'=8388608L; 'fonesi-auto-foundation-tamper'=8388608L}
+    if (-not ($limits.Keys -ccontains $Name)) { throw 'OWNED_PART_NAME_REJECTED' }
+    Assert-OwnedRun $Owner
+    $path = Join-Path $Owner.Path $Name
+    Assert-PlainDirectory $path
+    if ($Name.StartsWith('fonesi-auto-foundation-')) {
+        $marker = Get-Item -LiteralPath (Join-Path $path '.owner') -Force
+        if ($marker.PSIsContainer -or ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+            $marker.Length -ne ([Text.Encoding]::UTF8.GetByteCount("FONESI_AUTO_FOUNDATION_PROFILE_V1`n")) -or [IO.File]::ReadAllText($marker.FullName) -cne "FONESI_AUTO_FOUNDATION_PROFILE_V1`n") { throw 'PROFILE_MARKER_REJECTED' }
+    }
+    # Full fixed-part inventory before any deletion; the existing per-tree caps are unchanged.
+    $inventory = Get-BoundedOwnedEntries $path $limits[$Name]
+    foreach ($entry in $inventory.Entries) {
+        if (-not $entry.PSIsContainer -and $entry.Name -cne '.owner') { [IO.File]::Delete($entry.FullName) }
+    }
+    # Nested .owner files are ordinary owned bytes, but retain the top profile marker until last.
+    foreach ($entry in $inventory.Entries) {
+        if (-not $entry.PSIsContainer -and $entry.Name -ceq '.owner' -and $entry.FullName -cne (Join-Path $path '.owner')) { [IO.File]::Delete($entry.FullName) }
+    }
+    foreach ($entry in @($inventory.Entries | Where-Object {$_.PSIsContainer} | Sort-Object {$_.FullName.Length} -Descending)) {
+        [IO.Directory]::Delete($entry.FullName,$false)
+    }
+    if ([IO.File]::Exists((Join-Path $path '.owner'))) { [IO.File]::Delete((Join-Path $path '.owner')) }
+    [IO.Directory]::Delete($path,$false)
+    if (Test-Path -LiteralPath $path) { throw 'OWNED_DELETE_FAILED' }
+}
+
+Export-ModuleMember -Function New-OwnedRun,Assert-OwnedRun,New-OwnedProfile,Copy-VerifiedTree,Remove-VerifiedOwnedRun,Remove-VerifiedOwnedPart

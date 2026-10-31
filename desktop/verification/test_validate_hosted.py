@@ -58,6 +58,15 @@ class HostedEvidenceTests(unittest.TestCase):
         self.assertEqual(diagnostic_lines(diagnostic)[1],
                          'FOUNDATION_STDOUT_SOURCE_COUNT_4_OTHER_1_ORDER_READY_CLOSED_RESULT_OTHER')
 
+    def test_blank_and_whitespace_are_classified_but_still_rejected(self):
+        for prefix, expected in (('\n', 'EMPTY'), (' \t\n', 'WHITESPACE')):
+            value = fixture()
+            value['runs']['source']['payload'] = prefix + value['runs']['source']['payload']
+            diagnostic = {}
+            with self.assertRaises(InvalidEvidence):
+                validate(encoded(value), diagnostic)
+            self.assertIn('_ORDER_' + expected + '_READY_CLOSED_RESULT', diagnostic_lines(diagnostic)[1])
+
     def test_stdout_diagnostic_untrusted_summary_cannot_echo_values(self):
         for summary in ({'mode': 'private', 'count': 1, 'otherCount': 0, 'classes': ('OTHER',)},
                         {'mode': 'source', 'count': 1, 'otherCount': 0, 'classes': ('private',)},

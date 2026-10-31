@@ -33,5 +33,77 @@ if ((Get-FixedCleanupReason 'private message' 'private type' 32) -cne 'UNCLASSIF
 $count++
 if ((Get-FixedCleanupReason 'owned_count_exceeded') -cne 'UNCLASSIFIED') { throw 'CODE_CASE_FAILED' }
 $count++
-if ($count -ne 15) { throw 'TEST_COUNT_FAILED' }
-Write-Output 'WINDOWS_BOUNDARY_MARKERS_PASS_15'
+Import-Module (Join-Path $PSScriptRoot 'OwnedFiles.psm1') -Force
+function Expect-Rejected([scriptblock]$Action) {
+    $rejected = $false
+    try { & $Action } catch { $rejected=$true }
+    if (-not $rejected) { throw 'EXPECTED_REJECTION_MISSING' }
+}
+$parent = Join-Path ([IO.Path]::GetTempPath()) ('auto-owned-boundary-test-' + [guid]::NewGuid().ToString())
+if (Test-Path -LiteralPath $parent) { throw 'TEST_PARENT_EXISTS' }
+[void][IO.Directory]::CreateDirectory($parent)
+$owner = New-OwnedRun $parent
+try {
+    $profile = New-OwnedProfile $owner 'source'
+    Expect-Rejected { Remove-VerifiedOwnedRun $owner $true }
+    if (-not (Test-Path -LiteralPath $profile)) { throw 'FINAL_ROOT_DELETED_LEFTOVER' }
+    $count++
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'FONESI-AUTO-FOUNDATION-SOURCE' $true }
+    if (-not (Test-Path -LiteralPath $profile)) { throw 'CASE_ALIAS_DELETED_PROFILE' }
+    $count++
+    $profileMarker = Join-Path $profile '.owner'
+    [IO.File]::WriteAllText($profileMarker,'wrong')
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $true }
+    Expect-Rejected { Remove-VerifiedOwnedRun $owner $true }
+    if (-not [IO.File]::Exists($profileMarker)) { throw 'BAD_MARKER_DELETED' }
+    [IO.File]::WriteAllText($profileMarker,"FONESI_AUTO_FOUNDATION_PROFILE_V1`n")
+    $count++
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner '../unknown' $true }
+    if (-not (Test-Path -LiteralPath $profile)) { throw 'WRONG_NAME_DELETED_PROFILE' }
+    $count++
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $false }
+    if (-not (Test-Path -LiteralPath $profile)) { throw 'UNRETIRED_DELETED_PROFILE' }
+    $count++
+    $wrong = [pscustomobject]@{Path=$owner.Path;Parent=$owner.Parent;Token='wrong-token'}
+    Expect-Rejected { Remove-VerifiedOwnedPart $wrong 'fonesi-auto-foundation-source' $true }
+    if (-not (Test-Path -LiteralPath $profile)) { throw 'WRONG_OWNER_DELETED_PROFILE' }
+    $count++
+    Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $true
+    if (Test-Path -LiteralPath $profile) { throw 'OWNED_PART_NOT_REMOVED' }
+    $count++
+    $profile = New-OwnedProfile $owner 'source'
+    # 256 explicit fixture files plus the marker exceed the unchanged 256-entry cap.
+    $files = @()
+    for ($index=0; $index -lt 256; $index++) {
+        $file = Join-Path $profile ('fixture-' + $index + '.txt')
+        [IO.File]::WriteAllText($file,'x'); $files += $file
+    }
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $true }
+    if (-not [IO.File]::Exists($files[0])) { throw 'COUNT_LIMIT_DELETED_DATA' }
+    foreach ($file in $files) { [IO.File]::Delete($file) }
+    $count++
+    $large = Join-Path $profile 'known-large-fixture.bin'
+    $stream = [IO.File]::Open($large,[IO.FileMode]::CreateNew)
+    try { $stream.SetLength(8388609L) } finally { $stream.Dispose() }
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $true }
+    if (-not [IO.File]::Exists($large)) { throw 'BYTE_LIMIT_DELETED_DATA' }
+    [IO.File]::Delete($large)
+    $count++
+    $directories=@(); $deep=$profile
+    for ($index=0; $index -lt 17; $index++) {
+        $deep=Join-Path $deep 'd'; [void][IO.Directory]::CreateDirectory($deep); $directories += $deep
+    }
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $true }
+    if (-not [IO.Directory]::Exists($deep)) { throw 'DEPTH_LIMIT_DELETED_DATA' }
+    foreach ($directory in @($directories | Sort-Object Length -Descending)) { [IO.Directory]::Delete($directory,$false) }
+    $count++
+    Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $true
+    Remove-VerifiedOwnedRun $owner $true
+} finally {
+    # Empty-only deletion: a failed assertion preserves uncertain fixture contents.
+    if ([IO.Directory]::Exists($parent) -and [IO.Directory]::GetFileSystemEntries($parent).Length -eq 0) {
+        [IO.Directory]::Delete($parent,$false)
+    }
+}
+if ($count -ne 25) { throw 'TEST_COUNT_FAILED' }
+Write-Output 'WINDOWS_BOUNDARY_MARKERS_AND_OWNERSHIP_PASS_25'

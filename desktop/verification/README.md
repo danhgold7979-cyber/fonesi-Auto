@@ -116,7 +116,7 @@ negative modifies only a verified owned build copy. Neither is runtime evidence 
 ## Runnable checkpoint pending hosted execution — 2026-10-31
 
 Current local source/build check: **32/32 PASS**, including the real bootstrap
-failure-latch regression. Current Python schema/writer/checkout/diagnostic suite: **39/39 PASS**.
+failure-latch regression. Current Python schema/writer/checkout/diagnostic suite: **40/40 PASS**.
 Node syntax checks and scoped workflow YAML parsing PASS. Nine PowerShell marker
 regressions, official installer, source/package launches, renderer crash and
 changed-asset negatives are **NOT_RUN** here. There is no local PowerShell 5.1 or
@@ -157,3 +157,11 @@ Bounded fixed marker counts/order and exact allowlisted cleanup categories are
 added without changing acceptance or bounds. Fifteen PS regression fixtures are
 now present; only the original nine have run on Windows so far. Private raw lines
 remain excluded, and a cleanup failure no longer overwrites an earlier failure.
+
+CI4 proved cleanup hit the unchanged entry-count cap while retaining multiple
+completed profiles. Fixed owned parts are now disposed incrementally after their
+verified Job/capture and evidence measurement; package only after all uses. The
+final root accepts only its marker, never a recursive fallback over rejected parts.
+No resource cap increased. Twenty-five PS fixtures are present; fifteen ran before
+this fix, ten new ownership/bounds fixtures remain NOT_RUN. First stdout OTHER is
+further classified as empty/whitespace/unknown, but still rejected until identified.
