@@ -10,7 +10,7 @@ const { backupKeys, validBackupLocalState } = require('../build/backup-key-profi
 const { assertBorrowedPersistenceLease } = require('../build/persistence-files.cjs');
 const { runNativePersistenceMaintenance } = require('../build/persistence-native.cjs');
 const { prepareOwnedProfile } = require('../build/profile-owner.cjs');
-const { CASES, parse } = require('./persistence-maintenance-contract.cjs');
+const { CASES, parse, diagnostic } = require('./persistence-maintenance-contract.cjs');
 const uuid = (x) =>
   typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(x);
 function plain(p) {
@@ -78,6 +78,7 @@ function oneDirectory(p) {
 const cases = Object.fromEntries(CASES.map((x) => [x, false]));
 let service, root, data, control, checkpoint, counts;
 let complete = false;
+let stage = 'ENTRY';
 const timer = setTimeout(() => {
   console.error('PERSISTENCE_MAINTENANCE_DEADLINE');
   app.exit(74);
@@ -203,6 +204,7 @@ try {
     process.argv.slice(app.isPackaged ? 1 : 2).length
   )
     throw new Error('ENTRY');
+  stage = 'OWNERSHIP';
   data = path.join(root, `data-${control.mode}`);
   plain(data);
   if (
@@ -224,6 +226,7 @@ try {
     JSON.stringify({ version: 1, storeId: control.storeId, ownerToken: control.ownerToken })
   )
     throw new Error('LEASE');
+  stage = 'PROFILE';
   const profile = path.join(data, 'key-profile');
   plain(profile);
   if (
@@ -244,10 +247,12 @@ try {
   app.on('will-quit', () => {
     clearTimeout(timer);
     if (!complete) {
+      console.error(diagnostic(stage));
       console.error('PERSISTENCE_MAINTENANCE_FAILED');
       app.exit(1);
       return;
     }
+    stage = 'RESULT';
     const result = {
       version: 1,
       scope: 'NATIVE_ADAPTER_MAINTENANCE',
@@ -263,6 +268,7 @@ try {
       releasedSafetyCount: counts.released,
     };
     if (!parse(JSON.stringify(result)).passed) {
+      console.error(diagnostic(stage));
       console.error('PERSISTENCE_MAINTENANCE_FAILED');
       app.exit(1);
       return;
@@ -270,6 +276,7 @@ try {
     write(path.join(root, `persistence-maintenance-result-${control.mode}.json`), result);
     console.log('PERSISTENCE_MAINTENANCE_ORDERLY');
   });
+  stage = 'READY';
   app
     .whenReady()
     .then(async () => {
@@ -278,15 +285,19 @@ try {
           { root: data, parentToken: control.parentToken },
           control.ownerToken,
         );
+      stage = 'LEASE';
       await assertLease();
       cases.retained_lease = true;
+      stage = 'KEYS';
       const keys = await backupKeys(safeStorage);
+      stage = 'OPEN';
       service = await FoundationPersistence.open(
         { root: data, parentToken: control.parentToken },
         control.ownerToken,
         keys,
         false,
       );
+      stage = 'INITIALIZE';
       await service.initialize(Date.now());
       cases.native_keys = true;
       cases.ready_schema = inspect((db) => db.version === 2);
@@ -296,6 +307,7 @@ try {
       plain(restoreParent);
       if (!emptyDirectory(backupParent) || !emptyDirectory(restoreParent))
         throw new Error('PARENT_NOT_EMPTY');
+      stage = 'CANCEL_FOLDER';
       let before = fingerprint();
       if (
         (await run('--maintenance=select-backup-folder', [backupParent], [1])) !== 'CANCELLED' ||
@@ -304,6 +316,7 @@ try {
         throw new Error('CANCEL');
       if (!emptyDirectory(backupParent)) throw new Error('CANCEL_ORPHAN');
       cases.cancel_folder_unchanged = true;
+      stage = 'CANCEL_ACCEPT';
       const protectedRows = (await service.list()).filter((r) => r.protected);
       if (protectedRows.length !== 2) throw new Error('PROTECTED');
       const protectedPath = await selectedPath(protectedRows[0].backupId);
@@ -314,6 +327,7 @@ try {
       )
         throw new Error('CANCEL');
       cases.cancel_accept_unchanged = true;
+      stage = 'CANCEL_RESTORE';
       before = fingerprint();
       if (
         (await run('--maintenance=restore-to-new', [protectedPath, restoreParent], [1])) !==
@@ -323,9 +337,11 @@ try {
         throw new Error('CANCEL');
       if (!emptyDirectory(restoreParent)) throw new Error('CANCEL_ORPHAN');
       cases.cancel_restore_unchanged = true;
+      stage = 'LIST';
       if ((await run('--maintenance=list-backups', [], [], await service.list())) !== 'COMPLETED')
         throw new Error('LIST');
       cases.list_native_display = true;
+      stage = 'SELECT_FOLDER';
       const previous = await service.catalog.config();
       if ((await run('--maintenance=select-backup-folder', [backupParent], [0])) !== 'COMPLETED')
         throw new Error('SELECT');
@@ -342,6 +358,7 @@ try {
       )
         throw new Error('LOCATION');
       cases.location_identity = true;
+      stage = 'REOPEN';
       service.close();
       service = await FoundationPersistence.open(
         { root: data, parentToken: control.parentToken },
@@ -349,14 +366,17 @@ try {
         keys,
         false,
       );
+      stage = 'REOPEN';
       await service.initialize(Date.now());
       if (JSON.stringify(await service.catalog.config()) !== JSON.stringify(current))
         throw new Error('PERSIST');
       cases.location_persisted = true;
+      stage = 'MANUAL_BACKUPS';
       for (let index = 0; index < 8; index++) {
         if ((await run('--maintenance=backup-now')) !== 'COMPLETED') throw new Error('BACKUP');
       }
       cases.manual_backup = true;
+      stage = 'RETENTION';
       let rows = await service.list();
       if (rows.filter((r) => r.reason === 'DAILY' || r.reason === 'MANUAL').length !== 7)
         throw new Error('RETENTION');
@@ -366,6 +386,7 @@ try {
       )
         throw new Error('PROTECTED');
       cases.protected_retained = true;
+      stage = 'ACCEPT';
       if ((await run('--maintenance=accept-upgrade', [protectedPath], [0])) !== 'COMPLETED')
         throw new Error('ACCEPT');
       const acceptedRaw = read(
@@ -394,6 +415,7 @@ try {
       )
         throw new Error('RECEIPT');
       cases.acceptance_receipt = true;
+      stage = 'POST_ACCEPT_BACKUP';
       if ((await run('--maintenance=backup-now')) !== 'COMPLETED') throw new Error('BACKUP');
       rows = await service.list();
       counts = {
@@ -401,6 +423,7 @@ try {
         protected: rows.filter((r) => r.protected).length,
         released: rows.filter((r) => r.reason === 'PRE_MIGRATION' && !r.protected).length,
       };
+      stage = 'RESTORE';
       const restore = rows.find((r) => r.reason === 'MANUAL' && !r.protected);
       if (!restore) throw new Error('RESTORE');
       const restoreFile = await selectedPath(restore.backupId);
@@ -410,6 +433,7 @@ try {
         'COMPLETED'
       )
         throw new Error('RESTORE');
+      stage = 'RESTORE_VALIDATE';
       const restoredParent = oneDirectory(restoreParent),
         restoredData = path.join(restoredParent, `data-${control.storeId}`);
       plain(restoredData);
@@ -441,22 +465,25 @@ try {
         restoreRoot: restoredData,
         sourceBackupId: restore.backupId,
       });
+      stage = 'CLOSE';
       await assertLease();
       service.close();
       cases.service_closed = true;
       complete = true;
       app.quit();
     })
-    .catch(() => {
+    .catch((error) => {
       clearTimeout(timer);
       try {
         service?.close();
       } catch {}
+      console.error(diagnostic(stage, error));
       console.error('PERSISTENCE_MAINTENANCE_FAILED');
       app.exit(1);
     });
-} catch {
+} catch (error) {
   clearTimeout(timer);
+  console.error(diagnostic(stage, error));
   console.error('PERSISTENCE_MAINTENANCE_FAILED');
   app.exit(1);
 }

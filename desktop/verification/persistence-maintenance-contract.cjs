@@ -71,4 +71,67 @@ function parse(raw) {
       value.releasedSafetyCount === 1,
   });
 }
-module.exports = { CASES, VERSIONS, parse };
+const STAGES = Object.freeze([
+  'ENTRY',
+  'OWNERSHIP',
+  'PROFILE',
+  'READY',
+  'LEASE',
+  'KEYS',
+  'OPEN',
+  'INITIALIZE',
+  'CANCEL_FOLDER',
+  'CANCEL_ACCEPT',
+  'CANCEL_RESTORE',
+  'LIST',
+  'SELECT_FOLDER',
+  'REOPEN',
+  'MANUAL_BACKUPS',
+  'RETENTION',
+  'ACCEPT',
+  'POST_ACCEPT_BACKUP',
+  'RESTORE',
+  'RESTORE_VALIDATE',
+  'CLOSE',
+  'RESULT',
+]);
+const CODES = Object.freeze([
+  'OWNERSHIP',
+  'FILE',
+  'LIMIT',
+  'RESTORE_TREE',
+  'BACKUP',
+  'DIALOG',
+  'DISPLAY',
+  'CONFIRM',
+  'DIALOG_COUNT',
+  'OVERRIDE',
+  'CONTROL',
+  'ENTRY',
+  'DATA_OWNER',
+  'LEASE',
+  'PROFILE',
+  'CHECKPOINT',
+  'PARENT_NOT_EMPTY',
+  'CANCEL',
+  'CANCEL_ORPHAN',
+  'PROTECTED',
+  'LIST',
+  'SELECT',
+  'LOCATION',
+  'PERSIST',
+  'RETENTION',
+  'ACCEPT',
+  'RECEIPT',
+  'RESTORE',
+]);
+function diagnostic(stage, error) {
+  const admittedStage = STAGES.includes(stage) ? stage : 'UNCLASSIFIED';
+  let code = 'UNCLASSIFIED';
+  try {
+    const message = error instanceof Error ? error.message : undefined;
+    if (CODES.includes(message)) code = message;
+  } catch {}
+  return `PERSISTENCE_MAINTENANCE_STAGE_${admittedStage}_CODE_${code}`;
+}
+module.exports = { CASES, VERSIONS, parse, STAGES, CODES, diagnostic };

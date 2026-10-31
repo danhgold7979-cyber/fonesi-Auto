@@ -10,9 +10,11 @@ import {
   writeFileSync,
   readdirSync,
 } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
+import filePromises from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { BackupService, parseBackupReceipt } from '../src/main/backup-service.ts';
 import { FoundationDatabase } from '../src/main/foundation-database.ts';
 const parent = fileURLToPath(new URL('../.test-output', import.meta.url));
@@ -207,4 +209,81 @@ test('restore targets a separate fresh database and persists quarantine without 
     }
     await assert.rejects(service.restoreToNew(location, receipt.header.backupId, target));
     assert.equal(db.version, 2);
+  }));
+
+// The test runner isolates this file in its own process. The temporary builtin
+// binding affects only the exact owned pending-container path and is restored
+// after the awaited service/migration operation; no production injection hook.
+test('injected ENOSPC at the actual encrypted write blocks migration and preserves good backups', async () =>
+  fixture(async ({ db, service, location }) => {
+    const good = await service.create(db, location, 'PRE_MIGRATION', 1000);
+    const retained = () =>
+      Object.fromEntries(
+        readdirSync(location.directory)
+          .filter((name) => name.startsWith('backup-'))
+          .sort()
+          .map((name) => [
+            name,
+            createHash('sha256')
+              .update(readFileSync(join(location.directory, name)))
+              .digest('hex'),
+          ]),
+      );
+    const before = retained();
+    const fingerprint = db.fingerprint();
+    const original = filePromises.open;
+    let intercepted = 0;
+    let injected = 0;
+    let partialWrites = 0;
+    try {
+      filePromises.open = async (path, flags, mode) => {
+        const handle = await original(path, flags, mode);
+        if (
+          typeof path === 'string' &&
+          dirname(path) === location.directory &&
+          /^pending-[0-9a-f-]{36}\.fonaub$/.test(basename(path)) &&
+          flags === 'wx'
+        ) {
+          intercepted++;
+          const originalWrite = handle.write.bind(handle);
+          handle.write = async (...args) => {
+            if (partialWrites === 0) {
+              partialWrites++;
+              return originalWrite(...args);
+            }
+            injected++;
+            const error = new Error('SYNTHETIC_ENOSPC');
+            error.code = 'ENOSPC';
+            throw error;
+          };
+        }
+        return handle;
+      };
+      syncBuiltinESMExports();
+      await assert.rejects(
+        db.migrate(
+          async () =>
+            service.prerequisite(await service.create(db, location, 'PRE_MIGRATION', 2000)),
+          2000,
+        ),
+        (error) => error instanceof Error && error.message === 'IO_FAILED',
+      );
+    } finally {
+      filePromises.open = original;
+      syncBuiltinESMExports();
+    }
+    assert.equal(intercepted, 1);
+    assert.equal(injected, 1);
+    assert.equal(partialWrites, 1);
+    const pending = readdirSync(location.directory).filter((name) => name.startsWith('pending-'));
+    assert.equal(pending.length, 1);
+    assert.ok(lstatSync(join(location.directory, pending[0])).size > 0);
+    assert.equal(db.version, 0);
+    assert.equal(db.fingerprint(), fingerprint);
+    assert.deepEqual(retained(), before);
+    assert.equal(
+      (await service.validate(location, good.header.backupId)).encryptedSha256,
+      good.encryptedSha256,
+    );
+    assert.deepEqual(retained(), before);
   }));

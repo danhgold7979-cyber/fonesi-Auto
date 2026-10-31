@@ -95,3 +95,18 @@ class MaintenanceTests(unittest.TestCase):
             validate_public(public, 'source')
         public['passed'] = False
         self.assertFalse(validate_public(public, 'source'))
+
+
+class MaintenanceDiagnosticTests(unittest.TestCase):
+    def test_fixed_stage_diagnostic_never_echoes_private_values(self):
+        import validate_persistence_maintenance as module
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / '.owner').write_text('12345678-1234-1234-1234-123456789abc')
+            with self.assertRaises(FileNotFoundError):
+                module.stage(root, 'source')
+            self.assertEqual(module.diagnostic_marker(), 'PERSISTENCE_MAINTENANCE_VALIDATION_STAGE_RESULT_READ')
+        module._diagnostic_stage = 'PRIVATE_CANARY'
+        self.assertEqual(module.diagnostic_marker(), 'PERSISTENCE_MAINTENANCE_VALIDATION_STAGE_UNKNOWN')

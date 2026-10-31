@@ -26,6 +26,23 @@ function Write-Private([string]$Path,$Value) {
 function Require-Success($Probe,[string]$Marker) {
     if(-not (Retired $Probe) -or $Probe.Status -ne 'SUCCESS' -or $Probe.ExitCode -ne 0 -or -not (Test-ExactlyOneLine $Probe.Stdout $Marker)){throw 'CONTROL_FAILED'}
 }
+function Show-MaintenanceDiagnostics($Probe) {
+    $stages=@('ENTRY','OWNERSHIP','PROFILE','READY','LEASE','KEYS','OPEN','INITIALIZE','CANCEL_FOLDER','CANCEL_ACCEPT','CANCEL_RESTORE','LIST','SELECT_FOLDER','REOPEN','MANUAL_BACKUPS','RETENTION','ACCEPT','POST_ACCEPT_BACKUP','RESTORE','RESTORE_VALIDATE','CLOSE','RESULT','UNCLASSIFIED')
+    $codes=@('OWNERSHIP','FILE','LIMIT','RESTORE_TREE','BACKUP','DIALOG','DISPLAY','CONFIRM','DIALOG_COUNT','OVERRIDE','CONTROL','ENTRY','DATA_OWNER','LEASE','PROFILE','CHECKPOINT','PARENT_NOT_EMPTY','CANCEL','CANCEL_ORPHAN','PROTECTED','LIST','SELECT','LOCATION','PERSIST','RETENTION','ACCEPT','RECEIPT','RESTORE','UNCLASSIFIED')
+    $count=0
+    foreach($line in ($Probe.Stderr -split '\r?\n')) {
+        if($line -cmatch '\APERSISTENCE_MAINTENANCE_STAGE_([A-Z_]+)_CODE_([A-Z_]+)\z' -and $Matches[1] -cin $stages -and $Matches[2] -cin $codes) {
+            Write-Output ('PERSISTENCE_MAINTENANCE_STAGE_'+$Matches[1]+'_CODE_'+$Matches[2])
+            $count++;if($count -ge 8){break}
+        }
+    }
+    if($Probe.Status -cin @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT','TIMEOUT','CAPTURE_FAILED','CLEANUP_FAILED','LAUNCH_FAILED','ACCESS_DENIED')) { Write-Output ('PERSISTENCE_MAINTENANCE_PROCESS_'+$Probe.Status) }
+}
+function Show-MaintenanceValidationDiagnostics($Probe) {
+    foreach($stage in @('INITIALIZE','ROOT_OWNER','RESULT_READ','CAPTURE_READ','RESULT_SCHEMA','CAPTURE_SCHEMA','PROCESS','STDOUT','OUTPUT_WRITE','UNKNOWN')) {
+        if(@($Probe.Stdout -split '\r?\n' | Where-Object {$_ -ceq ('PERSISTENCE_MAINTENANCE_VALIDATION_STAGE_'+$stage)}).Count -gt 0) { Write-Output ('PERSISTENCE_MAINTENANCE_VALIDATION_STAGE_'+$stage) }
+    }
+}
 function Read-FixedPublic([string]$Name) {
     Assert-OwnedRun $owner
     if([IO.Path]::GetFileName($Name) -cne $Name){throw 'PUBLIC_NAME_REJECTED'}
@@ -260,11 +277,12 @@ try {
             FONESI_PERSISTENCE_CONTROL_NAME=('persistence-maintenance-control-'+$mode+'.json')
         }
         $allClean=Retired $native
+        Show-MaintenanceDiagnostics $native
         Write-Private (Join-Path $owner.Path ('persistence-maintenance-capture-'+$mode+'.json')) ([ordered]@{process=(Process-Evidence $native);stdout=$native.Stdout;stderr=$native.Stderr})
         if(-not $allClean){throw 'MAINTENANCE_RETIREMENT_FAILED'}
         $failure='STAGE_VALIDATION_FAILED';$allClean=$false
         $validation=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_persistence_maintenance.py'),$owner.Path,$mode)) 120000 @{}
-        $allClean=Retired $validation;Require-Success $validation 'PERSISTENCE_MAINTENANCE_VALIDATION_PASS'
+        $allClean=Retired $validation;Show-MaintenanceValidationDiagnostics $validation;Require-Success $validation 'PERSISTENCE_MAINTENANCE_VALIDATION_PASS'
         $report.maintenance[$mode]=Read-FixedPublic ('persistence-maintenance-public-'+$mode+'.json')
         Remove-MatrixProfile $profileName
         $failure='PREFLIGHT_FAILED';$allClean=$false

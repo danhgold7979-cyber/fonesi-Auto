@@ -395,3 +395,42 @@ and capture bounds, and all pass predicates are unchanged. Local full pipeline
 execution remains pending; this is not a full P1-05 result.
 Independent fresh-base delta review CLEAR at 10:24 UTC, with 3/3 source/derivation
 tests rerun. No local PowerShell/native execution is claimed.
+
+### Native matrix partial result and maintenance diagnostics — 10:29 UTC
+
+Run [41192651453](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41192651453)
+on `96c147602cb3c404e804655663a295500c47781d` passed the three actual native
+supervisor lifetime cases and the separate foundation runtime envelope. The
+persistence report remained **FAIL**: source key sequence and real-main READY
+passed; source before/after-COMMIT crash and reopen predicates, including real
+SQLITE_BUSY migration denial and process retirement, passed. Maintenance/restore
+and packaged-mode results were absent, `failure=STAGE_VALIDATION_FAILED`, and
+`directoryCleanup=false`. Those missing results are not success. Final directory cleanup was skipped after
+the prior failure; this does not establish a cleanup malfunction or a cleanup PASS.
+
+Maintenance result files are emitted only after all checks and orderly quit. The
+current aggregate failure does not identify whether native maintenance failed or
+its result/transport validation rejected. A narrow follow-up emits allowlisted
+native operation-stage/error categories, process status, and strict validator
+read/schema/process/framing stage. Only exact fixed markers are forwarded, never
+private stdout/stderr or exception strings; complete schema and PASS requirements
+are unchanged. This is diagnosis, not a claimed maintenance fix.
+
+The approved disk-full negative now invokes the real backup-service/migration path
+with an isolated test-process wrapper on only its exact owned pending-container
+write. One real write succeeds, then an injected `ENOSPC` yields `IO_FAILED` and
+blocks migration. Database version/fingerprint and every retained good backup/
+receipt hash remain unchanged; the partial pending file is not promoted and the
+old encrypted copy still validates. Bindings are restored before final validation/
+cleanup. This proves injected failure handling, **not actual disk exhaustion**.
+Independent focused review passed 7/7 service tests. The separate faithful actual
+write-denied persistence case remains an explicit acceptance gap; no changed open
+mode, standalone dummy-file failure or host ACL alteration substitutes for it.
+
+Current author source pipeline **254/254** and Python **93/93** pass. Exact-head
+Windows maintenance diagnosis and remaining matrix completion are still pending;
+P1-05 is not technically or formally accepted.
+
+Independent final diagnostic integration review CLEAR at 10:29 UTC: 3/3 Node and
+7/7 Python focused checks passed; the partial artifact was strictly reconstructed
+as FAIL, not upgraded. No functional maintenance cause is yet proven.

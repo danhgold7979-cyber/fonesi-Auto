@@ -43,3 +43,34 @@ test('maintenance rejects duplicate masking, private fields, nonfinite values an
   assert.throws(() => parse(raw.replace('"ordinaryCount":7', '"ordinaryCount":NaN')));
   assert.throws(() => parse(' '.repeat(65537)));
 });
+test('maintenance diagnostics emit only exact fixed stages and codes without exception echo', () => {
+  const { STAGES, CODES, diagnostic } = require('./persistence-maintenance-contract.cjs');
+  for (const stage of STAGES) {
+    for (const code of CODES) {
+      assert.equal(
+        diagnostic(stage, new Error(code)),
+        `PERSISTENCE_MAINTENANCE_STAGE_${stage}_CODE_${code}`,
+      );
+    }
+  }
+  for (const error of [
+    new Error('private/path secret'),
+    new Error('backup'),
+    { message: 'BACKUP' },
+    'BACKUP',
+    null,
+  ]) {
+    assert.equal(diagnostic('KEYS', error), 'PERSISTENCE_MAINTENANCE_STAGE_KEYS_CODE_UNCLASSIFIED');
+  }
+  assert.equal(
+    diagnostic('private stage', new Error('BACKUP')),
+    'PERSISTENCE_MAINTENANCE_STAGE_UNCLASSIFIED_CODE_BACKUP',
+  );
+  const hostile = new Error();
+  Object.defineProperty(hostile, 'message', {
+    get() {
+      throw new Error('private');
+    },
+  });
+  assert.equal(diagnostic('OPEN', hostile), 'PERSISTENCE_MAINTENANCE_STAGE_OPEN_CODE_UNCLASSIFIED');
+});
