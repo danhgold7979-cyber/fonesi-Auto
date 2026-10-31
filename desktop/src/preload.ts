@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { CHANNEL } from './ipc-contract.js';
-import { createPublicClient } from './preload-client.js';
+import { DIAGNOSTIC_CHANNEL } from './ipc-diagnostic-contract.js';
+import { createDiagnosticClient } from './preload-client.js';
 
-const client = createPublicClient((wire) => ipcRenderer.invoke(CHANNEL, wire));
+const client = createDiagnosticClient((wire) => ipcRenderer.invoke(DIAGNOSTIC_CHANNEL, wire));
 contextBridge.exposeInMainWorld(
   'foundation',
   Object.freeze({

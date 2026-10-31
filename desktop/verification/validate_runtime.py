@@ -9,7 +9,8 @@ CASES = frozenset((
     'permission_denied', 'download_denied', 'network_policy_denied',
     'unknown_asset_denied', 'lifecycle_close_reopen', 'document_open_public_only',
     'reload_session_revoked', 'about_blank_sender_denied', 'orderly_quit',
-    'health_read', 'settings_read', 'ipc_request_denials', 'ipc_sender_denials', 'react_explicit_read',
+    'health_read', 'settings_read', 'ipc_request_denials', 'ipc_sender_denials', 'react_explicit_read', 'logging_correlation', 'legacy_protocol_compatibility',
+    'logging_persisted', 'logging_canary_absent',
 ))
 OBSERVATIONS = frozenset(('documentOpenUrlUnchanged', 'reloadUrlUnchanged',
                           'aboutBlankUrlChanged', 'aboutBlankDenialObserved'))
@@ -70,6 +71,13 @@ def validate_process(process):
             not process['stdoutTruncated'] and not process['stderrTruncated'])
 
 
+def validate_logging(value):
+    exact_record(value, ('recordCount', 'crashArtifactCount'))
+    for key, ceiling in (('recordCount', 32768), ('crashArtifactCount', 256)):
+        if type(value[key]) is not int or not 0 <= value[key] <= ceiling:
+            reject()
+
+
 def validate(raw):
     """Accept exact fixed-schema bytes, including truthful false case results.
 
@@ -93,7 +101,7 @@ def validate(raw):
     passed = True
     for mode in ('source', 'package'):
         run = runs[mode]
-        exact_record(run, ('mode', 'versions', 'cases', 'observations', 'process'))
+        exact_record(run, ('mode', 'versions', 'cases', 'observations', 'logging', 'process'))
         if run['mode'] != mode:
             reject()
         exact_record(run['versions'], VERSIONS)
@@ -101,6 +109,9 @@ def validate(raw):
             reject()
         booleans(run['cases'], CASES)
         booleans(run['observations'], OBSERVATIONS)
+        validate_logging(run['logging'])
+        if (run['cases']['logging_persisted'] or run['cases']['logging_correlation']) and run['logging']['recordCount'] == 0:
+            reject()
         process_passed = validate_process(run['process'])
         passed = passed and all(run['cases'].values()) and process_passed
     return {'validation': 'VALID', 'passed': passed, 'evidence': value}

@@ -28,7 +28,7 @@ function Assert-OwnedRun($Owner) {
 
 function New-OwnedProfile($Owner, [string]$Name) {
     Assert-OwnedRun $Owner
-    if ($Name -notin @('source','package','crash','tamper')) { throw 'PROFILE_NAME_REJECTED' }
+    if ($Name -notin @('source','package','crash','tamper','degraded')) { throw 'PROFILE_NAME_REJECTED' }
     $profile = Join-Path $Owner.Path ('fonesi-auto-foundation-' + $Name)
     if (Test-Path -LiteralPath $profile) { throw 'PROFILE_ALREADY_EXISTS' }
     [void][IO.Directory]::CreateDirectory($profile)
@@ -80,7 +80,9 @@ function Remove-VerifiedOwnedPart($Owner, [string]$Name, [bool]$AllJobsRetired) 
     if (-not $AllJobsRetired) { throw 'JOB_RETIREMENT_UNCONFIRMED' }
     $limits = @{'package'=536870912L; 'tampered-build'=8388608L;
         'fonesi-auto-foundation-source'=8388608L; 'fonesi-auto-foundation-package'=8388608L;
-        'fonesi-auto-foundation-crash'=8388608L; 'fonesi-auto-foundation-tamper'=8388608L}
+        'fonesi-auto-foundation-degraded'=8388608L; 'fonesi-auto-foundation-crash'=8388608L; 'fonesi-auto-foundation-tamper'=8388608L;
+        'logs-reparse-target'=8388608L; 'logs-concurrent'=8388608L; 'logs-recovery'=8388608L; 'logs-sharing'=8388608L; 'logs-enospc'=8388608L;
+        'logs-source'=8388608L; 'logs-package'=8388608L; 'logs-crash'=8388608L; 'logs-tamper'=8388608L}
     if (-not ($limits.Keys -ccontains $Name)) { throw 'OWNED_PART_NAME_REJECTED' }
     Assert-OwnedRun $Owner
     $path = Join-Path $Owner.Path $Name
@@ -89,6 +91,12 @@ function Remove-VerifiedOwnedPart($Owner, [string]$Name, [bool]$AllJobsRetired) 
         $marker = Get-Item -LiteralPath (Join-Path $path '.owner') -Force
         if ($marker.PSIsContainer -or ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
             $marker.Length -ne ([Text.Encoding]::UTF8.GetByteCount("FONESI_AUTO_FOUNDATION_PROFILE_V1`n")) -or [IO.File]::ReadAllText($marker.FullName) -cne "FONESI_AUTO_FOUNDATION_PROFILE_V1`n") { throw 'PROFILE_MARKER_REJECTED' }
+    }
+    if ($Name.StartsWith('logs-')) {
+        $marker = Get-Item -LiteralPath (Join-Path $path 'owner.json') -Force
+        if ($marker.PSIsContainer -or ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $marker.Length -gt 128) { throw 'LOG_MARKER_REJECTED' }
+        $raw = [IO.File]::ReadAllText($marker.FullName)
+        if ($raw -cnotmatch '^\{"schemaVersion":1,"storeId":"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"\}\n\z') { throw 'LOG_MARKER_REJECTED' }
     }
     # Full fixed-part inventory before any deletion; the existing per-tree caps are unchanged.
     $inventory = Get-BoundedOwnedEntries $path $limits[$Name]

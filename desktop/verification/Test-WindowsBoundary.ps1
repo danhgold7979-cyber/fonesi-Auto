@@ -98,6 +98,26 @@ try {
     foreach ($directory in @($directories | Sort-Object Length -Descending)) { [IO.Directory]::Delete($directory,$false) }
     $count++
     Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $true
+    $logs = Join-Path $owner.Path 'logs-source'
+    [void][IO.Directory]::CreateDirectory($logs)
+    [IO.File]::WriteAllText((Join-Path $logs 'owner.json'),'private invalid owner')
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'logs-source' $true }
+    if (-not [IO.File]::Exists((Join-Path $logs 'owner.json'))) { throw 'LOG_REJECTION_DELETED_MARKER' }
+    $count++
+    [IO.File]::WriteAllText((Join-Path $logs 'owner.json'),('{"schemaVersion":1,"storeId":"' + [guid]::NewGuid().ToString() + '"}' + "`n"))
+    $canonicalLogOwner = [IO.File]::ReadAllText((Join-Path $logs 'owner.json'))
+    [IO.File]::WriteAllText((Join-Path $logs 'owner.json'),$canonicalLogOwner + "`n")
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'logs-source' $true }
+    if (-not [IO.File]::Exists((Join-Path $logs 'owner.json'))) { throw 'LOG_EXTRA_NEWLINE_DELETED_MARKER' }
+    [IO.File]::WriteAllText((Join-Path $logs 'owner.json'),$canonicalLogOwner)
+    $count++
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'logs-source' $false }
+    $count++
+    Expect-Rejected { Remove-VerifiedOwnedPart $owner 'LOGS-SOURCE' $true }
+    $count++
+    Remove-VerifiedOwnedPart $owner 'logs-source' $true
+    if (Test-Path -LiteralPath $logs) { throw 'LOG_PART_NOT_REMOVED' }
+    $count++
     Remove-VerifiedOwnedRun $owner $true
 } finally {
     # Empty-only deletion: a failed assertion preserves uncertain fixture contents.
@@ -105,5 +125,5 @@ try {
         [IO.Directory]::Delete($parent,$false)
     }
 }
-if ($count -ne 25) { throw 'TEST_COUNT_FAILED' }
-Write-Output 'WINDOWS_BOUNDARY_MARKERS_AND_OWNERSHIP_PASS_25'
+if ($count -ne 30) { throw 'TEST_COUNT_FAILED' }
+Write-Output 'WINDOWS_BOUNDARY_MARKERS_AND_OWNERSHIP_PASS_30'

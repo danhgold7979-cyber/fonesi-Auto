@@ -44,7 +44,12 @@ function uniqueFlatKeys(raw: string): boolean {
   }
 }
 
-export function parseRequest(raw: unknown): Parsed {
+function parseVersion<V extends 1 | 2>(
+  raw: unknown,
+  version: V,
+):
+  | { ok: true; request: Readonly<{ version: V; requestId: string; method: Method }> }
+  | { ok: false; code: ErrorCode } {
   if (typeof raw !== 'string') return { ok: false, code: 'INVALID_TRANSPORT' };
   if (raw.length > REQUEST_BYTES || new TextEncoder().encode(raw).byteLength > REQUEST_BYTES)
     return { ok: false, code: 'PAYLOAD_TOO_LARGE' };
@@ -66,15 +71,22 @@ export function parseRequest(raw: unknown): Parsed {
     return { ok: false, code: 'INVALID_SHAPE' };
   if (typeof record.version !== 'number' || !Number.isSafeInteger(record.version))
     return { ok: false, code: 'INVALID_SHAPE' };
-  if (record.version !== 1) return { ok: false, code: 'UNSUPPORTED_VERSION' };
+  if (record.version !== version) return { ok: false, code: 'UNSUPPORTED_VERSION' };
   if (typeof record.requestId !== 'string' || !/^[A-Za-z0-9_-]{1,32}$/.test(record.requestId))
     return { ok: false, code: 'INVALID_SHAPE' };
   if (record.method !== 'health.get' && record.method !== 'settings.get')
     return { ok: false, code: 'UNKNOWN_METHOD' };
   return {
     ok: true,
-    request: Object.freeze({ version: 1, requestId: record.requestId, method: record.method }),
+    request: Object.freeze({ version, requestId: record.requestId, method: record.method }),
   };
+}
+
+export function parseRequest(raw: unknown): Parsed {
+  return parseVersion(raw, 1);
+}
+export function parseDiagnosticRequest(raw: unknown) {
+  return parseVersion(raw, 2);
 }
 
 export function errorResponse(code: ErrorCode): string {

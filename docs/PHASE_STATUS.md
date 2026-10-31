@@ -619,3 +619,28 @@ completed; formal chain is not waived. Current equal-task technical ratios:
 (P1-01/P1-02/P1-03/P1-11). These are not weighted feature/effort estimates or formal
 acceptance percentages. Formal accepted count remains **0** and Phase 0 gates
 remain unaccepted; no main merge or target-host/device claim.
+
+
+## P1-04 logging implementation entry — 2026-10-31 06:07 UTC
+
+Coordinator approved the independently reviewed
+[logging contract](phases/PHASE-01-P1-04-LOGGING-CONTRACT.md), including unchanged v1
+and explicit v2 public-read diagnostic correlation, Promise<string> wrappers and
+null-reference rendering. Scope: fixed safe events, owned reusable log root,
+serialized writer/rotation/30-day retention, persistent recovery holds and explicit
+stopped-owner recovery, failure visibility and synthetic Windows evidence.
+No new public method/native service, dependencies, devices, accounts, secret access
+or V9 redesign. Exact module/build boundaries must be extended, not bypassed.
+P1-02 technical predecessor passes; formal Phase 0/acceptance gates remain pending.
+Old navigation FAIL and all original Phase 0 exits remain unchanged. Record actual
+pure/source/owned-filesystem/Windows checks and independent review before commit.
+
+### P1-04 source/envelope checkpoint — 2026-10-31 06:46 UTC
+
+[Current source evidence](evidence/P1-04-logging-source-2026-10-31.md) records the
+fixed event/v2 correlation implementation, owned persistent writer/retention/holds,
+stopped-owner maintenance CLI, truthful degraded status and bounded shutdown.
+Independent source suites passed 133/133 desktop, 109/109 foundation and 46/46
+Python; independent source/envelope/documentation review was CLEAR at 06:49 UTC.
+Windows sharing/reparse/application/crash evidence is still NOT_RUN; no P1-04
+technical pass is claimed. Technical counts remain 4/11 and 4/154; formal count 0.

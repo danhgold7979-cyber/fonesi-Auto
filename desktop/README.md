@@ -184,3 +184,21 @@ P1-01 exact module-graph head 5e4fa52173afefc5a9b89fc45deb5adfb1250c89 now passe
 desktop 85/foundation 86/Python 43/PS 25, actual source/package 25 each and all cleanup
 true. Task-specific graph/bootstrap scope is technically verified; original Phase0
 formal gates, full V9/domain work and task/Phase acceptance remain separate.
+
+## P1-04 logging checkpoint (2026-10-31)
+
+The public-read preload now uses explicitly approved v2 diagnostic correlation;
+v1 remains available and regression-tested unchanged. Main owns fixed event
+records and a reusable log store separate from disposable browser profiles.
+No logger/hold/path service is exposed through IPC. The development launcher must
+supply the exact owned log-root parent token; missing/unowned roots degrade logging
+without making public reads unavailable. See the
+[logging contract](../docs/phases/PHASE-01-P1-04-LOGGING-CONTRACT.md) and
+[source evidence](../docs/evidence/P1-04-logging-source-2026-10-31.md).
+
+Independent local source count is 133/133; foundation 109/Python 46 also passed.
+Current Windows logging changes remain NOT_RUN, not a claim that earlier public
+bridge runs did not execute. No task/Phase acceptance follows from local tests.
+Offline recovery uses `scripts/recover-logs.mjs` only after all owners are stopped
+and new launches excluded; its explicit acknowledgment does not establish that
+precondition. The command never discovers/kills owners or exposes renderer access.

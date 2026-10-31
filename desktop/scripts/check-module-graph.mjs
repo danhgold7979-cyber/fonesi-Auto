@@ -134,10 +134,12 @@ export async function sourceImports(source, syntax = 'ts') {
   return imports;
 }
 export function localTarget(module, specifier, modules) {
-  if (!specifier.startsWith('./')) return null;
-  if (!/^\.\/[A-Za-z0-9/-]+\.(?:js|ts|tsx)$/.test(specifier) || specifier.includes('..'))
-    reject('LOCAL_SPECIFIER');
-  const target = posix.join(posix.dirname(module), specifier).replace(/\.js$/, '.ts');
+  if (!specifier.startsWith('./') && !specifier.startsWith('../')) return null;
+  if (!/^(?:\.\/|\.\.\/)[A-Za-z0-9/-]+\.(?:js|ts|tsx)$/.test(specifier)) reject('LOCAL_SPECIFIER');
+  const target = posix
+    .normalize(posix.join(posix.dirname(module), specifier))
+    .replace(/\.js$/, '.ts');
+  if (target.startsWith('../') || target.startsWith('/')) reject('LOCAL_SPECIFIER');
   if (!Object.hasOwn(modules, target)) reject('MISSING_TARGET');
   return target;
 }

@@ -5,6 +5,7 @@ const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('node:path');
 const { securePreferenceEvidence } = require('./runtime-measurements.cjs');
 const { mkdirSync } = require('node:fs');
+const { scan } = require('./logging-evidence.cjs');
 const { createLifecycle } = require('../build/lifecycle.cjs');
 const { securePreferences, installWindowPolicy } = require('../build/window-policy.cjs');
 const { ENTRY_URL } = require('../build/asset-policy.cjs');
@@ -34,6 +35,10 @@ const CASE_NAMES = [
   'ipc_request_denials',
   'ipc_sender_denials',
   'react_explicit_read',
+  'logging_correlation',
+  'legacy_protocol_compatibility',
+  'logging_persisted',
+  'logging_canary_absent',
 ];
 const cases = Object.fromEntries(CASE_NAMES.map((key) => [key, false]));
 const observations = {
@@ -45,9 +50,13 @@ const observations = {
 const mode = process.env.FONESI_BOOTSTRAP_MODE;
 let stage = 'BOOTSTRAP';
 let actualHandler;
+let diagnosticHandler;
+const diagnosticReferences = [];
+const CANARY = 'P104_PRIVATE_PASSWORD_OTP_COOKIE_PATH_CANARY';
 let mainReady = false;
 const originalHandle = ipcMain.handle;
 ipcMain.handle = function (channel, handler) {
+  if (channel === 'foundation:request:v2') diagnosticHandler = handler;
   if (channel === 'foundation:request:v1') {
     actualHandler = handler;
     ipcMain.handle = originalHandle;
@@ -300,19 +309,42 @@ async function runInitialChecks(window) {
   stage = 'PUBLIC_IPC';
   const health = await contents.executeJavaScript('foundation.health().then(JSON.parse)');
   cases.health_read =
-    health.version === 1 &&
+    health.version === 2 &&
+    health.logging === 'AVAILABLE' &&
+    typeof health.diagnosticId === 'string' &&
     health.ok === true &&
     health.result.kind === 'health' &&
     health.result.status === 'READY' &&
     health.result.services === 'UNAVAILABLE';
   const settings = await contents.executeJavaScript('foundation.settings().then(JSON.parse)');
   cases.settings_read =
-    settings.version === 1 &&
+    settings.version === 2 &&
+    settings.logging === 'AVAILABLE' &&
+    typeof settings.diagnosticId === 'string' &&
     settings.ok === true &&
     settings.result.kind === 'settings' &&
     settings.result.revision === 0 &&
     settings.result.persistence === 'NOT_PERSISTED' &&
     settings.result.theme === 'LIGHT';
+  diagnosticReferences.push(
+    { diagnosticId: health.diagnosticId, code: 'OK' },
+    { diagnosticId: settings.diagnosticId, code: 'OK' },
+  );
+  const correlated = JSON.parse(
+    diagnosticHandler(
+      { sender: contents, senderFrame: contents.mainFrame },
+      JSON.stringify({ version: 2, requestId: 'probe', method: 'health.get', password: CANARY }),
+    ),
+  );
+  cases.logging_correlation =
+    correlated.version === 2 &&
+    correlated.ok === false &&
+    correlated.code === 'INVALID_SHAPE' &&
+    correlated.logging === 'AVAILABLE' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(correlated.diagnosticId);
+  diagnosticReferences.push({ diagnosticId: correlated.diagnosticId, code: 'INVALID_SHAPE' });
+  cases.legacy_protocol_compatibility =
+    direct(contents, healthWire).ok === true && direct(contents, healthWire).version === 1;
   const denied = [
     [null, 'INVALID_TRANSPORT'],
     ['x'.repeat(513), 'PAYLOAD_TOO_LARGE'],
@@ -467,6 +499,23 @@ if (mode !== 'source' && mode !== 'package') {
     if (originalWindow !== undefined) originalDestroyed = originalWindow.isDestroyed();
     cases.orderly_quit =
       testsCompleted && originalDestroyed && BrowserWindow.getAllWindows().length === 0;
+    let logging = { recordCount: 0, crashArtifactCount: 0 };
+    try {
+      const observed = scan(
+        process.env.FONESI_LOG_ROOT,
+        app.getPath('crashDumps'),
+        diagnosticReferences,
+      );
+      cases.logging_persisted =
+        observed.canonical && observed.correlated && observed.lifecycle && observed.recordCount > 0;
+      cases.logging_canary_absent = observed.canaryAbsent;
+      logging = {
+        recordCount: observed.recordCount,
+        crashArtifactCount: observed.crashArtifactCount,
+      };
+    } catch {
+      /* Missing/corrupt/private evidence remains a false case; never echo. */
+    }
     console.log(
       'FOUNDATION_RESULT ' +
         JSON.stringify({
@@ -478,6 +527,7 @@ if (mode !== 'source' && mode !== 'package') {
           },
           cases,
           observations,
+          logging,
         }),
     );
     // This hook is not root-process exit or Job cleanup proof. Supervisor supplies both.

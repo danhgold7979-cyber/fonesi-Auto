@@ -13,9 +13,14 @@ def process(code=0):
 
 def runtime(mode):
     result = {'mode': mode, 'versions': dict(VERSIONS), 'cases': dict.fromkeys(CASES, True),
-              'observations': dict.fromkeys(OBSERVATIONS, False)}
-    return {'process': process(), 'ownedBytes': 2048,
+              'observations': dict.fromkeys(OBSERVATIONS, False),
+              'logging': {'recordCount': 4, 'crashArtifactCount': 0}}
+    return {'process': process(), 'ownedBytes': 2048, 'streamsClean': True,
             'payload': 'BOOTSTRAP_READY\nBOOTSTRAP_CLOSED\nFOUNDATION_RESULT ' + json.dumps(result) + '\n'}
+
+
+def scan_fixture():
+    return {'process': process(), 'payload': 'FOUNDATION_LOG_SCAN ' + json.dumps({'canonical': True, 'canaryAbsent': True, 'recordCount': 1, 'crashArtifactCount': 0}) + '\n'}
 
 
 def fixture():
@@ -24,11 +29,16 @@ def fixture():
             'runs': {mode: runtime(mode) for mode in ('source', 'package')},
             'negatives': {
                 'crash': {'process': process(1), 'armed': True, 'observed': True,
-                          'bootstrapFailed': True, 'unexpectedQuit': False, 'ownedBytes': 2048},
+                          'bootstrapFailed': True, 'unexpectedQuit': False, 'ownedBytes': 2048, 'streamsClean': True, 'loggingScan': scan_fixture()},
                 'tamper': {'process': process(1), 'changed': True, 'bootstrapFailed': True,
-                           'unexpectedReady': False, 'ownedBytes': 2048}},
+                           'unexpectedReady': False, 'ownedBytes': 2048, 'streamsClean': True, 'loggingScan': scan_fixture()}},
             'buildVerified': True, 'binaryHashMatched': True, 'runtimeCopyVerified': True,
-            'directoryCleanup': True, 'packageBytes': 4096, 'failure': None}
+            'directoryCleanup': True, 'packageBytes': 4096, 'failure': None,
+            'loggingDegraded': {'process': process(), 'streamsClean': True, 'fixedNotice': True, 'ownedBytes': 2048, 'unownedUnchanged': True,
+                'payload': 'BOOTSTRAP_READY\nBOOTSTRAP_CLOSED\nFOUNDATION_DEGRADED_RESULT ' + json.dumps({'cases': dict.fromkeys(('publicReadAvailable', 'loggingDegraded', 'safeCorrelatedError', 'visibleDegradation', 'orderlyQuit', 'crashCanaryAbsent'), True), 'crashArtifactCount': 0}) + '\n'},
+            'loggingFixtures': {mode: {'process': process(73 if mode == 'crash' else 0), 'streamsClean': True,
+                'payload': 'FOUNDATION_STORE_CRASH_READY\n' if mode == 'crash' else 'FOUNDATION_STORE_RESULT ' + json.dumps({'mode': mode, 'passed': True}) + '\n'}
+                for mode in ('concurrent', 'crash', 'recover', 'prepare', 'sharing', 'enospc', 'prepare-reparse', 'reparse', 'unowned', 'traversal')}}
 
 
 def encoded(value):
@@ -213,11 +223,47 @@ class HostedEvidenceTests(unittest.TestCase):
     def test_partial_failure_discards_private_output_never_invents_cases(self):
         value = fixture()
         value.update(failure='RUNTIME_FAILED', negatives={})
-        value['runs'] = {'source': {'process': process(1), 'payload': 'private host path', 'ownedBytes': None}}
+        value['runs'] = {'source': {'process': process(1), 'payload': 'private host path', 'ownedBytes': None, 'streamsClean': False}}
         result = validate(encoded(value))
         self.assertFalse(result['passed'])
         self.assertIsNone(result['runs']['source']['result'])
         self.assertNotIn('private host path', json.dumps(result))
+
+    def test_logging_scan_and_stream_failures_cannot_pass_or_echo(self):
+        for mode in ('source', 'package'):
+            value = fixture()
+            value['runs'][mode]['streamsClean'] = False
+            self.assertFalse(validate(encoded(value))['passed'])
+        for kind in ('crash', 'tamper'):
+            for field in ('canonical', 'canaryAbsent'):
+                value = fixture()
+                scan = value['negatives'][kind]['loggingScan']
+                scan['payload'] = scan['payload'].replace('"' + field + '": true', '"' + field + '": false')
+                result = validate(encoded(value))
+                self.assertFalse(result['passed'])
+                self.assertNotIn('payload', result['negatives'][kind]['loggingScan'])
+            value = fixture()
+            value['negatives'][kind]['loggingScan']['payload'] = 'PRIVATE'
+            self.rejected(value)
+
+    def test_store_fixture_and_degraded_claims_fail_closed(self):
+        for mode in fixture()['loggingFixtures']:
+            value = fixture()
+            value['loggingFixtures'][mode]['streamsClean'] = False
+            self.assertFalse(validate(encoded(value))['passed'])
+        for key in ('streamsClean', 'fixedNotice', 'unownedUnchanged'):
+            value = fixture()
+            value['loggingDegraded'][key] = False
+            self.assertFalse(validate(encoded(value))['passed'])
+        value = fixture()
+        value['loggingFixtures']['sharing']['payload'] = 'PRIVATE'
+        self.rejected(value)
+        value = fixture()
+        value['loggingDegraded']['payload'] = 'PRIVATE'
+        self.rejected(value)
+        value = fixture()
+        value['loggingFixtures']['crash']['process']['exitCode'] = 1
+        self.assertFalse(validate(encoded(value))['passed'])
 
     def test_missing_evidence_cannot_pass(self):
         for field in ('installer', 'runs', 'negatives'):

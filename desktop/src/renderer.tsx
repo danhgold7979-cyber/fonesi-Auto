@@ -23,7 +23,24 @@ function Diagnostic() {
             ? 'BRIDGE READY / SERVICES UNAVAILABLE'
             : 'LIGHT / NOT_PERSISTED / REVISION 0',
         );
-      else setStatus('REQUEST UNAVAILABLE');
+      else if (
+        response !== null &&
+        typeof response === 'object' &&
+        'code' in response &&
+        typeof response.code === 'string' &&
+        'diagnosticId' in response
+      ) {
+        setStatus(
+          `REQUEST ${response.code} / ${typeof response.diagnosticId === 'string' ? response.diagnosticId : 'diagnostic reference unavailable'}`,
+        );
+      } else setStatus('REQUEST UNAVAILABLE / diagnostic reference unavailable');
+      if (
+        response !== null &&
+        typeof response === 'object' &&
+        'logging' in response &&
+        response.logging === 'DEGRADED'
+      )
+        setStatus((current) => `${current} / LOGGING DEGRADED — diagnostics may be incomplete`);
     } catch {
       setStatus('REQUEST UNAVAILABLE');
     }

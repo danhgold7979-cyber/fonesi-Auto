@@ -9,7 +9,17 @@ const deadline = setTimeout(() => {
 app.once('browser-window-created', (_event, window) => {
   window.webContents.once('render-process-gone', () => console.log('CRASH_OBSERVED'));
   window.webContents.once('did-finish-load', () =>
-    setImmediate(() => {
+    setImmediate(async () => {
+      try {
+        const seeded = await window.webContents.executeJavaScript(
+          "globalThis.__ownedCrashCanary = 'P104_PRIVATE_PASSWORD_OTP_COOKIE_PATH_CANARY'; globalThis.__ownedCrashCanary.length > 0",
+        );
+        if (seeded !== true) throw new Error('CANARY_CONTROL');
+      } catch {
+        console.log('CRASH_CANARY_SETUP_FAILED');
+        app.exit(1);
+        return;
+      }
       console.log('CRASH_ARMED');
       window.webContents.forcefullyCrashRenderer();
     }),

@@ -201,3 +201,17 @@ runtime schema requires 25 exact cases, including public health/settings and act
 handler denials; historical CI7's zero-preload/zero-bridge case set is not accepted
 as this revision. Source/build 50 and Python 43 tests pass; adapted source/package runtime 25/25 PASS on run 41168294925.
 [Source/evidence and instrumentation limits](../../docs/evidence/P1-02-public-bridge-source-2026-10-31.md).
+
+## P1-04 envelope revision (2026-10-31)
+
+Current source/package schema requires 29 exact cases, plus six degraded-app cases,
+ten fixed store-fixture modes and 30 PowerShell ownership regressions. Python 46 and
+five bounded scanner regressions passed locally; actual Windows execution is pending.
+Application log/crash artifact bytes and IDs remain private. Only fixed booleans,
+counts, process outcomes and existing exact versions may enter the sanitized report.
+The renderer crash is seeded with a synthetic canary; any detected leak fails,
+retains fixed detection evidence and never authorizes raw upload. Retired owned
+raw profile/log subtrees may be deleted by the bounded cleanup; this is not a
+raw-dump preservation guarantee. Prior 20/25-case historical
+runs remain as dated evidence, not retroactive P1-04 verification. See
+[current source evidence](../../docs/evidence/P1-04-logging-source-2026-10-31.md).

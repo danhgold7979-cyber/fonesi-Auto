@@ -525,14 +525,15 @@ test('preload evidence rejects registered scripts and any configured preload pro
 test('actual dispatcher admits only public reads and rejects wrong sender/frame/wire', () => {
   const { EventEmitter } = require('node:events');
   const { installFoundationBridge } = require('../build/foundation-bridge.cjs');
-  let handler, removed;
+  let handler;
+  const removed = [];
   const bridge = installFoundationBridge({
     handle(channel, fn) {
-      assert.equal(channel, 'foundation:request:v1');
-      handler = fn;
+      assert.ok(['foundation:request:v1', 'foundation:request:v2'].includes(channel));
+      if (channel === 'foundation:request:v1') handler = fn;
     },
     removeHandler(channel) {
-      removed = channel;
+      removed.push(channel);
     },
   });
   const contents = new EventEmitter();
@@ -572,7 +573,7 @@ test('actual dispatcher admits only public reads and rejects wrong sender/frame/
   assert.equal(read().code, 'SESSION_REVOKED');
   assert.equal(view.arm(), false);
   bridge.dispose();
-  assert.equal(removed, 'foundation:request:v1');
+  assert.deepEqual(removed, ['foundation:request:v1', 'foundation:request:v2']);
   assert.equal(read().code, 'UNTRUSTED_SENDER');
 });
 

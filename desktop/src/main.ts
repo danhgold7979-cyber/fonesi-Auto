@@ -1,3 +1,5 @@
+import { ApplicationLogger } from './main/logging.js';
+import { createLogShutdown } from './main/log-shutdown.js';
 import { installFoundationBridge } from './foundation-bridge.js';
 import { app, BrowserWindow, protocol, session, Menu, ipcMain } from 'electron';
 import { readFileSync, lstatSync } from 'node:fs';
@@ -18,6 +20,15 @@ let disposeSession: (() => void) | undefined;
 let lifecycle: ReturnType<typeof createLifecycle> | undefined;
 let closing = false;
 let cleanupComplete = true;
+let logger: ApplicationLogger | undefined;
+let mainReady = false;
+let loggingNotice = false;
+function reportLoggingDegraded(): void {
+  if (!loggingNotice) {
+    loggingNotice = true;
+    console.error('LOGGING_DEGRADED');
+  }
+}
 function cleanup(): boolean {
   if (closing) return cleanupComplete;
   closing = true;
@@ -30,6 +41,7 @@ function cleanup(): boolean {
 }
 function fail(): void {
   if (closing) return;
+  if (!mainReady) logger?.emit('STARTUP_FAILED', 'STARTUP_FAILURE');
   cleanup();
   console.error('BOOTSTRAP_FAILED');
   app.exit(1);
@@ -65,6 +77,17 @@ try {
   app
     .whenReady()
     .then(async () => {
+      logger = await ApplicationLogger.open(
+        typeof process.env.FONESI_LOG_ROOT === 'string' &&
+          typeof process.env.FONESI_LOG_PARENT_TOKEN === 'string'
+          ? { root: process.env.FONESI_LOG_ROOT, parentToken: process.env.FONESI_LOG_PARENT_TOKEN }
+          : undefined,
+        () => reportLoggingDegraded(),
+      );
+      if (closing) {
+        await logger.close();
+        return;
+      }
       // An invalidated/partial build must not launch even when old files remain.
       const markerPath = join(__dirname, '.verified-build.json');
       if (
@@ -93,6 +116,9 @@ try {
         'window-policy.cjs',
         'foundation-bridge.cjs',
         'ipc-contract.cjs',
+        'log-contract.cjs',
+        'log-store.cjs',
+        'log-recovery.cjs',
         'preload.cjs',
         'renderer.js',
         'status.html',
@@ -127,7 +153,7 @@ try {
         html,
         readFileSync(join(__dirname, 'renderer.js'), 'utf8'),
       );
-      bridge = installFoundationBridge(ipcMain);
+      bridge = installFoundationBridge(ipcMain, logger);
       lifecycle = createLifecycle(() => {
         if (bridge === undefined) throw new Error('BRIDGE_UNAVAILABLE');
         const window = new BrowserWindow({
@@ -141,13 +167,18 @@ try {
         });
         installWindowPolicy(window);
         const view = bridge.attach(window);
-        window.webContents.on('render-process-gone', fail);
+        window.webContents.on('render-process-gone', () => {
+          if (!closing) logger?.emit('RENDERER_LOST', 'RENDERER_LOSS');
+          fail();
+        });
         window
           .loadURL(ENTRY_URL)
           .then(() => {
             if (!window.isDestroyed()) {
               if (!view.arm()) throw new Error('VIEW_NOT_ADMITTED');
               window.show();
+              mainReady = true;
+              logger?.emit('STARTUP_READY', 'OK');
               console.log('BOOTSTRAP_READY');
             }
           })
@@ -166,6 +197,14 @@ try {
   app.on('window-all-closed', () => {
     if (!closing) app.quit();
   });
+  const shutdown = createLogShutdown({
+    stop: cleanup,
+    flush: () => logger?.close() ?? Promise.resolve('FAILED'),
+    degraded: reportLoggingDegraded,
+    resume: () => app.quit(),
+    fail: () => app.exit(1),
+  });
+  app.on('before-quit', (event) => shutdown.beforeQuit(event));
   app.on('will-quit', () => {
     if (!cleanup()) {
       console.error('BOOTSTRAP_CLEANUP_FAILED');

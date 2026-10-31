@@ -214,3 +214,16 @@ Approval recorded before source: public read-only health/settings, precise sessi
 preload/transport bounds, reviewed React closure, negative tests and owned Windows
 envelope only. Startup diagnostic uses explicit reads after main-owned arming,
 not mount effects, retries, renderer arming or a generic readiness event bridge.
+
+
+## Scoped compatible amendment — P1-04, 2026-10-31 06:07 UTC
+
+Coordinator approved the [P1-04 logging contract](../phases/PHASE-01-P1-04-LOGGING-CONTRACT.md).
+V1 wire/channel semantics remain unchanged and regression-tested. V2 adds only
+main-generated diagnosticId and AVAILABLE/DEGRADED logging status to the same two
+public reads, with exact nullable rules and bounded canonical responses. Preload
+wrappers remain Promise<string>; null IDs render diagnostic reference unavailable.
+Both channels share admission/session limits; no log-write/read/export/hold method,
+caller metadata authority or fallback negotiation. Existing security/lifecycle
+checks and old failed immutable-document objective are not waived. Main-owned log
+I/O belongs to the approved logging sink only, not a renderer filesystem service.

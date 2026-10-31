@@ -66,6 +66,9 @@ try {
       resolve(root, 'src/main/window-policy.ts'),
       resolve(root, 'src/foundation-bridge.ts'),
       resolve(root, 'src/ipc-contract.ts'),
+      resolve(root, 'src/log-contract.ts'),
+      resolve(root, 'src/main/log-store.ts'),
+      resolve(root, 'src/main/log-recovery.ts'),
     ],
     outdir: output,
   });

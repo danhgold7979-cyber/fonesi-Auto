@@ -119,6 +119,11 @@ try {
           '--test-reporter=tap',
           'tests/policy.test.mjs',
           'tests/ipc-contract.test.mjs',
+          'tests/log-contract.test.mjs',
+          'tests/log-files.test.mjs',
+          'tests/logging.test.mjs',
+          'verification/logging-evidence.test.cjs',
+          'tests/ipc-diagnostic.test.mjs',
           'tests/quality-tool.test.mjs',
           'tests/module-graph.test.mjs',
         ]);

@@ -9,7 +9,7 @@ $baseVerified = $false
 $allClean = $true
 $stage = 'PREPARE_FAILED'
 $report = [ordered]@{ schemaVersion=1; scope='HOSTED_RUNNER_ONLY'; installer=$null;
-    runs=[ordered]@{}; negatives=[ordered]@{}; buildVerified=$false;
+    runs=[ordered]@{}; negatives=[ordered]@{}; loggingFixtures=[ordered]@{}; loggingDegraded=$null; buildVerified=$false;
     binaryHashMatched=$false; runtimeCopyVerified=$false; directoryCleanup=$false;
     packageBytes=$null; failure=$null }
 
@@ -21,6 +21,10 @@ function Process-Evidence($Probe) {
 function Confirm-RetiredCapture($Probe) {
     return ($Probe.CleanupComplete -and -not $Probe.StdoutTruncated -and -not $Probe.StderrTruncated -and
         $Probe.Status -notin @('TIMEOUT','CAPTURE_FAILED','CLEANUP_FAILED','LAUNCH_FAILED','ACCESS_DENIED'))
+}
+function Test-CanaryAbsent($Probe) {
+    $canary = 'P104_PRIVATE_PASSWORD_OTP_COOKIE_PATH_CANARY'
+    return (-not $Probe.Stdout.Contains($canary) -and -not $Probe.Stderr.Contains($canary))
 }
 function Assert-RetiredCapture($Probe) {
     if (-not (Confirm-RetiredCapture $Probe)) { throw 'CHILD_UNCONFIRMED' }
@@ -73,7 +77,7 @@ try {
     $verification = Join-Path $appRoot 'verification'
     [void][IO.Directory]::CreateDirectory($verification)
     $probeSource = Join-Path $PSScriptRoot 'runtime-probe.cjs'
-    foreach ($name in @('runtime-probe.cjs','runtime-measurements.cjs')) {
+    foreach ($name in @('runtime-probe.cjs','runtime-measurements.cjs','logging-evidence.cjs')) {
         $original = Join-Path $PSScriptRoot $name
         $copy = Join-Path $verification $name
         [IO.File]::Copy($original,$copy,$false)
@@ -90,7 +94,7 @@ try {
         if ($mode -eq 'package') { $exe=$packagedExe; $arguments=@() }
         if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -cne $sourceHash) { throw 'BINARY_CHANGED' }
         $allClean = $false
-        $probe = Invoke-OwnedChild $exe $arguments 30000 @{FONESI_BOOTSTRAP_ROOT=$profile; FONESI_BOOTSTRAP_MODE=$mode}
+        $probe = Invoke-OwnedChild $exe $arguments 30000 @{FONESI_BOOTSTRAP_ROOT=$profile; FONESI_BOOTSTRAP_MODE=$mode; FONESI_LOG_ROOT=(Join-Path $owner.Path ('logs-' + $mode)); FONESI_LOG_PARENT_TOKEN=$owner.Token}
         $allClean = Confirm-RetiredCapture $probe
         # Only canonical known-key/Boolean-or-missing diagnostics; never raw stderr.
         foreach ($key in @('sandbox','contextIsolation','webSecurity','nodeIntegration',
@@ -103,25 +107,32 @@ try {
                 }
             }
         }
-        $report.runs[$mode] = [ordered]@{ process=(Process-Evidence $probe); payload=$probe.Stdout; ownedBytes=$null }
+        $report.runs[$mode] = [ordered]@{ process=(Process-Evidence $probe); payload=$probe.Stdout; ownedBytes=$null; streamsClean=(Test-CanaryAbsent $probe) }
         Assert-RetiredCapture $probe
         $report.runs[$mode].ownedBytes = (Get-BoundedOwnedEntries $profile (8L * 1024 * 1024)).Bytes
         Remove-VerifiedOwnedPart $owner ('fonesi-auto-foundation-' + $mode) $allClean
+        Remove-VerifiedOwnedPart $owner ('logs-' + $mode) $allClean
         if ($probe.Status -ne 'SUCCESS' -or $probe.ExitCode -ne 0) { throw 'RUNTIME_FAILED' }
     }
     $stage = 'NEGATIVE_PROBE_FAILED'
     if ((Get-FileHash -LiteralPath $sourceExe -Algorithm SHA256).Hash -cne $sourceHash) { throw 'BINARY_CHANGED' }
     $crashProfile = New-OwnedProfile $owner 'crash'
     $allClean = $false
-    $crash = Invoke-OwnedChild $sourceExe ([string[]]@((Join-Path $PSScriptRoot 'crash-probe.cjs'))) 30000 @{FONESI_BOOTSTRAP_ROOT=$crashProfile}
+    $crash = Invoke-OwnedChild $sourceExe ([string[]]@((Join-Path $PSScriptRoot 'crash-probe.cjs'))) 30000 @{FONESI_BOOTSTRAP_ROOT=$crashProfile; FONESI_LOG_ROOT=(Join-Path $owner.Path 'logs-crash'); FONESI_LOG_PARENT_TOKEN=$owner.Token}
     $allClean = Confirm-RetiredCapture $crash
     $report.negatives['crash'] = [ordered]@{process=(Process-Evidence $crash);
         armed=(Test-ExactlyOneLine $crash.Stdout 'CRASH_ARMED'); observed=(Test-ExactlyOneLine $crash.Stdout 'CRASH_OBSERVED');
         bootstrapFailed=(Test-ExactlyOneLine $crash.Stderr 'BOOTSTRAP_FAILED');
-        unexpectedQuit=(Test-AnyLine $crash.Stdout 'CRASH_UNEXPECTED_ORDERLY_QUIT'); ownedBytes=$null}
+        unexpectedQuit=(Test-AnyLine $crash.Stdout 'CRASH_UNEXPECTED_ORDERLY_QUIT'); ownedBytes=$null; streamsClean=(Test-CanaryAbsent $crash); loggingScan=$null}
     Assert-RetiredCapture $crash
     $report.negatives.crash.ownedBytes = (Get-BoundedOwnedEntries $crashProfile (8L * 1024 * 1024)).Bytes
+    $allClean = $false
+    $logScan = Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'logging-evidence.cjs'))) 30000 @{FONESI_BOOTSTRAP_ROOT=$crashProfile; FONESI_LOG_ROOT=(Join-Path $owner.Path 'logs-crash')}
+    $allClean = Confirm-RetiredCapture $logScan
+    $report.negatives.crash.loggingScan = [ordered]@{process=(Process-Evidence $logScan); payload=$logScan.Stdout}
+    Assert-RetiredCapture $logScan
     Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-crash' $allClean
+    Remove-VerifiedOwnedPart $owner 'logs-crash' $allClean
     if ($crash.Status -ne 'NONZERO_EXIT' -or $crash.ExitCode -ne 1) { throw 'CRASH_RESULT_REJECTED' }
     $tamperBuild = Join-Path $owner.Path 'tampered-build'
     [void](Copy-VerifiedTree (Join-Path $desktop 'build') $tamperBuild (8L * 1024 * 1024))
@@ -133,17 +144,82 @@ try {
     if ((Get-FileHash -LiteralPath $sourceExe -Algorithm SHA256).Hash -cne $sourceHash) { throw 'BINARY_CHANGED' }
     $tamperProfile = New-OwnedProfile $owner 'tamper'
     $allClean = $false
-    $tamper = Invoke-OwnedChild $sourceExe ([string[]]@((Join-Path $tamperBuild 'main.cjs'))) 30000 @{FONESI_BOOTSTRAP_ROOT=$tamperProfile}
+    $tamper = Invoke-OwnedChild $sourceExe ([string[]]@((Join-Path $tamperBuild 'main.cjs'))) 30000 @{FONESI_BOOTSTRAP_ROOT=$tamperProfile; FONESI_LOG_ROOT=(Join-Path $owner.Path 'logs-tamper'); FONESI_LOG_PARENT_TOKEN=$owner.Token}
     $allClean = Confirm-RetiredCapture $tamper
     $report.negatives['tamper'] = [ordered]@{process=(Process-Evidence $tamper); changed=$changed;
         bootstrapFailed=(Test-ExactlyOneLine $tamper.Stderr 'BOOTSTRAP_FAILED');
-        unexpectedReady=(Test-AnyLine $tamper.Stdout 'BOOTSTRAP_READY'); ownedBytes=$null}
+        unexpectedReady=(Test-AnyLine $tamper.Stdout 'BOOTSTRAP_READY'); ownedBytes=$null; streamsClean=(Test-CanaryAbsent $tamper); loggingScan=$null}
     Assert-RetiredCapture $tamper
     $report.negatives.tamper.ownedBytes = (Get-BoundedOwnedEntries $tamperProfile (8L * 1024 * 1024)).Bytes
+    $allClean = $false
+    $logScan = Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'logging-evidence.cjs'))) 30000 @{FONESI_BOOTSTRAP_ROOT=$tamperProfile; FONESI_LOG_ROOT=(Join-Path $owner.Path 'logs-tamper')}
+    $allClean = Confirm-RetiredCapture $logScan
+    $report.negatives.tamper.loggingScan = [ordered]@{process=(Process-Evidence $logScan); payload=$logScan.Stdout}
+    Assert-RetiredCapture $logScan
     [void](Get-BoundedOwnedEntries $tamperBuild (8L * 1024 * 1024))
     Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-tamper' $allClean
+    Remove-VerifiedOwnedPart $owner 'logs-tamper' $allClean
     Remove-VerifiedOwnedPart $owner 'tampered-build' $allClean
     if ($tamper.Status -ne 'NONZERO_EXIT' -or $tamper.ExitCode -ne 1) { throw 'TAMPER_RESULT_REJECTED' }
+    $stage = 'LOGGING_FIXTURE_FAILED'
+    $degradedProfile = New-OwnedProfile $owner 'degraded'
+    $degradedRoot = Join-Path $owner.Path 'logs-degraded'
+    if (Test-Path -LiteralPath $degradedRoot) { throw 'DEGRADED_FIXTURE_EXISTS' }
+    [void][IO.Directory]::CreateDirectory($degradedRoot)
+    $allClean = $false
+    $degraded = Invoke-OwnedChild $sourceExe ([string[]]@((Join-Path $PSScriptRoot 'logging-degraded-probe.cjs'))) 30000 @{FONESI_BOOTSTRAP_ROOT=$degradedProfile; FONESI_LOG_ROOT=$degradedRoot; FONESI_LOG_PARENT_TOKEN=$owner.Token}
+    $allClean = Confirm-RetiredCapture $degraded
+    $report.loggingDegraded = [ordered]@{process=(Process-Evidence $degraded); payload=$degraded.Stdout; streamsClean=(Test-CanaryAbsent $degraded); fixedNotice=(Test-ExactlyOneLine $degraded.Stderr 'LOGGING_DEGRADED'); ownedBytes=$null; unownedUnchanged=$false}
+    Assert-RetiredCapture $degraded
+    $report.loggingDegraded.ownedBytes = (Get-BoundedOwnedEntries $degradedProfile (8L * 1024 * 1024)).Bytes
+    Assert-PlainDirectory $degradedRoot
+    $enumerator = [IO.Directory]::EnumerateFileSystemEntries($degradedRoot).GetEnumerator()
+    try { if ($enumerator.MoveNext()) { throw 'DEGRADED_ROOT_MUTATED' } } finally { $enumerator.Dispose() }
+    $report.loggingDegraded.unownedUnchanged=$true
+    [IO.Directory]::Delete($degradedRoot,$false)
+    Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-degraded' $allClean
+    if ($degraded.Status -ne 'SUCCESS' -or $degraded.ExitCode -ne 0) { throw 'LOGGING_FIXTURE_FAILED' }
+
+    # Every invocation owns a separate native Job. Recovery starts only after the
+    # crashed writer's whole Job retired; no other launch uses this fresh store.
+    foreach ($fixture in @('concurrent','crash','recover','prepare','sharing','enospc','prepare-reparse','reparse','unowned','traversal')) {
+        $name = $fixture
+        if ($fixture -in @('crash','recover')) { $name='recovery' }
+        if ($fixture -in @('prepare','sharing')) { $name='sharing' }
+        if ($fixture -eq 'prepare-reparse') { $name='reparse-target' }
+        $logRoot = Join-Path $owner.Path ('logs-' + $name)
+        $sharingHandle = $null
+        try {
+            if ($fixture -eq 'reparse') {
+                Assert-OwnedRun $owner
+                if (Test-Path -LiteralPath $logRoot) { throw 'REPARSE_FIXTURE_EXISTS' }
+                [void](New-Item -ItemType Junction -Path $logRoot -Target (Join-Path $owner.Path 'logs-reparse-target'))
+                $link = Get-Item -LiteralPath $logRoot -Force
+                if (-not ($link.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'REPARSE_FIXTURE_CONTROL' }
+            }
+            if ($fixture -eq 'sharing') {
+                # Actual Windows sharing policy: reads allowed, replacement denied.
+                $sharingHandle = [IO.File]::Open((Join-Path $logRoot 'holds.json'),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+            }
+            $allClean = $false
+            $fixtureProbe = Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'logging-store-probe.cjs'),$fixture)) 30000 @{FONESI_LOG_ROOT=$logRoot; FONESI_LOG_PARENT_TOKEN=$owner.Token}
+            $allClean = Confirm-RetiredCapture $fixtureProbe
+            $report.loggingFixtures[$fixture] = [ordered]@{process=(Process-Evidence $fixtureProbe); payload=$fixtureProbe.Stdout; streamsClean=(Test-CanaryAbsent $fixtureProbe)}
+            Assert-RetiredCapture $fixtureProbe
+            $expectedExit = 0
+            if ($fixture -eq 'crash') { $expectedExit=73 }
+            if ($fixtureProbe.ExitCode -ne $expectedExit) { throw 'LOGGING_FIXTURE_FAILED' }
+        } finally { if ($null -ne $sharingHandle) { $sharingHandle.Dispose() } }
+        if ($fixture -eq 'reparse' -and $allClean) {
+            $link = Get-Item -LiteralPath $logRoot -Force
+            if (-not ($link.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'REPARSE_FIXTURE_CHANGED' }
+            [IO.Directory]::Delete($logRoot,$false)
+        }
+        if ($fixture -eq 'traversal') { Remove-VerifiedOwnedPart $owner 'logs-reparse-target' $allClean }
+        if ($fixture -in @('concurrent','recover','sharing','enospc')) {
+            Remove-VerifiedOwnedPart $owner ('logs-' + $name) $allClean
+        }
+    }
     Remove-VerifiedOwnedPart $owner 'package' $allClean
 } catch { $report.failure = $stage }
 finally {

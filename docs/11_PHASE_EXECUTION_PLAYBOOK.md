@@ -509,3 +509,18 @@ not product capacities, live authority or verified physical identity. Preserve
 original Phase 0 bytes/exits, old navigation FAIL and full V9/C-03/C-04/C-05.
 Run existing strict/boundary/quality suites plus new positive/negative fixtures;
 independent review precedes local commit and coordinator publication.
+
+
+## P1-04 logging implementation entry — 2026-10-31 06:07 UTC
+
+Coordinator approved the independently reviewed
+[logging contract](phases/PHASE-01-P1-04-LOGGING-CONTRACT.md), including unchanged v1
+and explicit v2 public-read diagnostic correlation, Promise<string> wrappers and
+null-reference rendering. Scope: fixed safe events, owned reusable log root,
+serialized writer/rotation/30-day retention, persistent recovery holds and explicit
+stopped-owner recovery, failure visibility and synthetic Windows evidence.
+No new public method/native service, dependencies, devices, accounts, secret access
+or V9 redesign. Exact module/build boundaries must be extended, not bypassed.
+P1-02 technical predecessor passes; formal Phase 0/acceptance gates remain pending.
+Old navigation FAIL and all original Phase 0 exits remain unchanged. Record actual
+pure/source/owned-filesystem/Windows checks and independent review before commit.

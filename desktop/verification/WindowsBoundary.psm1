@@ -46,7 +46,7 @@ function Invoke-OwnedChild([string]$Executable, [string[]]$Arguments,
         if ($argument.StartsWith('-')) { throw 'CHROMIUM_NODE_SWITCH_REJECTED' }
     }
     foreach ($key in $OwnedEnvironment.Keys) {
-        if ($key -notin @('FONESI_BOOTSTRAP_ROOT','FONESI_BOOTSTRAP_MODE')) { throw 'ENVIRONMENT_KEY_REJECTED' }
+        if ($key -notin @('FONESI_BOOTSTRAP_ROOT','FONESI_BOOTSTRAP_MODE','FONESI_LOG_ROOT','FONESI_LOG_PARENT_TOKEN')) { throw 'ENVIRONMENT_KEY_REJECTED' }
     }
     $original = [Environment]::GetEnvironmentVariables('Process')
     foreach ($key in $original.Keys) {

@@ -12,6 +12,7 @@ def fixture():
         mode: {'mode': mode, 'versions': dict(VERSIONS),
                'cases': dict.fromkeys(CASES, True),
                'observations': dict.fromkeys(OBSERVATIONS, False),
+               'logging': {'recordCount': 4, 'crashArtifactCount': 0},
                'process': {'status': 'SUCCESS', 'exitCode': 0,
                            'cleanupComplete': True, 'stdoutTruncated': False,
                            'stderrTruncated': False}}
@@ -147,7 +148,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
         source = (Path(__file__).parent / 'runtime-probe.cjs').read_text()
         block = source.split('const CASE_NAMES = [', 1)[1].split('];', 1)[0]
         names = re.findall(r"'([a-z_]+)'", block)
-        self.assertEqual(len(names), 25)
+        self.assertEqual(len(names), 29)
         self.assertEqual(set(names), CASES)
         self.assertEqual(len(names), len(set(names)))
         old = fixture()
@@ -157,6 +158,17 @@ class RuntimeEvidenceTests(unittest.TestCase):
             value = fixture()
             value['runs']['source']['cases'][case] = False
             self.assertFalse(validate(encoded(value))['passed'])
+
+    def test_logging_counts_are_fixed_bounded_and_not_identifiers(self):
+        for key, values in (('recordCount', [-1, 0, True, 32769, 'private']),
+                            ('crashArtifactCount', [-1, False, 257, {}])):
+            for invalid in values:
+                value = fixture()
+                value['runs']['source']['logging'][key] = invalid
+                self.reject(value)
+        value = fixture()
+        value['runs']['source']['logging']['diagnosticId'] = 'private'
+        self.reject(value)
 
     def test_bounded_file_read(self):
         with tempfile.TemporaryDirectory() as directory:

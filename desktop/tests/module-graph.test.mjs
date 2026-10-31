@@ -16,6 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   inventory,
+  localTarget,
   sourceImports,
   validateGraph,
   verifyRuntimeGraph,
@@ -25,8 +26,8 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual eleven modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 11, runtimeInputs: 11 });
+test('actual nineteen modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 19, runtimeInputs: 19 });
 });
 test('renderer cannot import native, Electron, or main-owned profile services', async () => {
   for (const statement of [
@@ -329,4 +330,19 @@ test('actual absent installation fails after a passing owned metadata CLI contro
     for (const name of created.reverse()) rmdirSync(join(directory, name));
     rmdirSync(directory);
   }
+});
+
+test('parent-relative edges resolve only exact registered in-root modules', () => {
+  const modules = { 'contract.ts': {}, 'main/adapter.ts': {} };
+  assert.equal(localTarget('main/adapter.ts', '../contract.ts', modules), 'contract.ts');
+  assert.throws(() => localTarget('adapter.ts', '../contract.ts', modules), /LOCAL_SPECIFIER/);
+  assert.throws(
+    () => localTarget('main/adapter.ts', '../../contract.ts', modules),
+    /LOCAL_SPECIFIER/,
+  );
+  assert.throws(() => localTarget('main/adapter.ts', '../missing.ts', modules), /MISSING_TARGET/);
+  assert.throws(
+    () => localTarget('main/adapter.ts', '../main/../contract.ts', modules),
+    /LOCAL_SPECIFIER/,
+  );
 });

@@ -1,3 +1,4 @@
+import { localDiagnosticError, validateDiagnosticResponse } from './ipc-diagnostic-contract.ts';
 import type { Method } from './ipc-contract.ts';
 import { errorResponse, RESPONSE_BYTES } from './ipc-contract.ts';
 export type Invoke = (wire: string) => Promise<unknown>;
@@ -12,15 +13,15 @@ const defaultTimer: Timer = {
 
 // Native invokes cannot be canceled. Timed-out calls keep their native occupancy
 // until settlement; disposal suppresses delivery, not hypothetical transport work.
-export function createPublicClient(invoke: Invoke, timer: Timer = defaultTimer) {
+function createClient(invoke: Invoke, timer: Timer, version: 1 | 2) {
+  const failure = version === 1 ? errorResponse : localDiagnosticError;
   let disposed = false;
   let nextId = 0;
   const pending = new Set<{ dispose: () => void }>();
   function call(method: Method): Promise<string> {
-    if (disposed) return Promise.resolve(errorResponse('SESSION_UNAVAILABLE'));
-    if (pending.size >= 8) return Promise.resolve(errorResponse('BUSY'));
-    if (!Number.isSafeInteger(nextId + 1))
-      return Promise.resolve(errorResponse('INTERNAL_FAILURE'));
+    if (disposed) return Promise.resolve(failure('SESSION_UNAVAILABLE'));
+    if (pending.size >= 8) return Promise.resolve(failure('BUSY'));
+    if (!Number.isSafeInteger(nextId + 1)) return Promise.resolve(failure('INTERNAL_FAILURE'));
     const requestId = `r${++nextId}`;
     return new Promise<string>((resolve) => {
       let delivered = false;
@@ -34,14 +35,14 @@ export function createPublicClient(invoke: Invoke, timer: Timer = defaultTimer) 
       const entry = {
         dispose: () => {
           timer.clear(timerHandle);
-          deliver(errorResponse('SESSION_UNAVAILABLE'));
+          deliver(failure('SESSION_UNAVAILABLE'));
         },
       };
       pending.add(entry);
-      timerHandle = timer.set(() => deliver(errorResponse('TIMEOUT')), 2000);
+      timerHandle = timer.set(() => deliver(failure('TIMEOUT')), 2000);
       let native: Promise<unknown>;
       try {
-        native = invoke(JSON.stringify({ version: 1, requestId, method }));
+        native = invoke(JSON.stringify({ version, requestId, method }));
       } catch {
         native = Promise.reject(new Error('INVOKE_FAILED'));
       }
@@ -54,7 +55,13 @@ export function createPublicClient(invoke: Invoke, timer: Timer = defaultTimer) 
               raw.length > RESPONSE_BYTES ||
               new TextEncoder().encode(raw).byteLength > RESPONSE_BYTES
             ) {
-              deliver(errorResponse('INTERNAL_FAILURE'));
+              deliver(failure('INTERNAL_FAILURE'));
+              return;
+            }
+            if (version === 2) {
+              deliver(
+                validateDiagnosticResponse(raw, requestId, method) ?? failure('INTERNAL_FAILURE'),
+              );
               return;
             }
             // Main emits the strict public contract; never forward arbitrary native data.
@@ -122,11 +129,11 @@ export function createPublicClient(invoke: Invoke, timer: Timer = defaultTimer) 
                 deliver(canonical);
               }
             } catch {
-              deliver(errorResponse('INTERNAL_FAILURE'));
+              deliver(failure('INTERNAL_FAILURE'));
             }
           },
           () => {
-            if (!disposed) deliver(errorResponse('INTERNAL_FAILURE'));
+            if (!disposed) deliver(failure('INTERNAL_FAILURE'));
           },
         )
         .finally(() => {
@@ -144,4 +151,11 @@ export function createPublicClient(invoke: Invoke, timer: Timer = defaultTimer) 
     },
     outstanding: () => pending.size,
   };
+}
+
+export function createPublicClient(invoke: Invoke, timer: Timer = defaultTimer) {
+  return createClient(invoke, timer, 1);
+}
+export function createDiagnosticClient(invoke: Invoke, timer: Timer = defaultTimer) {
+  return createClient(invoke, timer, 2);
 }

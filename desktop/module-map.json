@@ -19,11 +19,11 @@
           "contextBridge": "value",
           "ipcRenderer": "value"
         },
-        "./ipc-contract.js": {
-          "CHANNEL": "value"
-        },
         "./preload-client.js": {
-          "createPublicClient": "value"
+          "createDiagnosticClient": "value"
+        },
+        "./ipc-diagnostic-contract.js": {
+          "DIAGNOSTIC_CHANNEL": "value"
         }
       }
     },
@@ -38,6 +38,10 @@
           "Method": "type",
           "errorResponse": "value",
           "RESPONSE_BYTES": "value"
+        },
+        "./ipc-diagnostic-contract.ts": {
+          "localDiagnosticError": "value",
+          "validateDiagnosticResponse": "value"
         }
       }
     },
@@ -61,7 +65,8 @@
           "CHANNEL": "value",
           "parseRequest": "value",
           "errorResponse": "value",
-          "publicResponse": "value"
+          "publicResponse": "value",
+          "parseDiagnosticRequest": "value"
         },
         "./view-session.js": {
           "ViewSession": "value",
@@ -69,6 +74,21 @@
         },
         "./main/asset-policy.js": {
           "ENTRY_URL": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "./ipc-diagnostic-contract.ts": {
+          "DIAGNOSTIC_CHANNEL": "value",
+          "diagnosticError": "value",
+          "diagnosticSuccess": "value"
+        },
+        "./log-contract.ts": {
+          "LogHealth": "type",
+          "LogCode": "type"
+        },
+        "./ipc-contract.ts": {
+          "ErrorCode": "type"
         }
       }
     },
@@ -112,6 +132,12 @@
           "securePreferences": "value",
           "installSessionPolicy": "value",
           "installWindowPolicy": "value"
+        },
+        "./main/logging.js": {
+          "ApplicationLogger": "value"
+        },
+        "./main/log-shutdown.js": {
+          "createLogShutdown": "value"
         }
       }
     },
@@ -159,6 +185,171 @@
           "SCHEME": "value"
         }
       }
+    },
+    "log-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "ipc-diagnostic-contract.ts": {
+      "role": "contract",
+      "imports": {
+        "./ipc-contract.ts": {
+          "ErrorCode": "type",
+          "Method": "type",
+          "RESPONSE_BYTES": "value"
+        },
+        "./log-contract.ts": {
+          "LogHealth": "type",
+          "diagnosticId": "value",
+          "publicErrorCode": "value",
+          "nullableDiagnosticCode": "value"
+        }
+      }
+    },
+    "log-store-schema.ts": {
+      "role": "contract",
+      "imports": {
+        "./log-contract.ts": {
+          "diagnosticId": "value",
+          "utcTimestamp": "value",
+          "encodeLogRecord": "value"
+        }
+      }
+    },
+    "main/log-files.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value",
+          "realpath": "value",
+          "mkdir": "value",
+          "open": "value",
+          "opendir": "value",
+          "rename": "value",
+          "unlink": "value",
+          "rmdir": "value",
+          "FileHandle": "type"
+        },
+        "node:path": {
+          "resolve": "value",
+          "dirname": "value",
+          "basename": "value",
+          "join": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        },
+        "../log-store-schema.ts": {
+          "parseStoreDocument": "value",
+          "recognizedStoreName": "value",
+          "STORE_DOCUMENT_BYTES": "value",
+          "ROOT_ENTRY_LIMIT": "value",
+          "StoreKind": "type",
+          "StoreDocument": "type"
+        }
+      }
+    },
+    "main/log-store.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "node:path": {
+          "join": "value"
+        },
+        "node:fs/promises": {
+          "FileHandle": "type"
+        },
+        "node:timers/promises": {
+          "setImmediate": "value"
+        },
+        "../log-contract.ts": {
+          "encodeLogRecord": "value",
+          "diagnosticId": "value",
+          "utcTimestamp": "value",
+          "LogRecord": "type",
+          "LogHealth": "type",
+          "LogCode": "type"
+        },
+        "../log-store-schema.ts": {
+          "segmentFilename": "value",
+          "metadataFilename": "value",
+          "verifySegment": "value",
+          "SEGMENT_BYTES": "value",
+          "SegmentMetadata": "type"
+        },
+        "./log-files.ts": {
+          "OwnedLogFiles": "value",
+          "readLogFile": "value",
+          "logInventory": "value",
+          "LogLocation": "type"
+        }
+      }
+    },
+    "main/log-recovery.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value",
+          "open": "value",
+          "unlink": "value",
+          "rmdir": "value",
+          "rename": "value",
+          "opendir": "value"
+        },
+        "node:path": {
+          "join": "value",
+          "dirname": "value",
+          "resolve": "value",
+          "basename": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        },
+        "../log-store-schema.ts": {
+          "parseStoreDocument": "value",
+          "STORE_DOCUMENT_BYTES": "value",
+          "SEGMENT_BYTES": "value"
+        },
+        "./log-files.ts": {
+          "plainLogDirectory": "value",
+          "readLogFile": "value",
+          "logInventory": "value",
+          "LogLocation": "type"
+        }
+      }
+    },
+    "main/logging.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "./log-store.ts": {
+          "LogStore": "value"
+        },
+        "./log-files.ts": {
+          "LogLocation": "type"
+        },
+        "../log-contract.ts": {
+          "LogCode": "type",
+          "LogEvent": "type",
+          "LogHealth": "type",
+          "LogRecord": "type",
+          "diagnosticId": "value"
+        }
+      }
+    },
+    "main/log-shutdown.ts": {
+      "role": "main-adapter",
+      "imports": {}
     }
   }
 }
