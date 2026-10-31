@@ -30,8 +30,10 @@ in Node tests: the Electron package can auto-install on import.
 
 Existing reviewed candidates: Node 24.22.1, Electron 45.1.0, TypeScript 7.0.2,
 esbuild 0.28.2, Node types 24.19.2. React/react-dom/types 19.3.0, csstype 3.2.3 and scheduler 0.28.0 extend
-the original closure to the exact recursive 67-entry lock is inherited
-from the existing reviewed Auto lab lock, not fresh range selection. Prior file
+the original inherited 67-entry closure from the reviewed Auto lab lock. P1-03 adds
+exact Biome 2.6.4 plus its ten optional platform packages (78 entries total),
+without changing those 67 inherited entries. See `biome-review.json` and the
+[P1-03 admission evidence](../docs/evidence/P1-03-tooling-admission-2026-10-31.md). Prior file
 SHA256, complete metadata and reviewed script hashes are recorded in
 `dependency-review.json`. npm 11.9.0 is observed locally; 11.19.1 was observed on the
 prior Windows runner. The new verifier explicitly permits those versions without
@@ -59,7 +61,8 @@ setting. NODE_OPTIONS or other unreviewed overrides must not be enabled. On a
 reviewed fresh environment without NODE_PATH, use `node desktop/scripts/check.mjs`.
 Add `--restore` only when an owned dependency restore is needed. The runner uses the
 existing Node installation's npm CLI, verifies its actual version, and executes
-metadata → optional scripts-disabled restore → installed checks → strict compile →
+metadata → optional scripts-disabled restore → installed checks → fresh-restore
+registry signature/provenance and advisory checks → lint/format → strict compile →
 build → manifest → tests. Any false result or exception stops later stages. No
 semicolon fall-through, generic shell command or automatic runtime download.
 
@@ -118,3 +121,21 @@ and minimal React diagnostic; earlier zero-preload/source counts are historical.
 [Current source evidence](../docs/evidence/P1-02-public-bridge-source-2026-10-31.md):
 50/50 source/build tests, 43/43 Python; new 25-case Windows contract PASS in both source/package on run 41168294925.
 No device/account/secret/path/shell/mutation service or full V9 acceptance is implied.
+
+## P1-03 active-code quality gate
+
+Root `biome.json` pins the reviewed formatter/recommended-linter configuration.
+`quality-tool.mjs` checks its hash, the shipped schema hash and exact native binary,
+then uses shell:false with a 30-second deadline and 64 KiB output cap. Only reviewed
+Linux glibc x64 / Windows x64 are supported. Unexpected nested configs on active ancestors/subtrees and alternative root
+biome.jsonc are rejected before native calls. The wrapper/ldd/daemon are never used;
+BIOME_* and Node override variables are rejected (case-insensitive names).
+The active foundation/desktop TS/TSX/MJS/CJS inventory excludes generated outputs,
+Phase 0 and V9. Strict TypeScript 7 remains required; this is tested corpus support,
+not a claim that Biome supports every TypeScript 7 feature.
+
+`node desktop/scripts/quality-tool.mjs --inventory <reviewed-npm-version>` is check-only.
+The development runner also runs native good/bad lint, format and parser fixtures,
+format idempotence and target/env-denial tests. Check/lint explicitly fail on warnings as well as configured errors and format
+drift. Informational style suggestions remain visible, not suppressed or claimed
+absent. No unsafe linter fix/import sorting is authorized.

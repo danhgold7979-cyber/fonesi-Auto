@@ -19,6 +19,15 @@ class CheckoutBytesTests(unittest.TestCase):
             'tools/phase-00/desktop-stack-lab/dependency-review.json': review['sourceReviewSha256'],
             'desktop/tests/fixtures/unavailable.html': asset_hash,
         }
+        biome = json.loads((root / 'desktop/biome-review.json').read_text())
+        expected['biome.json'] = biome['configurationSha256']
+        for name in ('foundation/src/contracts/validate.ts', 'foundation/scripts/check.mjs',
+                     'foundation/package.json', 'foundation/package-lock.json',
+                     'foundation/dependency-review.json', 'foundation/tsconfig.json',
+                     'foundation/README.md'):
+            original = (root / name).read_bytes()
+            self.assertNotIn(b'\r\n', original)
+            expected[name] = hashlib.sha256(original).hexdigest()
         with tempfile.TemporaryDirectory(prefix='auto-owned-checkout-') as directory:
             result = subprocess.run(
                 ['git', '-c', 'core.autocrlf=true', '-c', 'core.eol=crlf',

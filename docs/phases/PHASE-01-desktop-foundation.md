@@ -150,3 +150,14 @@ Primary risks: unverified version/binding/compatibility detail (stop, do not gue
 - 2026-10-30 / 1.1-draft: aligned accepted C-05/C-07/C-13/C-14/C-22; retained phase authorization and technical-evidence gates.
 
 **2026-10-31 01:23 UTC scoped exception approved:** proposal b7d0e11 now permits only P1-01-S first, with separately reviewed next entries P1-03-S/P1-11-S as recorded in the provisional-source amendment and playbook. Earlier pending notes are historical; all other sequential/acceptance/security rules remain. Full Phase1 is not opened or accepted.
+
+## P1-03 technical verification-method clarification — 2026-10-31 04:55 UTC
+
+Under delegated Auto plan authority, coordinator approved an isolated named
+`windows-2022` Actions machine as the Windows development verification environment
+for P1-03's fresh-checkout positive/negative tooling suite. This explicitly
+supersedes only the word “local” in that draft task's test-machine method, not its
+required checks. Record exact image/head and actual Node/npm versions; include
+foundation strict/type/unit/boundary fixtures, not merely source formatting.
+No user Windows 10/target-host support, C-07/HC09/HC13/Phase 0/device gate or full
+P1-10 acceptance follows. Original task requirements and product scope remain.

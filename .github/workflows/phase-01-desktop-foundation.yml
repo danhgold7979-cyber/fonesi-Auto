@@ -6,6 +6,8 @@ on:
     paths:
       - '.gitattributes'
       - 'desktop/**'
+      - 'foundation/**'
+      - 'biome.json'
       - 'tools/phase-00/HostProbeNative.cs'
       - 'tools/phase-00/desktop-stack-lab/package-lock.json'
       - 'tools/phase-00/desktop-stack-lab/dependency-review.json'
@@ -39,9 +41,25 @@ jobs:
             if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
             "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
-      - name: Scripts-disabled dependency restore and strict source check
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
         run: |
           node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Named Windows development environment and foundation fixtures
+        run: |
+          Write-Output "WINDOWS_DEVELOPMENT_IMAGE=$env:ImageOS/$env:ImageVersion"
+          Write-Output "SOURCE_HEAD=$env:GITHUB_SHA"
+          node --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          Write-Output "ACTUAL_NPM=$npmVersion"
+          node foundation/scripts/verify-bootstrap.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node foundation/scripts/check.mjs $npmVersion
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |

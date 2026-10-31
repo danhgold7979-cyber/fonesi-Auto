@@ -5,11 +5,23 @@ import { fileURLToPath } from 'node:url';
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export function runNode(args) {
   // Nested harness fixtures must start a fresh test runner, not inherit child mode.
-  const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
-  const result = spawnSync(process.execPath, args, { cwd: root, env, encoding: 'utf8',
-    timeout: 30000, maxBuffer: 65536, shell: false, windowsHide: true });
-  return { status: result.status, failed: Boolean(result.error || result.signal),
-    stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, args, {
+    cwd: root,
+    env,
+    encoding: 'utf8',
+    timeout: 30000,
+    maxBuffer: 65536,
+    shell: false,
+    windowsHide: true,
+  });
+  return {
+    status: result.status,
+    failed: Boolean(result.error || result.signal),
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+  };
 }
 export function suitePassed(result) {
   if (result.failed || result.status !== 0) return false;
@@ -20,6 +32,12 @@ export function suitePassed(result) {
     counts[field] = Number(matches[0][1]);
     if (!Number.isSafeInteger(counts[field])) return false;
   }
-  return counts.tests > 0 && counts.pass === counts.tests &&
-    counts.fail === 0 && counts.cancelled === 0 && counts.skipped === 0 && counts.todo === 0;
+  return (
+    counts.tests > 0 &&
+    counts.pass === counts.tests &&
+    counts.fail === 0 &&
+    counts.cancelled === 0 &&
+    counts.skipped === 0 &&
+    counts.todo === 0
+  );
 }

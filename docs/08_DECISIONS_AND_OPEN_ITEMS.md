@@ -385,3 +385,19 @@ block and the prior zero-preload/zero-IPC exclusion for this scope. Old G0-12 20
 FAIL and all original Phase 0 exits remain unchanged/unaccepted. No device, account,
 secret, path, shell, settings mutation or persistence service; no V9 redesign or
 full task/Phase acceptance. Branch phase-01; root publishes, no main merge.
+
+## P1-03 Windows development verification method — 2026-10-31 04:55 UTC
+
+Coordinator approved the named isolated GitHub Actions `windows-2022` environment
+as the Windows development test machine for exact fresh-checkout P1-03 tooling and
+fixtures. Record runner image, Node/npm versions and source head; restore only
+locked dependencies with lifecycle scripts disabled, then run the same strict
+compiler, lint/format, boundary and positive/negative unit suites. This explicitly
+clarifies the draft Phase 1 task's “approved local Windows development host” method;
+it is not a claim that execution occurred on the user's PC. Early use of CI as the
+execution transport does not complete P1-10 CI/release engineering.
+
+This method does **not** certify the user's Windows 10/product target host, waive
+C-07/HC09/HC13, device/support or original Phase 0 gates, or accept a task without
+its actual criteria/evidence. Foundation must validate the actual observed npm
+version (11.19.1 on the named runner), not receive a fabricated 11.9.0 argument.

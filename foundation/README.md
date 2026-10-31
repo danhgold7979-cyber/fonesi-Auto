@@ -130,3 +130,19 @@ Tests compile the actual TypeScript modules into a fresh owned ignored directory
 and import that output. The compiled modules contain no runtime imports (the single
 type-only edge is erased). Output is removed afterward; no package/runtime service
 or publication artifact is produced. This is not actual IPC/host/Phase acceptance.
+
+## Active P1-03 lint/format gate
+
+The repository-level reviewed Biome 2.6.4 gate now checks this directory's active
+TS/TSX/MJS/CJS together with desktop source. Run the desktop quality/check command
+from [desktop development instructions](../desktop/README.md); the original five-stage
+foundation runner remains required and its limited hygiene check is not relabeled
+as a formatter. The native tool belongs to desktop's exact reviewed development
+closure, not the import-free foundation contract runtime. Current-corpus syntax
+verification does not claim blanket TypeScript 7 parser support.
+
+The P1-03 verification-method decision admits actual npm 11.19.1 on the named
+Windows development runner alongside Linux npm 11.9.0. The packageManager field
+retains the Linux default; engines and metadata validation allow exactly these two
+versions, not a range of new candidates. Hosted commands read the real npm version.
+The locked 23 dependency entries and their historical provenance remain unchanged.

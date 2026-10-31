@@ -7,3 +7,7 @@
 desktop/** text=auto eol=lf
 tools/phase-00/desktop-stack-lab/package-lock.json text eol=lf
 tools/phase-00/desktop-stack-lab/dependency-review.json text eol=lf
+
+# Active Phase 1 formatter/config bytes must be identical on Windows and Linux.
+biome.json text eol=lf
+foundation/** text=auto eol=lf

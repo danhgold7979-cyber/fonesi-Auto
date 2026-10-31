@@ -463,3 +463,38 @@ and transport-instrumentation limits. Formal task acceptance is **DEPENDENCIES_P
 for full P1-03/P1-11. Accepted full-task count stays 0/11 Phase 1, 0/154 tool; no main
 merge or old Phase 0 gate waiver. Stop further P1-02 research/surfaces; next priority
 is the actual P1-03 lint/formatter/tooling gap under a reviewed exact candidate.
+
+### P1-03 tooling entry — 2026-10-31 04:39 UTC
+
+Coordinator approved exact Biome 2.6.4 for active foundation/desktop TypeScript/
+JavaScript tooling, including verification CJS; strict tsc7 remains. Entry recorded
+before implementation. Official provenance/advisory verification and reviewed metadata
+precede native execution; check-only inventory precedes formatter-only source edits.
+No new application service or Phase 0/V9 formatting. Full task/user-host acceptance
+is separate; source/test implementation and exact-head Windows evidence come first.
+
+### P1-03 local tooling checkpoint — 2026-10-31 04:54 UTC
+
+Exact Biome 2.6.4 admission/restore/signature/provenance/advisory checks PASS on
+Linux; active 35-file corpus lint/format exits 0 with 4 warnings/9 infos retained.
+Strict desktop build/tests 61/61, foundation 85/85 and Python 43/43 PASS. Original
+67 dependencies preserved; exact reviewed closure now 78. Independent review and
+Windows adoption are pending; no full task acceptance or target-host claim.
+See [admission evidence](evidence/P1-03-tooling-admission-2026-10-31.md).
+
+### P1-03 strict gate correction — 2026-10-31 04:58 UTC
+
+Initial warning-tolerant milestone is superseded: check/lint now fail on warnings,
+with a warning-only negative fixture and four narrow manual fixes. Final local
+quality over 35 files: 0 errors/0 warnings/9 infos; desktop 62/62, foundation 86/86,
+Python 43/43 PASS. Named Windows development-machine method explicitly approved in
+[decision register](08_DECISIONS_AND_OPEN_ITEMS.md); actual fresh-checkout Windows
+execution and independent final review remain pending. No target-host gate waiver.
+
+### P1-03 reviewed source checkpoint — 2026-10-31 05:01 UTC
+
+Independent review CLEAR: desktop **63/63**, foundation **86/86**, Python **43/43**
+PASS; zero lint warnings/errors under the strict warning gate. Sole reviewed config
+is enforced without assuming nested-config CLI behavior. Ready for named Windows
+development-machine verification; that execution remains NOT_RUN. Full task/Phase
+acceptance and accepted-task counts are unchanged.

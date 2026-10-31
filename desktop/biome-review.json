@@ -1,0 +1,575 @@
+{
+  "checkedAt": "2026-10-31T04:40:00Z",
+  "scope": "P1-03 active foundation/desktop tooling only; no execution yet",
+  "packages": {
+    "@biomejs/biome": {
+      "url": "https://registry.npmjs.org/@biomejs%2fbiome/2.6.4",
+      "metadataSha256": "aaaa004a02a3e0ebe3368bb7355b44d95abfad11395135f0d346e6b24843ea0a",
+      "name": "@biomejs/biome",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {
+        "@biomejs/cli-linux-x64": "2.6.4",
+        "@biomejs/cli-win32-x64": "2.6.4",
+        "@biomejs/cli-darwin-x64": "2.6.4",
+        "@biomejs/cli-android-x64": "2.6.4",
+        "@biomejs/cli-linux-arm64": "2.6.4",
+        "@biomejs/cli-win32-arm64": "2.6.4",
+        "@biomejs/cli-darwin-arm64": "2.6.4",
+        "@biomejs/cli-android-arm64": "2.6.4",
+        "@biomejs/cli-linux-x64-musl": "2.6.4",
+        "@biomejs/cli-linux-arm64-musl": "2.6.4"
+      },
+      "os": [],
+      "cpu": [],
+      "libc": [],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "4f190d1cfa3003a6649db9197b34e47937420179",
+        "tarball": "https://registry.npmjs.org/@biomejs/biome/-/biome-2.6.4.tgz",
+        "fileCount": 19,
+        "integrity": "sha512-8sKKwaNW4ot22awZ3lBjwWLHnUFXgXnrBPYS2gNlBAXRbDC++7kqjK2H7dR/FgCDtPvO1xfKpgEhJkGxAKYkxA==",
+        "signatures": [
+          {
+            "sig": "MEQCIApVcVoK1wjefugyh6pvJuXq8/oS5K/L9/K9rLBE1ErkAiAD6p1fKQ8Rlsk9gKLDW5xazgyseasTJPkW9TLiQ+M56A==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEYCIQCJFj9Dw40NAbZPNMvEeX+iQKTz//XzBcIWjETiNWWgmgIhAMST6pSiYmMYyNLipwF/2RILGhDI34HyBV9RHU8jemj7",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fbiome@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 977924
+      }
+    },
+    "@biomejs/cli-linux-x64": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-linux-x64/2.6.4",
+      "metadataSha256": "ef89a87cc693c5045c8a70936953b1ce282cce115550bcf2adf19e4f8d0186f3",
+      "name": "@biomejs/cli-linux-x64",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "libc": [
+        "glibc"
+      ],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "70f438459a279e5ef2599deae3d3be2c0120c672",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-linux-x64/-/cli-linux-x64-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-tbFZMdL6dP/ws4edXxYG9WhvaVa1ZDzL4G5DzahnWW7Psib9H+VTdyU4XXVxpJk5j/nYZroSbvSNyYlpW3yCIw==",
+        "signatures": [
+          {
+            "sig": "MEUCIEKdY9CgNcAJChCz1nobfNhJH/j/cs0FuUIlRV9ZpuyKAiEA/Od188etgpuhHoq7xJJuTWE7HH1s8OPDMieeo+a6Ymk=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEQCIAobFWlDj1E5RPDWHEvmDKImkWaptUO3mmrnBz8qvpUQAiA8ReC8oxUU2/fflcwvAz1B3ClOF4i3MCUnl+wgkIwewQ==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-linux-x64@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 88162826
+      }
+    },
+    "@biomejs/cli-win32-x64": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-win32-x64/2.6.4",
+      "metadataSha256": "a3b871cb25bc955c1d4a9153f0bd6cc0e5e2557d0df5fc57f03649be00b02c1c",
+      "name": "@biomejs/cli-win32-x64",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "win32"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "libc": [],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "d8c80a6d93308d3759414aa2949e2371e49d5a99",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-win32-x64/-/cli-win32-x64-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-pYsMy5AThiHFOZAsngg8qN4PurM6nInKBhVX7sbj3eNpRQqo1Hb0MgCwPL7VqVMrmcEEMj9Ks3qbkallR65e8g==",
+        "signatures": [
+          {
+            "sig": "MEYCIQCBv/a9cPnEkaWOap9PPFxmBBJzA3pvGMXmJObFFAleZgIhAOm2nyZvqm2F4ZGpvEQS/SSYBl/JjuHGIB82tCFyPVR2",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEQCICwuCIcJmfSa/jJq6lOW59payjwt+30lV2itC0Rp5O/kAiAZnBtlHotqCt2iwfdygwGb2e4aeI+IjTOVIwfQRWjusg==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-win32-x64@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 104119637
+      }
+    },
+    "@biomejs/cli-darwin-x64": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-darwin-x64/2.6.4",
+      "metadataSha256": "0e31b34c0cd172d2203f979912b18be2190f53be6a13e5575b54e9ac9aaeb4ef",
+      "name": "@biomejs/cli-darwin-x64",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "darwin"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "libc": [],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "181a204b13e9c264499a654e3d9fc4fdddba1541",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-darwin-x64/-/cli-darwin-x64-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-fxmvkF81srlS3DiMyfm+aG3J0eG+6/BjaxRyjy57KbLSafnq0PO+hHfVWmtH2ty0S7nm6yDXBRwySfFeaRJKRQ==",
+        "signatures": [
+          {
+            "sig": "MEYCIQCIMBrtridI+XUOIMNtQtaEizo2YyfmvJWPIzSqY6ECkgIhAK5uIoUXa3GOjnOnlyQXScZ+dd/vkXoa2ODT/dBHkXPC",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEUCIDtPHjcmGLrQaZ5Jt9Dg+9MbTNWuA6oX+kKx4TDOiFpLAiEAtZEyEPNGkA962rf9qLcpchblul898yDvKbXIkNCAKsc=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-darwin-x64@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 81020672
+      }
+    },
+    "@biomejs/cli-android-x64": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-android-x64/2.6.4",
+      "metadataSha256": "6d7120970f64ec67443560311b75c5ca241b106a2e0abba5c1b1ef8969f790ac",
+      "name": "@biomejs/cli-android-x64",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "android"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "libc": [],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "caee3503ae8edf048afb7055007745e9cd4c4bcf",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-android-x64/-/cli-android-x64-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-HdGInPJ4nZFwHxzvEtcp2nmSBtUyJrurmtIK43upFckuS3+ZqVM05HtsxQWnqGsuy/pxckIAjyKWlEKRlBXUyA==",
+        "signatures": [
+          {
+            "sig": "MEUCIQCGjDYmNadZtuzsWPkV6i9zis2X2pTk5EctDngO4Kpj5gIgInWyV5FL3U8GJT7s9/8AQXAsLDmz7sQLABvGcs3VWLE=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEQCIAiqPMdSHiyU+IvuidSty/gw7y3rXmKatkdGD93teEkOAiByW6q9BaDOjSH7KjNnhG1fuSHr2utgjYrKV5SXmjpRlQ==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-android-x64@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 88359410
+      }
+    },
+    "@biomejs/cli-linux-arm64": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-linux-arm64/2.6.4",
+      "metadataSha256": "4c48696ff039246b23b3572f52d8acdf1ed5167ed20ea1784418e1c371f0f795",
+      "name": "@biomejs/cli-linux-arm64",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "libc": [
+        "glibc"
+      ],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "a4deed06840a31b5788b37eb8ac8064eb92c5f4f",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-linux-arm64/-/cli-linux-arm64-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-6+bK1Y/evmIUiJr7auertuMbiaYVicJhqA1bZyL47lCMWugv8l0gFQCqvR/gN1vZMHYm+HwoTKgeMxdNFCoQTg==",
+        "signatures": [
+          {
+            "sig": "MEUCIEsqAujWHm1Y1b2uzaiM4jWg6iKTZvdSXrANYaP7jRGjAiEAyVlLMCrV/m7ETjhqZcx48ih/KIZDmCUBTDhUPnujFc8=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEQCIAGqVSAFFs39AijVtxYsNcNXfkGsEnXkPyF+KgNB64T5AiBnQMkgA/NpbVFrADjAfOy4MPN+fEw1wYEKZfj5N2Mt7w==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-linux-arm64@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 80356376
+      }
+    },
+    "@biomejs/cli-win32-arm64": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-win32-arm64/2.6.4",
+      "metadataSha256": "17cc9ce7c6d5402b5934131c52048ed7a423deed629d7ed888684125f02bd30f",
+      "name": "@biomejs/cli-win32-arm64",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "win32"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "libc": [],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "6ea7435132a4bbf1e894a6a781d56665787a0532",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-win32-arm64/-/cli-win32-arm64-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-eCsqt8Ma3eVap+oyJCDnJZH60SIU464B66n3y38EUTJdM1T/HfZol1FJC9vb+sHToX0ix8XzqPcwJnOzyAJz0g==",
+        "signatures": [
+          {
+            "sig": "MEUCIEQptPWwQu/vs+Nzu2N+y8bb+bvDsx9cGeEDafQn++crAiEA8K6PqqC+U3TMtfGfP/XVFjNQB6pFTKTiTaOK3crtOLc=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEUCIBs3dpqn1XcSlyzS+r+765hCVyBMRTrT+MnJ7FfQBUHyAiEAkoHJ9TkeSDIxXfbdq8eVty+tYwBCqMy7D3zbM3GAoXA=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-win32-arm64@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 89791835
+      }
+    },
+    "@biomejs/cli-darwin-arm64": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-darwin-arm64/2.6.4",
+      "metadataSha256": "04cd5169725f5995946efeb426f52da4407651edfedd21382c2c5b859593f501",
+      "name": "@biomejs/cli-darwin-arm64",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "darwin"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "libc": [],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "dd8c4cbc4a531fd9a248808c624cb958c7c8184c",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-darwin-arm64/-/cli-darwin-arm64-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-0VvcUz46wbg59Q4TZ59KkIjDJrxEyu4Eoe79+F4SChxoWe+W7AEyIp6F5r72C9+p6MsB6dIovnZt1D30lGM3XA==",
+        "signatures": [
+          {
+            "sig": "MEUCIQDzHHMZs5FITSESK7U6X/KoHCJQKETkBuSwjYh4bSLWjQIgFAg9wKw2TIyBhEeGj/glTBstk9mElDXt7TdrHh/3V00=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEUCIQD7hjc9NNLiIJJGpo8f/l9oA+CWIlcGbSo9X7ln1Hd3cwIgL0mdid5C6x34R52slpNX2yilg4fSxVP+2eu4Ig2pEB4=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-darwin-arm64@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 77531854
+      }
+    },
+    "@biomejs/cli-android-arm64": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-android-arm64/2.6.4",
+      "metadataSha256": "e2267f0cebf6b82177f2a4cdc9b8ccb292192153e9550916dbd699e9d06c33de",
+      "name": "@biomejs/cli-android-arm64",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "android"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "libc": [],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "5e51c3c734b12c16d1b0168b5d1eb53847985c0a",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-android-arm64/-/cli-android-arm64-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-jwrwigP4tBcHxzuV8izioX/BOUhJL/4e2rNSOE5nCjBkVC018LQAQUGiH+CNkFYvLtQ1dcZo5/xXERmaAGc7JQ==",
+        "signatures": [
+          {
+            "sig": "MEUCIQCmeg04ok66IcZOJbRH26K4qe8zDV7X7FF2z427LpKAdQIgFacF4M7izNHewfqqeLr1PpfgF28ZSOsDUJsICwMr2WQ=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEYCIQCO0zZcoTGMNGXJuidTKbDte6zS/xeQVX3wY304Cl93+AIhAIIAdI6HriIMFm6whOznDr9TYsx9ZcM+iur+TkrSLyx3",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-android-arm64@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 75832552
+      }
+    },
+    "@biomejs/cli-linux-x64-musl": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-linux-x64-musl/2.6.4",
+      "metadataSha256": "97e4579619cf1403d22f004de5f15becd642a6f8f1624fdee61907b3836a527a",
+      "name": "@biomejs/cli-linux-x64-musl",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "x64"
+      ],
+      "libc": [
+        "musl"
+      ],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "c7bff48f5aeede76931be6f2981db1e94c422dca",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-linux-x64-musl/-/cli-linux-x64-musl-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-bomSa2XdQAGGj6Cwdm4M13qE+lN9+AOlW8KtI4hdyVyRRF/Z71qPAi95T4wtdZK0QpBbkTW8hgbZZCwPi4xzIw==",
+        "signatures": [
+          {
+            "sig": "MEQCIF3b/oPrE+k+1O9E29/TqAeQxI0sb/aDNTKCp+Iz9hFOAiBzZAEQn0fZ2DvIrxinLVNfiGa2LgdtYIn/Uue0DS6PXw==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEUCIG8abmflmKqc5Frxkb+jBpVaY9Xp5lzitKz6iXQa0DXSAiEA8txRyN3I2Lu9TwKr9Dlxx3cLNPJuhgHpTQMxtKi0iCM=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-linux-x64-musl@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 88360219
+      }
+    },
+    "@biomejs/cli-linux-arm64-musl": {
+      "url": "https://registry.npmjs.org/@biomejs%2fcli-linux-arm64-musl/2.6.4",
+      "metadataSha256": "9ec942278bc4c06ec08653e59c6ae46bbecc790bd7f296b5c5163ce2c724cdb8",
+      "name": "@biomejs/cli-linux-arm64-musl",
+      "version": "2.6.4",
+      "license": "MIT OR Apache-2.0",
+      "engines": {
+        "node": ">=14.21.3"
+      },
+      "scripts": {},
+      "optionalDependencies": {},
+      "os": [
+        "linux"
+      ],
+      "cpu": [
+        "arm64"
+      ],
+      "libc": [
+        "musl"
+      ],
+      "repository": {
+        "url": "git+https://github.com/biomejs/biome.git",
+        "type": "git",
+        "directory": "packages/@biomejs/biome"
+      },
+      "gitHead": "56538746c00fcd8e3ef8bad0a9bc59f024dc422d",
+      "dist": {
+        "shasum": "34c5110ab8298def8417ce55933e62ad5a6afcdd",
+        "tarball": "https://registry.npmjs.org/@biomejs/cli-linux-arm64-musl/-/cli-linux-arm64-musl-2.6.4.tgz",
+        "fileCount": 3,
+        "integrity": "sha512-31ZaH/MHqPX+O+evRwRrCHQ8W5/9adY+/eMytGGWZnRx1T41QsWIF09+/WujynLBhWZUxNGS5CtsWLwgOFTAyg==",
+        "signatures": [
+          {
+            "sig": "MEQCIELIgUsQOG8auaucmBxQIRBcx5MXRURb7zd2bZF5JkRvAiAiT33HTC7J9Fp4S/SOIDjj3ftloqczn2AvZaTTwWNb2w==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEQCIFGA4ORBKcQz15sbUZ34Fp/5D33/YN8DFHMxpTDGFr9xAiAHFkQWQnStyff1OS+wiu/2n+fAz7v6HJeC02QjIQelDA==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@biomejs%2fcli-linux-arm64-musl@2.6.4",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 75833361
+      }
+    }
+  },
+  "nativeSha256": {
+    "@biomejs/cli-linux-x64/biome": "eb9afd5af3c04bd242be6db39fb812a025b42469af8c6a621535036dbd9b0c63",
+    "@biomejs/cli-win32-x64/biome.exe": "ed7aa62b0f22ac4258d3d8668e0af8d53085168d421a8d4ec708040c5e275c0c"
+  },
+  "registrySignatureVerification": {
+    "status": "PASS",
+    "command": "npm audit signatures --ignore-scripts --json",
+    "npm": "11.9.0",
+    "scope": "restored Linux package tree; Windows restore verification remains pending",
+    "invalid": 0,
+    "missing": 0
+  },
+  "provenanceVerification": {
+    "status": "PASS_FOR_AVAILABLE_RESTORED_ATTESTATIONS",
+    "mechanism": "npm audit signatures verifies available provenance; not just decoded JSON",
+    "limitations": "Does not prove code benign or certify uninstalled Windows artifacts; Windows repeats verification before execution."
+  },
+  "advisoryAudit": {
+    "status": "NO_KNOWN_NPM_ADVISORIES_REPORTED",
+    "checkedAt": "2026-10-31T04:45:00Z",
+    "total": 0,
+    "limitations": "Registry snapshot for dependency tree, not exhaustive native/Rust code vulnerability proof."
+  },
+  "wrapperNeverExecuted": true,
+  "configurationSchemaSha256": "77b0b52415172200e3a9f1d603b990b5289e645777c7e5201c605ecf039d0893",
+  "configurationSha256": "5d289f8e968156a6c0bbe19e9cd5f7def11add81fce4640056f704408cbde312"
+}

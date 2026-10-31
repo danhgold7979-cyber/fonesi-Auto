@@ -460,3 +460,26 @@ block and the prior zero-preload/zero-IPC exclusion for this scope. Old G0-12 20
 FAIL and all original Phase 0 exits remain unchanged/unaccepted. No device, account,
 secret, path, shell, settings mutation or persistence service; no V9 redesign or
 full task/Phase acceptance. Branch phase-01; root publishes, no main merge.
+
+## P1-03 tooling completion entry — 2026-10-31 04:39 UTC
+
+Coordinator approved exact @biomejs/biome 2.6.4 adoption/verification for active
+foundation/desktop TS/TSX/MJS and active verification CJS source, retaining strict
+TypeScript 7.0.2. Record exact official metadata/licenses/hooks/integrities/native
+hashes and verify signatures/provenance/advisories before native execution. Restore
+scripts disabled; use only verified Linux glibc x64 / Windows x64 binaries directly,
+no wrapper shell/ldd/PATH or override fallback. Shipped-schema config validation,
+check-only inventory precedes authorized formatter-only edits; no unsafe lint fixes,
+assist/import sorting, historical Phase 0/UI/evidence/generated-file formatting.
+Good/bad parse/lint/format fixtures, diagnostic/nonzero checks, idempotence and full
+existing suites required. Full local Windows host/task acceptance remains separate.
+Branch phase-01, independent review before root publication/Windows CI; no main merge.
+
+## P1-03 verification-method clarification — 2026-10-31 04:55 UTC
+
+Coordinator approved the isolated named `windows-2022` Actions environment as the
+Windows development verification machine for the exact fresh-checkout tool suite,
+including foundation's 85 tests. See the [decision register](08_DECISIONS_AND_OPEN_ITEMS.md).
+Record actual image/head/Node/npm; narrowly admit observed npm 11.19.1 with tests,
+never spoof the former 11.9.0 argument. This changes the test-machine method only,
+not user-PC/Windows 10/C-07/Phase 0/device acceptance or P1-10 completion.

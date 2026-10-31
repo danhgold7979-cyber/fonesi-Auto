@@ -13,27 +13,43 @@ export function createLifecycle(createWindow: () => OwnedWindow) {
     start(): boolean {
       if (phase !== 'IDLE') return false;
       const created = createWindow();
-      window = created; phase = 'OPEN';
+      window = created;
+      phase = 'OPEN';
       created.onClosed(() => {
-        if (window === created) { window = undefined; if (phase !== 'DISPOSED') phase = 'IDLE'; }
+        if (window === created) {
+          window = undefined;
+          if (phase !== 'DISPOSED') phase = 'IDLE';
+        }
       });
       return true;
     },
     close(): boolean {
       if (phase !== 'OPEN' || !window) return false;
-      phase = 'CLOSING'; window.close(); return true;
+      phase = 'CLOSING';
+      window.close();
+      return true;
     },
     dispose(): void {
       if (phase === 'DISPOSED') return;
-      phase = 'DISPOSED'; const owned = window; window = undefined;
+      phase = 'DISPOSED';
+      const owned = window;
+      window = undefined;
       owned?.destroy();
     },
-    phase(): LifecyclePhase { return phase; }
+    phase(): LifecyclePhase {
+      return phase;
+    },
   };
 }
 
 export function disposeResources(actions: ReadonlyArray<() => void>): boolean {
   let complete = true;
-  for (const action of actions) { try { action(); } catch { complete = false; } }
+  for (const action of actions) {
+    try {
+      action();
+    } catch {
+      complete = false;
+    }
+  }
   return complete;
 }
