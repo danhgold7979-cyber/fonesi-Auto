@@ -38,6 +38,25 @@ function transform(core, desktop, observer) {
   }
   return changed;
 }
+function writeScript(file, raw) {
+  if (
+    typeof raw !== 'string' ||
+    !raw.isWellFormed() ||
+    Buffer.byteLength(raw, 'utf8') < 1 ||
+    Buffer.byteLength(raw, 'utf8') > 65536
+  )
+    throw Error('PACKAGE_SCRIPT_LIMIT');
+  plain(path.dirname(file));
+  const bytes = Buffer.from(raw, 'utf8'),
+    fd = fs.openSync(file, 'wx', 0o600);
+  try {
+    fs.writeFileSync(fd, bytes);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (read(file) !== raw) throw Error('PACKAGE_SCRIPT_READBACK');
+}
 async function prepare(root, stage) {
   plain(root);
   if (!STAGES.includes(stage)) throw Error('PACKAGE_STAGE');
@@ -65,14 +84,14 @@ async function prepare(root, stage) {
   fs.mkdirSync(path.join(outer, 'app/launch'));
   fs.mkdirSync(observers);
   const derived = transform(core, path.join(c.packageRoot, 'app'), observers);
-  write(path.join(outer, 'Launch.ps1'), top);
-  write(path.join(outer, 'app/launch/Invoke-Package.ps1'), wrapper);
-  write(path.join(outer, 'app/launch/launch-core.ps1'), derived);
+  writeScript(path.join(outer, 'Launch.ps1'), top);
+  writeScript(path.join(outer, 'app/launch/Invoke-Package.ps1'), wrapper);
+  writeScript(path.join(outer, 'app/launch/launch-core.ps1'), derived);
   write(path.join(outer, 'control.json'), c);
   const observerFiles = {};
   for (const name of OBSERVERS) {
     const raw = read(path.join(__dirname, name));
-    write(path.join(observers, name), raw);
+    writeScript(path.join(observers, name), raw);
     observerFiles[name] = hash(raw);
   }
   write(path.join(outer, 'copy-proof.json'), {
@@ -154,4 +173,4 @@ async function main() {
   }
 }
 if (require.main === module) void main();
-module.exports = { transform, prepare, OBSERVERS, candidate, relocate };
+module.exports = { transform, prepare, writeScript, OBSERVERS, candidate, relocate };

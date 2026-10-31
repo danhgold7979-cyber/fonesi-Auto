@@ -183,3 +183,119 @@ test('complete capture predicate vector forwarding stays exactly aligned and bou
   assert.ok(source.includes('Where-Object {$_ -ceq $literal}'));
   assert.ok(!source.includes('Write-Output $p.Stderr'));
 });
+test('actual prepare materializes all eight raw scripts and binds their on-disk bytes', async () => {
+  const { prepare, writeScript } = require('./package-launch-driver.cjs');
+  const admission = require('../launch/package-admission.cjs');
+  const originalVerify = admission.verifyPackage;
+  const { LAUNCH } = await import('../scripts/build-package.mjs');
+  const root = fs.realpathSync.native(
+    fs.mkdtempSync(
+      path.join(
+        fs.realpathSync.native(path.join(__dirname, '../.test-output')),
+        'package-materialized-',
+      ),
+    ),
+  );
+  const id = '12345678-1234-1234-1234-123456789abc',
+    pkg = path.join(root, 'relocated-package'),
+    outer = path.join(root, 'package-probe-first-cancel');
+  const control = {
+    version: 1,
+    stage: 'first-cancel',
+    runRoot: root,
+    runToken: id,
+    packageRoot: pkg,
+    createParent: path.join(root, 'products'),
+    managedRoot: null,
+    selectedStore: null,
+    backupParent: path.join(root, 'backups'),
+    backupFile: null,
+    restoreParent: path.join(root, 'restore-first'),
+    retainedLaunchId: null,
+  };
+  const sourceWrapper = fs.readFileSync(
+    path.join(__dirname, '../launch/Invoke-Package.ps1'),
+    'utf8',
+  );
+  const sourceCore = fs.readFileSync(path.join(__dirname, '../launch/launch-core.ps1'), 'utf8');
+  const created = [];
+  const put = (file, raw) => {
+    fs.writeFileSync(file, raw, { flag: 'wx' });
+    created.push(file);
+  };
+  for (const dir of [pkg, path.join(pkg, 'app'), path.join(pkg, 'app/launch')]) fs.mkdirSync(dir);
+  put(path.join(root, '.owner'), id);
+  put(path.join(root, 'package-stage-first-cancel.json'), JSON.stringify(control));
+  put(path.join(pkg, 'Launch.ps1'), LAUNCH);
+  put(path.join(pkg, 'app/launch/Invoke-Package.ps1'), sourceWrapper);
+  put(path.join(pkg, 'app/launch/launch-core.ps1'), sourceCore);
+  let admitted = 0;
+  // Synthetic package admission only: exercise the real prepare/materialization path,
+  // not native runtime provenance or package admission itself.
+  admission.verifyPackage = (actual) => {
+    assert.equal(actual, pkg);
+    admitted++;
+    return Object.freeze({ synthetic: true });
+  };
+  try {
+    assert.equal(await prepare(root, 'first-cancel'), outer);
+    assert.equal(admitted, 1);
+    const intended = {
+      'Launch.ps1': LAUNCH,
+      'app/launch/Invoke-Package.ps1': sourceWrapper,
+      'app/launch/launch-core.ps1': transform(
+        sourceCore,
+        path.join(pkg, 'app'),
+        path.join(outer, 'observers'),
+      ),
+    };
+    for (const name of OBSERVERS)
+      intended['observers/' + name] = fs.readFileSync(path.join(__dirname, name), 'utf8');
+    assert.equal(Object.keys(intended).length, 8);
+    const digest = (bytes) =>
+      require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+    const proof = JSON.parse(fs.readFileSync(path.join(outer, 'copy-proof.json'), 'utf8'));
+    for (const [name, raw] of Object.entries(intended)) {
+      const actual = fs.readFileSync(path.join(outer, name));
+      assert.deepEqual(actual, Buffer.from(raw, 'utf8'));
+      assert.notEqual(actual.toString('utf8'), JSON.stringify(raw));
+      const expected = name.startsWith('observers/')
+        ? proof.observerFiles[name.slice(10)]
+        : name === 'app/launch/launch-core.ps1'
+          ? proof.derivedCoreSha256
+          : proof.originalFiles[name];
+      assert.equal(digest(actual), expected);
+    }
+    assert.equal(proof.originalFiles['app/launch/launch-core.ps1'], digest(sourceCore));
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(outer, 'control.json'), 'utf8')),
+      control,
+    );
+    assert.throws(() => writeScript(path.join(outer, 'Launch.ps1'), 'overwrite'));
+    assert.equal(fs.readFileSync(path.join(outer, 'Launch.ps1'), 'utf8'), LAUNCH);
+    for (const raw of ['', 'x'.repeat(65537), '\ud800', {}])
+      assert.throws(() => writeScript(path.join(outer, 'invalid.cjs'), raw));
+    assert.equal(fs.existsSync(path.join(outer, 'invalid.cjs')), false);
+  } finally {
+    admission.verifyPackage = originalVerify;
+    assert.equal(fs.readFileSync(path.join(root, '.owner'), 'utf8'), id);
+    for (const name of [
+      ...OBSERVERS.map((n) => 'observers/' + n),
+      'Launch.ps1',
+      'app/launch/Invoke-Package.ps1',
+      'app/launch/launch-core.ps1',
+      'control.json',
+      'copy-proof.json',
+    ]) {
+      const file = path.join(outer, name);
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+    }
+    for (const dir of ['observers', 'app/launch', 'app', '']) {
+      const file = path.join(outer, dir);
+      if (fs.existsSync(file)) fs.rmdirSync(file);
+    }
+    for (const file of created.reverse()) fs.unlinkSync(file);
+    for (const dir of [path.join(pkg, 'app/launch'), path.join(pkg, 'app'), pkg, root])
+      fs.rmdirSync(dir);
+  }
+});

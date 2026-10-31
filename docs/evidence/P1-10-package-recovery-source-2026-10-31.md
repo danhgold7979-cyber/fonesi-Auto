@@ -233,3 +233,39 @@ unchanged evidence, not newly rerun. Exact controller SHA256
 `31566034b2f83fae2af6091f278218cd20ab53f64eb5b2eed6aa1dba63911eff`;
 supervisor SHA256 `25eca9d90893790b262545d75f5e372dbc32aa630dcf158067c66639b4b209ee`.
 This is diagnostic coverage only, not a functional fix or successful native observation.
+
+## Fourth hosted attempt — executable copies were JSON-encoded
+
+Public head `2f5a8270cf7ed365d638e787864ebf4f1388c40b`, exact tree
+`cff8e518ae72ca8c42c7acfcb60948a43ec0ddbe`, ran in
+[41228293733](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41228293733).
+Artifact13052493171 is1110 bytes/SHA256
+`a3eb1af38faa0f17150e82527e4a851bedbe8abd0d0be34ef5f0e05a1af79023`.
+The complete capture vector now proves valid schema, matching SUCCESS/exit0, confirmed
+cleanup and no truncation, but zero expected markers and one OTHER nonempty stdout
+line, standard framing and empty stderr. No stage was admitted or bundle promoted.
+
+The coordinator identified a concrete source defect: `package-launch-driver.prepare`
+used the JSON-record `write()` helper for three PowerShell scripts and five CommonJS
+observer scripts. Actual local reproduction confirms those file bytes equal
+`JSON.stringify(source)`, not the intended executable source. This is consistent with
+the observed top-level PowerShell string-expression output; it is not a product
+initialization or recovery success. Earlier transform-only tests did not exercise
+materialized executable bytes, and the defect was missed in source review.
+
+The bounded correction writes only those executable copies as exclusive, capped UTF-8
+bytes with sync/close and exact readback. JSON controls/proofs remain canonical records.
+Copy proofs bind actual read-back files, and the regression invokes real `prepare()`
+materialization to compare all eight generated files with the original sources or exact
+four-substitution core transform. Package admission in that local fixture is explicitly
+synthetic; actual corrected Windows execution remains pending. No product launcher,
+retirement, schema or acceptance predicate is relaxed.
+
+Raw-script correction checkpoint at18:19UTC: author full desktop **575/575 PASS** and
+DESKTOP_SOURCE_CHECK_PASS; independent actual materialization suite **10/10 PASS** from
+desktop cwd. Exact readback equality binds each source-derived proof digest to its
+written script, and the regression independently recomputes every disk hash. No local
+PowerShell execution is claimed. Prior Python157/foundation109 evidence remains
+unchanged. Coordinator approved this scoped retry after the aggregate; actual Windows
+confirmation is still pending. Driver SHA256
+`c68317624ecac3a5165eb92780ec83bfcc0086b522903b87f519b8be281d1456`.

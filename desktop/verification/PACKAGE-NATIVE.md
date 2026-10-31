@@ -1,6 +1,6 @@
 # Internal package verification — P1-10
 
-Current status: hosted package attempts FAILED before first-Cancel evidence admission; the diagnostic retry identified the private capture schema/serialization boundary. No bundle promotion or package-stage PASS is claimed.
+Current status: hosted package attempts FAILED before first-Cancel evidence admission. Complete diagnostics and local reproduction identified JSON-encoded verification script copies; corrected raw-copy Windows confirmation is pending. No bundle promotion or package-stage PASS is claimed.
 See the [approved contract](../../docs/phases/PHASE-01-P1-10-PACKAGING-CONTRACT.md) and
 [measured source evidence](../../docs/evidence/P1-10-package-recovery-source-2026-10-31.md).
 
