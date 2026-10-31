@@ -84,3 +84,25 @@ after that failure is not a supported recovery procedure. Closing that failed-la
 to relaunch usability gap is explicitly retained for P1-10 launch supervision, with
 the P1-08 UI handoff; it is not waived by the bounded P1-07 actual-main restore proof.
 Do not treat this checkpoint as complete end-user/tool recovery.
+
+## Explicit isolated demo (P1-09 implementation checkpoint)
+
+The separate developer entry is `desktop/launch/Invoke-Demo.ps1`, after the reviewed
+source/check pipeline has produced both verified production and demo builds. It uses
+only the already provisioned pinned runtime; it does not download/install one or accept
+a production root argument. It launches the exact demo main with the sole `--demo`
+literal under an interactive owned Job, with no application lifetime deadline.
+
+Every invocation reserves a fresh marked `.demo-runtime/demo-<UUID>/profile`, separate
+from production DB/vault/preferences. The DEMO banner is permanent. Local theme and
+dimension choices are session-only; storage failures visibly say unsaved. Closing the
+whole demo and launching production is not a data-source merge/import. Domain actions
+remain unavailable even though synthetic rows can be selected and browsed.
+
+Only exact orderly markers plus complete process-tree retirement permit bounded deletion
+of the positively owned temporary child. Nonzero/unknown result, unexpected inventory,
+uncertain retirement or oversized capture retains private evidence and reports a fixed
+failure. No cleanup permission extends to a user's production profile or database.
+The native helper stream cap is32768 UTF-16 code units per stream; the launch capture's
+64KiB serialization bound may refuse a larger result and retain it rather than widen the
+bound. Native hosted execution and P1-09 acceptance are pending the evidence checkpoint.

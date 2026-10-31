@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-10-31 14:46 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-10-31 15:14 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -40,6 +40,7 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | P1-05 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted foundation persistence at 10:54 UTC on 2e8c08b7, run 41194352059; exact native matrix, owned write denial and instrumented real launcher passed. [Criterion audit](evidence/P1-05-canonical-criterion-audit-2026-10-31.md). Formal Phase 0 chain remains pending |
 | P1-07 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator13:14 accepted qualified scope on7568f727/run41204195482; actual settings/admission/crash and legitimate-lease corruption restore pass. [Canonical audit](evidence/P1-07-canonical-criterion-audit-2026-10-31.md). P1-06 cross-user UNMET, formal Phase0 chain and P1-10/P1-08 launcher usability obligations remain |
 | P1-08 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator14:46 accepted bounded six-page V9 scope onbf1709c3/run41211023670 after corrected all32-image strict/visual CLEAR. [Canonical/page audit](evidence/P1-08-canonical-criterion-audit-2026-10-31.md); inherited contrast and empty-data limits explicit; no device/backend/installed-package claim |
+| P1-09 | IN_PROGRESS | Coordinator14:52 approved separate demo build/runtime/profile boundary; independent494 desktop/109 foundation/140 Python PASS; root15:14 approved first scoped hosted run, still NOT_RUN and native derived-main scope explicitly qualified. [Contract](phases/PHASE-01-P1-09-DEMO-BOUNDARY-CONTRACT.md) / [evidence](evidence/P1-09-demo-boundary-source-2026-10-31.md); no technical count change |
 | Phase 0 acceptance | NOT ACCEPTED | 0/10 tasks accepted; all 12 baseline exits unaccepted; independent slices concluded, remaining gates BLOCKED |
 
 ## 3. Historical Phase 0 snapshot before collector hardening

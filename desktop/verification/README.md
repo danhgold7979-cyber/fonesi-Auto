@@ -255,3 +255,20 @@ private paths and arbitrary partial PNGs are never publication inputs. The owned
 `.ui-runtime` is ignored. See [source/evidence](../../docs/evidence/P1-08-v9-ui-source-2026-10-31.md)
 for current test counts and native/visual limitations. Coordinator14:46 accepted the corrected
 all32-image bounded UI scope; this does not accept live services, P1-06 cross-user or full Phase1.
+
+## P1-09 separate demo boundary (prepared; native NOT_RUN)
+
+`Invoke-Demo.ps1` in this verification directory is distinct from the interactive
+`../launch/Invoke-Demo.ps1`. The verification entry uses exact-hash derived demo copies
+with one fixed observer insertion, no argv spoof/provider substitution. It retains
+original/derived provenance and runs source plus unpacked-package demo, separately from
+an actually initialized/retired production root. The demo receives no production path.
+Existing automatic UI/settings regression jobs remain unchanged; no identity helper runs.
+
+`validate_demo.py` publishes fixed sanitized JSON only after strict validation, and the
+separate `DEMO_SCREENSHOTS_BOUND` marker permits only the five declared1440×900 PNGs.
+Each image is bounded4MiB/total20MiB. No private profile/capture/DB is uploaded. Both
+`.demo-runtime` and `.demo-verification` are ignored. See the
+[contract](../../docs/phases/PHASE-01-P1-09-DEMO-BOUNDARY-CONTRACT.md) and
+[evidence](../../docs/evidence/P1-09-demo-boundary-source-2026-10-31.md); prepared source
+and component fixtures are not native acceptance.

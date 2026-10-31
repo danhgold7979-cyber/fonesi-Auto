@@ -36,7 +36,7 @@ function Get-BoundedOwnedEntries([string]$Root, [long]$MaxBytes) {
 
 function Test-AllowedChildArgument([string]$Argument) {
     if (-not $Argument.StartsWith('-')) { return $true }
-    return ($Argument -cin @('--maintenance=backup-now','--maintenance=list-backups',
+    return ($Argument -cin @('--demo','--maintenance=backup-now','--maintenance=list-backups',
         '--maintenance=restore-to-new','--maintenance=accept-upgrade','--maintenance=select-backup-folder'))
 }
 

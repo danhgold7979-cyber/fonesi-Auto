@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "modules": {
+    "demo/main.ts": {
+      "role": "main",
+      "imports": {
+        "electron": {
+          "app": "value",
+          "BrowserWindow": "value",
+          "protocol": "value",
+          "session": "value",
+          "Menu": "value"
+        },
+        "node:fs": {
+          "writeSync": "value"
+        },
+        "node:path": {
+          "join": "value"
+        },
+        "./runtime-contract.js": {
+          "admitDemoRuntime": "value",
+          "DEMO_URL": "value"
+        }
+      }
+    },
+    "demo/renderer.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value",
+          "useEffect": "value"
+        },
+        "react-dom/client": {
+          "createRoot": "value"
+        },
+        "../src/ui/ui-shell.tsx": {
+          "UiShell": "value"
+        },
+        "./fixtures.js": {
+          "DEMO_BANNER": "value",
+          "DEMO_CANARY": "value",
+          "DEMO_SNAPSHOT": "value"
+        },
+        "./preferences.js": {
+          "createDemoPreferences": "value",
+          "DEMO_PREFERENCE_KEY": "value"
+        }
+      }
+    },
+    "demo/fixtures.ts": {
+      "role": "contract",
+      "imports": {
+        "../src/ui/ui-model.js": {
+          "UiSnapshot": "type"
+        }
+      }
+    },
+    "demo/preferences.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "src/ui/icon-data.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "src/ui/primary-pages.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value"
+        },
+        "./ui-model.js": {
+          "UI_EXPORT_ACTION": "value",
+          "PageProps": "type"
+        },
+        "./ui-shared.tsx": {
+          "UnavailableButton": "value",
+          "EmptyPanel": "value",
+          "PageHeader": "value",
+          "StatCard": "value"
+        }
+      }
+    },
+    "src/ui/social-data.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "src/ui/ui-model.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "src/ui/ui-shared.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useRef": "value",
+          "useEffect": "value",
+          "createElement": "value",
+          "ReactNode": "type"
+        },
+        "./icon-data.js": {
+          "ICONS": "value"
+        },
+        "./social-data.js": {
+          "SOCIAL_ICONS": "value",
+          "SocialNode": "type"
+        },
+        "./ui-model.js": {
+          "DomainAction": "type",
+          "UiSnapshot": "type"
+        }
+      }
+    },
+    "src/ui/ui-shell.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value",
+          "useRef": "value",
+          "useEffect": "value",
+          "ReactNode": "type",
+          "CSSProperties": "type"
+        },
+        "./ui-model.js": {
+          "PAGES": "value",
+          "NETWORKS": "value",
+          "unavailableAction": "value",
+          "unavailableSnapshot": "value",
+          "PageKey": "type",
+          "DomainAction": "type",
+          "UiSnapshot": "type"
+        },
+        "./ui-shared.tsx": {
+          "Icon": "value",
+          "SocialIcon": "value",
+          "UnavailableButton": "value",
+          "EmptyPanel": "value",
+          "UiModal": "value"
+        },
+        "./primary-pages.tsx": {
+          "OverviewPage": "value",
+          "AccountsPage": "value",
+          "TrackingPage": "value"
+        },
+        "./work-pages.tsx": {
+          "SetupPage": "value",
+          "CalendarPage": "value",
+          "WorkflowsPage": "value",
+          "WORKFLOW_LABELS": "value"
+        }
+      }
+    },
+    "src/ui/work-pages.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value",
+          "ReactNode": "type"
+        },
+        "./ui-model.js": {
+          "PageProps": "type",
+          "DomainAction": "type",
+          "NETWORKS": "value",
+          "UI_IMPORT_ACTION": "value",
+          "UI_EXPORT_ACTION": "value"
+        },
+        "./ui-shared.tsx": {
+          "Icon": "value",
+          "SocialIcon": "value",
+          "UnavailableButton": "value",
+          "UiModal": "value"
+        }
+      }
+    },
+    "demo/runtime-contract.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs": {
+          "lstatSync": "value",
+          "realpathSync": "value",
+          "readFileSync": "value",
+          "opendirSync": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "dirname": "value",
+          "basename": "value",
+          "join": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        }
+      }
+    }
+  }
+}

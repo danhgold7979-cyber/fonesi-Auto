@@ -8,3 +8,7 @@ build/
 .settings-runtime/
 
 .ui-runtime/
+
+/demo-build/
+/.demo-runtime/
+/.demo-verification/

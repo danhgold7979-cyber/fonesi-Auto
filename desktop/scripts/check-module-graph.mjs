@@ -217,7 +217,7 @@ export async function verifyRuntimeGraph(sources, map) {
   const validated = await validateGraph(sources, map); // No resolver runs before source policy.
   const { build } = await import('esbuild');
   const result = await build({
-    entryPoints: Object.keys(sources),
+    entryPoints: Object.keys(sources).map((name) => `registered-entry:${name}`),
     outdir: 'owned-module-graph',
     write: false,
     bundle: true,
@@ -234,9 +234,12 @@ export async function verifyRuntimeGraph(sources, map) {
         setup(builder) {
           builder.onResolve({ filter: /.*/ }, (args) => {
             if (args.kind === 'entry-point') {
-              if (!Object.hasOwn(sources, args.path))
+              const name = args.path.startsWith('registered-entry:')
+                ? args.path.slice('registered-entry:'.length)
+                : '';
+              if (!Object.hasOwn(sources, name))
                 return { errors: [{ text: 'UNREGISTERED_ENTRY' }] };
-              return { path: args.path, namespace: 'owned' };
+              return { path: name, namespace: 'owned' };
             }
             if (args.namespace !== 'owned' || !Object.hasOwn(validated.parsed, args.importer))
               return { errors: [{ text: 'UNREGISTERED_IMPORTER' }] };

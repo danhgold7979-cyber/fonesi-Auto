@@ -11,6 +11,7 @@ const directories = [
   'foundation/scripts',
   'foundation/tests',
   'desktop/src',
+  'desktop/demo',
   'desktop/scripts',
   'desktop/tests',
   'desktop/verification',

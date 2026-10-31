@@ -64,7 +64,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==133; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==140; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: PowerShell 5.1 marker and ownership regressions
         run: |
@@ -93,12 +93,12 @@ jobs:
           $tokens=$null; $parseErrors=$null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'desktop/verification/Invoke-Persistence.ps1'),[ref]$tokens,[ref]$parseErrors)
           if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_SUPERVISOR_SYNTAX_FAILED'; exit 1 }
-          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1','desktop/verification/Invoke-Settings.ps1','desktop/verification/Invoke-Ui.ps1')) {
+          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1','desktop/verification/Invoke-Settings.ps1','desktop/verification/Invoke-Ui.ps1','desktop/verification/Invoke-Demo.ps1','desktop/launch/Invoke-Demo.ps1')) {
             $tokens=$null; $parseErrors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd $file),[ref]$tokens,[ref]$parseErrors)
             if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_LAUNCHER_SYNTAX_FAILED'; exit 1 }
           }
-          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs','desktop/verification/vault-record-negative.cjs','desktop/verification/settings-contract.cjs','desktop/verification/settings-control.cjs','desktop/verification/settings-native.cjs','desktop/verification/settings-main-probe.cjs','desktop/verification/settings-store-probe.cjs','desktop/verification/settings-recovery-contract.cjs','desktop/verification/settings-recovery-control.cjs','desktop/verification/settings-recovery-probe.cjs','desktop/verification/ui-contract.cjs','desktop/verification/ui-main-probe.cjs','desktop/verification/ui-reference-probe.cjs')) {
+          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs','desktop/verification/vault-record-negative.cjs','desktop/verification/settings-contract.cjs','desktop/verification/settings-control.cjs','desktop/verification/settings-native.cjs','desktop/verification/settings-main-probe.cjs','desktop/verification/settings-store-probe.cjs','desktop/verification/settings-recovery-contract.cjs','desktop/verification/settings-recovery-control.cjs','desktop/verification/settings-recovery-probe.cjs','desktop/verification/ui-contract.cjs','desktop/verification/ui-main-probe.cjs','desktop/verification/ui-reference-probe.cjs','desktop/verification/demo-contract.cjs','desktop/verification/demo-control.cjs','desktop/verification/demo-probe.cjs','desktop/verification/demo-production-probe.cjs','desktop/launch/demo-launch-control.cjs')) {
             node --check $file
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -337,3 +337,85 @@ jobs:
         if: always()
         run: |
           'P1-08 scoped V9 renderer only; source/package normal app and isolated unchanged reference. Synthetic fixtures are not domain services. P106_UNMET_NOT_RERUN remains unmet; no identity invocation. No full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  owned-windows-demo:
+    needs: owned-windows-foundation
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare verified owned runtime and package without identity invocation
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'DEMO_RUNTIME_PREPARE_FAILED'; exit 1 }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned explicit demo boundary and production isolation verification
+        id: demo
+        run: |
+          try { & ./desktop/verification/Invoke-Demo.ps1 }
+          catch { Write-Output 'DEMO_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict demo evidence publication
+        id: demo_validation
+        if: always() && steps.demo.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_demo.py publish)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'DEMO_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          if (@($lines | Where-Object {$_ -ceq 'DEMO_SCREENSHOTS_BOUND'}).Count -eq 1) {
+            'screenshots=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only fixed demo evidence
+        if: always() && steps.demo_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-demo-${{ github.sha }}
+          path: desktop/.demo-verification/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload only complete metadata-bound synthetic screenshots
+        if: always() && steps.demo_validation.outputs.written == 'true' && steps.demo_validation.outputs.screenshots == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-demo-screenshots-${{ github.sha }}
+          path: |
+            desktop/.demo-verification/demo-source-overview-light.png
+            desktop/.demo-verification/demo-source-overview-dark.png
+            desktop/.demo-verification/demo-source-setup-light.png
+            desktop/.demo-verification/demo-package-overview-light.png
+            desktop/.demo-verification/demo-production-overview-light.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explicit scope exclusion
+        if: always()
+        run: |
+          'P1-09 scoped explicit demo build/profile boundary; source/package instrumented demo and actual production empty-state controls. Synthetic fixtures are not domain services. P106_UNMET_NOT_RERUN remains unmet; no identity invocation. No full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

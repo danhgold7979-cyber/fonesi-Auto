@@ -124,6 +124,13 @@ try {
       () => run(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json', '--pretty', 'false']).ok,
     ],
     ['BUILD', () => run(['scripts/build.mjs', npmVersion]).ok],
+    [
+      'DEMO_TYPECHECK',
+      () =>
+        run(['node_modules/typescript/bin/tsc', '-p', 'demo-tsconfig.json', '--pretty', 'false'])
+          .ok,
+    ],
+    ['DEMO_BUILD', () => run(['scripts/build-demo.mjs', npmVersion]).ok],
     ['MANIFEST', () => verifyBuild(root)],
     [
       'TESTS',
