@@ -1,10 +1,11 @@
-# P1-07 nonsecret preferences — implementation in progress
+# P1-07 nonsecret preferences — TECHNICAL_PASS / dependencies pending
 
 Coordinator approved the [exact settings contract](../phases/PHASE-01-P1-07-SETTINGS-CONTRACT.md)
 at 11:55 UTC and the bounded post-arm hydration clarification at 12:15 UTC.
 This development-only parallel entry does not accept P1-06: its cross-user criterion
-remains **UNMET**, with no further unchanged token-acquisition retry. Technical task
-count remains **6/11 (54.5%), 6/154 (3.9%)**, formal accepted count zero.
+remains **UNMET**, with no further unchanged token-acquisition retry. At 13:14 UTC the coordinator accepted the qualified task-specific scope on the final
+V3 Windows run. Technical count is **7/11 (63.6%), 7/154 (4.5%)**, formal accepted
+count zero. [Canonical criterion audit](P1-07-canonical-criterion-audit-2026-10-31.md).
 
 ## Implemented application boundary
 
@@ -276,3 +277,33 @@ recovery checkpoint: existing restore literal only, no invalid active DB open or
 identity attempt, injected Cancel/Confirm, chained fresh leases, source-byte witnesses
 and new quarantine, with the P1-10 launcher limitation retained. Approval permits
 hosted verification, not a PASS or task/phase acceptance.
+
+## 13:14 UTC final hosted recovery and coordinator disposition
+
+Exact public head `7568f727bf00727b35b20ac5af459e3967f6f9b3`, tree
+`44cf87e3a39fcaa86ee5056d18968a56b6d2202e`, Windows run **41204195482**
+completed both jobs SUCCESS. Artifact **13043641714**, retained
+[V3 fixed sample](P1-07-native-v3-sample-2026-10-31.json), is **16,464 LF bytes**,
+SHA256 `6676fc34c294b686df53ea3128cdd26c0e437c088b3391398cb90d27b1c83d28`.
+Independent original-byte duplicate-aware parsing, exact committed-validator full
+reconstruction/equality and privacy review are CLEAR. Both modes passed recovery
+setup5/5, CURRENT Cancel8/8, CURRENT Confirm10/10, PREVIOUS Cancel8/8 and PREVIOUS
+Confirm10/10, plus prior six settings stages/UI22. All process, integrity and cleanup
+predicates pass; failure is null. No additional runtime or duplicate download was
+performed by the reviewer. Screenshot metadata matches the prior inspected set; no
+new V3 image-byte inspection is claimed.
+
+The coordinator accepted **P1-07 TECHNICAL_PASS at13:14 UTC** within the approved
+legitimate-supervisor-lease scope. Corrupt-row classification is a real SQLite
+preparation check plus retained immutable byte witnesses; the native recovery path
+intentionally never opens corrupt active SQLite. Native dialogs are injected exact
+answers, not human/widget proof. Chained ROOT_A/B are genuine new quarantined roots
+with fresh leases after retirement, not copied live profiles or normal restored-root
+launcher admission. Source database/WAL/SHM/vault and selected backup witnesses remain
+unchanged; key-profile/checkpoint/staging activity is not misrepresented as zero writes.
+
+The failed-normal-launch retained-lease reentry and arbitrary RESTORED-root launcher
+UX remain explicit P1-10/P1-08 obligations. No stopped-owner command exists yet, no
+lock deletion/stealing is authorized, and this is not full end-user recovery/release
+acceptance. P1-06 cross-user remains UNMET; formal Phase0 chain unchanged. Technical
+counts now **7/11=63.6%, 7/154=4.5%**; formal accepted zero, no main merge.

@@ -1,5 +1,13 @@
 # Fonesi-Auto — Instructions for AI Coding Agents
 
+> Current development-entry amendment (2026-10-31 13:10 UTC):
+> [adopted software-first / hardware-deferred exception](docs/phases/SOFTWARE-FIRST-HARDWARE-DEFERRED-AMENDMENT-02.md)
+> permits separately reviewed software-phase entry and recorded predecessor-development
+> branch bases before deferred hardware acceptance. It does not accept a phase, merge
+> unaccepted work to main, waive known failures/P1-06 UNMET, or grant host/device access.
+> Original sequential/acceptance text below is retained; this explicit exception governs
+> only its stated development-entry scope.
+
 These rules apply to every AI coding agent and contributor in this repository.
 
 ## 1. Verify the repository before every task

@@ -5,7 +5,9 @@ and [current evidence](../../docs/evidence/P1-07-settings-source-2026-10-31.md)
 control this envelope. The first version1 native run41201915177 passed and was
 independently reviewed. Version2 run41202834105 also passed with both22-case UI groups;
 its fixed artifact was independently reviewed. Version3 adds the approved reachable
-corruption-recovery matrix; its actual execution remains NOT_RUN. Full P1-07 is not yet accepted.
+corruption-recovery matrix; run41204195482 passed both modes and was independently
+strictly reviewed. Coordinator13:14 accepted qualified P1-07 TECHNICAL_PASS; formal
+acceptance remains pending, with the launcher usability limitations below retained.
 
 `Invoke-Settings.ps1` uses the unchanged owned Windows Job/provenance/retirement
 helpers and four-stage synthetic key certification controls. It then runs source

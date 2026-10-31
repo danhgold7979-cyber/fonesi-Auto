@@ -1,10 +1,10 @@
 # PHASE-01 — Repository and desktop foundation
 
-**Revision:** 1.2-draft · **Current summary:** 2026-10-31 10:54 UTC
+**Revision:** 1.2-draft · **Current summary:** 2026-10-31 13:14 UTC
 **Full-plan acceptance:** NOT_ACCEPTED · **Execution:** explicitly scoped entries active
 **Current branch:** `phase-01`; no main merge or original Phase 0 acceptance
-**Full-phase execution base:** remains conditional on the original Phase 0 gate
-**Current verified scope:** P1-01/P1-02/P1-03/P1-04/P1-05/P1-11 task-specific TECHNICAL_PASS;
+**Development entry:** adopted software-first amendment permits scoped development; original formal Phase0 gate remains pending
+**Current verified scope:** P1-01/P1-02/P1-03/P1-04/P1-05/P1-07/P1-11 task-specific TECHNICAL_PASS;
 formal Phase 0/predecessor acceptance pending. P1-05 versioned SQLite, encrypted
 backup/restore, native failure matrix and instrumented real first/repeat launcher
 passed exact-head Windows verification; see the

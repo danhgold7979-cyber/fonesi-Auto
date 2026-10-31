@@ -227,7 +227,7 @@ and inspects migrated state after native retirement; its Windows result is pendi
 Installed first-use orchestration remains a completion gate. `.persistence-runtime/` is private ignored evidence, never a
 fixture or upload source except its explicitly sanitized fixed report.
 
-## P1-07 nonsecret preference integration (source checkpoint)
+## P1-07 nonsecret preference integration (technical scope verified)
 
 The [approved settings contract](../docs/phases/PHASE-01-P1-07-SETTINGS-CONTRACT.md)
 adds migration3 CURRENT/PREVIOUS settings, bounded preference IPC and main-owned
@@ -235,8 +235,9 @@ window persistence without changing legacy public v1/v2 wire schemas. The diagno
 renderer now hydrates persisted Light/Dark/layout once after main admission; it is
 still not the full V9 interface. Native confirmation uses Cancel by default.
 [Exact evidence](../docs/evidence/P1-07-settings-source-2026-10-31.md) records independent
-407 desktop/109 foundation/119 Python PASS and the first bounded Windows
-UI/reopen/COMMIT/screenshot PASS. Additional native admission-negative observations
-remain pending; full P1-07 acceptance is not inferred.
-[Scoped native verification](verification/SETTINGS-NATIVE.md) explicitly excludes
-P1-06's unmet cross-user criterion; neither task nor Phase acceptance is implied.
+418 desktop/124 Python and prior109 foundation PASS, actual Windows settings/admission/
+COMMIT/reopen and legitimate-owned-lease corruption recovery PASS. Coordinator13:14
+accepted the qualified P1-07 technical scope, not formal task/phase or release acceptance.
+[Canonical audit](../docs/evidence/P1-07-canonical-criterion-audit-2026-10-31.md) retains
+P1-06 cross-user UNMET and the P1-10/P1-08 failed-launch lease/RESTORED launcher UX gap.
+[Scoped native verification](verification/SETTINGS-NATIVE.md) never retries identity.

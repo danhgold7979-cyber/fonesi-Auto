@@ -1,5 +1,13 @@
 # GitHub Workflow — Branches, Commits, Pull Requests and Releases
 
+> Current development-entry amendment (2026-10-31 13:10 UTC):
+> [adopted software-first / hardware-deferred exception](phases/SOFTWARE-FIRST-HARDWARE-DEFERRED-AMENDMENT-02.md)
+> permits separately reviewed software-phase entry and recorded predecessor-development
+> branch bases before deferred hardware acceptance. It does not accept a phase, merge
+> unaccepted work to main, waive known failures/P1-06 UNMET, or grant host/device access.
+> Original sequential/acceptance text below is retained; this explicit exception governs
+> only its stated development-entry scope.
+
 Repository: danhgold7979-cyber/fonesi-Auto
 Default branch: main
 Updated: 2026-10-31
