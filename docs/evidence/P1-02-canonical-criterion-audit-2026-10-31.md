@@ -1,6 +1,9 @@
 # P1-02 canonical criterion audit
 
-2026-10-31 04:25 UTC. Read-only assessment; no task acceptance inferred.
+Initial audit 2026-10-31 04:25 UTC; current disposition 04:36 UTC.
+**P1-02 TECHNICAL_PASS; formal task DEPENDENCIES_PENDING (P1-03/P1-11).**
+Coordinator explicitly accepted the audited task-specific scope on exact fuzz head
+ff25bee9cff5db7e2018b0a503a2791a4603c223; no full task/phase acceptance or count change.
 Source: [Phase 1 P1-02](../phases/PHASE-01-desktop-foundation.md#p1-02--desktop-mainrendererpreload-and-secure-ipc),
 [master task](../04_MASTER_IMPLEMENTATION_PLAN.md#3-phase-1--repository-and-desktop-foundation),
 [AC-01](../05_ACCEPTANCE_AND_RISKS.md#ac-01--desktop-foundation),
@@ -10,11 +13,13 @@ and [fixed artifact](P1-02-public-bridge-sample-2026-10-31.json).
 
 ## Two separate conclusions
 
-**A — P1-02-specific technical scope: implemented, but verification not yet fully
-complete.** Runtime/source review covers the currently implemented public-read behaviors
-within the scope qualifications below; the explicitly named contract/fuzz evidence
-still lacks a recorded generated-input campaign. Thus do not yet report the whole
-technical scope DONE solely from 25/25 runtime cases.
+**A — Current technical assessment after 04:35 UTC evidence:** the currently
+implemented public-read P1-02 behaviors and named verification requirements are met
+within the explicit scope qualifications below. The previously missing generated-input
+campaign now passes on Linux and Windows. No further P1-02-specific source/test gap
+is identified by this audit; coordinator confirmed the scoped N/A and compositional lifecycle dispositions at
+04:36 UTC without inferring unsupported profile-integrity/native reopen claims.
+This is TECHNICAL_PASS, not formal task acceptance.
 
 **B — Formal task acceptance: pending predecessor gates independently of A.**
 Full P1-03 and P1-11 are not accepted, although their concrete compiler/test and
@@ -38,7 +43,7 @@ remaining verification gap does not silently accept those entire predecessor tas
 | Negative: untrusted sender/navigation | Wrong window, foreign main frame, genuine child-frame and null sender; reload session revoked/no rearm, about:blank sender denial; source tests cover destroyed/getter-failure/observed-denial events. **MET for explicit admission semantics**; no pre-observation Document guarantee. |
 | Negative: arbitrary command/path and denied method without process launch/secret disclosure | Unknown shell.exec method and path-bearing extra field denied; exact two-method source/compiled closure imports no effect/secret adapter; runtime no Node/generic API. **MET for this closed public capability surface**. No future native service or arbitrary compromised-OS claim. |
 | Negative: renderer crash does not corrupt persistent state | Real renderer crash produces expected NONZERO_EXIT1, bootstrapFailed and verified retirement/cleanup, no unexpected normal quit. This task exposes no durable application-state writer; defaults are explicitly NOT_PERSISTED. **Crash shutdown/retirement MET; durable-state corruption assertion NOT_EXERCISED, currently N/A to application-domain state because no writer exists.** Chromium profile files do exist and were cleaned, not integrity/reopen-tested. Coordinator must record this scoped disposition; no DB/settings recovery claim. P1-05/P1-07 later supply their persistent-state crash tests; demanding DB before P1-02 would contradict their dependency order. |
-| Acceptance evidence: contract/fuzz-negative tests | Contract and deterministic adversarial boundary fixtures PASS. **Specific remaining evidence gap:** no dedicated bounded generated-input/fuzz campaign of the IPC parser/dispatcher has yet been recorded. Do not relabel a table of examples as a fuzz campaign. |
+| Acceptance evidence: contract/fuzz-negative tests | Contract fixtures plus the separately recorded seed 0x5a17c0de campaign (4,096 inputs /16,384 actual-dispatcher calls) PASS locally and on exact-head Windows; source suite 52/52. **MET as finite generated-input evidence**, not exhaustive or native transport fuzz proof. |
 | Acceptance evidence: Windows packaged smoke | Exact head e1e1cdae, source/package25/25, typed negatives and cleanup; reviewed instrumentation and fixed artifact. **MET on named hosted Windows runner**, not a universal/target-host claim. |
 | Acceptance evidence: security review demonstrates absent privileged renderer paths | Independent source/integration/envelope and artifact CLEAR; sandboxed two-method preload and closed public result schema, no effect adapter. **MET for current capability set**; later methods need their own review. |
 | Rollback: disable affected bridge, close owned resources, revert verified shell; redacted diagnostics | dispose removes IPC handler and closes monotonic sessions, main disposal closes windows/private handlers; manifest-bound prior zero-bridge checkpoint remains in history; fixed-field evidence redacted. **Mechanism present/tested at disposal**, no production deploy/downgrade or real-user rollback claim. |
@@ -64,11 +69,9 @@ Coordinator/security reviewer must retain this scope distinction in acceptance.
 
 ## Smallest remaining work and sequencing
 
-1. Close the concrete fuzz-evidence gap with a bounded deterministic-seed generated
-   wire corpus using existing Node tooling (no new dependency/service), explicit
-   execution/time/input caps, safe accepted-shape invariants and fixed failure outputs;
-   test dispatcher denial/non-crash behavior and record seed/count/results. This is
-   a normal P1-02 verification increment, not a new phase, lab or product requirement.
+1. The concrete fuzz-evidence gap is **closed** by the recorded bounded campaign
+   and exact-head Windows run 41169068159. Do not invent another P1-02 lab or stronger
+   authority objective merely to delay task disposition.
 2. Coordinator then decides P1-02-specific functional/security verification status
    separately from the formal prerequisite gate. Do not call the whole task PASS
    merely from 25/25 runtime, or keep all useful source work blocked by unrelated
@@ -97,3 +100,15 @@ this is a compositional reopening/resource proof, not an original-window UI repl
 trace. No application-domain persistent writer exists: durable-state corruption is
 scoped N/A, while actual crash shutdown/retirement is measured; Chromium profile
 integrity was not tested or advertised. Full P1-03/P1-11 gate remains separate.
+
+## Final exact-head verification — 04:35 UTC
+
+Run 41169068159 at ff25bee9 passes 52/52 source/build (seeded campaign included), 43/43
+Python, 25/25 PowerShell and 25/25 source/package runtime. Typed crash/tamper negatives,
+all retirement/capture/directory cleanup and integrity checks pass. This supersedes
+the pending-Windows verification notes above, not the recorded evidence limits.
+The remaining **formal prerequisite gate** is full-task P1-03/P1-11 acceptance,
+not absent public-bridge runtime evidence, a missing host ZIP for these runner tests,
+immutable Document proof or future manual/scheduler implementation. Coordinator owns
+final task status; full phase acceptance, original Phase 0 gates and main merge remain
+separate. Next source priority is actual P1-03 lint/formatter/tooling completion.

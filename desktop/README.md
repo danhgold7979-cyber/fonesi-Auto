@@ -64,7 +64,7 @@ build → manifest → tests. Any false result or exception stops later stages. 
 semicolon fall-through, generic shell command or automatic runtime download.
 
 The current local source check passes 52/52 tests (including bounded seeded fuzz
-and fresh-view recreation); Windows last executed 50/50 before that increment. The prior zero-bridge source
+and fresh-view recreation); exact-head Windows run 41169068159 also passed 52/52. The prior zero-bridge source
 checkpoint passed 36/36 tests. Hosted CI7 passed source/package 20/20 each, Python 42/42 and PowerShell 25/25;
 corrected preference/preload measurements now have actual Windows runner evidence.
 See the [runtime evidence](../docs/evidence/P1-02-windows-envelope-source-2026-10-31.md).

@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-10-30 · **Execution evidence baseline:** `34b9649`
+**Updated:** 2026-10-31 04:36 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -12,6 +12,8 @@ This is the single evidence-backed status board. Documentation readiness and exe
 - BLOCKED: a dependency, test environment, permission or decision prevents acceptance/progress.
 - READY_FOR_REVIEW: the stated scope and its checks are ready for review, not yet accepted. Specify **documentation** or **implementation**.
 - ACCEPTED: scoped exit criteria and evidence passed, and user approval is recorded.
+- TECHNICAL_PASS: coordinator accepts the named task-specific implementation/test scope with explicit evidence limits; not formal task/Phase acceptance.
+- DEPENDENCIES_PENDING: task-specific evidence may pass, but named full predecessor gates remain unaccepted.
 - DEFERRED: explicitly postponed by the user with reason, consequences, owner and revisit gate; not a test PASS.
 
 Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact counts and scope; do not turn required NOT_RUN checks into PASS.
@@ -28,8 +30,9 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | Product decisions DEC-019 / DEC-020 | ACCEPTED by user in current review | [Decision register](08_DECISIONS_AND_OPEN_ITEMS.md): Manual emergency preview throttle OFF/opt-in; 30-minute gap warning-only; device/account mutual exclusion remains mandatory; QUEUE/default and other scheduler semantics now resolved by accepted C-10/C-11/C-18/C-19; verification remains pending |
 | Documentation publication | DONE | Published plan a1e9327 and merged PR #2 into phase/00-feasibility at f6f77b0; no main merge |
 | Phase 0 amendment 01 | P0-01 EXECUTION AUTHORIZED | [Amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md) records the later phased-implementation grant; tests and Phase acceptance are separate |
-| Phase 1–11 detailed plans | DRAFT / NOT APPROVED | Future review artifacts, not permission to begin tasks |
-| Production application code | NOT_STARTED / ENTRY GATED | Owner requested full phased implementation, but Phase 0 technical/physical gates remain unmet; current source is feasibility diagnostics only |
+| Full Phase 1–11 plans | Full acceptance pending | Narrow Phase 1 entries are explicitly approved in the amendment/ADR/playbook; later phases are not implicitly opened |
+| Application source | PROVISIONAL PHASE 1 WORK AUTHORIZED | Actual foundation/desktop source exists under recorded exceptions; no device/account service or full phase acceptance |
+| P1-02 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific scope at 04:36 UTC on ff25bee; full P1-03/P1-11 acceptance pending. [Criterion audit](evidence/P1-02-canonical-criterion-audit-2026-10-31.md); accepted full-task counts unchanged |
 | Phase 0 acceptance | NOT ACCEPTED | 0/10 tasks accepted; all 12 baseline exits unaccepted; independent slices concluded, remaining gates BLOCKED |
 
 ## 3. Historical Phase 0 snapshot before collector hardening
@@ -78,7 +81,7 @@ A blocked Phase may be narrowed/deferred only by an explicit user-approved chang
 
 ## 5. Current next action / execution boundary
 
-**2026-10-31:** renewed coding request is being translated into a [narrow provisional-source amendment](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md), PENDING review/approval. No code started or Phase opened. Host ZIP awaited; it cannot alone certify all Phase0 exits.
+**2026-10-31:** renewed coding request is being translated into a [narrow provisional-source amendment](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md), PENDING review/approval. No code started or Phase opened. Host ZIP awaited; it cannot alone certify all Phase 0 exits.
 
 
 **21:49 UTC handoff:** See [verified results, remaining evidence and proposed-only security alternative](evidence/PHASE-00-independent-work-handoff-2026-10-30.md). Independent work is concluded, not Phase acceptance; no unchanged lab reruns or invented activity. Target-host/device/policy/security decisions remain the next dependencies.
@@ -249,7 +252,7 @@ cleanup true. Downloaded sanitized artifact revalidated; details/sample hashes i
 [P0-09 evidence](evidence/P0-09-sqlite-source-lab-2026-10-30.md). Collector/offline
 run41119112459 separately SUCCESS. No desktop rerun or new renderer. Hosted engine
 slice only: no production binding/schema/encrypted-backup/host acceptance; fullP0-09,
-G0-12 navigation and ADR-0005 all-document containment remain BLOCKED. Phase0/10.
+G0-12 navigation and ADR-0005 all-document containment remain BLOCKED. Phase 0/10.
 
 ### G0-13 stages1–3 source checkpoint — 2026-10-30 21:20 UTC
 
@@ -279,7 +282,7 @@ with parent review/approval of each next entry. **Current execution: P1-01-S onl
 Record module map/minimal verified dependency closure before harness/validator work.
 Normal owned build/test tooling is permitted; no new hosted workflow or runtime
 service. Branch remains phase/00-feasibility. This is provisional source authority,
-not opening/accepting full Phase1, Phase0 acceptance, main merge or activation.
+not opening/accepting full Phase1, Phase 0 acceptance, main merge or activation.
 All exclusions, original baseline/12 exits, navigation FAIL, ADR B/C limitations
 and C-03/C-05/V9 requirements remain unchanged. Root coordinates publication.
 
@@ -289,13 +292,13 @@ Approved cross-phase subset only: module map/minimal reviewed23-entry dependency
 closure implemented; Linux scripts-disabled restore and compiler version check PASS,
 8/8 metadata regressions PASS. [Evidence](evidence/P1-01-S-provisional-foundation-2026-10-31.md).
 Independent review CLEAR01:27 UTC; P1-01-S checkpoint complete, full P1-01/Phase1 NOT_ACCEPTED. P1-03-S/P1-11-S next entry awaits root
-approval. No runtime services/new workflow; original host/navigation/Phase0 gates open.
+approval. No runtime services/new workflow; original host/navigation/Phase 0 gates open.
 
 ### P1-03-S entry — 2026-10-31 01:39 UTC
 
 Root approved strict/compiler/test/import/hygiene subset after published reviewed
 P1-01-S. Entry recorded before code; no P1-11-S authorization yet. No full Phase1
-opening/acceptance or activation; all original Phase0/navigation gates preserved.
+opening/acceptance or activation; all original Phase 0/navigation gates preserved.
 
 ### P1-03-S provisional source checkpoint — 2026-10-31 01:46 UTC
 
@@ -303,7 +306,7 @@ Strict compiler, restricted import/source inventory checks, limited hygiene and
 Node test harness implemented. Local54/54 tests and all five check stages PASS;
 [evidence](evidence/P1-03-S-provisional-harness-2026-10-31.md). Independent review
 CLEAR01:47 UTC, full check54/54 twice. No full formatter/linter or runtime; Windows NOT_RUN. P1-11-S entry still
-requires root approval; original Phase0/navigation/activation gates unchanged.
+requires root approval; original Phase 0/navigation/activation gates unchanged.
 
 ## Branch separation update — 2026-10-31 01:47 UTC
 
@@ -359,7 +362,7 @@ manifest checks and 31/31 tests PASS. [Evidence](evidence/P1-02-bootstrap-source
 records the corrected preflight sequencing defect and all runtime NOT_RUN limits.
 Independent review CLEAR at 02:24 UTC, complete source check 31/31 twice.
 Windows launcher/workflow/runtime evidence is next;
-full P1-02 and original Phase0/navigation/authority gates remain unaccepted.
+full P1-02 and original Phase 0/navigation/authority gates remain unaccepted.
 
 ### P1-02 Windows verification implementation — 2026-10-31 02:27 UTC
 
@@ -440,3 +443,23 @@ Root approved the missing finite generated-input campaign: local 52/52 source te
 now include 4,096 seeded inputs/16,384 dispatcher checks and fresh-view-after-close
 regression; Python 43/43 PASS. Independent review CLEAR at 04:32 UTC; incremental Windows execution pending, while
 prior actual runtime 25/25 remains retained. No new service, task or phase invented.
+
+### P1-02 own-task verification closure — 2026-10-31 04:35 UTC
+
+Exact-head Windows run 41169068159 PASS: 52/52 source/build including finite seeded
+fuzz and fresh-view regression, 43/43 Python, 25/25 PowerShell, 25/25 source/package
+runtime, typed negatives and all cleanup. [Criterion audit](evidence/P1-02-canonical-criterion-audit-2026-10-31.md)
+identifies no remaining P1-02-specific implementation/test gap within its explicit
+N/A/compositional qualifications. Formal task acceptance still awaits coordinator
+and full predecessor P1-03/P1-11 disposition; no accepted-task numerator change or
+phase/main merge is inferred. Next source priority is P1-03 tooling, not extra
+P1-02 surfaces. Old G0-12 FAIL and original Phase 0 gates remain preserved.
+
+### Coordinator technical disposition — 2026-10-31 04:36 UTC
+
+P1-02 task-specific implementation/verification accepted as **TECHNICAL_PASS** on
+exact head ff25bee9cff5db7e2018b0a503a2791a4603c223, with the audited N/A/compositional
+and transport-instrumentation limits. Formal task acceptance is **DEPENDENCIES_PENDING**
+for full P1-03/P1-11. Accepted full-task count stays 0/11 Phase 1, 0/154 tool; no main
+merge or old Phase 0 gate waiver. Stop further P1-02 research/surfaces; next priority
+is the actual P1-03 lint/formatter/tooling gap under a reviewed exact candidate.

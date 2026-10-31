@@ -162,3 +162,33 @@ Local complete pipeline **52/52 PASS**, Python **43/43 PASS**. Independent revie
 CLEAR at 04:32 UTC: fresh 52/52 and 43/43, diff and 9 local links PASS; finite oracle/
 bounds/reopen qualifications verified. New exact-head Windows run remains pending. Prior actual runtime25/25
 is retained separately; current formal task/prerequisite acceptance remains pending.
+
+## Generated-input increment: Windows PASS — 04:35 UTC
+
+Exact remote head `ff25bee9cff5db7e2018b0a503a2791a4603c223`, tree
+`2046a4d474344f75ca406a888f3c21152e7eb699`:
+[run 41169068159](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41169068159),
+job 124442878218 SUCCESS. Actual Windows source/build **52/52** includes the bounded
+seeded campaign and fresh-view regression; Python **43/43**, PowerShell **25/25**.
+Actual source/package **25/25 each**, crash/tamper expected exit 1, every Job/capture
+and directory cleanup true, no truncation, all build/binary/copy checks true.
+
+Artifact 13030442649 ZIP: 1,023 bytes, SHA256
+`ca37dcbb670d9de2f81b9595482815286e9781a3b98d4c9fd6dc8ae30af12ddd`.
+[Retained fixed report](P1-02-public-bridge-fuzz-sample-2026-10-31.json) Git blob bytes
+match downloaded LF-only original: 4,380 bytes, SHA256
+`fcbaf2b57574b25dd672b1404cfa1ad5902fbeee0e81241abd2cd0080553e46a`.
+Hash refers to artifact/Git blob, not a potentially newline-converted Windows copy.
+Verified bounded ZIP digest/single entry and duplicate-aware parse before retention.
+Source/package owned bytes 1,231,398 /1,231,400; crash 1,231,390; tamper 557,458;
+package 374,870,614. Runtime versions unchanged. Both about:blank URLs changed with
+no observed navigation denial; actual sender denial passed and old FAIL_RETAINED.
+
+The named generated-input evidence gap is now closed on Linux and hosted Windows.
+[Canonical audit](P1-02-canonical-criterion-audit-2026-10-31.md) distinguishes task-specific
+technical evidence from formal predecessor acceptance. No further P1-02 research or
+new surface is inferred. Full P1-03/P1-11, phase gates and main merge remain separate.
+Independent new artifact content review CLEAR at 04:35 UTC: strict schema/public
+equality, hash and privacy checks PASS, without reviewer redownload/runtime rerun.
+Coordinator accepted P1-02-specific TECHNICAL_PASS at 04:36 UTC; formal task remains
+DEPENDENCIES_PENDING for P1-03/P1-11. No full task/phase acceptance is asserted here.
