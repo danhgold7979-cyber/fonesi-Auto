@@ -107,13 +107,13 @@ function Performance({
 const QUICK = [
   ['home', 'Home'],
   ['arrow-left', 'Back'],
-  ['layers', 'Recent'],
-  ['x', 'Bỏ chọn'],
-  ['square', 'Dừng nền'],
+  ['square-stack', 'Ứng dụng gần đây'],
+  ['eraser', 'Xóa nhập liệu'],
+  ['layers', 'Xóa nền / dừng app nền'],
   ['camera', 'Chụp màn hình'],
-  ['refresh', 'Làm mới'],
-  ['power', 'Nguồn'],
-  ['terminal', 'ADB'],
+  ['refresh', 'Làm mới màn hình'],
+  ['power', 'Màn hình nguồn'],
+  ['terminal', 'Lệnh ADB'],
 ] as const;
 export function UiShell(p: ShellProps) {
   const supplied = p.snapshot ?? unavailableSnapshot;

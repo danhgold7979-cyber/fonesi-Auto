@@ -52,7 +52,7 @@ export function EmptyPanel({
   children?: ReactNode;
 }>) {
   return (
-    <div className="empty" role="status">
+    <div className="empty production-empty" role="status">
       <Icon name={status === 'ERROR' ? 'alert-triangle' : 'info'} className="big" />
       <strong>
         {status === 'LOADING' ? 'Đang tải…' : status === 'ERROR' ? 'Không thể tải dữ liệu' : title}

@@ -269,7 +269,7 @@ test('theme mutation reconciles the visible renderer revision after native geome
   const source = fs.readFileSync(path.join(__dirname, 'ui-main-probe.cjs'), 'utf8');
   const text = source.slice(
     source.indexOf('async function theme('),
-    source.indexOf('async function page('),
+    source.indexOf('const PAGE_LAYOUT = '),
   );
   const calls = [];
   const context = {
@@ -360,4 +360,39 @@ test('reference closure waits for actual closed event and destroyed state before
   assert.ok(at < source.indexOf('complete = true;', at));
   assert.ok(source.includes("app.on('window-all-closed', () => {})"));
   assert.ok(source.includes("fs.writeSync(2, 'UI_REFERENCE_DEADLINE\\n')"));
+});
+
+test('native page layout checks reject clipped step chips and short workflow category bands', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'ui-main-probe.cjs'), 'utf8');
+  const declaration = source.slice(
+    source.indexOf('const PAGE_LAYOUT = '),
+    source.indexOf('async function page(value)'),
+  );
+  const vm = require('node:vm');
+  const layouts = vm.runInNewContext(`${declaration};PAGE_LAYOUT`);
+  const nodes = Array.from({ length: 5 }, () => ({
+    clientHeight: 29,
+    scrollHeight: 29,
+    getBoundingClientRect: () => ({ height: 29 }),
+    style: { lineHeight: '17px', paddingTop: '6px', paddingBottom: '6px' },
+  }));
+  const evaluate = (code, values) =>
+    vm.runInNewContext(code, {
+      document: { querySelectorAll: () => values },
+      getComputedStyle: (node) => node.style,
+    });
+  assert.equal(evaluate(layouts.setup, nodes), true);
+  nodes[0].clientHeight = 17;
+  assert.equal(evaluate(layouts.setup, nodes), false);
+  nodes[0].clientHeight = 29;
+  nodes[0].scrollHeight = 40;
+  assert.equal(evaluate(layouts.setup, nodes), false);
+  const bands = Array.from({ length: 9 }, () => ({
+    parentElement: { clientWidth: 700, style: { paddingLeft: '0px', paddingRight: '0px' } },
+    getBoundingClientRect: () => ({ width: 700, height: 36 }),
+  }));
+  assert.equal(evaluate(layouts.workflows, bands), true);
+  bands[0].getBoundingClientRect = () => ({ width: 120, height: 36 });
+  assert.equal(evaluate(layouts.workflows, bands), false);
+  assert.ok(source.includes('await execute(PAGE_LAYOUT[value])'));
 });

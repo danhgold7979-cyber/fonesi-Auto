@@ -1,6 +1,6 @@
 # PHASE-01 — Repository and desktop foundation
 
-**Revision:** 1.2-draft · **Current summary:** 2026-10-31 13:37 UTC
+**Revision:** 1.2-draft · **Current summary:** 2026-10-31 14:35 UTC
 **Full-plan acceptance:** NOT_ACCEPTED · **Execution:** explicitly scoped entries active
 **Current branch:** `phase-01`; no main merge or original Phase 0 acceptance
 **Development entry:** adopted software-first amendment permits scoped development; original formal Phase0 gate remains pending
@@ -11,9 +11,9 @@ passed exact-head Windows verification; see the
 [qualified criterion audit](../evidence/P1-05-canonical-criterion-audit-2026-10-31.md).
 No domain service is exposed through public IPC. Full phase/UI/secret-store and
 installed-packaging acceptance remain incomplete.
-P1-08 complete six-tab V9 source is now in approved development;
+P1-08 complete six-tab V9 source has passed its first native/image collection;
 [its source/evidence checkpoint](../evidence/P1-08-v9-ui-source-2026-10-31.md)
-does not yet claim native visual or task acceptance.
+records the finite visual correction batch awaiting native confirmation; task acceptance remains pending.
 
 > Phase 0 remains unfinished. Historical pure-source restrictions below were
 > superseded only by recorded narrow entries, including ADR-0006's real public-read

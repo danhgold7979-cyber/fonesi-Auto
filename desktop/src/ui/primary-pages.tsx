@@ -447,7 +447,7 @@ export function TrackingPage({
               setAccountId('');
             }}
           />
-          <div className="field wide">
+          <div className="field">
             <label htmlFor="tracking-search">Tìm tài khoản</label>
             <input
               id="tracking-search"
@@ -460,7 +460,7 @@ export function TrackingPage({
               placeholder="Tìm theo tên nick / ID..."
             />
           </div>
-          <div className="field wide">
+          <div className="field">
             <label htmlFor="tracking-account">Tài khoản / đích đang theo dõi</label>
             <select
               id="tracking-account"
@@ -497,7 +497,19 @@ export function TrackingPage({
           <span className="muted">Thiết lập nội dung và lịch đăng theo điện thoại</span>
         </div>
         <div className="health-table-wrap">
-          <table className="health-table">
+          <table className="health-table tracking-device-health">
+            <colgroup>
+              {[
+                ['device', 28],
+                ['connection', 14],
+                ['battery', 12],
+                ['storage', 18],
+                ['accounts', 12],
+                ['status', 16],
+              ].map(([name, width]) => (
+                <col key={name} style={{ width: `${width}%` }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 <th>ĐIỆN THOẠI</th>

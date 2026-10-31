@@ -305,7 +305,7 @@ function CardHead({ title, description }: { title: string; description: string }
 }
 function StateNotice({ snapshot }: Pick<PageProps, 'snapshot'>) {
   return (
-    <div className="notice warn" role="status">
+    <span className="muted" role="status">
       {snapshot.status === 'LOADING'
         ? 'Đang tải dữ liệu…'
         : snapshot.status === 'ERROR'
@@ -313,7 +313,7 @@ function StateNotice({ snapshot }: Pick<PageProps, 'snapshot'>) {
           : snapshot.status === 'READY'
             ? 'SYNTHETIC TEST · Dữ liệu kiểm thử, không phải thiết bị thật.'
             : 'Chưa triển khai dịch vụ · Không có dữ liệu thiết bị được quan sát.'}
-    </div>
+    </span>
   );
 }
 function EmptySelect({ label, id }: { label: string; id: string }) {
@@ -378,17 +378,19 @@ export function SetupPage({
           '3. Quy trình',
           '4. Media + Excel',
           '5. Lịch đăng',
-        ].map((label, i) => (
-          <span key={label}>
-            <span className="step on">{label}</span>
-            {i < 4 && <span className="arr"> → </span>}
-          </span>
-        ))}
+        ].flatMap((label, i) => [
+          <span className="step on" key={label}>
+            {label}
+          </span>,
+          ...(i < 4
+            ? [
+                <span className="arr" key={`${label}-arrow`}>
+                  →
+                </span>,
+              ]
+            : []),
+        ])}
       </div>
-      <StateNotice snapshot={snapshot} />
-      <p id="work-unavailable" className="muted">
-        Bản nháp cục bộ, chưa lưu và không thể thực thi.
-      </p>
       {packOpen && (
         <UiModal
           title="Tạo bộ nội dung (Caption + Hashtag + 10 bình luận)"
@@ -546,7 +548,10 @@ export function SetupPage({
         </div>
         <div className="rowflex wrap">
           <span className="pill amber">UNAVAILABLE</span>
-          <span className="muted">Nick, ID và quyền chưa được xác minh.</span>
+          <span id="work-unavailable" className="muted">
+            Bản nháp chưa lưu · Nick, ID và quyền chưa được xác minh.{' '}
+            <StateNotice snapshot={snapshot} />
+          </span>
         </div>
         {workflow.startsWith('fb-group') && (
           <div className="group-target-picker">
@@ -883,7 +888,6 @@ export function CalendarPage({
           <Icon name="undo" /> Hoàn tác
         </Unavailable>
       </Header>
-      <StateNotice snapshot={snapshot} />
       <div className="content-card">
         <div className="cal-toolbar">
           <div className="cal-toolbar-left">
@@ -1031,7 +1035,9 @@ export function CalendarPage({
           {NETWORKS.map((n, i) => (
             <span key={n}>
               <i
-                style={{ background: `hsl(${[215, 0, 325, 0, 15, 210, 0, 200, 180][i]} 66% 46%)` }}
+                style={{
+                  background: `hsl(${[215, 260, 305, 225, 28, 196, 4, 195, 175][i]} 66% 46%)`,
+                }}
               />
               {n}
             </span>
@@ -1040,9 +1046,9 @@ export function CalendarPage({
         {mode === 'day' ? (
           <div className="timeline-outer">
             <div className="timeline-scroll" id="timeline-scroll">
-              <div className="timeline">
+              <div className="timeline calendar-grid">
                 <div className="time-header">
-                  <div className="time-label-cell">ĐIỆN THOẠI / FANPAGE</div>
+                  <div className="time-label-cell calendar-label">ĐIỆN THOẠI / FANPAGE</div>
                   <div className="hour-strip" style={{ width: 24 * scale, flex: 'none' }}>
                     {ORDINALS.map((i) => (
                       <div className="hour-label" key={i} style={{ left: i * scale, width: scale }}>
@@ -1166,7 +1172,9 @@ export function CalendarPage({
           <button type="button" className="btn small" onClick={() => onNavigate('setup')}>
             <Icon name="plus" /> Thiết lập lịch hàng loạt
           </button>
-          <span className="muted">Múi giờ và trạng thái lịch: chưa quan sát.</span>
+          <span className="muted">
+            Múi giờ và trạng thái lịch: chưa quan sát. <StateNotice snapshot={snapshot} />
+          </span>
         </div>
       </div>
     </>
@@ -1462,7 +1470,7 @@ export function WorkflowsPage({ snapshot, onUnavailable, onChooseWorkflow }: Pag
           </div>
           <span className="pill blue">9 nhãn quy trình</span>
         </div>
-        <div className="rowflex wrap between">
+        <div className="rowflex wrap between" style={{ marginTop: 8 }}>
           <div>
             <b>Facebook · Nhóm TƯƠNG TÁC</b>
             <p className="muted">
@@ -1501,6 +1509,7 @@ export function WorkflowsPage({ snapshot, onUnavailable, onChooseWorkflow }: Pag
                           <button
                             type="button"
                             className={`tree-item ${category === 'TƯƠNG TÁC' ? 'interaction-root' : ''}`}
+                            style={{ width: '100%', textAlign: 'left' }}
                             aria-expanded={open.has(catKey)}
                             onClick={() => toggle(catKey)}
                           >
@@ -1526,6 +1535,9 @@ export function WorkflowsPage({ snapshot, onUnavailable, onChooseWorkflow }: Pag
                                     >
                                       <Icon name="git-branch" />
                                       <span>{group}</span>
+                                      <span className="pill">
+                                        {items.filter((entry) => entry.group === group).length}
+                                      </span>
                                       <span className="caret">
                                         <Icon name={open.has(groupKey) ? 'minus' : 'plus'} />
                                       </span>

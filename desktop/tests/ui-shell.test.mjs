@@ -204,6 +204,9 @@ function mount(extra = {}) {
     emit: (key, event) => {
       for (const fn of [...(events.get(key) ?? [])]) fn(event);
     },
+    emptyPanel(properties) {
+      return shared.exports.EmptyPanel(properties);
+    },
     localModal(properties) {
       return renderComponent(shared.exports.UiModal, properties);
     },
@@ -460,4 +463,58 @@ test('all-phone context clears active device while retaining selected dock devic
     true,
   );
   assert.equal(m.dimensions.length, 0);
+});
+
+test('quick toolbar preserves the reference nine-icon order and labels while every command stays unavailable', () => {
+  const expected = [
+    ['home', 'Home'],
+    ['arrow-left', 'Back'],
+    ['square-stack', 'Ứng dụng gần đây'],
+    ['eraser', 'Xóa nhập liệu'],
+    ['layers', 'Xóa nền / dừng app nền'],
+    ['camera', 'Chụp màn hình'],
+    ['refresh', 'Làm mới màn hình'],
+    ['power', 'Màn hình nguồn'],
+    ['terminal', 'Lệnh ADB'],
+  ];
+  const m = mount();
+  const commands = m.all(
+    (n) => n.props?.className === 'quick-btn' && n.props.action === 'device-input',
+  );
+  assert.equal(commands.length, expected.length);
+  for (const [index, [icon, label]] of expected.entries()) {
+    assert.equal(commands[index].props.icon, icon);
+    assert.equal(commands[index].props.title, `${label} — chưa khả dụng`);
+    commands[index].props.onUnavailable(commands[index].props.action);
+    assert.ok(m.modal());
+    assert.equal(m.dimensions.length, 0);
+    m.find('dialog-close', m.modal()).props.onClick();
+  }
+});
+
+test('production empty-state markup has its scoped spacing class and retains truthful status text', () => {
+  const m = mount();
+  for (const status of ['UNAVAILABLE', 'LOADING', 'ERROR']) {
+    const panel = m.emptyPanel({
+      status,
+      title: 'Chưa có dữ liệu',
+      detail: 'Không có nguồn thiết bị đã xác minh.',
+    });
+    assert.equal(panel.props.className, 'empty production-empty');
+    assert.equal(panel.props.role, 'status');
+    assert.equal(m.all((n) => n.type === 'strong', panel).length, 1);
+    assert.equal(
+      m.all((n) => n.type === 'p', panel)[0].props.children,
+      'Không có nguồn thiết bị đã xác minh.',
+    );
+    const title = m.all((n) => n.type === 'strong', panel)[0].props.children;
+    assert.equal(
+      title,
+      status === 'LOADING'
+        ? 'Đang tải…'
+        : status === 'ERROR'
+          ? 'Không thể tải dữ liệu'
+          : 'Chưa có dữ liệu',
+    );
+  }
 });

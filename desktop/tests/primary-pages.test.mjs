@@ -289,3 +289,32 @@ test('tracking preserves the reference platform-specific metric catalogue, never
     );
   }
 });
+
+test('tracking fits required account selector into existing filter rows and retains all six health columns', () => {
+  const tree = mount('TrackingPage', empty('UNAVAILABLE')).render();
+  const all = nodes(tree);
+  for (const id of ['tracking-search', 'tracking-account']) {
+    const field = all.find(
+      (node) =>
+        node.props?.className === 'field' && nodes(node).some((child) => child.props?.id === id),
+    );
+    assert.ok(field, `${id} remains in a compact half-row field`);
+    assert.ok(!field.props.className.includes('wide'));
+  }
+  const table = all.find((node) => node.props?.className === 'health-table tracking-device-health');
+  assert.ok(table);
+  assert.deepEqual(
+    nodes(table)
+      .filter((node) => node.type === 'th')
+      .map(text),
+    ['ĐIỆN THOẠI', 'KẾT NỐI', 'PIN', 'DUNG LƯỢNG TRỐNG', 'TÀI KHOẢN', 'TRẠNG THÁI'],
+  );
+  assert.deepEqual(
+    nodes(table)
+      .filter((node) => node.type === 'col')
+      .map((node) => node.props.style.width),
+    ['28%', '14%', '12%', '18%', '12%', '16%'],
+  );
+  assert.ok(text(table).includes('Chưa có dữ liệu sức khỏe điện thoại.'));
+  assert.equal(nodes(table).find((node) => node.type === 'td').props.colSpan, 6);
+});

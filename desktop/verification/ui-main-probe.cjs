@@ -146,6 +146,10 @@ async function theme(value) {
   const observed = await readSettings();
   if (observed.theme !== value.toUpperCase()) throw Error('UI_THEME_PERSISTENCE');
 }
+const PAGE_LAYOUT = {
+  setup: `(() => {const chips=Array.from(document.querySelectorAll('#workspace .stepper .step'));return chips.length===5&&chips.every(node=>{const box=node.getBoundingClientRect(),style=getComputedStyle(node),needed=parseFloat(style.lineHeight)+parseFloat(style.paddingTop)+parseFloat(style.paddingBottom);return Number.isFinite(needed)&&box.height>=needed-1&&node.clientHeight>=needed-1&&node.scrollHeight<=node.clientHeight+1;});})()`,
+  workflows: `(() => {const bands=Array.from(document.querySelectorAll('#workspace .tree-root > .tree-item,#workspace .tree-category > .tree-item'));return bands.length>=9&&bands.every(node=>{const box=node.getBoundingClientRect(),parent=node.parentElement,style=getComputedStyle(parent),available=parent.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);return available>0&&Math.abs(box.width-available)<=2&&box.height>0;});})()`,
+};
 async function page(value) {
   if (!PAGES.includes(value)) throw Error('UI_PAGE');
   await click(`#nav [data-page="${value}"]`);
@@ -197,6 +201,7 @@ async function page(value) {
     `(() => { const required=${JSON.stringify(required)};return document.querySelector('#workspace h1').textContent===required[0]&&required.slice(1).every(selector=>document.querySelector('#workspace '+selector)); })()`,
   );
   if (!structure) throw Error('UI_PAGE_STRUCTURE');
+  if (PAGE_LAYOUT[value] && !(await execute(PAGE_LAYOUT[value]))) throw Error('UI_PAGE_LAYOUT');
   await execute('scrollTo(0,0);true');
   await pause(60);
 }

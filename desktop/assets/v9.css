@@ -237,3 +237,16 @@
 .dialog-body #preference-preview{padding:8px}.wall-surface .empty{padding:24px 12px;text-align:center}.wall-surface .empty strong{display:block;margin:8px 0}
 
 hr.wall-resizer{margin:0;border:0}
+
+/* Production-only empty states: retain the reference surfaces and readable contrast. */
+.production-empty{display:grid;justify-items:start;gap:6px;padding:12px 0}
+.production-empty>.uc{display:block}.production-empty>p{margin:0}
+.wall-surface .production-empty{justify-items:center;color:#344862}
+.wall-surface .production-empty .muted{color:#60758f}
+.wall-surface .production-empty strong{margin:2px 0}
+/* Keep the full native metric catalogue readable in the desktop content column. */
+@media(min-width:1121px){.tracking-device-health{min-width:0;table-layout:fixed}.tracking-device-health th,.tracking-device-health td{overflow-wrap:anywhere}}
+/* The empty calendar retains the dark reference grid rather than a white fallback. */
+:root[data-theme="dark"] .calendar-grid{background:#172337}
+:root[data-theme="dark"] .calendar-grid .lane-track{background-color:#172337;background-image:linear-gradient(to right,#2b3a50 1px,transparent 1px)}
+:root[data-theme="dark"] .calendar-grid .calendar-label{background:#172337;color:#e4ebf6;border-color:#2b3a50}

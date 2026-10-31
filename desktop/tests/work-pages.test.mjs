@@ -351,3 +351,66 @@ test('workflow choice carries exact catalogue identity into setup local draft', 
     h.exports.WORKFLOW_LABELS.find((row) => row.id === id).network,
   );
 });
+
+test('setup V9 step chips are direct flex children and truthful state stays in the existing caption', () => {
+  const tree = harness('SetupPage').render();
+  const stepper = nodes(tree, (n) => n.props?.className === 'stepper')[0];
+  const children = stepper.props.children.flat(Infinity).filter(Boolean);
+  assert.deepEqual(
+    Array.from(children, (n) => n.props.className),
+    ['step on', 'arr', 'step on', 'arr', 'step on', 'arr', 'step on', 'arr', 'step on'],
+  );
+  assert.equal(nodes(tree, (n) => n.props?.className === 'notice warn').length, 0);
+  const caption = nodes(tree, (n) => n.props?.id === 'work-unavailable')[0];
+  assert.ok(text(caption).includes('Bản nháp chưa lưu'));
+  assert.ok(text(caption).includes('Chưa triển khai dịch vụ'));
+});
+test('workflow category bands and subgroup badges match the static catalogue; calendar palette is exact', () => {
+  const h = harness('WorkflowsPage');
+  button(h.render(), 'Mở tất cả').props.onClick();
+  const tree = h.render();
+  for (const node of nodes(
+    tree,
+    (n) => n.type === 'button' && n.props?.className?.startsWith('tree-item'),
+  )) {
+    assert.equal(node.props.style.width, '100%');
+    assert.equal(node.props.style.textAlign, 'left');
+  }
+  const groups = [
+    ...new Set(
+      h.exports.WORKFLOW_LABELS.map((row) => `${row.network}|${row.category}|${row.group}`),
+    ),
+  ];
+  for (const group of groups) {
+    const [network, category, name] = group.split('|');
+    const expected = h.exports.WORKFLOW_LABELS.filter(
+      (row) => row.network === network && row.category === category && row.group === name,
+    ).length;
+    const matching = nodes(
+      tree,
+      (n) =>
+        n.type === 'button' &&
+        n.props?.className === 'tree-item' &&
+        nodes(n, (c) => c.type === 'span' && text(c) === name).length > 0,
+    );
+    assert.ok(
+      matching.some(
+        (n) =>
+          nodes(n, (c) => c.props?.className === 'pill' && text(c) === String(expected)).length ===
+          1,
+      ),
+    );
+  }
+  const calendar = harness('CalendarPage').render();
+  assert.deepEqual(
+    nodes(calendar, (n) => n.type === 'i').map((n) => n.props.style.background),
+    [215, 260, 305, 225, 28, 196, 4, 195, 175].map((hue) => `hsl(${hue} 66% 46%)`),
+  );
+  assert.equal(nodes(calendar, (n) => n.props?.className === 'timeline calendar-grid').length, 1);
+  assert.equal(
+    nodes(calendar, (n) => n.props?.className === 'time-label-cell calendar-label').length,
+    1,
+  );
+  assert.equal(nodes(calendar, (n) => n.props?.className === 'notice warn').length, 0);
+  assert.ok(text(calendar).includes('Chưa triển khai dịch vụ'));
+});
