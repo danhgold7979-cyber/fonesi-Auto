@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "modules": {
+    "renderer.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value"
+        },
+        "react-dom/client": {
+          "createRoot": "value"
+        }
+      }
+    },
+    "preload.ts": {
+      "role": "preload",
+      "imports": {
+        "electron": {
+          "contextBridge": "value",
+          "ipcRenderer": "value"
+        },
+        "./ipc-contract.js": {
+          "CHANNEL": "value"
+        },
+        "./preload-client.js": {
+          "createPublicClient": "value"
+        }
+      }
+    },
+    "ipc-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "preload-client.ts": {
+      "role": "client",
+      "imports": {
+        "./ipc-contract.ts": {
+          "Method": "type",
+          "errorResponse": "value",
+          "RESPONSE_BYTES": "value"
+        }
+      }
+    },
+    "view-session.ts": {
+      "role": "contract",
+      "imports": {
+        "./ipc-contract.js": {
+          "ErrorCode": "type"
+        }
+      }
+    },
+    "foundation-bridge.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "electron": {
+          "IpcMain": "type",
+          "BrowserWindow": "type",
+          "IpcMainInvokeEvent": "type"
+        },
+        "./ipc-contract.js": {
+          "CHANNEL": "value",
+          "parseRequest": "value",
+          "errorResponse": "value",
+          "publicResponse": "value"
+        },
+        "./view-session.js": {
+          "ViewSession": "value",
+          "Caller": "type"
+        },
+        "./main/asset-policy.js": {
+          "ENTRY_URL": "value"
+        }
+      }
+    },
+    "main.ts": {
+      "role": "main",
+      "imports": {
+        "electron": {
+          "app": "value",
+          "BrowserWindow": "value",
+          "protocol": "value",
+          "session": "value",
+          "Menu": "value",
+          "ipcMain": "value"
+        },
+        "node:fs": {
+          "readFileSync": "value",
+          "lstatSync": "value"
+        },
+        "node:path": {
+          "join": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "./foundation-bridge.js": {
+          "installFoundationBridge": "value"
+        },
+        "./main/lifecycle.js": {
+          "createLifecycle": "value",
+          "disposeResources": "value"
+        },
+        "./main/profile-owner.js": {
+          "prepareOwnedProfile": "value"
+        },
+        "./main/asset-policy.js": {
+          "ENTRY_URL": "value",
+          "SCHEME": "value",
+          "ASSET_SHA256": "value"
+        },
+        "./main/window-policy.js": {
+          "securePreferences": "value",
+          "installSessionPolicy": "value",
+          "installWindowPolicy": "value"
+        }
+      }
+    },
+    "main/asset-policy.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "main/lifecycle.ts": {
+      "role": "contract",
+      "imports": {
+        "./asset-policy.js": {
+          "LifecyclePhase": "type"
+        }
+      }
+    },
+    "main/profile-owner.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs": {
+          "lstatSync": "value",
+          "realpathSync": "value",
+          "readdirSync": "value",
+          "readFileSync": "value",
+          "mkdirSync": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "basename": "value",
+          "join": "value"
+        }
+      }
+    },
+    "main/window-policy.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "electron": {
+          "Session": "type",
+          "BrowserWindow": "type"
+        },
+        "./asset-policy.js": {
+          "CSP": "value",
+          "ENTRY_URL": "value",
+          "RENDERER_URL": "value",
+          "permitsAsset": "value",
+          "SCHEME": "value"
+        }
+      }
+    }
+  }
+}

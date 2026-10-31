@@ -483,3 +483,13 @@ including foundation's 85 tests. See the [decision register](08_DECISIONS_AND_OP
 Record actual image/head/Node/npm; narrowly admit observed npm 11.19.1 with tests,
 never spoof the former 11.9.0 argument. This changes the test-machine method only,
 not user-PC/Windows 10/C-07/Phase 0/device acceptance or P1-10 completion.
+
+## P1-01 module-graph entry — 2026-10-31 05:14 UTC
+
+Coordinator approved the [exact module-graph completion contract](phases/PHASE-01-P1-01-MODULE-GRAPH-CONTRACT.md)
+and reviewer clarifications. Current reviewed pins are selected for development
+foundation verification only, separately from ADR-0001 target-host/Phase0 gates.
+Implement actual registered-module/binding/edge/cycle enforcement and bounded
+negatives using existing pinned scanner/build tools; no package/service expansion.
+Independent review before local commit/root publication. Full criteria/status remain
+subject to actual evidence; old navigation FAIL and product requirements unchanged.

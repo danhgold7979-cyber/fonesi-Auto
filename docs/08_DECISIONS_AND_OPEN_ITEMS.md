@@ -401,3 +401,12 @@ This method does **not** certify the user's Windows 10/product target host, waiv
 C-07/HC09/HC13, device/support or original Phase 0 gates, or accept a task without
 its actual criteria/evidence. Foundation must validate the actual observed npm
 version (11.19.1 on the named runner), not receive a fabricated 11.9.0 argument.
+
+## P1-01 development-foundation pin disposition — 2026-10-31 05:14 UTC
+
+Coordinator selects the existing reviewed Node24.22.1, npm11.9.0 Linux/11.19.1 named
+Windows runner, TypeScript7.0.2, esbuild0.28.2, Electron45.1.0, React/types19.3.0 and
+Biome2.6.4 for the authorized development-foundation module graph and tests. Existing
+locks/license/integrity reviews and named Windows evidence support this bounded
+selection. ADR-0001 target-host/support/performance/OCR/device criteria are not
+accepted or silently removed; no production support matrix or Phase0 PASS follows.

@@ -103,6 +103,7 @@ try {
     );
   }
   stages.push(
+    ['MODULE_GRAPH', () => run(['scripts/check-module-graph.mjs', npmVersion]).ok],
     ['QUALITY', () => run(['scripts/quality-tool.mjs', '--inventory', npmVersion]).ok],
     [
       'TYPECHECK',
@@ -119,6 +120,7 @@ try {
           'tests/policy.test.mjs',
           'tests/ipc-contract.test.mjs',
           'tests/quality-tool.test.mjs',
+          'tests/module-graph.test.mjs',
         ]);
         const counts = {};
         for (const field of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {

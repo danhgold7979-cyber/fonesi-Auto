@@ -1,4 +1,5 @@
 import { verify } from './verify-dependencies.mjs';
+import { inventory, readMap, verifyRuntimeGraph } from './check-module-graph.mjs';
 import { createManifest, verifyBuild } from './build-manifest.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +34,10 @@ try {
     unlinkSync(marker);
   }
   verify(true, process.argv[2]);
+  await verifyRuntimeGraph(
+    inventory(resolve(root, 'src')),
+    readMap(resolve(root, 'module-map.json')),
+  );
   const { build } = await import('esbuild'); // only after metadata/script/binary verification
   const fixture = readFileSync(resolve(root, 'tests/fixtures/unavailable.html'));
   const hash = createHash('sha256').update(fixture).digest('hex');

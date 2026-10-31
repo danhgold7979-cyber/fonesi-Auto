@@ -1,12 +1,16 @@
 # PHASE-01 — Repository and desktop foundation
 
-**Revision:** 1.1-draft · **Date:** 2026-10-30
-**Plan:** DRAFT / NOT AUTHORIZED · **Execution:** NOT_STARTED
-**Current provisional-source branch:** `phase-01` — coordinated2026-10-31; not full Phase entry
-**Execution base:** accepted `main` SHA to be recorded after Phase 0 acceptance and merge
-**Full-plan coding:** NO · **Narrow source subsets:** separately approved amendment; P1-11-S current under recorded narrow entry approval
+**Revision:** 1.2-draft · **Current summary:** 2026-10-31 05:30 UTC
+**Full-plan acceptance:** NOT_ACCEPTED · **Execution:** explicitly scoped entries active
+**Current branch:** `phase-01`; no main merge or original Phase 0 acceptance
+**Full-phase execution base:** remains conditional on the original Phase 0 gate
+**Current work:** approved P1-01 module graph; P1-02/P1-03 task-specific TECHNICAL_PASS,
+formal predecessor acceptance pending; all other task authority is recorded separately.
 
-> Phase 0 remains unfinished. This plan supplies future execution detail, not permission to start application code. Approval of the planning cleanup is not approval of this Phase. No code, runtime tests or hardware results are claimed here.
+> Phase 0 remains unfinished. Historical pure-source restrictions below were
+> superseded only by recorded narrow entries, including ADR-0006's real public-read
+> renderer/preload bridge and named Windows evidence. Current code/results are in
+> [status](../PHASE_STATUS.md); this summary is not a full Phase acceptance waiver.
 
 ## 1. Outcome, scope and sources
 
@@ -16,7 +20,14 @@ In scope: desktop lifecycle, privileges, typed contracts, initial persistence, s
 
 ## 2. Entry, decisions and dependency order
 
-**Scoped approved amendment:** [provisional source exception01](PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) permits only the recorded pure-source subsets on `phase-01`: P1-01-S reviewed, P1-03-S reviewed, P1-11-S entry approved at 01:51 UTC. Full task entry/order/acceptance below remain unchanged. No renderer or privileged runtime is included.
+**Current scoped entries:** the [historical pure-source amendment](PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md)
+was followed by [ADR-0006 public-read bridge approval](../decisions/ADR-0006-foundation-ipc-admission.md),
+[P1-03 tooling/method evidence](../evidence/P1-03-tooling-admission-2026-10-31.md), and the
+[approved P1-01 module-graph contract](PHASE-01-P1-01-MODULE-GRAPH-CONTRACT.md).
+Actual renderer/preload/main and Windows tests now exist within those bounds. No
+unapproved device/account/secret/persistence service or full task/Phase acceptance
+is implied. Original full task criteria/order below remain; current technical and
+formal statuses are separately recorded on the status board.
 
 
 - Phase 0 accepted with required physical-device feasibility evidence, approved ADRs and merge SHA; accepted Phase 0 baseline stays untouched.
@@ -33,7 +44,7 @@ P1-11 reviews entity identity/relationships from docs/03 and reserves compatibil
 
 ## 4. Task work packages
 
-All tasks below are **NOT_STARTED**; tests are planned, not executed. Every task inherits the entry gate and [evidence contract](#6-verification-and-evidence).
+The following original work packages/criteria are retained; their historical NOT_STARTED summary is superseded by the evidence-backed [current status](../PHASE_STATUS.md). Each task still inherits its named predecessor and [evidence contract](#6-verification-and-evidence); technical passes do not silently accept those predecessors.
 
 ### P1-01 — Establish clean folder/package architecture
 - **Deliverable/dependencies:** approved Phase 0 stack ADRs → independently designed module/package map, import-direction rules, dependency/license inventory and reproducible bootstrap instructions. Record actual paths and ownership; no inherited fonesi-W structure.

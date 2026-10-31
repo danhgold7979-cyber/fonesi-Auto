@@ -18,6 +18,8 @@ export const inputs = [
   'package-lock.json',
   'dependency-review.json',
   'tsconfig.json',
+  'module-map.json',
+  'scripts/check-module-graph.mjs',
   'src/main.ts',
   'src/foundation-bridge.ts',
   'src/ipc-contract.ts',

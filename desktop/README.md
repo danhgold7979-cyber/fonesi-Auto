@@ -161,3 +161,20 @@ node scripts/quality-tool.mjs --inventory 11.9.0
 
 Use actual reviewed npm 11.19.1 for the last command on the named Windows machine.
 These diagnostic commands do not bypass or replace the required aggregate gate.
+
+## Actual P1-01 module/import architecture
+
+`module-map.json` enumerates all current source files, owners, exact named imports
+and type/value kinds. The [approved contract](../docs/phases/PHASE-01-P1-01-MODULE-GRAPH-CONTRACT.md)
+records the actual renderer/preload/main/pure layers and future worker boundaries.
+`check-module-graph.mjs` rejects unregistered source/targets, forbidden bindings or
+layers and cycles before its existing esbuild parser sees in-memory source. Both
+aggregate checks and direct build enforce it; the build manifest binds the policy.
+No package wildcard or arbitrary filesystem resolver is an allowed fallback.
+
+This is a deliberately limited source grammar, not a runtime sandbox or full JSX
+parser. TSX opaque text containing import/export/require is unsupported even when
+harmless, to prevent lexical ambiguity hiding source dependencies. Current ordinary
+UI text and the actual renderer pass; future syntax needs tested policy review,
+not a feature removal. Type-only edges/directives and dynamic loader denials are
+checked before runtime erasure. [Source evidence/criteria](../docs/evidence/P1-01-module-graph-source-2026-10-31.md).

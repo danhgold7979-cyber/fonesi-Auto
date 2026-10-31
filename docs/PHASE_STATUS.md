@@ -521,3 +521,33 @@ Exact Windows head ee7e04de9e1597707f95d8406be945fdb0596b63 accepted as
 for full P1-01. P1-02 and P1-03 are two verified canonical task-specific scopes;
 accepted full-task counts remain 0/11 Phase 1 and 0/154 overall. No effort-weighted
 percentage, full Phase acceptance, target-host waiver or main merge follows.
+
+### P1-01 actual module-graph entry — 2026-10-31 05:14 UTC
+
+Coordinator approved the reviewed [module-graph contract](phases/PHASE-01-P1-01-MODULE-GRAPH-CONTRACT.md)
+for implementation: exact current desktop map, binding/edge/cycle guards and bounded
+negative fixtures. Existing pins selected for development only; no new service or
+Phase0/target-host waiver. Entry recorded before source; tests/acceptance pending.
+
+### P1-01 reviewed source checkpoint — 2026-10-31 05:32 UTC
+
+Actual 11-module map/binding/layer/cycle and restricted in-memory parser graph
+implemented; full desktop **84/84**, foundation **86/86**, Python **43/43** PASS.
+Independent source review CLEAR, including nine additional adversarial probes
+not counted as checked-in tests. Limited TSX grammar and review-driven defect
+closures are explicit in [source/criterion evidence](evidence/P1-01-module-graph-source-2026-10-31.md).
+Exact-head Windows verification pending; no full task/Phase acceptance yet.
+
+### P1-01 actual absence fixture — 2026-10-31 05:35 UTC
+
+Closed the specific missing-install evidence gap without touching shared packages:
+owned real-verifier CLI metadata positive, then absent node_modules negative gives
+fixed dependency failure/exit1 and no install/cache creation. Current desktop
+**85/85 PASS**; final small review pending. Earlier84 is historical, not extra tests.
+
+### P1-01 final source review — 2026-10-31 05:37 UTC
+
+Independent current desktop **85/85 PASS**, source/docs CLEAR, 100 links/diff PASS.
+Actual missing-install CLI evidence is verified; Windows exact-head execution is
+next. Other author's P1-11 proposal remains documentation-only and outside this
+implementation checkpoint. No accepted-task count or main merge follows yet.
