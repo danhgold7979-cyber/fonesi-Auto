@@ -273,3 +273,13 @@ journal entries, and each of the three exact provision/auth/main profiles retain
 existing256-entry, depth16,8MiB limit. This is not an aggregate256-entry claim across all
 three profiles. No native process, capture or profile-helper cap is widened; retained
 journal/profile evidence is not silently pruned to fit a bound.
+
+The coordinator's18:27–18:28UTC debugging approval permits one additional exact,
+hash-bound catch-block insertion in the verification-only copied launcher. It emits
+only fixed operation/failure/reason categories, never arbitrary exception text or
+paths, and does not alter production control flow/admission. This is additional to the
+four original observer substitutions, not an untouched-launcher execution claim.
+PowerShell capture transport may use equivalent JSON escapes/order/whitespace; capture
+parsing must reject decoded duplicate keys and enforce the existing exact schema,
+retirement and size bounds. Settlement hashes continue binding the original raw capture
+bytes. Owned journal records and recovery receipts retain canonical serialization.

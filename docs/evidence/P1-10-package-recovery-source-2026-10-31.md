@@ -269,3 +269,51 @@ PowerShell execution is claimed. Prior Python157/foundation109 evidence remains
 unchanged. Coordinator approved this scoped retry after the aggregate; actual Windows
 confirmation is still pending. Driver SHA256
 `c68317624ecac3a5165eb92780ec83bfcc0086b522903b87f519b8be281d1456`.
+
+## Fifth hosted attempt — actual launcher failure, not script-literal output
+
+Public head `cfd00ca48de06fb1970e2283f26498444e00968a`, exact tree
+`eb2c84c742d3274a39bf7a24cb5a80a5f0316c69`, ran in
+[41228917566](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41228917566).
+The four existing jobs passed; package job124619282830 failed. Artifact13052587601 is
+1110 bytes/SHA256 `5a6143c3d0fa0f8723bff6fe06ed4d8d20a7792105b8a9344d1ca9db13766bbd`.
+The raw-copy correction now reaches executable launcher behavior: valid capture,
+NONZERO exit, confirmed retirement/no truncation, exactly one known fixed launcher
+failure marker and no OTHER line, empty stderr. The previous literal-script output is
+no longer observed. The exact six-member failure family was not distinguished in that
+run, so no particular launcher operation or private error is claimed as the cause.
+
+The coordinator approved a verification-only, exact-source/hash-bound fifth insertion
+at the sole launcher catch block, adding finite failure/stage/reason diagnostics without
+changing production source, control flow or admission. Distinct fixed failure markers
+and bounded owned-journal facts supplement it. No arbitrary exception text, stack,
+script path or private capture is published. The four original observer substitutions
+remain; this additional diagnostic substitution is explicitly instrumented evidence,
+not an untouched production-launcher claim.
+
+A separate source audit found that production `launch-journal.capture()` still coupled
+PowerShell `ConvertTo-Json` transport to JavaScript canonical serialization. Its
+capture-only correction is scoped to valid equivalent JSON encodings with decoded
+duplicate/schema/type/retirement checks and original raw capture hash binding; immutable
+journal headers/intents/settlements/receipts remain canonical. This is an independently
+reproduced compatibility defect, not yet proof of the fifth hosted failure's cause.
+Package manifest limits were also checked: both package admission and launcher private
+read enforce65536 bytes, so no inconsistent manifest-size gate was found.
+
+Combined checkpoint at18:31UTC: author full desktop **579/579 PASS** and
+DESKTOP_SOURCE_CHECK_PASS; independent **45/45 focused PASS** (journal19/state14/driver12).
+The actual journal-settle regression first reproduced rejection, then passed after the
+capture-only correction; reencoding the original capture afterward invalidates its
+recorded hash chain as required. Fixed derived-core diagnostics are forwarded directly
+from the native stderr capture, while bounded read-only journal facts are diagnostic
+only, never retirement authority. Original production core remains unchanged. Adjacent
+launch-control capture consumption first verifies the journal and original capture hash;
+no further canonical-transport mismatch was found there. Prior foundation109/Python157
+remain unchanged evidence, not new reruns.
+
+Reviewed SHA256 values:
+
+- journal: `43d781abf0acfbd7c9063145b35107cdb23e274b88da6f77b99712ea292dd89b`
+- state controller: `fdf851bec5e1c3a9d78191f5626a3a31bd45836987db3ece2be474652db87c80`
+- derived-launch driver: `e0c3082d21422c0d3023d62f9c167f8a2312ba73bc2ab6562fe23375023ee9c3`
+- supervisor: `da446514db4c69f332a8cd2016d8624d591ea99b2e7545c05f4e07a53448cbdc`

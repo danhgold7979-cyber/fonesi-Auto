@@ -13,6 +13,78 @@ const OBSERVERS = [
   'package-contract.cjs',
   'persistence-restore-contract.cjs',
 ];
+const CORE_DIAGNOSTICS = Object.freeze({
+  FAILURE: Object.freeze([
+    'PREPARE_FAILED',
+    'SETUP_FAILED',
+    'INITIALIZATION_FAILED',
+    'APPLICATION_FAILED',
+    'RELEASE_FAILED',
+    'RECOVERY_FAILED',
+  ]),
+  REASON: Object.freeze([
+    'APPLICATION_FAILED',
+    'CANONICAL_PATH_REQUIRED',
+    'DIRECTORY_REJECTED',
+    'ENVIRONMENT_KEY_REJECTED',
+    'ENVIRONMENT_OVERRIDE',
+    'EXECUTABLE_REJECTED',
+    'FULL_PATH_REQUIRED',
+    'GUARD_REJECTED',
+    'HELPER_CHANGED',
+    'INITIALIZATION_FAILED',
+    'JOURNAL_LIMIT',
+    'LAUNCH_COUNT',
+    'MAINTENANCE_REJECTED',
+    'NODE_CHANGED',
+    'NODE_MISSING',
+    'PRELOADED_HELPER_REJECTED',
+    'PRIVATE_FILE_LIMIT',
+    'PRIVATE_FILE_REJECTED',
+    'RECOVERY_ARGUMENT_REJECTED',
+    'RECOVERY_SELECTION',
+    'RESTORED_MAINTENANCE_REQUIRED',
+    'RETIREMENT_UNCONFIRMED',
+    'ROOT_OWNER_CHANGED',
+    'ROOT_OWNER_REJECTED',
+    'RUNTIME_CHANGED',
+    'RUNTIME_MANIFEST_CHANGED',
+    'RUNTIME_MANIFEST_REJECTED',
+    'STAGE_FAILED',
+    'STATE_REJECTED',
+    'STORE_NAME',
+    'WINDOWS_REQUIRED',
+    'UNCLASSIFIED',
+  ]),
+  TYPE: Object.freeze(['RUNTIME', 'METHOD', 'PARAMETER', 'COMMAND', 'OTHER']),
+  SEQUENCE: Object.freeze([
+    'NONE',
+    ...Array.from({ length: 16 }, (_, n) => String(n + 1).padStart(2, '0')),
+  ]),
+  OPERATION: Object.freeze([
+    'FULL_PATH',
+    'DIRECTORY',
+    'READ',
+    'WRITE',
+    'RESERVE',
+    'CHILD',
+    'SUCCESS',
+    'JOURNAL',
+    'CAPTURE',
+    'JOURNALED',
+    'CONTROL',
+    'OUTSIDE',
+    'LAUNCHER',
+    'UNKNOWN',
+  ]),
+  ERROR_ID: Object.freeze([
+    'RuntimeException',
+    'MethodInvocationException',
+    'ParameterBindingException',
+    'CommandNotFoundException',
+    'UNKNOWN',
+  ]),
+});
 function transform(core, desktop, observer) {
   if (hash(core) !== ORIGINAL_SHA) throw Error('PACKAGE_CORE_CHANGED');
   const quote = (value) => value.replaceAll("'", "''");
@@ -31,6 +103,41 @@ function transform(core, desktop, observer) {
       `'${quote(path.join(observer, 'package-launch-main-probe.cjs'))}'`,
     ],
   ];
+  const originalCatch = '}catch{\n    Write-Output $failure\n    exit 1\n}finally{';
+  const psArray = (values) => values.map((v) => `'${v}'`).join(',');
+  const diagnosticCatch = `}catch{
+    # Verification-only fixed diagnostics; original failure/control flow below unchanged.
+    try {
+        $diagnosticError=$_
+        $diagnosticFailures=@(${psArray(CORE_DIAGNOSTICS.FAILURE.map((v) => 'PERSISTENCE_DESKTOP_' + v))})
+        if($failure -cin $diagnosticFailures){[Console]::Error.WriteLine('PACKAGE_CORE_FAILURE_'+$failure.Substring('PERSISTENCE_DESKTOP_'.Length))}
+        $diagnosticReasons=@(${psArray(CORE_DIAGNOSTICS.REASON)})
+        $diagnosticReason='UNCLASSIFIED'
+        if($diagnosticError.Exception.Message -cin $diagnosticReasons){$diagnosticReason=$diagnosticError.Exception.Message}
+        [Console]::Error.WriteLine('PACKAGE_CORE_REASON_'+$diagnosticReason)
+        $diagnosticType='OTHER'
+        switch -CaseSensitive ($diagnosticError.Exception.GetType().FullName) {
+            'System.Management.Automation.RuntimeException' {$diagnosticType='RUNTIME'}
+            'System.Management.Automation.MethodInvocationException' {$diagnosticType='METHOD'}
+            'System.Management.Automation.ParameterBindingException' {$diagnosticType='PARAMETER'}
+            'System.Management.Automation.CommandNotFoundException' {$diagnosticType='COMMAND'}
+        }
+        [Console]::Error.WriteLine('PACKAGE_CORE_TYPE_'+$diagnosticType)
+        $diagnosticSequence='NONE'
+        if($context.Sequence -is [int] -and $context.Sequence -ge 1 -and $context.Sequence -le 16){$diagnosticSequence=$context.Sequence.ToString('00')}
+        [Console]::Error.WriteLine('PACKAGE_CORE_SEQUENCE_'+$diagnosticSequence)
+        $diagnosticOperation='UNKNOWN'
+        $diagnosticCommands=@{'Assert-FullPath'='FULL_PATH';'Assert-Directory'='DIRECTORY';'Read-Private'='READ';'Write-Private'='WRITE';'New-Reserved'='RESERVE';'Invoke-Selected'='CHILD';'Success'='SUCCESS';'Journal'='JOURNAL';'Save-Capture'='CAPTURE';'Invoke-Journaled'='JOURNALED';'Control'='CONTROL';'Outside-Package'='OUTSIDE';'Invoke-PersistenceLauncher'='LAUNCHER'}
+        foreach($diagnosticName in $diagnosticCommands.Keys){if($null -ne $diagnosticError.InvocationInfo -and $null -ne $diagnosticError.InvocationInfo.MyCommand -and $diagnosticError.InvocationInfo.MyCommand.Name -ceq $diagnosticName){$diagnosticOperation=$diagnosticCommands[$diagnosticName];break}}
+        [Console]::Error.WriteLine('PACKAGE_CORE_OPERATION_'+$diagnosticOperation)
+        $diagnosticId='UNKNOWN'
+        if($diagnosticError.FullyQualifiedErrorId -cin @(${psArray(CORE_DIAGNOSTICS.ERROR_ID)})){$diagnosticId=$diagnosticError.FullyQualifiedErrorId}
+        [Console]::Error.WriteLine('PACKAGE_CORE_ERROR_ID_'+$diagnosticId)
+    }catch{}
+    Write-Output $failure
+    exit 1
+}finally{`;
+  substitutions.push([originalCatch, diagnosticCatch]);
   let changed = core;
   for (const [from, to] of substitutions) {
     if (changed.split(from).length !== 2) throw Error('PACKAGE_TRANSFORM');
@@ -173,4 +280,12 @@ async function main() {
   }
 }
 if (require.main === module) void main();
-module.exports = { transform, prepare, writeScript, OBSERVERS, candidate, relocate };
+module.exports = {
+  transform,
+  prepare,
+  writeScript,
+  OBSERVERS,
+  CORE_DIAGNOSTICS,
+  candidate,
+  relocate,
+};

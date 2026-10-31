@@ -45,6 +45,12 @@ function Show-ControlDiagnostic($p,[string]$expected){
         CLOSED=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
         RECOVERED=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
         FAILURE=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        FAILURE_PREPARE=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        FAILURE_SETUP=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        FAILURE_INITIALIZATION=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        FAILURE_RECOVERY=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        FAILURE_APPLICATION=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        FAILURE_RELEASE=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
         OTHER=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
         FRAMING=@('STANDARD','LEADING_EMPTY','EXTRA_EMPTY','BARE_CR','OTHER','UNAVAILABLE')
         STDERR=@('EMPTY','PRESENT','UNAVAILABLE')
@@ -57,11 +63,48 @@ function Show-ControlDiagnostic($p,[string]$expected){
             $count=@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count
             if($count -gt 0){$matched+=$count;$selected=$literal}
         }
-        if($matched -eq 1 -and $captureShown -lt 17){Write-Output $selected;$captureShown++}
+        if($matched -eq 1 -and $captureShown -lt 23){Write-Output $selected;$captureShown++}
+    }
+    $journalVector=[ordered]@{
+        DISCOVERY=@('NONE','ONE','MULTIPLE','INVALID','UNAVAILABLE')
+        BINDING=@('VALID','INVALID','UNAVAILABLE')
+        CHAIN=@('VALID','INVALID','UNAVAILABLE')
+        INTENT=@('SETUP','PREPARE_PROVISION','PROVISION','OBSERVE_PROVISION','PREPARE_AUTH','AUTH','OBSERVE_AUTH','PREPARE_READY','MAIN','RELEASE','RECOVERY','NONE','INVALID','UNAVAILABLE')
+        SETTLEMENT=@('PRESENT','ABSENT','INVALID','UNAVAILABLE')
+        CAPTURE=@('ABSENT','VALID_JSON','INVALID_JSON','UNAVAILABLE')
+        CAPTURE_CANONICAL=@('TRUE','FALSE','UNAVAILABLE')
+        CAPTURE_PARSE_REASON=@('INPUT_LIMIT','JSON_GRAMMAR','DEPTH','PAIRS','DUPLICATE','ROOT_KEYS','PROCESS_KEYS','STATUS_TYPE_OR_ENUM','EXIT_TYPE_OR_RANGE','BOOLEAN_TYPES','STDOUT_TYPE_OR_LIMIT','STDERR_TYPE_OR_LIMIT','VALID','UNAVAILABLE')
+        CAPTURE_STATUS=@('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT','TIMEOUT','CAPTURE_FAILED','LAUNCH_FAILED','ACCESS_DENIED','CLEANUP_FAILED','UNAVAILABLE')
+        CAPTURE_RETIREMENT=@('RETIRED','UNCONFIRMED','UNAVAILABLE')
+        CAPTURE_STDOUT=@('PASS','FAILURE','OTHER','EMPTY','UNAVAILABLE')
+        CAPTURE_STDERR=@('INITIALIZE_FAILURE','OBSERVER_FAILURE','OTHER','EMPTY','UNAVAILABLE')
+        ERROR=@('RESTORE_CONTROL','RESTORE_DESCENDANT','RESTORE_FILE','RESTORE_LIMIT','RESTORE_OWNER','RESTORE_READBACK','RESTORE_RESULT','RESTORE_SCHEMA','RESTORE_SOURCE','PACKAGE_STATE_REJECTED','LAUNCH_JOURNAL_REJECTED','ENOENT','UNCLASSIFIED','NONE')
+    }
+    $journalShown=0
+    foreach($key in $journalVector.Keys){
+        $matched=0;$selected=$null
+        foreach($value in $journalVector[$key]){$literal='PACKAGE_JOURNAL_'+$key+'_'+$value;$count=@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count;if($count -gt 0){$matched+=$count;$selected=$literal}}
+        if($matched -eq 1 -and $journalShown -lt 13){Write-Output $selected;$journalShown++}
     }
 }
 function Node-Control([string]$name,[string[]]$arguments,[string]$marker){$script:allClean=$false;$p=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot $name))+$arguments) 120000 @{};$script:allClean=Retired $p;if(-not $script:allClean -or $p.Status -cne 'SUCCESS' -or $p.ExitCode -ne 0 -or (($p.Stdout -replace '\r\n',"`n").TrimEnd("`n") -cne $marker)){Show-ControlDiagnostic $p $marker};Require $p $marker}
 function Validate([string[]]$arguments){$script:allClean=$false;$p=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_package.py'))+$arguments) 120000 @{};$script:allClean=Retired $p;Require $p 'PACKAGE_VALIDATION_PASS'}
+function Show-CoreDiagnostic($p){
+    $coreVector=[ordered]@{
+        FAILURE=@('PREPARE_FAILED','SETUP_FAILED','INITIALIZATION_FAILED','APPLICATION_FAILED','RELEASE_FAILED','RECOVERY_FAILED')
+        REASON=@('APPLICATION_FAILED','CANONICAL_PATH_REQUIRED','DIRECTORY_REJECTED','ENVIRONMENT_KEY_REJECTED','ENVIRONMENT_OVERRIDE','EXECUTABLE_REJECTED','FULL_PATH_REQUIRED','GUARD_REJECTED','HELPER_CHANGED','INITIALIZATION_FAILED','JOURNAL_LIMIT','LAUNCH_COUNT','MAINTENANCE_REJECTED','NODE_CHANGED','NODE_MISSING','PRELOADED_HELPER_REJECTED','PRIVATE_FILE_LIMIT','PRIVATE_FILE_REJECTED','RECOVERY_ARGUMENT_REJECTED','RECOVERY_SELECTION','RESTORED_MAINTENANCE_REQUIRED','RETIREMENT_UNCONFIRMED','ROOT_OWNER_CHANGED','ROOT_OWNER_REJECTED','RUNTIME_CHANGED','RUNTIME_MANIFEST_CHANGED','RUNTIME_MANIFEST_REJECTED','STAGE_FAILED','STATE_REJECTED','STORE_NAME','WINDOWS_REQUIRED','UNCLASSIFIED')
+        TYPE=@('RUNTIME','METHOD','PARAMETER','COMMAND','OTHER')
+        SEQUENCE=@('NONE','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16')
+        OPERATION=@('FULL_PATH','DIRECTORY','READ','WRITE','RESERVE','CHILD','SUCCESS','JOURNAL','CAPTURE','JOURNALED','CONTROL','OUTSIDE','LAUNCHER','UNKNOWN')
+        ERROR_ID=@('RuntimeException','MethodInvocationException','ParameterBindingException','CommandNotFoundException','UNKNOWN')
+    }
+    $shown=0
+    foreach($key in $coreVector.Keys){
+        $matches=0;$selected=$null
+        foreach($value in $coreVector[$key]){$literal='PACKAGE_CORE_'+$key+'_'+$value;$count=@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count;if($count -gt 0){$matches+=$count;$selected=$literal}}
+        if($matches -eq 1 -and $shown -lt 6){Write-Output $selected;$shown++}
+    }
+}
 function Launcher([string[]]$arguments){
  $original=[Environment]::GetEnvironmentVariables('Process')
  foreach($key in $original.Keys){if($key -match '(?i)electron' -or $key -in @('NODE_OPTIONS','NODE_PATH','ESBUILD_BINARY_PATH')){throw 'OVERRIDE'}}
@@ -101,6 +144,7 @@ try{
   $guard=$null;$phase='NATIVE';$allClean=$false
   try{if($stage -ceq 'guard-denied'){$guard=[IO.File]::Open((Join-Path $seed.managedRoot '.launcher-guard'),[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)};$capture=Launcher $arguments.ToArray()}finally{if($null -ne $guard){$guard.Dispose()}}
   $allClean=Retired $capture
+  Show-CoreDiagnostic $capture
   if($capture.Status -cin @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT','TIMEOUT','CAPTURE_FAILED','LAUNCH_FAILED','ACCESS_DENIED','CLEANUP_FAILED')){Write-Output ('PACKAGE_PROCESS_'+$capture.Status)}
   Write-Private (Join-Path $owner.Path ('package-capture-'+$stage+'.json')) (Evidence $capture)
   if(-not $allClean){throw 'RETIREMENT'}

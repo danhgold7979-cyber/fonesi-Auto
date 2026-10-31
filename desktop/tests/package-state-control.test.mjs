@@ -291,6 +291,31 @@ test('first-cancel observe composes real owned journal with explicitly synthetic
     const result = controller.observe(f.root, pkg, 'first-cancel');
     assert.equal(Object.values(result.cases).every(Boolean), true);
     assert.equal(fs.existsSync(path.join(f.root, 'package-state-first-cancel.json')), true);
+    const diagnostics = controller.journalDiagnostics(f.root, pkg, 'first-cancel');
+    assert.equal(diagnostics.BINDING, 'VALID');
+    assert.equal(diagnostics.CHAIN, 'VALID');
+    assert.equal(diagnostics.INTENT, 'RELEASE');
+    assert.equal(diagnostics.SETTLEMENT, 'PRESENT');
+    assert.equal(diagnostics.CAPTURE, 'VALID_JSON');
+    assert.equal(diagnostics.CAPTURE_CANONICAL, 'TRUE');
+    const last = path.join(launch, 'capture-05.json');
+    fs.appendFileSync(last, ' ');
+    const beforeDiagnostic = fs.readFileSync(last, 'utf8');
+    const changed = controller.journalDiagnostics(f.root, pkg, 'first-cancel');
+    assert.equal(changed.CHAIN, 'INVALID');
+    assert.equal(changed.CAPTURE, 'VALID_JSON');
+    assert.equal(changed.CAPTURE_CANONICAL, 'FALSE');
+    assert.equal(changed.CAPTURE_RETIREMENT, 'RETIRED');
+    assert.equal(fs.readFileSync(last, 'utf8'), beforeDiagnostic);
+    assert.equal(JSON.stringify(changed).includes(f.root), false);
+    const adapted = JSON.parse(beforeDiagnostic);
+    adapted.stdout = 'PERSISTENCE_INITIALIZE_ORDERLY\n';
+    adapted.stderr = 'PERSISTENCE_INITIALIZE_FAILED\n';
+    fs.writeFileSync(last, JSON.stringify(adapted));
+    const nativeKinds = controller.journalDiagnostics(f.root, pkg, 'first-cancel');
+    assert.equal(nativeKinds.CAPTURE_STDOUT, 'PASS');
+    assert.equal(nativeKinds.CAPTURE_STDERR, 'INITIALIZE_FAILURE');
+    assert.equal(nativeKinds.CAPTURE_PARSE_REASON, 'VALID');
   } finally {
     f.close();
   }
@@ -446,13 +471,19 @@ test('complete capture diagnostic vector covers every acceptance predicate with 
     CLOSED: 'ZERO',
     RECOVERED: 'ZERO',
     FAILURE: 'ZERO',
+    FAILURE_PREPARE: 'ZERO',
+    FAILURE_SETUP: 'ZERO',
+    FAILURE_INITIALIZATION: 'ZERO',
+    FAILURE_RECOVERY: 'ZERO',
+    FAILURE_APPLICATION: 'ZERO',
+    FAILURE_RELEASE: 'ZERO',
     OTHER: 'ZERO',
     FRAMING: 'STANDARD',
     STDERR: 'EMPTY',
   });
   assert.equal(Object.isFrozen(CAPTURE_VECTOR), true);
   assert.equal(Object.isFrozen(d), true);
-  assert.equal(Object.keys(d).length, 17);
+  assert.equal(Object.keys(d).length, 23);
   for (const [field, value, expected] of [
     ['status', 'NONZERO_EXIT', 'STATUS'],
     ['exitCode', 1, 'EXIT'],
@@ -465,7 +496,7 @@ test('complete capture diagnostic vector covers every acceptance predicate with 
       'first-cancel',
     );
     assert.notEqual(result[expected], d[expected]);
-    assert.equal(Object.keys(result).length, 17);
+    assert.equal(Object.keys(result).length, 23);
     for (const [key, code] of Object.entries(result))
       assert.ok(CAPTURE_MARKERS.includes(`PACKAGE_CAPTURE_${key}_${code}`));
   }
@@ -512,7 +543,7 @@ test('invalid or unavailable capture schema still emits the entire safe unavaila
   const { captureDiagnostics } = require('../verification/package-state-control.cjs');
   for (const raw of [undefined, 'PRIVATE_JSON_CANARY', '{"process":{},"stdout":"","stderr":""}']) {
     const d = captureDiagnostics(raw, 'first-cancel');
-    assert.equal(Object.keys(d).length, 17);
+    assert.equal(Object.keys(d).length, 23);
     assert.equal(d.SCHEMA, raw === undefined ? 'UNAVAILABLE' : 'INVALID');
     assert.ok(
       Object.entries(d)
@@ -555,7 +586,7 @@ test('capture parse reason vector discriminates every bounded schema rejection w
     const d = captureDiagnostics(raw, 'first-cancel');
     assert.equal(d.SCHEMA, 'INVALID');
     assert.equal(d.PARSE_REASON, reason);
-    assert.equal(Object.keys(d).length, 17);
+    assert.equal(Object.keys(d).length, 23);
   }
   const source = fs.readFileSync(new URL('../launch/launch-core.ps1', import.meta.url), 'utf8');
   const failures = [...new Set(source.match(/PERSISTENCE_DESKTOP_[A-Z_]+FAILED/g))];
@@ -564,5 +595,9 @@ test('capture parse reason vector discriminates every bounded schema rejection w
     const d = captureDiagnostics(JSON.stringify({ ...c, stdout: `${marker}\n` }), 'first-cancel');
     assert.equal(d.FAILURE, 'ONE');
     assert.equal(d.OTHER, 'ZERO');
+    assert.equal(
+      d[`FAILURE_${marker.slice('PERSISTENCE_DESKTOP_'.length, -'_FAILED'.length)}`],
+      'ONE',
+    );
   }
 });

@@ -5,7 +5,7 @@ const test = require('node:test'),
   path = require('node:path');
 const { transform, OBSERVERS } = require('./package-launch-driver.cjs');
 const { seed, witness } = require('./package-launch-observer.cjs');
-test('package instrumentation changes exactly four audited core locations and rejects changed source', () => {
+test('package instrumentation changes four entry locations plus the sole fixed-diagnostic catch and rejects changed source', () => {
   const core = fs.readFileSync(path.join(__dirname, '../launch/launch-core.ps1'), 'utf8');
   const copied = transform(core, 'C:\\Owned\\Package\\app', 'C:\\Owned\\Probe\\observers');
   assert.ok(copied.includes("$desktop='C:\\Owned\\Package\\app'"));
@@ -177,8 +177,8 @@ test('complete capture predicate vector forwarding stays exactly aligned and bou
   );
   const { CAPTURE_VECTOR } = require('./package-state-control.cjs');
   assert.deepEqual(actual, CAPTURE_VECTOR);
-  assert.equal(Object.keys(actual).length, 17);
-  assert.ok(source.includes('if($matched -eq 1 -and $captureShown -lt 17)'));
+  assert.equal(Object.keys(actual).length, 23);
+  assert.ok(source.includes('if($matched -eq 1 -and $captureShown -lt 23)'));
   assert.ok(source.includes("$literal='PACKAGE_CAPTURE_'+$key+'_'+$value"));
   assert.ok(source.includes('Where-Object {$_ -ceq $literal}'));
   assert.ok(!source.includes('Write-Output $p.Stderr'));
@@ -298,4 +298,52 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
     for (const dir of [path.join(pkg, 'app/launch'), path.join(pkg, 'app'), pkg, root])
       fs.rmdirSync(dir);
   }
+});
+test('verification-only catch diagnostics preserve original failure flow and exact finite forwarding', () => {
+  const { CORE_DIAGNOSTICS } = require('./package-launch-driver.cjs');
+  const original = fs.readFileSync(path.join(__dirname, '../launch/launch-core.ps1'), 'utf8');
+  const derived = transform(original, 'C:\\Owned\\Package\\app', 'C:\\Owned\\Probe');
+  assert.equal(original.includes('PACKAGE_CORE_'), false);
+  assert.equal(derived.split('# Verification-only fixed diagnostics;').length, 2);
+  assert.ok(derived.includes('    }catch{}\n    Write-Output $failure\n    exit 1\n}finally{'));
+  assert.ok(derived.includes("$diagnosticReason='UNCLASSIFIED'"));
+  assert.ok(!derived.includes('WriteLine($diagnosticError'));
+  const ps = fs.readFileSync(path.join(__dirname, 'Invoke-Package.ps1'), 'utf8');
+  const block = ps.match(/\$coreVector=\[ordered\]@\{([\s\S]*?)\n {4}\}/)[1];
+  const actual = Object.fromEntries(
+    [...block.matchAll(/([A-Z_]+)=@\(([^)]*)\)/g)].map((m) => [
+      m[1],
+      [...m[2].matchAll(/'([A-Za-z0-9_]+)'/g)].map((v) => v[1]),
+    ]),
+  );
+  assert.deepEqual(actual, CORE_DIAGNOSTICS);
+  assert.equal(Object.keys(actual).length, 6);
+  assert.ok(ps.includes('if($matches -eq 1 -and $shown -lt 6)'));
+  assert.ok(ps.includes('Show-CoreDiagnostic $capture'));
+});
+test('journal diagnostics and direct native catch forwarding are bounded at the actual capture callsite', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'Invoke-Package.ps1'), 'utf8');
+  const block = source.match(/\$journalVector=\[ordered\]@\{([\s\S]*?)\n {4}\}/)[1];
+  const actual = Object.fromEntries(
+    [...block.matchAll(/([A-Z_]+)=@\(([^)]*)\)/g)].map((m) => [
+      m[1],
+      [...m[2].matchAll(/'([A-Z_]+)'/g)].map((v) => v[1]),
+    ]),
+  );
+  const { JOURNAL_VECTOR } = require('./package-state-control.cjs');
+  assert.deepEqual(actual, JOURNAL_VECTOR);
+  assert.equal(Object.keys(actual).length, 13);
+  assert.ok(source.includes('if($matched -eq 1 -and $journalShown -lt 13)'));
+  const invocation = source.indexOf('$capture=Launcher $arguments.ToArray()');
+  const forwarding = source.indexOf('Show-CoreDiagnostic $capture', invocation);
+  const observe = source.indexOf("$phase='OBSERVE'", invocation);
+  assert.ok(invocation > 0 && forwarding > invocation && observe > forwarding);
+  const fn = source.slice(
+    source.indexOf('function Show-CoreDiagnostic('),
+    source.indexOf('function Launcher('),
+  );
+  assert.ok(fn.includes("$p.Stderr -split '\\r?\\n'"));
+  assert.ok(fn.includes('$_ -ceq $literal'));
+  assert.ok(fn.includes('$matches -eq 1'));
+  assert.ok(!fn.includes('Write-Output $p.'));
 });

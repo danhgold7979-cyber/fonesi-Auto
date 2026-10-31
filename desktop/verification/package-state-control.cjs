@@ -399,6 +399,12 @@ const CAPTURE_VECTOR = Object.freeze({
   CLOSED: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
   RECOVERED: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
   FAILURE: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  FAILURE_PREPARE: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  FAILURE_SETUP: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  FAILURE_INITIALIZATION: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  FAILURE_RECOVERY: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  FAILURE_APPLICATION: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  FAILURE_RELEASE: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
   OTHER: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
   FRAMING: ['STANDARD', 'LEADING_EMPTY', 'EXTRA_EMPTY', 'BARE_CR', 'OTHER', 'UNAVAILABLE'],
   STDERR: ['EMPTY', 'PRESENT', 'UNAVAILABLE'],
@@ -454,6 +460,10 @@ function captureDiagnostics(raw, stage) {
   for (const [key, marker] of Object.entries(known))
     result[key] = count(lines.filter((line) => line === marker).length);
   result.FAILURE = count(lines.filter((line) => failures.includes(line)).length);
+  for (const name of ['PREPARE', 'SETUP', 'INITIALIZATION', 'RECOVERY', 'APPLICATION', 'RELEASE'])
+    result[`FAILURE_${name}`] = count(
+      lines.filter((line) => line === `PERSISTENCE_DESKTOP_${name}_FAILED`).length,
+    );
   result.OTHER = count(
     lines.filter((line) => !Object.values(known).includes(line) && !failures.includes(line)).length,
   );
@@ -672,8 +682,183 @@ function fixedObservationError(error) {
     return 'UNCLASSIFIED';
   }
 }
+const JOURNAL_STAGES = Object.freeze([
+  'SETUP',
+  'PREPARE_PROVISION',
+  'PROVISION',
+  'OBSERVE_PROVISION',
+  'PREPARE_AUTH',
+  'AUTH',
+  'OBSERVE_AUTH',
+  'PREPARE_READY',
+  'MAIN',
+  'RELEASE',
+  'RECOVERY',
+]);
+const JOURNAL_VECTOR = Object.freeze({
+  DISCOVERY: ['NONE', 'ONE', 'MULTIPLE', 'INVALID', 'UNAVAILABLE'],
+  BINDING: ['VALID', 'INVALID', 'UNAVAILABLE'],
+  CHAIN: ['VALID', 'INVALID', 'UNAVAILABLE'],
+  INTENT: [...JOURNAL_STAGES, 'NONE', 'INVALID', 'UNAVAILABLE'],
+  SETTLEMENT: ['PRESENT', 'ABSENT', 'INVALID', 'UNAVAILABLE'],
+  CAPTURE: ['ABSENT', 'VALID_JSON', 'INVALID_JSON', 'UNAVAILABLE'],
+  CAPTURE_CANONICAL: ['TRUE', 'FALSE', 'UNAVAILABLE'],
+  CAPTURE_PARSE_REASON: [...CAPTURE_VECTOR.PARSE_REASON],
+  CAPTURE_STATUS: [
+    'SUCCESS',
+    'NONZERO_EXIT',
+    'EMPTY_OUTPUT',
+    'TIMEOUT',
+    'CAPTURE_FAILED',
+    'LAUNCH_FAILED',
+    'ACCESS_DENIED',
+    'CLEANUP_FAILED',
+    'UNAVAILABLE',
+  ],
+  CAPTURE_RETIREMENT: ['RETIRED', 'UNCONFIRMED', 'UNAVAILABLE'],
+  CAPTURE_STDOUT: ['PASS', 'FAILURE', 'OTHER', 'EMPTY', 'UNAVAILABLE'],
+  CAPTURE_STDERR: ['INITIALIZE_FAILURE', 'OBSERVER_FAILURE', 'OTHER', 'EMPTY', 'UNAVAILABLE'],
+  ERROR: [...OBSERVE_ERRORS, 'ENOENT', 'UNCLASSIFIED', 'NONE'],
+});
+for (const values of Object.values(JOURNAL_VECTOR)) Object.freeze(values);
+const JOURNAL_MARKERS = Object.freeze(
+  Object.entries(JOURNAL_VECTOR).flatMap(([key, values]) =>
+    values.map((value) => `PACKAGE_JOURNAL_${key}_${value}`),
+  ),
+);
+function journalDiagnostics(root, packageRoot, stage) {
+  const out = Object.fromEntries(
+    Object.keys(JOURNAL_VECTOR).map((key) => [key, key === 'ERROR' ? 'NONE' : 'UNAVAILABLE']),
+  );
+  try {
+    admission(root, packageRoot, stage);
+    const before = json(path.join(root, `package-before-${stage}.json`)),
+      state = validateState(root, before.state);
+    let managed = state.managedRoot;
+    if (!managed) {
+      const added = names(path.join(root, 'products')).filter(
+        (name) => !before.products.includes(name),
+      );
+      out.DISCOVERY = added.length === 0 ? 'NONE' : added.length === 1 ? 'ONE' : 'MULTIPLE';
+      if (added.length !== 1) return Object.freeze(out);
+      if (!added[0].startsWith('Fonesi-Auto-') || !uuid(added[0].slice(12))) {
+        out.DISCOVERY = 'INVALID';
+        return Object.freeze(out);
+      }
+      managed = path.join(root, 'products', added[0]);
+    } else out.DISCOVERY = 'ONE';
+    owned(managed);
+    const journal = modules(packageRoot).journal;
+    let h, launch;
+    try {
+      const pointer = journal.parse('pointer', read(path.join(managed, '.launcher-current.json')));
+      launch = path.join(managed, `launch-${pointer.launchId}`);
+      h = journal.assertCurrent(managed, launch);
+      out.BINDING = 'VALID';
+    } catch (error) {
+      out.BINDING = 'INVALID';
+      throw error;
+    }
+    try {
+      journal.inspect(managed, launch);
+      out.CHAIN = 'VALID';
+    } catch {
+      out.CHAIN = 'INVALID';
+    }
+    const intents = names(launch).filter((name) => /^intent-(0[1-9]|1[0-6])\.json$/.test(name));
+    if (!intents.length) {
+      out.INTENT = 'NONE';
+      return Object.freeze(out);
+    }
+    const filename = intents.at(-1),
+      sequence = Number(filename.slice(7, 9));
+    const intent = journal.parse('intent', read(path.join(launch, filename)));
+    if (
+      intent.launchId !== h.launchId ||
+      intent.ownerToken !== h.ownerToken ||
+      intent.sequence !== sequence ||
+      !JOURNAL_STAGES.includes(intent.stage)
+    ) {
+      out.INTENT = 'INVALID';
+      return Object.freeze(out);
+    }
+    out.INTENT = intent.stage;
+    const settled = path.join(launch, `settled-${String(sequence).padStart(2, '0')}.json`);
+    out.SETTLEMENT = absent(settled) ? 'ABSENT' : 'INVALID';
+    if (out.SETTLEMENT === 'INVALID') {
+      const v = journal.parse('settlement', read(settled));
+      if (
+        v.launchId === h.launchId &&
+        v.ownerToken === h.ownerToken &&
+        v.sequence === sequence &&
+        v.stage === intent.stage
+      )
+        out.SETTLEMENT = 'PRESENT';
+    }
+    const captureFile = path.join(launch, `capture-${String(sequence).padStart(2, '0')}.json`);
+    if (absent(captureFile)) {
+      out.CAPTURE = 'ABSENT';
+      return Object.freeze(out);
+    }
+    const raw = read(captureFile);
+    let c;
+    try {
+      c = parseCapture(raw);
+      out.CAPTURE = 'VALID_JSON';
+      out.CAPTURE_PARSE_REASON = 'VALID';
+    } catch (error) {
+      out.CAPTURE = 'INVALID_JSON';
+      out.CAPTURE_PARSE_REASON = captureParseReasons.get(error) ?? 'JSON_GRAMMAR';
+      throw error;
+    }
+    out.CAPTURE_CANONICAL = JSON.stringify(JSON.parse(raw)) === raw ? 'TRUE' : 'FALSE';
+    out.CAPTURE_STATUS = c.process.status;
+    out.CAPTURE_RETIREMENT =
+      c.process.cleanupComplete &&
+      !c.process.stdoutTruncated &&
+      !c.process.stderrTruncated &&
+      ((['SUCCESS', 'EMPTY_OUTPUT'].includes(c.process.status) && c.process.exitCode === 0) ||
+        (c.process.status === 'NONZERO_EXIT' &&
+          Number.isInteger(c.process.exitCode) &&
+          c.process.exitCode !== 0))
+        ? 'RETIRED'
+        : 'UNCONFIRMED';
+    const lines = c.stdout
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .filter((line) => line !== '');
+    out.CAPTURE_STDOUT =
+      lines.length === 0
+        ? 'EMPTY'
+        : lines.includes('PERSISTENCE_LAUNCH_CONTROL_FAILED') ||
+            lines.includes('LAUNCH_JOURNAL_FAILED')
+          ? 'FAILURE'
+          : lines.includes('PERSISTENCE_LAUNCH_CONTROL_PASS') ||
+              lines.includes('PERSISTENCE_INITIALIZE_ORDERLY') ||
+              lines.includes('LAUNCH_JOURNAL_PASS')
+            ? 'PASS'
+            : 'OTHER';
+    const errors = c.stderr
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .filter((line) => line !== '');
+    out.CAPTURE_STDERR =
+      errors.length === 0
+        ? 'EMPTY'
+        : errors.includes('PERSISTENCE_INITIALIZE_FAILED')
+          ? 'INITIALIZE_FAILURE'
+          : errors.includes('PACKAGE_OBSERVER_FAILED')
+            ? 'OBSERVER_FAILURE'
+            : 'OTHER';
+  } catch (error) {
+    out.ERROR = fixedObservationError(error);
+  }
+  return Object.freeze(out);
+}
+let observationContext = null;
 let observationPhase = null;
 function observe(root, packageRoot, stage) {
+  observationContext = Object.freeze({ root, packageRoot, stage });
   observationPhase = 'ADMISSION';
   const { packageHash } = admission(root, packageRoot, stage);
   observationPhase = 'CAPTURE';
@@ -842,6 +1027,13 @@ if (require.main === module) {
     if (OBSERVE_PHASES.includes(observationPhase)) {
       process.stderr.write(`PACKAGE_OBSERVE_${observationPhase}\n`);
       process.stderr.write(`PACKAGE_OBSERVE_ERROR_${fixedObservationError(error)}\n`);
+      if (observationPhase === 'CAPTURE' && observationContext) {
+        const { root, packageRoot, stage } = observationContext;
+        for (const [key, value] of Object.entries(journalDiagnostics(root, packageRoot, stage))) {
+          const marker = `PACKAGE_JOURNAL_${key}_${value}`;
+          if (JOURNAL_MARKERS.includes(marker)) process.stderr.write(`${marker}\n`);
+        }
+      }
       if (observationPhase === 'CAPTURE' && lastCaptureDiagnostic) {
         for (const [key, value] of Object.entries(lastCaptureDiagnostic)) {
           const marker = `PACKAGE_CAPTURE_${key}_${value}`;
@@ -869,4 +1061,7 @@ module.exports = {
   CAPTURE_VECTOR,
   CAPTURE_MARKERS,
   captureDiagnostics,
+  JOURNAL_VECTOR,
+  JOURNAL_MARKERS,
+  journalDiagnostics,
 };

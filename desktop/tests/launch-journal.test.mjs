@@ -407,3 +407,46 @@ test('RESTORED receipt deletion or tampering after acquisition prevents recovery
     assert.deepEqual(snapshot(parent), before);
   }
 });
+
+test('PowerShell capture escapes settle and reinspect while hashing exact original transport bytes', (t) => {
+  const f = fixture(t);
+  setup(f);
+  j.appendIntent(f.parent, f.launch, 2, 'PREPARE_AUTH');
+  const raw = JSON.stringify({
+    stderr: "warning: 'quoted'",
+    stdout: 'FIXED\n',
+    process: Object.fromEntries(Object.entries(process()).reverse()),
+  }).replaceAll("'", '\\u0027');
+  assert.equal(JSON.parse(raw).stderr, "warning: 'quoted'");
+  write(path.join(f.launch, 'capture-02.json'), raw);
+  j.settle(f.parent, f.launch, 2);
+  const state = j.inspect(f.parent, f.launch);
+  assert.equal(state.latest.captureSha256, j.sha(raw));
+  assert.notEqual(state.latest.captureSha256, j.sha(JSON.stringify(JSON.parse(raw))));
+  assert.equal(state.pending, null);
+  fs.writeFileSync(path.join(f.launch, 'capture-02.json'), JSON.stringify(JSON.parse(raw)));
+  assert.throws(() => j.inspect(f.parent, f.launch));
+});
+
+test('capture transport rejects decoded duplicates, nonretirement and malformed schema without settlement', (t) => {
+  const base = JSON.stringify({ process: process(), stdout: 'FIXED\n', stderr: '' });
+  for (const raw of [
+    base.replace('"stdout":', '"stdout":"hidden","stdout":'),
+    base.replace('"cleanupComplete":true', '"cleanupComplete":false,"cleanup\\u0043omplete":true'),
+    base.replace('"stdoutTruncated":false', '"stdoutTruncated":true,"stdoutTruncated":false'),
+    base.replace('"stderr":""', '"stderr":{}'),
+    base.replace('"exitCode":0', '"exitCode":true'),
+    base.replace('"exitCode":0', '"exitCode":-0'),
+    base.replace('"status":"SUCCESS"', '"status":"TIMEOUT"'),
+    base.replace('"stdout":"FIXED\\n"', '"stdout":"' + 'x'.repeat(32769) + '"'),
+    base + 'x',
+    '\ufeff' + base,
+  ]) {
+    const f = fixture(t);
+    setup(f);
+    j.appendIntent(f.parent, f.launch, 2, 'PREPARE_AUTH');
+    write(path.join(f.launch, 'capture-02.json'), raw);
+    assert.throws(() => j.settle(f.parent, f.launch, 2));
+    assert.equal(fs.existsSync(path.join(f.launch, 'settled-02.json')), false);
+  }
+});

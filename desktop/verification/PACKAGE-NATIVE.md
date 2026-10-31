@@ -1,6 +1,6 @@
 # Internal package verification — P1-10
 
-Current status: hosted package attempts FAILED before first-Cancel evidence admission. Complete diagnostics and local reproduction identified JSON-encoded verification script copies; corrected raw-copy Windows confirmation is pending. No bundle promotion or package-stage PASS is claimed.
+Current status: hosted package attempts FAILED before first-Cancel evidence admission. Raw script copies now execute and emit a fixed launcher failure; finer operation diagnosis and a capture-only journal compatibility correction await Windows confirmation. No bundle promotion or package-stage PASS is claimed.
 See the [approved contract](../../docs/phases/PHASE-01-P1-10-PACKAGING-CONTRACT.md) and
 [measured source evidence](../../docs/evidence/P1-10-package-recovery-source-2026-10-31.md).
 
@@ -35,7 +35,7 @@ valid, clear quarantine, reset keys or start jobs.
 ## Verification/publication boundary
 
 The native harness relocates the exact candidate and uses reviewed, hash-bound copies
-of the fixed PACKAGE wrapper/core with exactly four observer substitutions. Real
+of the fixed PACKAGE wrapper/core with exactly four observer substitutions plus one explicitly approved, fixed diagnostic catch insertion. Real
 packaged initializer/main/provider/SQLite paths remain; only synthetic native dialog
 answers and bounded quit observation are injected. This is not an untouched top-level
 Launch.ps1 E2E or genuine human widget-click claim. Original package bytes remain
