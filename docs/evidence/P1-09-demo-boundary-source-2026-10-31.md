@@ -119,3 +119,37 @@ inventory and exclusive duplicate refusal. Independent focused5/5 CLEAR; author 
 desktop495/495 + DESKTOP_SOURCE_CHECK_PASS at15:23 UTC. No source application,
 production builder, acceptance schema or runtime permission was changed.
 Corrected native execution remains NOT_RUN; technical counts remain eight/formal zero.
+
+
+## Second hosted attempt — bounded diagnostic refinement
+
+Public `c680f2baf7cf3d6f7fc670a39e9a8423b3a38f22`, run `41214680594`,
+again passed foundation/settings/UI. Demo preparation advanced past the repaired
+instrumentation; the demo job stopped at STAGE_VALIDATION_FAILED. Artifact
+`13047678275` is 3,180 bytes, SHA256
+`4951082a3faf2c18d6a336b69435381abef05655ad809e5bdeacf39f0aaacc67`.
+Bootstrap/production controls remain true; source/package demo results are absent.
+No observer failure marker appeared in public logs. This does not establish an early
+startup failure: a valid result containing a false declared case also fails strict
+publication without an observer exception. Copied helper dependencies are complete
+on source inspection. No functional runtime change is inferred from this evidence.
+
+The next bounded diagnostics distinguish fixed process/stdout categories, result-read/
+validation stages and exact false-case identifiers without publishing private captures,
+paths or arbitrary exception strings. All result schemas and PASS predicates remain
+unchanged; this is not a retry of an unexplained runtime modification.
+
+Read-only review then identified a deterministic false-case predicate: the observer
+expected all three account rows simultaneously, while the actual Accounts page displays
+only the selected phone's account (zero before selection, one for each fixture phone).
+The corrected observation visits all three real phone choices, requires the corresponding
+single account row and three distinct account IDs, and clears selection before the
+three-job Calendar check. This repairs the measurement rather than changing production
+filtering or substituting summary text for actual rows. Hosted confirmation is still
+required; the existing artifact does not identify its unique false case.
+
+Final narrow batch independently CLEAR: focused15/15 Node and9/9 Python PASS.
+Author full desktop496/496 + DESKTOP_SOURCE_CHECK_PASS and Python142/142 PASS at15:31 UTC;
+workflow expected Python count is142. Source-reproduced account measurement defect is
+not represented as a recovered private native case record. No application/fixture data,
+production filtering, strict report schema or native ownership bounds changed.

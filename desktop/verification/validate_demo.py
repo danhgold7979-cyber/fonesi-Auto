@@ -9,6 +9,7 @@ MODES=('source','package','production')
 DEMO_CASES=('verifiedDemoBuild','explicitArgument','ownedProfile','sandboxAndIsolation','isolatedOrigin','noPreloadOrIpc','syntheticFixtureCounts','allSixTabs','bannerEveryPage','bannerBothThemes','bannerWithModal','media25Reachable','dependentSelection','domainUnavailable','localPreferenceReadback','invalidPreferenceDefaults','deniedPreferenceVisible','orderlyQuit')
 PRODUCTION_CASES=('realMain','originalKeyAuthenticated','demoEnvironmentIgnored','productionEmpty','fixtureCanaryAbsent','productionOrigin','orderlyQuit')
 NEGATIVES=('production-argument','marker','manifest')
+DIAGNOSTIC_STAGE='INITIALIZE'
 FAILURES=('PREPARE_FAILED','PACKAGE_FAILED','CONTROL_FAILED','PREFLIGHT_FAILED','NATIVE_STAGE_FAILED','STAGE_VALIDATION_FAILED','SEQUENCE_VALIDATION_FAILED','SCREENSHOT_FAILED','ISOLATION_FAILED','CLEANUP_FAILED')
 def cases(mode):
  if mode not in MODES:reject()
@@ -92,12 +93,34 @@ def validate_report(raw):
  light=value['screenshots'].get('demo-source-overview-light.png');dark=value['screenshots'].get('demo-source-overview-dark.png')
  if light and dark and light['sha256']==dark['sha256']:reject()
  return {**value,'passed':passed}
+def capture_diagnostics(value,mode):
+ markers=[]
+ try:
+  exact_record(value,('process','stdout','stderr'))
+  normal,lines=capture(value)
+  process=value['process']
+  markers.append('DEMO_PROCESS_'+process['status'])
+  markers.append('DEMO_EXIT_'+('NONE' if process['exitCode'] is None else 'ZERO' if process['exitCode']==0 else 'NONZERO'))
+  retired=process['status'] in ('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT') and process['cleanupComplete'] and not process['stdoutTruncated'] and not process['stderrTruncated']
+  markers.append('DEMO_RETIREMENT_'+('CONFIRMED' if retired else 'UNCONFIRMED'))
+  markers.append('DEMO_STDOUT_'+('EXACT' if lines==stdout(mode) else 'EMPTY' if not lines else 'OTHER'))
+ except (ValueError,TypeError,UnicodeError):markers.append('DEMO_CAPTURE_INVALID')
+ return markers
+
 def stage_files(root,mode):
- token=_admit_root(root);cases(mode)
+ global DIAGNOSTIC_STAGE
+ DIAGNOSTIC_STAGE='ROOT_OWNER';token=_admit_root(root);cases(mode)
  directory=root if mode=='production' else root/f'demo-{mode}'
- value=validate_stage(_read_owned(directory,f'demo-{mode}.json'),parse(_read_owned(root,f'demo-capture-{mode}.json')),mode)
+ DIAGNOSTIC_STAGE='CAPTURE_READ';observed=parse(_read_owned(root,f'demo-capture-{mode}.json'))
+ for marker in capture_diagnostics(observed,mode):print(marker)
+ DIAGNOSTIC_STAGE='CAPTURE';capture(observed)
+ DIAGNOSTIC_STAGE='RESULT_READ';raw=_read_owned(directory,f'demo-{mode}.json')
+ DIAGNOSTIC_STAGE='RESULT_SCHEMA';value=validate_stage(raw,observed,mode)
+ DIAGNOSTIC_STAGE='CASES'
+ for ordinal,name in enumerate(cases(mode),1):
+  if value['cases'][name] is False:print(f'DEMO_CASE_{mode.upper()}_{ordinal:02d}_FALSE')
  if _admit_root(root)!=token:reject()
- _write_new(root,f'demo-public-{mode}.json',value);return value['passed']
+ DIAGNOSTIC_STAGE='OUTPUT_WRITE';_write_new(root,f'demo-public-{mode}.json',value);return value['passed']
 def negative_files(root,name):
  token=_admit_root(root)
  value=validate_negative(parse(_read_owned(root,f'demo-capture-{name}.json')),name)
@@ -124,6 +147,8 @@ def publish(base):
   if observed!=item:reject()
  _write_new(base,'validated.json',value);return value['passed'],len(value['screenshots'])==5
 def main():
+ global DIAGNOSTIC_STAGE
+ DIAGNOSTIC_STAGE='INITIALIZE'
  import sys
  try:
   if len(sys.argv)==4 and sys.argv[1] in ('stage','negative','screenshots'):
@@ -133,7 +158,9 @@ def main():
    print('DEMO_VALIDATION_PASS' if passed else 'DEMO_VALIDATION_FAIL');return 0 if passed else 1
   if len(sys.argv)!=2 or sys.argv[1]!='publish':reject()
   passed,bound=publish(Path(__file__).resolve().parents[1]/'.demo-verification')
- except (OSError,ValueError,UnicodeError,RecursionError,TypeError,StopIteration):print('DEMO_VALIDATION_INVALID');return 2
+ except (OSError,ValueError,UnicodeError,RecursionError,TypeError,StopIteration):
+  allowed=('INITIALIZE','ROOT_OWNER','CAPTURE_READ','CAPTURE','RESULT_READ','RESULT_SCHEMA','CASES','OUTPUT_WRITE')
+  print('DEMO_VALIDATION_STAGE_'+(DIAGNOSTIC_STAGE if DIAGNOSTIC_STAGE in allowed else 'INITIALIZE'));print('DEMO_VALIDATION_INVALID');return 2
  print('DEMO_VALIDATION_WRITTEN')
  if bound:print('DEMO_SCREENSHOTS_BOUND')
  print('DEMO_VALIDATION_PASS' if passed else 'DEMO_VALIDATION_FAIL');return 0 if passed else 1

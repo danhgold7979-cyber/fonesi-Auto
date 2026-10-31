@@ -79,4 +79,27 @@ class DemoTests(unittest.TestCase):
   for forbidden in ('Test-VaultContext','VaultDpapiContext','Invoke-Persistence.ps1'):self.assertNotIn(forbidden,source)
   self.assertIn("'--demo'",source);self.assertIn('ReserveDirectory($base)',source)
   self.assertIn('demo-production-witness\\.json',source);self.assertNotIn('Write-Output $Probe.Stderr',source)
+ def test_diagnostics_are_finite_and_do_not_confirm_uncertain_retirement(self):
+  raw,cap=stage('source');self.assertEqual(capture_diagnostics(cap,'source'),['DEMO_PROCESS_SUCCESS','DEMO_EXIT_ZERO','DEMO_RETIREMENT_CONFIRMED','DEMO_STDOUT_EXACT'])
+  for update in ({'status':'TIMEOUT','exitCode':None},{'stdoutTruncated':True},{'stderrTruncated':True},{'cleanupComplete':False}):
+   bad=copy.deepcopy(cap);bad['process'].update(update);self.assertIn('DEMO_RETIREMENT_UNCONFIRMED',capture_diagnostics(bad,'source'))
+  bad=copy.deepcopy(cap);bad['process']['status']={'PRIVATE':True};self.assertEqual(capture_diagnostics(bad,'source'),['DEMO_CAPTURE_INVALID'])
+  cap['stdout']='PRIVATE_PATH_OR_SECRET\n';cap['stderr']='PRIVATE_ERROR'
+  markers=capture_diagnostics(cap,'source');self.assertIn('DEMO_STDOUT_OTHER',markers);self.assertNotIn('PRIVATE',' '.join(markers))
+ def test_cli_false_cases_and_missing_result_emit_only_fixed_locations(self):
+  import io
+  from contextlib import redirect_stdout
+  from unittest.mock import patch
+  import validate_demo as validator
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory).resolve();(root/'.owner').write_text('12345678-1234-1234-1234-123456789abc');(root/'demo-source').mkdir()
+   raw,cap=stage('source');cap['stderr']='PRIVATE_ERROR';(root/'demo-capture-source.json').write_text(json.dumps(cap))
+   def run():
+    output=io.StringIO()
+    with patch('sys.argv',['validate_demo.py','stage',str(root),'source']),redirect_stdout(output):code=validator.main()
+    self.assertNotIn('PRIVATE_ERROR',output.getvalue());self.assertNotIn(str(root),output.getvalue());return code,output.getvalue()
+   code,output=run();self.assertEqual(code,2);self.assertIn('DEMO_VALIDATION_STAGE_RESULT_READ',output);self.assertIn('DEMO_RETIREMENT_CONFIRMED',output)
+   raw['cases']['dependentSelection']=False;(root/'demo-source/demo-source.json').write_text(json.dumps(raw))
+   code,output=run();self.assertEqual(code,1);self.assertIn('DEMO_CASE_SOURCE_13_FALSE',output);self.assertIn('DEMO_VALIDATION_FAIL',output)
+   self.assertFalse(parse((root/'demo-public-source.json').read_bytes())['passed'])
 if __name__=='__main__':unittest.main()

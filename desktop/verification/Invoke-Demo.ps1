@@ -20,6 +20,21 @@ function Show-DemoDiagnostic($Probe) {
         if(@($Probe.Stderr -split '\r?\n'|Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
     }
 }
+function Show-DemoValidationDiagnostic($Probe) {
+    $markers=[Collections.Generic.List[string]]::new()
+    foreach($name in @('SUCCESS','NONZERO_EXIT','TIMEOUT','CAPTURE_FAILED','LAUNCH_FAILED','ACCESS_DENIED','CLEANUP_FAILED','EMPTY_OUTPUT')){$markers.Add('DEMO_PROCESS_'+$name)}
+    foreach($name in @('NONE','ZERO','NONZERO')){$markers.Add('DEMO_EXIT_'+$name)}
+    foreach($name in @('CONFIRMED','UNCONFIRMED')){$markers.Add('DEMO_RETIREMENT_'+$name)}
+    foreach($name in @('EXACT','EMPTY','OTHER')){$markers.Add('DEMO_STDOUT_'+$name)}
+    $markers.Add('DEMO_CAPTURE_INVALID')
+    foreach($name in @('INITIALIZE','ROOT_OWNER','CAPTURE_READ','CAPTURE','RESULT_READ','RESULT_SCHEMA','CASES','OUTPUT_WRITE')){$markers.Add('DEMO_VALIDATION_STAGE_'+$name)}
+    foreach($mode in @('SOURCE','PACKAGE','PRODUCTION')){
+        $limit=18;if($mode -ceq 'PRODUCTION'){$limit=7}
+        for($i=1;$i -le $limit;$i++){$markers.Add(('DEMO_CASE_'+$mode+'_'+$i.ToString('00')+'_FALSE'))}
+    }
+    $shown=0
+    foreach($marker in $markers){if(@($Probe.Stdout -split '\r?\n'|Where-Object {$_ -ceq $marker}).Count -gt 0){$shown++;if($shown -gt 24){break};Write-Output $marker}}
+}
 function Write-Private([string]$Path,$Value) {
     Assert-PlainDirectory ([IO.Path]::GetDirectoryName($Path))
     $raw=$Value|ConvertTo-Json -Depth 16 -Compress
@@ -193,7 +208,7 @@ try {
     if(-not $allClean){throw 'NATIVE_UNCONFIRMED'}
     $failure='STAGE_VALIDATION_FAILED';$allClean=$false
     $validated=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_demo.py'),'stage',$owner.Path,'production')) 120000 @{}
-    $allClean=Retired $validated;Require-Success $validated 'DEMO_VALIDATION_PASS'
+    Show-DemoValidationDiagnostic $validated;$allClean=Retired $validated;Require-Success $validated 'DEMO_VALIDATION_PASS'
     $report.modes.production=Read-Public 'demo-public-production.json'
     Remove-Part 'fonesi-auto-foundation-source-settings-ui' (8L*1024*1024)
     $failure='ISOLATION_FAILED';$allClean=$false
@@ -216,7 +231,7 @@ try {
         if(-not $allClean){throw 'NATIVE_UNCONFIRMED'}
         $failure='STAGE_VALIDATION_FAILED';$allClean=$false
         $validated=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_demo.py'),'stage',$owner.Path,$mode)) 120000 @{}
-        $allClean=Retired $validated;Require-Success $validated 'DEMO_VALIDATION_PASS'
+        Show-DemoValidationDiagnostic $validated;$allClean=Retired $validated;Require-Success $validated 'DEMO_VALIDATION_PASS'
         $report.modes[$mode]=Read-Public ('demo-public-'+$mode+'.json')
     }
     foreach($kind in @('marker','manifest')){
@@ -231,7 +246,7 @@ try {
         if(-not $allClean){throw 'NATIVE_UNCONFIRMED'}
         $failure='STAGE_VALIDATION_FAILED';$allClean=$false
         $validated=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_demo.py'),'negative',$owner.Path,$kind)) 120000 @{}
-        $allClean=Retired $validated;Require-Success $validated 'DEMO_VALIDATION_PASS'
+        Show-DemoValidationDiagnostic $validated;$allClean=Retired $validated;Require-Success $validated 'DEMO_VALIDATION_PASS'
         $report.negatives[$kind]=Read-Public ('demo-negative-public-'+$kind+'.json')
     }
     $profile=New-Profile 'fonesi-auto-foundation-source-production-argument'
@@ -243,7 +258,7 @@ try {
     if(-not $allClean){throw 'NATIVE_UNCONFIRMED'}
     $failure='STAGE_VALIDATION_FAILED';$allClean=$false
     $validated=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_demo.py'),'negative',$owner.Path,'production-argument')) 120000 @{}
-    $allClean=Retired $validated;Require-Success $validated 'DEMO_VALIDATION_PASS'
+    Show-DemoValidationDiagnostic $validated;$allClean=Retired $validated;Require-Success $validated 'DEMO_VALIDATION_PASS'
     $report.negatives['production-argument']=Read-Public 'demo-negative-public-production-argument.json'
     Remove-Part 'fonesi-auto-foundation-source-production-argument' (8L*1024*1024)
     $failure='ISOLATION_FAILED';$allClean=$false

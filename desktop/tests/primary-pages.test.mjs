@@ -318,3 +318,33 @@ test('tracking fits required account selector into existing filter rows and reta
   assert.ok(text(table).includes('Chưa có dữ liệu sức khỏe điện thoại.'));
   assert.equal(nodes(table).find((node) => node.type === 'td').props.colSpan, 6);
 });
+
+test('demo account cardinality is observed across three phone selections, not simultaneous unselected rows', async () => {
+  const { DEMO_SNAPSHOT } = await import('../demo/fixtures.ts');
+  const view = mount('AccountsPage', DEMO_SNAPSHOT);
+  const rows = (tree) => nodes(tree).filter((node) => node.props?.className === 'account-row');
+  assert.equal(rows(view.render()).length, 0);
+  const observed = new Set();
+  for (let ordinal = 1; ordinal <= 3; ordinal++) {
+    nodes(view.render())
+      .find((node) => node.props?.id === 'accounts-phone')
+      .props.onChange({ currentTarget: { value: `DEMO-DEVICE-${ordinal}` } });
+    const current = rows(view.render());
+    assert.equal(current.length, 1);
+    assert.ok(text(current[0]).includes(`DEMO-ACCOUNT-${ordinal}`));
+    assert.equal(
+      text(nodes(current[0]).find((node) => node.props?.className === 'target-row')).includes(
+        `DEMO-TARGET-${ordinal}`,
+      ),
+      true,
+    );
+    for (let other = 1; other <= 3; other++)
+      if (other !== ordinal) assert.ok(!text(current[0]).includes(`DEMO-ACCOUNT-${other}`));
+    observed.add(`DEMO-ACCOUNT-${ordinal}`);
+  }
+  assert.equal(observed.size, 3);
+  nodes(view.render())
+    .find((node) => node.props?.id === 'accounts-phone')
+    .props.onChange({ currentTarget: { value: '' } });
+  assert.equal(rows(view.render()).length, 0);
+});

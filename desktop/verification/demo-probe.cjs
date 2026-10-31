@@ -134,8 +134,32 @@ async function run() {
     "document.querySelectorAll('#setup-phone option[value]').length===4",
   );
   await page('accounts');
-  const accountCount = await execute(
-    "document.querySelectorAll('#workspace .account-row').length===3",
+  const observedAccounts = new Set();
+  for (let ordinal = 1; ordinal <= 3; ordinal++) {
+    const deviceId = `DEMO-DEVICE-${ordinal}`,
+      accountId = `DEMO-ACCOUNT-${ordinal}`;
+    await execute(
+      `(()=>{const input=document.getElementById('accounts-phone');input.value=${JSON.stringify(deviceId)};input.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`,
+    );
+    await poll(() =>
+      execute(
+        `(()=>{const rows=document.querySelectorAll('#workspace .account-row');return rows.length===1&&rows[0].querySelector('.account-copy small').textContent.split(' · ')[1]===${JSON.stringify(accountId)}&&rows[0].querySelector('.target-row b').textContent===${JSON.stringify(`DEMO-TARGET-${ordinal}`)};})()`,
+      ),
+    );
+    observedAccounts.add(
+      await execute(
+        "document.querySelector('#workspace .account-row .account-copy small').textContent.split(' · ')[1]",
+      ),
+    );
+  }
+  const accountCount = observedAccounts.size === 3;
+  await execute(
+    "(()=>{const input=document.getElementById('accounts-phone');input.value='';input.dispatchEvent(new Event('change',{bubbles:true}));return true;})()",
+  );
+  await poll(() =>
+    execute(
+      "document.getElementById('accounts-phone').value===''&&document.querySelectorAll('#workspace .account-row').length===0",
+    ),
   );
   await page('calendar');
   await execute(
