@@ -13,6 +13,7 @@ const stages = [
       'tests/boundaries.test.mjs',
       'tests/harness.test.mjs',
       'tests/validators.test.mjs',
+      'tests/domain-fixtures.test.mjs',
     ],
   ],
 ];

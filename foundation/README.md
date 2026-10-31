@@ -1,6 +1,7 @@
 # Provisional pure-source foundation
 
-Authorized subsets **P1-01-S/P1-03-S/P1-11-S**, not the application or full Phase1. See the
+Authorized pure-source foundation; P1-11 contract completion entered 2026-10-31
+05:45 UTC under the scoped development exception, not full Phase 1 acceptance. See the
 [approved scoped amendment](../docs/phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md).
 No entry point, Electron/React runtime, IPC, I/O service, DB/vault, devices or accounts.
 
@@ -8,7 +9,7 @@ No entry point, Electron/React runtime, IPC, I/O service, DB/vault, devices or a
 
 | Path | Responsibility | Allowed dependency direction |
 |---|---|---|
-| `src/contracts/` | Pure unavailable-only status/error types and validator | Other pure contract modules only; no tooling/tests or Node/DOM globals |
+| `src/contracts/` | Pure unavailable status/error and synthetic domain fixture types/validators | Other pure contract modules only; no tooling/tests or Node/DOM globals |
 | `scripts/` | Development metadata checks; owned repository reads, fixed-code output | Node builtins and reviewed metadata; never imported by contracts |
 | `tests/` | Development-only metadata positive/negative fixtures | Node test/assert, check functions and reviewed metadata |
 | `build/`, `.test-output/` | Future owned generated output, ignored | Not a source or runtime authority |
@@ -152,3 +153,25 @@ Named Windows development verification is now executed on exact remote
 with actual npm11.19.1 after fresh scripts-disabled restore. Earlier NOT_RUN notes
 are historical subset evidence. [Details and method limits](../docs/evidence/P1-03-tooling-admission-2026-10-31.md)
 retain target-host and full P1-01 acceptance separately.
+
+## P1-11 pure domain fixtures
+
+`src/contracts/domain-types.ts` documents the versioned synthetic records;
+`domain-fixtures.ts` validates snapshots and supplies pure claimed-binding,
+transition, deletion and cleanup comparisons. Existing `types.ts`/`validate.ts`
+remain unchanged. No runtime import, IPC method, database, device or secret service
+is introduced. Both new modules have no imports and remain inside the same
+restricted pure module inventory.
+
+[Exact scope and schema](../docs/phases/PHASE-01-P1-11-CONTRACT-COMPLETION-PROPOSAL.md)
+and [all-entity ownership/threat matrix](../docs/phases/PHASE-01-P1-11-OWNERSHIP-AND-INVARIANTS.md)
+distinguish fixture conventions from production capacities/authority. New exported
+types are compile-time descriptions, not validated brands or runtime narrowing.
+Fixed result codes never return input. Supplied IDs/evidence/epochs are not proof
+of physical identity, secret existence, safe dispatch or external success.
+
+`node --test foundation/tests/domain-fixtures.test.mjs` from the repository root
+compiles the pure sources into a fresh owned output and runs the synthetic fixtures.
+The aggregate foundation harness includes this file alongside every earlier suite.
+Use the real admitted npm version for `node foundation/scripts/check.mjs <version>`.
+New exact-head Windows execution remains pending publication.

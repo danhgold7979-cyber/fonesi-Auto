@@ -5,8 +5,8 @@
 **Current branch:** `phase-01`; no main merge or original Phase 0 acceptance
 **Full-phase execution base:** remains conditional on the original Phase 0 gate
 **Current verified scope:** P1-01/P1-02/P1-03 task-specific TECHNICAL_PASS;
-formal Phase0/predecessor acceptance pending. P1-11 pure-contract completion is approved as the next scoped entry; its exact
-entry must be recorded before source work.
+formal Phase0/predecessor acceptance pending. P1-11 pure-contract completion entered at 05:45 UTC; source/fixture verification
+is in progress under its exact approved development-only schema.
 
 > Phase 0 remains unfinished. Historical pure-source restrictions below were
 > superseded only by recorded narrow entries, including ADR-0006's real public-read
