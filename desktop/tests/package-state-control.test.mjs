@@ -280,10 +280,13 @@ test('first-cancel observe composes real owned journal with explicitly synthetic
         cancelled: true,
       }),
     );
-    write(path.join(f.root, 'package-capture-first-cancel.json'), {
+    const transported = JSON.stringify({
       process,
       stdout: 'PERSISTENCE_DESKTOP_CANCELLED\r\n',
-      stderr: '',
+      stderr: "warning: 'fixture-only'",
+    }).replaceAll("'", '\\u0027');
+    fs.writeFileSync(path.join(f.root, 'package-capture-first-cancel.json'), transported, {
+      flag: 'wx',
     });
     const result = controller.observe(f.root, pkg, 'first-cancel');
     assert.equal(Object.values(result.cases).every(Boolean), true);
@@ -345,4 +348,67 @@ test('private callback exceptions select fixed diagnostic codes without echo or 
     'UNCLASSIFIED',
   );
   assert.equal(fixedObservationError(Error('restore_schema')), 'UNCLASSIFIED');
+});
+
+test('PowerShell capture transport accepts equivalent escaped JSON without relaxing canonical receipts', () => {
+  const { parseCapture } = require('../verification/package-state-control.cjs');
+  const { exact } = require('../verification/package-contract.cjs');
+  // Representative ConvertTo-Json-compatible escapes, not the unuploaded
+  // private text of the failed hosted capture.
+  const raw = String.raw` { "process" : {"status":"SUCCESS","exitCode":0,"cleanupComplete":true,"stdoutTruncated":false,"stderrTruncated":false}, "stdout":"PERSISTENCE_DESKTOP_CANCELLED\r\n", "stderr":"warning: \u0027quoted\u0027 \u003cvalue\u003e \u0026 \u00e9" } `;
+  const value = parseCapture(raw);
+  assert.equal(value.stderr, "warning: 'quoted' <value> & é");
+  assert.equal(value.stdout, 'PERSISTENCE_DESKTOP_CANCELLED\r\n');
+  assert.throws(() => exact(raw, ['process', 'stdout', 'stderr']));
+  const f = fixture();
+  try {
+    fs.writeFileSync(path.join(f.root, 'package-capture-first-cancel.json'), raw);
+    assert.deepEqual(capture(f.root, 'first-cancel'), value);
+  } finally {
+    f.close();
+  }
+});
+
+test('capture parser rejects duplicate masking, unknown shape, invalid JSON and exceeded bounds', () => {
+  const { parseCapture } = require('../verification/package-state-control.cjs');
+  const value = {
+    process: {
+      status: 'SUCCESS',
+      exitCode: 0,
+      cleanupComplete: true,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    },
+    stdout: 'PERSISTENCE_DESKTOP_CANCELLED\n',
+    stderr: '',
+  };
+  const raw = JSON.stringify(value);
+  for (const bad of [
+    raw.replace('"stdout":', '"stdout":"PRIVATE","stdout":'),
+    raw.replace('"cleanupComplete":true', '"cleanupComplete":false,"cleanupComplete":true'),
+    raw.replace('"stderrTruncated":false', '"stderrTruncated":true,"stderr\\u0054runcated":false'),
+    raw.replace('"exitCode":0', '"exitCode":true'),
+    raw.replace('"exitCode":0', '"exitCode":-0'),
+    raw.replace('"exitCode":0', '"exitCode":2147483648'),
+    raw.replace('"exitCode":0', '"exitCode":1e999'),
+    raw.replace('"process":', '"unknown":0,"process":'),
+    raw.replace('"status":"SUCCESS"', '"status":"SUCCESS","extra":0'),
+    raw.replace('"process":{', '"process":{"nested":{'),
+    raw.replace('"stderr":""', '"stderr":[]'),
+    raw + 'true',
+    '\ufeff' + raw,
+    '\u00a0' + raw,
+    raw.slice(0, -1) + ',}',
+    JSON.stringify({ ...value, stderr: 'x'.repeat(32769) }),
+    ' '.repeat(65537),
+  ])
+    assert.throws(() => parseCapture(bad));
+  assert.equal(
+    parseCapture(JSON.stringify({ ...value, stderr: 'x'.repeat(32768) })).stderr.length,
+    32768,
+  );
+  assert.equal(
+    parseCapture(JSON.stringify({ ...value, stderr: '😀'.repeat(16000) })).stderr.length,
+    32000,
+  );
 });

@@ -220,12 +220,136 @@ function observer(root, stage, kind) {
     fail();
   return v;
 }
+// PowerShell capture transport is JSON, not our own canonical receipt encoding.
+// Consume the bounded grammar before normalization so escaped duplicate keys
+// cannot hide retirement/truncation failures. Arrays/deeper objects are not used.
+function parseCapture(raw) {
+  if (typeof raw !== 'string' || Buffer.byteLength(raw) > 65536) fail();
+  let offset = 0,
+    pairs = 0;
+  function space() {
+    while (/[ \t\r\n]/.test(raw[offset] ?? '') && offset < raw.length) offset++;
+  }
+  function string() {
+    const start = offset++;
+    for (; offset < raw.length; offset++) {
+      const c = raw[offset];
+      if (c === '"') {
+        offset++;
+        return JSON.parse(raw.slice(start, offset));
+      }
+      if (c === '\\') {
+        offset++;
+        if (offset >= raw.length) fail();
+      } else if (c.charCodeAt(0) < 32) fail();
+    }
+    fail();
+  }
+  function value(depth) {
+    space();
+    if (raw[offset] === '"') return string();
+    if (raw[offset] === '{') {
+      if (depth > 2) fail();
+      offset++;
+      space();
+      const out = Object.create(null),
+        keys = new Set();
+      if (raw[offset] === '}') {
+        offset++;
+        return out;
+      }
+      for (;;) {
+        space();
+        if (raw[offset] !== '"' || ++pairs > 8) fail();
+        const key = string();
+        if (keys.has(key)) fail();
+        keys.add(key);
+        space();
+        if (raw[offset++] !== ':') fail();
+        out[key] = value(depth + 1);
+        space();
+        if (raw[offset] === '}') {
+          offset++;
+          return out;
+        }
+        if (raw[offset++] !== ',') fail();
+      }
+    }
+    const start = offset;
+    while (offset < raw.length && !/[ \t\r\n,}]/.test(raw[offset])) offset++;
+    if (start === offset) fail();
+    const atom = JSON.parse(raw.slice(start, offset));
+    if (
+      atom !== null &&
+      typeof atom !== 'boolean' &&
+      (typeof atom !== 'number' || !Number.isFinite(atom))
+    )
+      fail();
+    return atom;
+  }
+  const input = value(1);
+  space();
+  if (offset !== raw.length) fail();
+  function keys(v, expected) {
+    return (
+      v !== null &&
+      typeof v === 'object' &&
+      !Array.isArray(v) &&
+      Object.keys(v).length === expected.length &&
+      expected.every((key) => Object.hasOwn(v, key))
+    );
+  }
+  if (
+    !keys(input, ['process', 'stdout', 'stderr']) ||
+    !keys(input.process, [
+      'status',
+      'exitCode',
+      'cleanupComplete',
+      'stdoutTruncated',
+      'stderrTruncated',
+    ])
+  )
+    fail();
+  const p = input.process;
+  if (
+    ![
+      'SUCCESS',
+      'NONZERO_EXIT',
+      'EMPTY_OUTPUT',
+      'TIMEOUT',
+      'CAPTURE_FAILED',
+      'LAUNCH_FAILED',
+      'ACCESS_DENIED',
+      'CLEANUP_FAILED',
+    ].includes(p.status) ||
+    (p.exitCode !== null &&
+      (!Number.isInteger(p.exitCode) ||
+        Object.is(p.exitCode, -0) ||
+        p.exitCode < -2147483648 ||
+        p.exitCode > 2147483647)) ||
+    !['cleanupComplete', 'stdoutTruncated', 'stderrTruncated'].every(
+      (key) => typeof p[key] === 'boolean',
+    ) ||
+    typeof input.stdout !== 'string' ||
+    input.stdout.length > 32768 ||
+    typeof input.stderr !== 'string' ||
+    input.stderr.length > 32768
+  )
+    fail();
+  return {
+    process: {
+      status: p.status,
+      exitCode: p.exitCode,
+      cleanupComplete: p.cleanupComplete,
+      stdoutTruncated: p.stdoutTruncated,
+      stderrTruncated: p.stderrTruncated,
+    },
+    stdout: input.stdout,
+    stderr: input.stderr,
+  };
+}
 function capture(root, stage) {
-  const c = exact(read(path.join(root, `package-capture-${stage}.json`)), [
-      'process',
-      'stdout',
-      'stderr',
-    ]),
+  const c = parseCapture(read(path.join(root, `package-capture-${stage}.json`))),
     p = c.process,
     expected = EXPECTED[stage];
   if (
@@ -605,6 +729,7 @@ module.exports = {
   capture,
   validateState,
   fixedObservationError,
+  parseCapture,
   OBSERVE_PHASES,
   OBSERVE_ERRORS,
 };

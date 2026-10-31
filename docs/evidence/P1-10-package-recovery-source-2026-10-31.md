@@ -170,3 +170,34 @@ and supervisor SHA256
 `098a277b7492713cd6ce64ccad8cd88e38c1f505ad1b5ddf4bcda83f85e9dac9`.
 The known hosted failure remains unresolved until the next actual boundary observation;
 no successful recovery or full native Cancel result is inferred from local tests.
+
+
+## Second hosted attempt — capture representation boundary
+
+Diagnostic public head `d1916a7ec417fc2c6a7c5d7cba9d2def7ed0eaa8`, exact tree
+`45468f4b3e7476ace3aa5eae6f5efd017b8ea99d`, ran in
+[41226669015](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41226669015).
+Package job124612575887 again failed before admitting first-Cancel stage evidence.
+The bounded diagnostic now identifies `PACKAGE_OBSERVE_CAPTURE` and
+`PACKAGE_OBSERVE_ERROR_RESTORE_SCHEMA`; the outer native process was SUCCESS and the
+observation control exited nonzero with confirmed retirement. Artifact13052500298 is
+1110 bytes/SHA256 `ebbcd85d86435557a8859fe39f6735de5d47a2d02ebadaa8b87e841b6098ca71`.
+All15 packaging negatives and extracted-copy verification remained true; no package
+was promoted and no successful native stage is inferred.
+
+Source inspection establishes a serializer-contract mismatch: the PowerShell producer
+uses `ConvertTo-Json`, while the capture reader used the canonical-JavaScript receipt
+parser, including byte equality with `JSON.stringify`. The observed error establishes
+that schema/order/roundtrip boundary, not the exact private offending character.
+The correction is restricted to private capture JSON: bounded, duplicate-aware parsing
+of equivalent JSON representations with exact root/process schemas and stream limits.
+Owned receipts/state remain byte-canonical; required process outcome, retirement,
+truncation and exact stdout framing are unchanged. Equivalent escaped-string fixtures
+exercise the mismatch without claiming recovery of the private Windows capture.
+
+Capture-transport checkpoint at18:00UTC: author full desktop **569/569 PASS** and
+DESKTOP_SOURCE_CHECK_PASS; independent focused **18/18 PASS**, including equivalent
+reordered-key transport. Prior Python157 and foundation109 evidence is unchanged, not
+newly rerun. Coordinator approved the same bounded retry after this aggregate; native
+confirmation remains pending and the hosted FAIL is retained. Controller SHA256 is
+`0b004a065758faad1552d72b00866336bc334cce3c218b6d4b71130f191ca109`.
