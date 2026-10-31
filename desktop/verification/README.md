@@ -215,3 +215,10 @@ raw profile/log subtrees may be deleted by the bounded cleanup; this is not a
 raw-dump preservation guarantee. Prior 20/25-case historical
 runs remain as dated evidence, not retroactive P1-04 verification. See
 [current source evidence](../../docs/evidence/P1-04-logging-source-2026-10-31.md).
+
+Hosted follow-through: run 41178227952 on exact `fcb1366b` passed this revision's
+133 desktop / 109 foundation / 46 Python / 30 PowerShell checks and all 29×2 runtime,
+six degraded-app and ten store-mode predicates. All cleanup passed. Native crash
+artifact counts were 0, so no general dump-confidentiality claim follows. The
+NOT_RUN paragraph above is historical to the source-review checkpoint; consult
+current source evidence for the exact retained JSON/hash and acceptance limits.

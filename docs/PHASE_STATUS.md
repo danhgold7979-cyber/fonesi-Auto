@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-10-31 05:58 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-10-31 06:54 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -34,8 +34,9 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | Application source | PROVISIONAL PHASE 1 WORK AUTHORIZED | Actual foundation/desktop source exists under recorded exceptions; no device/account service or full phase acceptance |
 | P1-01 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Actual map/bindings/cycles/absence/fresh Windows bootstrap verified on 5e4fa521, run41173386584; original Phase0 formal gate still pending. [Criteria/evidence](evidence/P1-01-module-graph-source-2026-10-31.md) |
 | P1-02 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific scope at 04:36 UTC on ff25bee; P1-03/P1-11 technical prerequisites now pass; formal chain remains pending through Phase 0. [Criterion audit](evidence/P1-02-canonical-criterion-audit-2026-10-31.md); accepted full-task counts unchanged |
-| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; P1-01 architecture now TECHNICAL_PASS; formal predecessor chain through Phase0 still pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Four canonical technical scopes now pass including P1-11, not four formally accepted tasks |
+| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; P1-01 architecture now TECHNICAL_PASS; formal predecessor chain through Phase0 still pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Five canonical technical scopes now pass including P1-11, not formally accepted tasks |
 | P1-11 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted canonical definitions/fixtures/threat review at 05:57 UTC on b3bc1903, run41174482528; formal Phase 0/predecessor chain remains pending. [Evidence/criteria](evidence/P1-11-contract-completion-source-2026-10-31.md) |
+| P1-04 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted foundation logging at 06:54 UTC on fcb1366b, run 41178227952; formal Phase 0 chain remains pending. [Evidence/criteria](evidence/P1-04-logging-source-2026-10-31.md) |
 | Phase 0 acceptance | NOT ACCEPTED | 0/10 tasks accepted; all 12 baseline exits unaccepted; independent slices concluded, remaining gates BLOCKED |
 
 ## 3. Historical Phase 0 snapshot before collector hardening
@@ -644,3 +645,17 @@ Independent source suites passed 133/133 desktop, 109/109 foundation and 46/46
 Python; independent source/envelope/documentation review was CLEAR at 06:49 UTC.
 Windows sharing/reparse/application/crash evidence is still NOT_RUN; no P1-04
 technical pass is claimed. Technical counts remain 4/11 and 4/154; formal count 0.
+
+### P1-04 hosted result — 2026-10-31 06:53 UTC
+
+Exact public `fcb1366b839f5fd2e6ddd0e49e0eeac48424990e` / tree
+`fa99260d27d646ba79e67ee8fe451946ac62f11b`, run 41178227952 SUCCESS:
+133 desktop, 109 foundation, 46 Python, 30 PowerShell; source/package 29/29 each,
+degraded application 6/6, ten store modes and all cleanup predicates passed.
+[Evidence and limitations](evidence/P1-04-logging-source-2026-10-31.md) distinguish
+actual Windows sharing/process-recovery from injected ENOSPC and note that all
+native crash-artifact counts were zero. Independent artifact review was CLEAR; coordinator accepted P1-04 foundation
+logging TECHNICAL_PASS at 06:54 UTC. Technical equal-task ratios are **5/11 = 45.5%**
+and **5/154 = 3.2%**, not weighted effort/feature progress. Formal accepted count
+remains 0; old navigation
+FAIL and original Phase 0 gates remain unchanged. No next-task source entry yet.

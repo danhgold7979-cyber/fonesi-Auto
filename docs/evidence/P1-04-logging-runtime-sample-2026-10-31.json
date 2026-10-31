@@ -1,0 +1,378 @@
+{
+  "schemaVersion": 1,
+  "scope": "HOSTED_RUNNER_ONLY",
+  "installer": {
+    "process": {
+      "status": "SUCCESS",
+      "exitCode": 0,
+      "cleanupComplete": true,
+      "stdoutTruncated": false,
+      "stderrTruncated": false
+    },
+    "officialMarker": true
+  },
+  "runs": {
+    "source": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "ownedBytes": 1231398,
+      "streamsClean": true,
+      "result": {
+        "mode": "source",
+        "versions": {
+          "electron": "45.1.0",
+          "node": "24.22.1",
+          "chrome": "156.0.8078.49"
+        },
+        "cases": {
+          "runtime_versions": true,
+          "mode_identity": true,
+          "main_bundle_loaded": true,
+          "diagnostic_rendered": true,
+          "secure_preferences": true,
+          "approved_preload": true,
+          "no_node_globals": true,
+          "bounded_public_bridge": true,
+          "native_menu_absent": true,
+          "isolated_world_separate": true,
+          "popup_denied": true,
+          "permission_denied": true,
+          "download_denied": true,
+          "network_policy_denied": true,
+          "unknown_asset_denied": true,
+          "lifecycle_close_reopen": true,
+          "document_open_public_only": true,
+          "reload_session_revoked": true,
+          "about_blank_sender_denied": true,
+          "orderly_quit": true,
+          "health_read": true,
+          "settings_read": true,
+          "ipc_request_denials": true,
+          "ipc_sender_denials": true,
+          "react_explicit_read": true,
+          "logging_correlation": true,
+          "legacy_protocol_compatibility": true,
+          "logging_persisted": true,
+          "logging_canary_absent": true
+        },
+        "observations": {
+          "documentOpenUrlUnchanged": true,
+          "reloadUrlUnchanged": true,
+          "aboutBlankUrlChanged": true,
+          "aboutBlankDenialObserved": false
+        },
+        "logging": {
+          "recordCount": 18,
+          "crashArtifactCount": 0
+        }
+      }
+    },
+    "package": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "ownedBytes": 1231402,
+      "streamsClean": true,
+      "result": {
+        "mode": "package",
+        "versions": {
+          "electron": "45.1.0",
+          "node": "24.22.1",
+          "chrome": "156.0.8078.49"
+        },
+        "cases": {
+          "runtime_versions": true,
+          "mode_identity": true,
+          "main_bundle_loaded": true,
+          "diagnostic_rendered": true,
+          "secure_preferences": true,
+          "approved_preload": true,
+          "no_node_globals": true,
+          "bounded_public_bridge": true,
+          "native_menu_absent": true,
+          "isolated_world_separate": true,
+          "popup_denied": true,
+          "permission_denied": true,
+          "download_denied": true,
+          "network_policy_denied": true,
+          "unknown_asset_denied": true,
+          "lifecycle_close_reopen": true,
+          "document_open_public_only": true,
+          "reload_session_revoked": true,
+          "about_blank_sender_denied": true,
+          "orderly_quit": true,
+          "health_read": true,
+          "settings_read": true,
+          "ipc_request_denials": true,
+          "ipc_sender_denials": true,
+          "react_explicit_read": true,
+          "logging_correlation": true,
+          "legacy_protocol_compatibility": true,
+          "logging_persisted": true,
+          "logging_canary_absent": true
+        },
+        "observations": {
+          "documentOpenUrlUnchanged": true,
+          "reloadUrlUnchanged": true,
+          "aboutBlankUrlChanged": true,
+          "aboutBlankDenialObserved": false
+        },
+        "logging": {
+          "recordCount": 18,
+          "crashArtifactCount": 0
+        }
+      }
+    }
+  },
+  "negatives": {
+    "crash": {
+      "process": {
+        "status": "NONZERO_EXIT",
+        "exitCode": 1,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "armed": true,
+      "observed": true,
+      "bootstrapFailed": true,
+      "unexpectedQuit": false,
+      "ownedBytes": 1231392,
+      "streamsClean": true,
+      "loggingScan": {
+        "process": {
+          "status": "SUCCESS",
+          "exitCode": 0,
+          "cleanupComplete": true,
+          "stdoutTruncated": false,
+          "stderrTruncated": false
+        },
+        "result": {
+          "canonical": true,
+          "canaryAbsent": true,
+          "recordCount": 1,
+          "crashArtifactCount": 0
+        }
+      }
+    },
+    "tamper": {
+      "process": {
+        "status": "NONZERO_EXIT",
+        "exitCode": 1,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "changed": true,
+      "bootstrapFailed": true,
+      "unexpectedReady": false,
+      "ownedBytes": 1115372,
+      "streamsClean": true,
+      "loggingScan": {
+        "process": {
+          "status": "SUCCESS",
+          "exitCode": 0,
+          "cleanupComplete": true,
+          "stdoutTruncated": false,
+          "stderrTruncated": false
+        },
+        "result": {
+          "canonical": true,
+          "canaryAbsent": true,
+          "recordCount": 0,
+          "crashArtifactCount": 0
+        }
+      }
+    }
+  },
+  "loggingFixtures": {
+    "concurrent": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "concurrent",
+        "passed": true
+      },
+      "passed": true
+    },
+    "crash": {
+      "process": {
+        "status": "NONZERO_EXIT",
+        "exitCode": 73,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": null,
+      "passed": true
+    },
+    "recover": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "recover",
+        "passed": true
+      },
+      "passed": true
+    },
+    "prepare": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "prepare",
+        "passed": true
+      },
+      "passed": true
+    },
+    "sharing": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "sharing",
+        "passed": true
+      },
+      "passed": true
+    },
+    "enospc": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "enospc",
+        "passed": true
+      },
+      "passed": true
+    },
+    "prepare-reparse": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "prepare-reparse",
+        "passed": true
+      },
+      "passed": true
+    },
+    "reparse": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "reparse",
+        "passed": true
+      },
+      "passed": true
+    },
+    "unowned": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "unowned",
+        "passed": true
+      },
+      "passed": true
+    },
+    "traversal": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "streamsClean": true,
+      "result": {
+        "mode": "traversal",
+        "passed": true
+      },
+      "passed": true
+    }
+  },
+  "loggingDegraded": {
+    "process": {
+      "status": "SUCCESS",
+      "exitCode": 0,
+      "cleanupComplete": true,
+      "stdoutTruncated": false,
+      "stderrTruncated": false
+    },
+    "streamsClean": true,
+    "fixedNotice": true,
+    "ownedBytes": 1231402,
+    "unownedUnchanged": true,
+    "result": {
+      "cases": {
+        "publicReadAvailable": true,
+        "loggingDegraded": true,
+        "safeCorrelatedError": true,
+        "visibleDegradation": true,
+        "orderlyQuit": true,
+        "crashCanaryAbsent": true
+      },
+      "crashArtifactCount": 0
+    }
+  },
+  "buildVerified": true,
+  "binaryHashMatched": true,
+  "runtimeCopyVerified": true,
+  "directoryCleanup": true,
+  "packageBytes": 374979867,
+  "failure": null,
+  "oldNavigationGate": "FAIL_RETAINED",
+  "passed": true
+}

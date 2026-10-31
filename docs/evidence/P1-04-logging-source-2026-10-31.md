@@ -102,3 +102,67 @@ wrong-token denial and the actual maintenance CLI recovery followed by fresh
 logging/held-record preservation. This is Linux process/filesystem evidence, not
 Windows Job or sharing evidence. Windows replacement denial uses an owned open
 file, not host ACL changes; ENOSPC remains explicitly injected, never disk filling.
+
+## Hosted result — 2026-10-31 06:53 UTC observation
+
+[Run 41178227952](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41178227952)
+completed SUCCESS, job 124470101185, exact public head
+`fcb1366b839f5fd2e6ddd0e49e0eeac48424990e`, source tree
+`fa99260d27d646ba79e67ee8fe451946ac62f11b` (local reviewed commit
+`a104ce5bc101c770a48b969a09f6e1ae77cbdd53`). Coordinator verified hosted logs:
+**133 desktop / 109 foundation / 46 Python / 30 PowerShell** tests passed on the
+approved isolated Windows development verification environment.
+
+Artifact 13034320347's fixed validated JSON is retained byte-for-byte as
+[P1-04 runtime sample](P1-04-logging-runtime-sample-2026-10-31.json): **9,659 LF bytes**,
+SHA256 `de667889742af04371773376b81637d79d0cbb6bb6a47410e8fefd7defde99f3`.
+This hash refers to exact artifact/Git bytes, not an unconfigured platform checkout.
+The coordinator downloaded it; this author reused the supplied local file rather
+than performing a second download/runtime. Independent content/privacy review was CLEAR: duplicate-aware original-byte
+parse, strict reconstructed raw-to-public equality and fixed-field privacy review.
+The reviewer did not redownload the archive or rerun the hosted application.
+
+- Source and renamed package: **29/29 cases each**, 18 canonical application log
+  records each, real v2 main/preload error correlation plus unchanged v1 control,
+  actual logger close/persistence and all prior isolation/admission cases.
+- Actual degraded-sink application: **6/6 cases**, public reads still available,
+  visible fixed degradation, fixed notice, unowned root unchanged and orderly exit.
+- All ten owned store fixture modes passed: concurrent exclusion; intentional
+  exit 73; wrong-token denial/offline recovery/reopen; sharing preparation and
+  actual Windows sharing-denied replacement; injected ENOSPC; reparse preparation
+  and actual owned junction denial; unowned and traversal rejection.
+- Crash/tamper negatives retained expected NONZERO_EXIT 1, correct failure markers
+  and no unexpected successful lifecycle. Their private scans found respectively
+  one and zero application records; neither is a successful flush claim.
+- Every process cleanup/capture flag, source/package integrity/copy predicate and
+  final directory cleanup passed. Aggregate failure is null and passed is true.
+  Package bytes: 374,979,867. Owned source/package profile bytes: 1,231,398 /
+  1,231,402; crash 1,231,392; tamper 1,115,372; degraded 1,231,402.
+- Every enumerated native crash-artifact count was **0**. Thus no native dump was
+  present among the enumerated owned artifacts; no dump contents were inspected.
+  This is **not proof that arbitrary native dumps
+  cannot contain secrets**. The synthetic crash canary and fixed scan predicates
+  do not establish a general dump-sanitization capability.
+- `aboutBlankUrlChanged=true`, `aboutBlankDenialObserved=false` in both modes.
+  Historical navigation objective remains **FAIL_RETAINED**, not a new PASS.
+
+### P1-04-specific criterion disposition
+
+All rows above now have exact-head Windows evidence for the scoped implementation:
+structured/correlated safe events; bounded rotation/drain/retention/holds; owned
+reopen and sharing/reparse failures; stopped-owner crash/recovery; visible degraded
+public reads; private canary scans and preserved regressions. Persistent holds are
+acknowledged only after the implemented sync/close/replace/readback steps and tested
+process-crash/reopen behavior—not universal power-loss/controller durability.
+Retention uses observed UTC: backward movement suppresses pruning; a forward
+clock jump is not distinguishable from elapsed time, and host-clock accuracy is
+not certified. No real effect journal exists; future effect owners must establish holds before
+relying on expiring logs, and production V9 recovery presentation remains P1-08.
+Installed default storage location remains Phase 11. No user-host/device support,
+Phase 0 acceptance, formal task acceptance or main merge follows automatically.
+Coordinator accepted P1-04 foundation logging as **TECHNICAL_PASS** at 06:54 UTC
+after independent canonical/evidence review. Formal acceptance remains
+**DEPENDENCIES_PENDING** through the original Phase 0 chain. Technical equal-task
+ratios are **5/11 = 45.5%** for Phase 1 and **5/154 = 3.2%** for planned tool tasks;
+formal accepted count remains **0**. These are not effort/feature-weighted estimates.
+No next-task implementation or main merge is authorized by this closure.

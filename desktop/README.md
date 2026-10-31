@@ -202,3 +202,10 @@ bridge runs did not execute. No task/Phase acceptance follows from local tests.
 Offline recovery uses `scripts/recover-logs.mjs` only after all owners are stopped
 and new launches excluded; its explicit acknowledgment does not establish that
 precondition. The command never discovers/kills owners or exposes renderer access.
+
+The logging Windows checkpoint subsequently passed at exact public `fcb1366b`:
+133/109/46/30 test counts, source/package 29/29, degraded-app 6/6 and ten store modes.
+See the linked source evidence for exact head/hash and limitations. Earlier NOT_RUN
+statements above describe the pre-publication checkpoint, not the current result.
+Native crash-artifact counts were zero; arbitrary dump confidentiality is not proven.
+Technical/formal disposition is recorded separately in the phase status.
