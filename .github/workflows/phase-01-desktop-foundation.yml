@@ -110,6 +110,12 @@ jobs:
           Add-Type -Path $helper
           $exe=Join-Path ([Environment]::GetFolderPath('System')) 'WindowsPowerShell/v1.0/powershell.exe'
           $result=[Fonesi.Phase00.NativeProbe]::Run($exe,[string[]]@('-NoProfile','-NonInteractive','-File',(Join-Path $pwd 'desktop/verification/Test-PersistenceProcess.ps1')),120000,10000,32768)
+          $safeStages=@('INITIALIZE','HELPER','NODE','BASE','FIXTURE','BOUNDED','INTERACTIVE','DESCENDANT','CLEANUP')
+          foreach($stage in $safeStages) {
+            if (@($result.Stdout -split '\r?\n' | Where-Object {$_ -ceq ('PERSISTENCE_PROCESS_STAGE_'+$stage)}).Count -gt 0) {
+              Write-Output ('PERSISTENCE_PROCESS_STAGE_'+$stage)
+            }
+          }
           if ($result.Status -ne 'SUCCESS' -or $result.ExitCode -ne 0 -or -not $result.CleanupComplete -or $result.StdoutTruncated -or $result.StderrTruncated -or @($result.Stdout -split '\r?\n' | Where-Object {$_ -ceq 'PERSISTENCE_PROCESS_TESTS_PASS 3'}).Count -ne 1) { Write-Output 'PERSISTENCE_PROCESS_TESTS_FAILED'; exit 1 }
           Write-Output 'PERSISTENCE_PROCESS_TESTS_PASS 3'
       - name: Owned source-package and typed-negative probes

@@ -369,3 +369,29 @@ ownership failure cannot satisfy them. Focused **6/6** and full local **251/251*
 pass; exact-head Windows confirmation remains required.
 Independent fixture-only review CLEAR at 10:17 UTC with a separate 6/6 focused
 rerun; the full 251-test result remains author evidence.
+
+### Source suite recovered; fresh supervisor base correction — 10:23 UTC
+
+Run [41192375990](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41192375990)
+on `7669d7f5f1eba3929e327ac87d14a35a7966185d` passed the source suite (251),
+foundation (109), Python (92), PowerShell boundary cases (40) and syntax checks.
+The canonical fixture correction therefore passed on Windows; exact private TEMP
+spelling remains unobserved. The next interactive-lifetime supervisor regression
+failed before downstream application probes, with only its fixed failure marker.
+
+Source/workflow ordering establishes a fresh-checkout defect: that regression
+validated `desktop/.runtime` before creation, but the later `Invoke-Foundation`
+step was its first initializer. The regression now validates its desktop parent,
+exclusively reserves the absent base through the unchanged reviewed native helper,
+and validates the resulting directory. Existing/reparse entries are not adopted
+without validation. The test still validates all owned children before deletion;
+no unknown directory or production root is removed.
+
+A fixed nine-value stage code is emitted only on failure and forwarded by an exact
+workflow allowlist; no raw exception/child output is printed. Helper hashes,
+interactive lifetime, 30-second bounded case, outer 120-second supervision, cleanup
+and capture bounds, and all pass predicates are unchanged. Local full pipeline
+**252/252** and focused helper/source **3/3** pass. Actual new supervisor/native
+execution remains pending; this is not a full P1-05 result.
+Independent fresh-base delta review CLEAR at 10:24 UTC, with 3/3 source/derivation
+tests rerun. No local PowerShell/native execution is claimed.

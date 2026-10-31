@@ -84,3 +84,25 @@ test('native lifetime policy separates indefinite UI from bounded operations, wi
       derived.indexOf('Stopwatch cleanup = Stopwatch.StartNew()'),
   );
 });
+
+test('fresh supervisor fixture reserves missing base before validating it without changing native limits', () => {
+  const script = readFileSync(
+    new URL('../verification/Test-PersistenceProcess.ps1', import.meta.url),
+    'utf8',
+  );
+  const parent = script.indexOf('Plain-Directory $desktop');
+  const reserve = script.indexOf('::ReserveDirectory($base)');
+  const validate = script.indexOf('Plain-Directory $base');
+  assert.ok(parent >= 0 && reserve > parent && validate > reserve);
+  assert.match(
+    script,
+    /if\(-not \(Test-Path -LiteralPath \$base\)\)\{\[Fonesi\.Desktop\.Persistence\.PersistenceProcess\]::ReserveDirectory\(\$base\)\}/,
+  );
+  assert.match(
+    script,
+    /\$stage -cin @\('INITIALIZE','HELPER','NODE','BASE','FIXTURE','BOUNDED','INTERACTIVE','DESCENDANT','CLEANUP'\)/,
+  );
+  assert.doesNotMatch(script, /Write-Output[^\n]*(?:\.Message|\.Stdout|\.Stderr)/);
+  assert.match(script, /RunBounded\(\$node,[^\n]*,30000\)/);
+  assert.equal((script.match(/::RunInteractive\(/g) || []).length, 2);
+});
