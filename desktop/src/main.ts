@@ -1,7 +1,25 @@
+import { createPersistenceLifecycle } from './main/persistence-lifecycle.js';
+import { runNativePersistenceMaintenance } from './main/persistence-native.js';
+import {
+  preparedPersistenceEntry,
+  configurePersistenceSession,
+  openPreparedPersistence,
+} from './main/persistence-entry.js';
+import type { FoundationPersistence } from './main/foundation-persistence.js';
+import { maintenanceArgument } from './persistence-contract.js';
 import { ApplicationLogger } from './main/logging.js';
 import { createLogShutdown } from './main/log-shutdown.js';
 import { installFoundationBridge } from './foundation-bridge.js';
-import { app, BrowserWindow, protocol, session, Menu, ipcMain } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  protocol,
+  session,
+  Menu,
+  ipcMain,
+  safeStorage,
+  dialog,
+} from 'electron';
 import { readFileSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -23,6 +41,9 @@ let cleanupComplete = true;
 let logger: ApplicationLogger | undefined;
 let mainReady = false;
 let loggingNotice = false;
+let persistence: FoundationPersistence | undefined;
+const persistenceLifecycle = createPersistenceLifecycle<FoundationPersistence>();
+let backupTimer: ReturnType<typeof setInterval> | undefined;
 function reportLoggingDegraded(): void {
   if (!loggingNotice) {
     loggingNotice = true;
@@ -32,6 +53,7 @@ function reportLoggingDegraded(): void {
 function cleanup(): boolean {
   if (closing) return cleanupComplete;
   closing = true;
+  if (backupTimer !== undefined) clearInterval(backupTimer);
   cleanupComplete = disposeResources([
     () => bridge?.dispose(),
     () => lifecycle?.dispose(),
@@ -66,11 +88,14 @@ try {
   )
     throw new Error('UNSAFE_OVERRIDE');
   // Launcher also fixes argv/environment; this guard cannot undo native startup flags.
-  if (process.argv.slice(app.isPackaged ? 1 : 2).length !== 0)
-    throw new Error('ARGUMENTS_REJECTED');
+  const maintenance = maintenanceArgument(process.argv.slice(app.isPackaged ? 1 : 2));
+  if (maintenance === null) throw new Error('ARGUMENTS_REJECTED');
+  const persistenceEntry = preparedPersistenceEntry(process.env.FONESI_PERSISTENCE_READY_FILE);
+  if (maintenance !== 'NORMAL' && !persistenceEntry) throw new Error('PERSISTENCE_UNAVAILABLE');
   const paths = prepareOwnedProfile(process.env.FONESI_BOOTSTRAP_ROOT);
   for (const [key, value] of Object.entries(paths))
     app.setPath(key as 'userData' | 'sessionData' | 'logs' | 'crashDumps', value);
+  configurePersistenceSession(app, persistenceEntry);
   protocol.registerSchemesAsPrivileged([
     { scheme: SCHEME, privileges: { standard: true, secure: true } },
   ]);
@@ -119,6 +144,9 @@ try {
         'log-contract.cjs',
         'log-store.cjs',
         'log-recovery.cjs',
+        'foundation-persistence.cjs',
+        'backup-key-profile.cjs',
+        'persistence-files.cjs',
         'preload.cjs',
         'renderer.js',
         'status.html',
@@ -134,6 +162,47 @@ try {
           createHash('sha256').update(readFileSync(file)).digest('hex') !== hashes[name]
         )
           throw new Error('BUILD_UNVERIFIED');
+      }
+      if (persistenceEntry) {
+        persistence = await persistenceLifecycle.open(() =>
+          openPreparedPersistence(persistenceEntry, safeStorage, Date.now()),
+        );
+        if (closing) {
+          await persistenceLifecycle.stop();
+          return;
+        }
+        if (maintenance !== 'NORMAL') {
+          const result = await runNativePersistenceMaintenance(
+            persistence,
+            [maintenance],
+            dialog,
+            async () => {
+              if (closing) throw new Error('PERSISTENCE_CLOSED');
+              await persistence?.catalog.config();
+            },
+            persistenceEntry.checkpoint,
+          );
+          console.log(
+            result === 'COMPLETED'
+              ? 'PERSISTENCE_MAINTENANCE_COMPLETED'
+              : 'PERSISTENCE_MAINTENANCE_CANCELLED',
+          );
+          app.quit();
+          return;
+        }
+        if (maintenance === 'NORMAL') {
+          if (persistence.restored) throw new Error('RESTORED_MAINTENANCE_ONLY');
+          await persistence.backup(Date.now(), true);
+          if (closing) {
+            await persistenceLifecycle.stop();
+            return;
+          }
+          backupTimer = setInterval(() => {
+            void persistence
+              ?.backup(Date.now(), true)
+              .catch(() => console.error('PERSISTENCE_BACKUP_FAILED'));
+          }, 3600000);
+        }
       }
       const assetPath = join(__dirname, 'status.html');
       if (
@@ -199,9 +268,17 @@ try {
   });
   const shutdown = createLogShutdown({
     stop: cleanup,
-    flush: () => logger?.close() ?? Promise.resolve('FAILED'),
+    flush: async () => {
+      try {
+        await persistenceLifecycle.stop();
+      } catch {
+        cleanupComplete = false;
+        console.error('PERSISTENCE_SHUTDOWN_FAILED');
+      }
+      return logger?.close() ?? 'FAILED';
+    },
     degraded: reportLoggingDegraded,
-    resume: () => app.quit(),
+    resume: () => (cleanupComplete ? app.quit() : app.exit(1)),
     fail: () => app.exit(1),
   });
   app.on('before-quit', (event) => shutdown.beforeQuit(event));

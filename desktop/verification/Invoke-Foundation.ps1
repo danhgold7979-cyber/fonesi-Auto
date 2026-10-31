@@ -58,6 +58,13 @@ try {
     if ($install.Status -ne 'SUCCESS' -or $install.ExitCode -ne 0 -or -not $report.installer.officialMarker) { throw 'INSTALL_FAILED' }
     $report.buildVerified = Test-ExactlyOneLine $install.Stdout 'FOUNDATION_BUILD_VERIFIED'
     if (-not $report.buildVerified) { throw 'BUILD_UNVERIFIED' }
+    # Private same-head runtime handoff; no change to public foundation evidence.
+    if ($env:GITHUB_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'SOURCE_HEAD_REJECTED' }
+    $allClean = $false
+    $runtimeManifest = Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-control.cjs'),'attest-runtime',$desktop,$env:GITHUB_SHA)) 120000 @{}
+    $allClean = Confirm-RetiredCapture $runtimeManifest
+    Assert-RetiredCapture $runtimeManifest
+    if ($runtimeManifest.Status -ne 'SUCCESS' -or $runtimeManifest.ExitCode -ne 0 -or -not (Test-ExactlyOneLine $runtimeManifest.Stdout 'PERSISTENCE_RUNTIME_ATTESTED')) { throw 'RUNTIME_HANDOFF_FAILED' }
     $stage = 'PACKAGE_PREPARE_FAILED'
     $dist = Join-Path $desktop 'node_modules/electron/dist'
     $sourceExe = Join-Path $dist 'electron.exe'

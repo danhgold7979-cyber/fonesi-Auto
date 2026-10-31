@@ -69,6 +69,9 @@ try {
       resolve(root, 'src/log-contract.ts'),
       resolve(root, 'src/main/log-store.ts'),
       resolve(root, 'src/main/log-recovery.ts'),
+      resolve(root, 'src/main/foundation-persistence.ts'),
+      resolve(root, 'src/main/backup-key-profile.ts'),
+      resolve(root, 'src/main/persistence-files.ts'),
     ],
     outdir: output,
   });

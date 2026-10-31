@@ -4,11 +4,11 @@
     "renderer.tsx": {
       "role": "renderer",
       "imports": {
-        "react": {
-          "useState": "value"
-        },
         "react-dom/client": {
           "createRoot": "value"
+        },
+        "react": {
+          "useState": "value"
         }
       }
     },
@@ -19,11 +19,11 @@
           "contextBridge": "value",
           "ipcRenderer": "value"
         },
-        "./preload-client.js": {
-          "createDiagnosticClient": "value"
-        },
         "./ipc-diagnostic-contract.js": {
           "DIAGNOSTIC_CHANNEL": "value"
+        },
+        "./preload-client.js": {
+          "createDiagnosticClient": "value"
         }
       }
     },
@@ -34,14 +34,14 @@
     "preload-client.ts": {
       "role": "client",
       "imports": {
+        "./ipc-diagnostic-contract.ts": {
+          "localDiagnosticError": "value",
+          "validateDiagnosticResponse": "value"
+        },
         "./ipc-contract.ts": {
           "Method": "type",
           "errorResponse": "value",
           "RESPONSE_BYTES": "value"
-        },
-        "./ipc-diagnostic-contract.ts": {
-          "localDiagnosticError": "value",
-          "validateDiagnosticResponse": "value"
         }
       }
     },
@@ -56,25 +56,6 @@
     "foundation-bridge.ts": {
       "role": "main-adapter",
       "imports": {
-        "electron": {
-          "IpcMain": "type",
-          "BrowserWindow": "type",
-          "IpcMainInvokeEvent": "type"
-        },
-        "./ipc-contract.js": {
-          "CHANNEL": "value",
-          "parseRequest": "value",
-          "errorResponse": "value",
-          "publicResponse": "value",
-          "parseDiagnosticRequest": "value"
-        },
-        "./view-session.js": {
-          "ViewSession": "value",
-          "Caller": "type"
-        },
-        "./main/asset-policy.js": {
-          "ENTRY_URL": "value"
-        },
         "node:crypto": {
           "randomUUID": "value"
         },
@@ -89,19 +70,66 @@
         },
         "./ipc-contract.ts": {
           "ErrorCode": "type"
+        },
+        "electron": {
+          "IpcMain": "type",
+          "BrowserWindow": "type",
+          "IpcMainInvokeEvent": "type"
+        },
+        "./ipc-contract.js": {
+          "CHANNEL": "value",
+          "parseRequest": "value",
+          "parseDiagnosticRequest": "value",
+          "errorResponse": "value",
+          "publicResponse": "value"
+        },
+        "./view-session.js": {
+          "ViewSession": "value",
+          "Caller": "type"
+        },
+        "./main/asset-policy.js": {
+          "ENTRY_URL": "value"
         }
       }
     },
     "main.ts": {
       "role": "main",
       "imports": {
+        "./main/persistence-lifecycle.js": {
+          "createPersistenceLifecycle": "value"
+        },
+        "./main/persistence-native.js": {
+          "runNativePersistenceMaintenance": "value"
+        },
+        "./main/persistence-entry.js": {
+          "preparedPersistenceEntry": "value",
+          "configurePersistenceSession": "value",
+          "openPreparedPersistence": "value"
+        },
+        "./main/foundation-persistence.js": {
+          "FoundationPersistence": "type"
+        },
+        "./persistence-contract.js": {
+          "maintenanceArgument": "value"
+        },
+        "./main/logging.js": {
+          "ApplicationLogger": "value"
+        },
+        "./main/log-shutdown.js": {
+          "createLogShutdown": "value"
+        },
+        "./foundation-bridge.js": {
+          "installFoundationBridge": "value"
+        },
         "electron": {
           "app": "value",
           "BrowserWindow": "value",
           "protocol": "value",
           "session": "value",
           "Menu": "value",
-          "ipcMain": "value"
+          "ipcMain": "value",
+          "safeStorage": "value",
+          "dialog": "value"
         },
         "node:fs": {
           "readFileSync": "value",
@@ -112,9 +140,6 @@
         },
         "node:crypto": {
           "createHash": "value"
-        },
-        "./foundation-bridge.js": {
-          "installFoundationBridge": "value"
         },
         "./main/lifecycle.js": {
           "createLifecycle": "value",
@@ -132,12 +157,6 @@
           "securePreferences": "value",
           "installSessionPolicy": "value",
           "installWindowPolicy": "value"
-        },
-        "./main/logging.js": {
-          "ApplicationLogger": "value"
-        },
-        "./main/log-shutdown.js": {
-          "createLogShutdown": "value"
         }
       }
     },
@@ -339,15 +358,321 @@
           "LogLocation": "type"
         },
         "../log-contract.ts": {
+          "diagnosticId": "value",
           "LogCode": "type",
           "LogEvent": "type",
           "LogHealth": "type",
-          "LogRecord": "type",
-          "diagnosticId": "value"
+          "LogRecord": "type"
         }
       }
     },
     "main/log-shutdown.ts": {
+      "role": "main-adapter",
+      "imports": {}
+    },
+    "persistence-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "backup-container-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "main/foundation-database.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:sqlite": {
+          "DatabaseSync": "value",
+          "backup": "value",
+          "StatementSync": "type",
+          "SQLInputValue": "type"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "node:fs": {
+          "lstatSync": "value",
+          "realpathSync": "value"
+        },
+        "node:path": {
+          "dirname": "value",
+          "resolve": "value"
+        },
+        "../persistence-contract.ts": {
+          "MIGRATIONS": "value",
+          "TABLES": "value",
+          "DATABASE_VERSION": "value",
+          "epoch": "value",
+          "checksum": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        }
+      }
+    },
+    "main/backup-container.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "createHash": "value",
+          "createCipheriv": "value",
+          "createDecipheriv": "value",
+          "randomBytes": "value"
+        },
+        "node:fs/promises": {
+          "lstat": "value",
+          "open": "value",
+          "FileHandle": "type"
+        },
+        "../backup-container-contract.ts": {
+          "BACKUP_MAGIC": "value",
+          "BACKUP_HEADER_BYTES": "value",
+          "BACKUP_SNAPSHOT_BYTES": "value",
+          "canonicalBase64": "value",
+          "parseBackupHeader": "value",
+          "BackupHeader": "type",
+          "BackupMetadata": "type"
+        }
+      }
+    },
+    "main/backup-service.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "node:fs/promises": {
+          "open": "value",
+          "lstat": "value",
+          "unlink": "value",
+          "rename": "value"
+        },
+        "node:path": {
+          "join": "value"
+        },
+        "./foundation-database.ts": {
+          "FoundationDatabase": "value",
+          "statement": "value",
+          "BackupPrerequisite": "type"
+        },
+        "./backup-container.ts": {
+          "encryptSnapshot": "value",
+          "decryptSnapshot": "value",
+          "BackupKeyAdapter": "type"
+        },
+        "../backup-container-contract.ts": {
+          "parseBackupHeader": "value",
+          "BackupHeader": "type",
+          "BackupReason": "type"
+        },
+        "../persistence-contract.ts": {
+          "checksum": "value",
+          "epoch": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        }
+      }
+    },
+    "main/persistence-files.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value",
+          "realpath": "value",
+          "mkdir": "value",
+          "open": "value",
+          "opendir": "value",
+          "rename": "value",
+          "unlink": "value",
+          "rmdir": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "dirname": "value",
+          "join": "value",
+          "basename": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        }
+      }
+    },
+    "main/backup-key-profile.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "mkdir": "value",
+          "lstat": "value"
+        },
+        "node:path": {
+          "join": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        },
+        "./persistence-files.ts": {
+          "plainPersistenceDirectory": "value",
+          "readPersistenceFile": "value",
+          "writePersistenceFile": "value"
+        },
+        "./backup-container.ts": {
+          "BackupKeyAdapter": "type"
+        }
+      }
+    },
+    "main/backup-catalog.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "node:path": {
+          "join": "value",
+          "resolve": "value"
+        },
+        "node:fs/promises": {
+          "unlink": "value",
+          "opendir": "value",
+          "lstat": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        },
+        "../persistence-contract.ts": {
+          "epoch": "value"
+        },
+        "./foundation-database.ts": {
+          "statement": "value",
+          "FoundationDatabase": "type"
+        },
+        "./backup-service.ts": {
+          "parseBackupReceipt": "value",
+          "BackupService": "type",
+          "BackupReceipt": "type",
+          "BackupLocation": "type"
+        },
+        "./persistence-files.ts": {
+          "readPersistenceFile": "value",
+          "writePersistenceFile": "value",
+          "replacePersistenceFile": "value",
+          "createBackupLocation": "value",
+          "verifyBackupLocation": "value"
+        }
+      }
+    },
+    "main/foundation-persistence.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:path": {
+          "join": "value",
+          "dirname": "value",
+          "basename": "value",
+          "resolve": "value"
+        },
+        "node:fs/promises": {
+          "lstat": "value",
+          "mkdir": "value",
+          "open": "value",
+          "rename": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "./foundation-database.ts": {
+          "FoundationDatabase": "value",
+          "statement": "value"
+        },
+        "./backup-service.ts": {
+          "BackupService": "value",
+          "parseBackupReceipt": "value",
+          "BackupReceipt": "type"
+        },
+        "./backup-container.ts": {
+          "BackupKeyAdapter": "type"
+        },
+        "./backup-catalog.ts": {
+          "BackupCatalog": "value"
+        },
+        "./persistence-files.ts": {
+          "verifyPersistenceRoot": "value",
+          "createPersistenceRoot": "value",
+          "acquirePersistenceLease": "value",
+          "assertBorrowedPersistenceLease": "value",
+          "plainPersistenceDirectory": "value",
+          "readPersistenceFile": "value",
+          "writePersistenceFile": "value",
+          "replacePersistenceFile": "value",
+          "PersistenceLocation": "type"
+        },
+        "./backup-key-profile.ts": {
+          "validBackupLocalState": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        }
+      }
+    },
+    "main/persistence-entry.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs": {
+          "openSync": "value",
+          "readSync": "value",
+          "closeSync": "value",
+          "lstatSync": "value",
+          "realpathSync": "value",
+          "opendirSync": "value"
+        },
+        "node:path": {
+          "join": "value",
+          "dirname": "value",
+          "resolve": "value",
+          "basename": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        },
+        "./foundation-persistence.ts": {
+          "FoundationPersistence": "value"
+        },
+        "./backup-key-profile.ts": {
+          "backupKeys": "value",
+          "validBackupLocalState": "value",
+          "AsyncKeyProvider": "type"
+        }
+      }
+    },
+    "main/persistence-native.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "electron": {
+          "Dialog": "type"
+        },
+        "./foundation-persistence.ts": {
+          "FoundationPersistence": "type"
+        },
+        "./persistence-maintenance.ts": {
+          "PersistenceMaintenance": "value"
+        }
+      }
+    },
+    "main/persistence-maintenance.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "../persistence-contract.ts": {
+          "maintenanceArgument": "value",
+          "epoch": "value"
+        },
+        "../log-contract.ts": {
+          "diagnosticId": "value"
+        }
+      }
+    },
+    "main/persistence-lifecycle.ts": {
       "role": "main-adapter",
       "imports": {}
     }

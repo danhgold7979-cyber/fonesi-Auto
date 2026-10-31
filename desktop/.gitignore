@@ -3,3 +3,4 @@ build/
 .runtime/
 .test-output/
 .npm-cache/
+.persistence-runtime/

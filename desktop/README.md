@@ -209,3 +209,18 @@ See the linked source evidence for exact head/hash and limitations. Earlier NOT_
 statements above describe the pre-publication checkpoint, not the current result.
 Native crash-artifact counts were zero; arbitrary dump confidentiality is not proven.
 Technical/formal disposition is recorded separately in the phase status.
+
+## P1-05 persistence work in progress
+
+The approved main-only persistence implementation adds exact SQLite migrations,
+authenticated encrypted snapshots, owned backup location/retention/restore handling,
+and five native maintenance entrypoints. It does not expose SQL, paths, keys or
+maintenance methods through the public bridge. See the
+[current evidence and remaining gates](../docs/evidence/P1-05-persistence-source-2026-10-31.md).
+
+Current Linux source pipeline: 208 tests. The first Windows persistence step proves
+only the mandatory source/package key-lifecycle mechanism; no P1-05 native result
+or full task acceptance is claimed before that run. Production main requires a
+strict prepared READY control, and first-use supervisor orchestration remains a
+completion gate. `.persistence-runtime/` is private ignored evidence, never a
+fixture or upload source except its explicitly sanitized fixed report.

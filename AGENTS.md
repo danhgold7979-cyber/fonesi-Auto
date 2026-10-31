@@ -195,3 +195,16 @@ or V9 redesign. Exact module/build boundaries must be extended, not bypassed.
 P1-02 technical predecessor passes; formal Phase 0/acceptance gates remain pending.
 Old navigation FAIL and all original Phase 0 exits remain unchanged. Record actual
 pure/source/owned-filesystem/Windows checks and independent review before commit.
+
+
+## P1-05 persistence implementation entry — 2026-10-31 07:05 UTC
+
+Coordinator approved [ADR-0007](docs/decisions/ADR-0007-foundation-persistence-backup.md) and its exact reviewed persistence
+contract before code. Selected key initialization: provision → observed orderly
+close/whole-owned-tree retirement → reopen/OLD-backup authentication, then mandatory
+abrupt-exit/reopen proof before dependent migrations. No first-process durability
+assumption, plaintext fallback, generic vault, domain/device service or v1/v2 IPC
+expansion. Five exact maintenance literals and owned native folder selection are
+scoped; full V9/product requirements remain. P1-04 technical predecessor passed;
+formal Phase 0 chain remains pending, technical count still 5/11 and 5/154.
+Independent review and actual Windows source/package evidence precede acceptance.

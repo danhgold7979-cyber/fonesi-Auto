@@ -354,8 +354,15 @@ test('failed installed verification prevents build; successful stages run in ord
 });
 test('approved public bridge has no effect service or arbitrary renderer API', () => {
   const main = readFileSync(resolve(root, 'build/main.cjs'), 'utf8');
-  for (const token of ['openExternal', 'node:child_process', 'node:sqlite', 'safeStorage'])
+  // P1-05 authorizes main-owned SQLite/key custody, not renderer capabilities.
+  for (const token of ['openExternal', 'node:child_process'])
     assert.equal(main.includes(token), false);
+  const bridge = readFileSync(resolve(root, 'build/foundation-bridge.cjs'), 'utf8');
+  const compiledPreload = readFileSync(resolve(root, 'build/preload.cjs'), 'utf8');
+  for (const token of ['openExternal', 'node:child_process', 'node:sqlite', 'safeStorage']) {
+    assert.equal(bridge.includes(token), false);
+    assert.equal(compiledPreload.includes(token), false);
+  }
   const html = readFileSync(resolve(root, 'build/status.html'), 'utf8');
   assert.equal(/<iframe|<webview/i.test(html), false);
   assert.equal((html.match(/<script /g) ?? []).length, 1);

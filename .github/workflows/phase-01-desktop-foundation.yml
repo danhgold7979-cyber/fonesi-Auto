@@ -63,7 +63,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==46; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==57; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: PowerShell 5.1 marker and ownership regressions
         run: |
@@ -83,6 +83,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check desktop/verification/install-electron.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-control.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens=$null; $parseErrors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'desktop/verification/Invoke-Persistence.ps1'),[ref]$tokens,[ref]$parseErrors)
+          if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_SUPERVISOR_SYNTAX_FAILED'; exit 1 }
       - name: Owned source-package and typed-negative probes
         id: probes
         run: |
@@ -105,6 +112,31 @@ jobs:
         with:
           name: phase-01-foundation-${{ github.sha }}
           path: desktop/.runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Owned persistence key durability mechanism
+        id: persistence
+        if: success() && steps.validation.outcome == 'success'
+        run: |
+          try { & ./desktop/verification/Invoke-Persistence.ps1 }
+          catch { Write-Output 'PERSISTENCE_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict fixed-field persistence sanitization
+        id: persistence_validation
+        if: always() && steps.persistence.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_persistence.py publish)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'PERSISTENCE_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only sanitized persistence mechanism evidence
+        if: always() && steps.persistence_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-persistence-mechanism-${{ github.sha }}
+          path: desktop/.persistence-runtime/validated.json
           if-no-files-found: error
           retention-days: 7
       - name: Record scope limits

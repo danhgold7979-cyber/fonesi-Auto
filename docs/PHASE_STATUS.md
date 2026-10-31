@@ -659,3 +659,26 @@ logging TECHNICAL_PASS at 06:54 UTC. Technical equal-task ratios are **5/11 = 45
 and **5/154 = 3.2%**, not weighted effort/feature progress. Formal accepted count
 remains 0; old navigation
 FAIL and original Phase 0 gates remain unchanged. No next-task source entry yet.
+
+
+## P1-05 persistence implementation entry — 2026-10-31 07:05 UTC
+
+Coordinator approved [ADR-0007](decisions/ADR-0007-foundation-persistence-backup.md) and its exact reviewed persistence
+contract before code. Selected key initialization: provision → observed orderly
+close/whole-owned-tree retirement → reopen/OLD-backup authentication, then mandatory
+abrupt-exit/reopen proof before dependent migrations. No first-process durability
+assumption, plaintext fallback, generic vault, domain/device service or v1/v2 IPC
+expansion. Five exact maintenance literals and owned native folder selection are
+scoped; full V9/product requirements remain. P1-04 technical predecessor passed;
+formal Phase 0 chain remains pending, technical count still 5/11 and 5/154.
+Independent review and actual Windows source/package evidence precede acceptance.
+
+### P1-05 implementation checkpoint — 2026-10-31 07:50 UTC
+
+The approved source implementation now passes the 208-test desktop pipeline;
+strict persistence evidence brings the Python suite to 57 tests. The first hosted
+key-mechanism envelope is ready for exact-head review/publication, but Windows
+execution, production bootstrap and remaining native maintenance/migration tests
+are still pending. See [qualified evidence](evidence/P1-05-persistence-source-2026-10-31.md).
+No additional canonical task is technically or formally accepted: technical 5/11
+and 5/154; formal 0. Original Phase 0 criteria and old navigation FAIL are unchanged.
