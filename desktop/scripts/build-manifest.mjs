@@ -15,6 +15,8 @@ export const outputs = [
   'foundation-persistence.cjs',
   'backup-key-profile.cjs',
   'persistence-files.cjs',
+  'foundation-database.cjs',
+  'persistence-native.cjs',
   'preload.cjs',
   'renderer.js',
   'status.html',

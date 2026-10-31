@@ -8,7 +8,7 @@ $owner = $null
 $baseVerified = $false
 $allClean = $true
 $failure = 'PREPARE_FAILED'
-$report = [ordered]@{schemaVersion=1; scope='HOSTED_KEY_MECHANISM_ONLY'; modes=[ordered]@{}; runtimeCopyVerified=$false; directoryCleanup=$false; failure=$null}
+$report = [ordered]@{schemaVersion=2; scope='HOSTED_KEY_AND_MAIN_READY'; modes=[ordered]@{}; ready=[ordered]@{}; runtimeCopyVerified=$false; directoryCleanup=$false; failure=$null}
 function Retired($Probe) {
     return ($Probe.CleanupComplete -and -not $Probe.StdoutTruncated -and -not $Probe.StderrTruncated -and $Probe.Status -in @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT'))
 }
@@ -29,8 +29,12 @@ function Require-Success($Probe,[string]$Marker) {
 function Remove-TestTree([string]$Name,[long]$Limit) {
     if(-not $allClean){throw 'JOB_RETIREMENT_UNCONFIRMED'}
     Assert-OwnedRun $owner
-    if($Name -cnotin @('package','data-source','data-package','backup-parent-source','backup-parent-package')){throw 'PART_NAME_REJECTED'}
+    if($Name -cnotin @('package','data-source','data-package','backup-parent-source','backup-parent-package','logs-source-ready','logs-package-ready')){throw 'PART_NAME_REJECTED'}
     $path=Join-Path $owner.Path $Name
+    if ($Name.StartsWith('logs-')) {
+        $marker=Get-Item -LiteralPath (Join-Path $path 'owner.json') -Force
+        if ($marker.PSIsContainer -or ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $marker.Length -gt 128 -or [IO.File]::ReadAllText($marker.FullName) -cnotmatch '^\{"schemaVersion":1,"storeId":"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"\}\n\z') { throw 'LOG_MARKER_REJECTED' }
+    }
     $inventory=Get-BoundedOwnedEntries $path $Limit
     # All current fixture trees are supervisor-created. Lease remains retained until
     # every native owner retired; deletion is test disposal, never production recovery.
@@ -81,6 +85,10 @@ try {
     [IO.File]::Copy($probe,$probeCopy,$false)
     if((Get-FileHash $probe -Algorithm SHA256).Hash -cne (Get-FileHash $probeCopy -Algorithm SHA256).Hash){throw 'PROBE_COPY_FAILED'}
     [IO.File]::WriteAllText((Join-Path $appRoot 'package.json'),'{"name":"auto-persistence-library-verification","version":"0.0.0","main":"verification/persistence-probe.cjs"}')
+    $mainProbe=Join-Path $PSScriptRoot 'persistence-main-probe.cjs'
+    $mainProbeCopy=Join-Path $verification 'persistence-main-probe.cjs'
+    [IO.File]::Copy($mainProbe,$mainProbeCopy,$false)
+    if((Get-FileHash $mainProbe -Algorithm SHA256).Hash -cne (Get-FileHash $mainProbeCopy -Algorithm SHA256).Hash){throw 'PROBE_COPY_FAILED'}
     $report.runtimeCopyVerified=$true
     foreach($mode in @('source','package')){
         $failure='CONTROL_FAILED';$allClean=$false
@@ -124,13 +132,59 @@ try {
         $publicItem=Get-Item -LiteralPath $publicPath -Force
         if($publicItem.PSIsContainer -or ($publicItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $publicItem.Length -gt 65536){throw 'PUBLIC_STAGE_REJECTED'}
         $report.modes[$mode]=[IO.File]::ReadAllText($publicPath)|ConvertFrom-Json
+        $failure='PREFLIGHT_FAILED';$allClean=$false
+        $preparedReady=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-control.cjs'),'prepare-ready',$owner.Path,$mode)) 120000 @{}
+        $allClean=Retired $preparedReady;Require-Success $preparedReady 'PERSISTENCE_READY_PREPARED'
+        $stage='ready'
+        $profile=Join-Path $owner.Path ('fonesi-auto-foundation-'+$mode+'-'+$stage)
+        [void][IO.Directory]::CreateDirectory($profile)
+        $marker=[IO.File]::Open((Join-Path $profile '.owner'),[IO.FileMode]::CreateNew)
+        try{$b=[Text.Encoding]::UTF8.GetBytes("FONESI_AUTO_FOUNDATION_PROFILE_V1`n");$marker.Write($b,0,$b.Length)}finally{$marker.Dispose()}
+        $exe=$sourceExe;[string[]]$arguments=@($mainProbe)
+        if($mode -eq 'package'){
+            $exe=$packageExe;$arguments=@()
+            [IO.File]::WriteAllText((Join-Path $appRoot 'package.json'),'{"name":"auto-persistence-main-verification","version":"0.0.0","main":"verification/persistence-main-probe.cjs"}')
+        }
+        if((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -cne $manifest.exeSha256){throw 'RUNTIME_CHANGED'}
+        $failure='NATIVE_STAGE_FAILED';$allClean=$false
+        $ready=Invoke-OwnedChild $exe $arguments 120000 @{
+            FONESI_BOOTSTRAP_ROOT=$profile;FONESI_BOOTSTRAP_MODE=$mode;
+            FONESI_PERSISTENCE_READY_FILE=(Join-Path $owner.Path ('data-'+$mode+'/.ready-launch.json'));
+            FONESI_LOG_ROOT=(Join-Path $owner.Path ('logs-'+$mode+'-ready'));FONESI_LOG_PARENT_TOKEN=$owner.Token
+        }
+        $allClean=Retired $ready
+        Write-Private (Join-Path $owner.Path ('persistence-ready-capture-'+$mode+'.json')) ([ordered]@{process=(Process-Evidence $ready);stdout=$ready.Stdout;stderr=$ready.Stderr})
+        if(-not $allClean -or $ready.Status -ne 'SUCCESS' -or $ready.ExitCode -ne 0){throw 'READY_PROCESS_FAILED'}
+        $failure='STAGE_VALIDATION_FAILED';$allClean=$false
+        $inspected=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-control.cjs'),'inspect-ready',$owner.Path,$mode)) 120000 @{}
+        $allClean=Retired $inspected;Require-Success $inspected 'PERSISTENCE_READY_DATABASE_VERIFIED'
+        $allClean=$false
+        $validatedReady=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_persistence.py'),'ready',$owner.Path,$mode)) 120000 @{}
+        $allClean=Retired $validatedReady;Require-Success $validatedReady 'PERSISTENCE_VALIDATION_PASS'
+        $readyPublic=Join-Path $owner.Path ('persistence-ready-public-'+$mode+'.json')
+        $readyItem=Get-Item -LiteralPath $readyPublic -Force
+        if($readyItem.PSIsContainer -or ($readyItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $readyItem.Length -gt 65536){throw 'PUBLIC_STAGE_REJECTED'}
+        $report.ready[$mode]=[IO.File]::ReadAllText($readyPublic)|ConvertFrom-Json
+
+            Assert-OwnedRun $owner
+            if ([IO.Path]::GetFileName($profile) -cne ('fonesi-auto-foundation-'+$mode+'-'+$stage) -or [IO.Path]::GetDirectoryName($profile) -cne $owner.Path) { throw 'PROFILE_NAME_REJECTED' }
+            Assert-PlainDirectory $profile
+            $profileMarker=Get-Item -LiteralPath (Join-Path $profile '.owner') -Force
+            $expectedMarker="FONESI_AUTO_FOUNDATION_PROFILE_V1`n"
+            if ($profileMarker.PSIsContainer -or ($profileMarker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $profileMarker.Length -ne [Text.Encoding]::UTF8.GetByteCount($expectedMarker) -or [IO.File]::ReadAllText($profileMarker.FullName) -cne $expectedMarker) { throw 'PROFILE_OWNER_REJECTED' }
+            $inventory=Get-BoundedOwnedEntries $profile (8L*1024*1024)
+            foreach($entry in $inventory.Entries){if(-not $entry.PSIsContainer){[IO.File]::Delete($entry.FullName)}}
+            foreach($entry in @($inventory.Entries|Where-Object {$_.PSIsContainer}|Sort-Object {$_.FullName.Length} -Descending)){[IO.Directory]::Delete($entry.FullName,$false)}
+            [IO.Directory]::Delete($profile,$false)
+        Remove-TestTree ('logs-'+$mode+'-ready') (8L*1024*1024)
+
     }
     $failure='CLEANUP_FAILED'
     foreach($name in @('data-source','data-package','backup-parent-source','backup-parent-package')){Remove-TestTree $name (128L*1024*1024)}
     Remove-TestTree 'package' (512L*1024*1024)
     Assert-OwnedRun $owner
     $remaining=Get-BoundedOwnedEntries $owner.Path (8L*1024*1024)
-    foreach($entry in $remaining.Entries){if($entry.PSIsContainer -or $entry.Name -cnotmatch '^(\.owner|persistence-(state|control|capture|public|witness|source|package)-[a-z-]+\.json)$'){throw 'UNEXPECTED_REMAINDER'}}
+    foreach($entry in $remaining.Entries){if($entry.PSIsContainer -or $entry.Name -cnotmatch '^(\.owner|persistence-(state|control|capture|public|witness|source|package|ready)-[a-z-]+\.json)$'){throw 'UNEXPECTED_REMAINDER'}}
     foreach($entry in $remaining.Entries){if($entry.Name -cne '.owner'){[IO.File]::Delete($entry.FullName)}}
     Remove-VerifiedOwnedRun $owner $allClean;$report.directoryCleanup=$true
 }catch{$report.failure=$failure}

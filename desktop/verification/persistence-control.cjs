@@ -134,9 +134,9 @@ async function run() {
     return;
   }
   if (
-    !['setup', 'prepare'].includes(action) ||
+    !['setup', 'prepare', 'prepare-ready', 'inspect-ready'].includes(action) ||
     !['source', 'package'].includes(mode) ||
-    (action === 'setup'
+    (action !== 'prepare'
       ? process.argv.length !== 5
       : process.argv.length !== 6 || !STAGES.includes(stage))
   )
@@ -178,6 +178,84 @@ async function run() {
     throw new Error('STATE');
   const assertLease = () => assertBorrowedPersistenceLease(location, state.ownerToken);
   await assertLease();
+  if (action === 'prepare-ready' || action === 'inspect-ready') {
+    const witnessRaw = read(path.join(root, `persistence-witness-${mode}.json`));
+    const original = JSON.parse(witnessRaw);
+    if (
+      JSON.stringify(original) !== witnessRaw ||
+      JSON.stringify(Object.keys(original)) !==
+        JSON.stringify(['storeId', 'backupId', 'locationId', 'encryptedSha256']) ||
+      ![original.storeId, original.backupId, original.locationId].every(uuid) ||
+      original.storeId !== state.storeId ||
+      typeof original.encryptedSha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(original.encryptedSha256)
+    )
+      throw new Error('WITNESS');
+    const proof = { version: 1, ...original, state: 'ORDERLY_AND_ABRUPT_RECOVERED' };
+    if (read(path.join(location.root, 'key-durability-proof.json')) !== JSON.stringify(proof))
+      throw new Error('PROOF');
+    if (action === 'prepare-ready') {
+      const key = await prepareBackupKeyProfile(location.root, state.storeId, false, assertLease);
+      if (key.checkpoint === null) throw new Error('CHECKPOINT');
+      await assertLease();
+      write(path.join(location.root, '.ready-launch.json'), {
+        version: 1,
+        state: 'READY',
+        root: location.root,
+        parentToken,
+        ownerToken: state.ownerToken,
+        storeId: state.storeId,
+        checkpoint: path.basename(key.checkpoint),
+      });
+      console.log('PERSISTENCE_READY_PREPARED');
+      return;
+    }
+    const { FoundationDatabase, statement } = require('../build/foundation-database.cjs');
+    const database = new FoundationDatabase(
+      path.join(location.root, 'active.sqlite'),
+      state.storeId,
+      true,
+    );
+    try {
+      database.validate();
+      const row = statement(
+        database.connection,
+        'SELECT restore_quarantine,last_auto_admitted_utc FROM foundation_store WHERE singleton=1',
+        (s) => s.get(),
+      );
+      const counts = statement(
+        database.connection,
+        "SELECT SUM(CASE WHEN protected=1 AND reason='PRE_MIGRATION' THEN 1 ELSE 0 END) AS protected_count,SUM(CASE WHEN protected=0 AND reason='DAILY' THEN 1 ELSE 0 END) AS ordinary_count,COUNT(*) AS total FROM backup_record WHERE state='VALIDATED'",
+        (s) => s.get(),
+      );
+      const result = {
+        version: 1,
+        mode,
+        schemaVersion: database.version,
+        quarantined: row.restore_quarantine === 1,
+        automaticAdmissionRecorded:
+          Number.isSafeInteger(row.last_auto_admitted_utc) && row.last_auto_admitted_utc >= 0,
+        protectedCount: counts.protected_count,
+        ordinaryCount: counts.ordinary_count,
+        totalCount: counts.total,
+      };
+      if (
+        result.schemaVersion !== 2 ||
+        result.quarantined ||
+        !result.automaticAdmissionRecorded ||
+        result.protectedCount !== 2 ||
+        result.ordinaryCount !== 1 ||
+        result.totalCount !== 3
+      )
+        throw new Error('DATABASE_EVIDENCE');
+      await assertLease();
+      write(path.join(root, `persistence-ready-database-${mode}.json`), result);
+    } finally {
+      database.close();
+    }
+    console.log('PERSISTENCE_READY_DATABASE_VERIFIED');
+    return;
+  }
   const key = await prepareBackupKeyProfile(
     location.root,
     state.storeId,

@@ -63,7 +63,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==57; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==61; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: PowerShell 5.1 marker and ownership regressions
         run: |
@@ -86,6 +86,8 @@ jobs:
           node --check desktop/verification/persistence-control.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check desktop/verification/persistence-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-main-probe.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $tokens=$null; $parseErrors=$null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'desktop/verification/Invoke-Persistence.ps1'),[ref]$tokens,[ref]$parseErrors)
@@ -114,7 +116,7 @@ jobs:
           path: desktop/.runtime/validated.json
           if-no-files-found: error
           retention-days: 7
-      - name: Owned persistence key durability mechanism
+      - name: Owned key durability and actual-main READY path
         id: persistence
         if: success() && steps.validation.outcome == 'success'
         run: |

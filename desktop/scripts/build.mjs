@@ -72,6 +72,8 @@ try {
       resolve(root, 'src/main/foundation-persistence.ts'),
       resolve(root, 'src/main/backup-key-profile.ts'),
       resolve(root, 'src/main/persistence-files.ts'),
+      resolve(root, 'src/main/foundation-database.ts'),
+      resolve(root, 'src/main/persistence-native.ts'),
     ],
     outdir: output,
   });

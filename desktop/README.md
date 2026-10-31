@@ -218,9 +218,11 @@ and five native maintenance entrypoints. It does not expose SQL, paths, keys or
 maintenance methods through the public bridge. See the
 [current evidence and remaining gates](../docs/evidence/P1-05-persistence-source-2026-10-31.md).
 
-Current Linux source pipeline: 208 tests. The first Windows persistence step proves
-only the mandatory source/package key-lifecycle mechanism; no P1-05 native result
-or full task acceptance is claimed before that run. Production main requires a
-strict prepared READY control, and first-use supervisor orchestration remains a
-completion gate. `.persistence-runtime/` is private ignored evidence, never a
+Current independently verified Linux source pipeline: 212 tests. The first Windows persistence step proves
+only the mandatory source/package key-lifecycle mechanism. That exact-head hosted
+run now passes; actual READY-main/cold-start and remaining native matrix evidence
+are still pending, so no full P1-05 task acceptance is claimed. Production main requires a
+strict prepared READY control. The next reviewed envelope exercises actual main
+and inspects migrated state after native retirement; its Windows result is pending.
+Installed first-use orchestration remains a completion gate. `.persistence-runtime/` is private ignored evidence, never a
 fixture or upload source except its explicitly sanitized fixed report.

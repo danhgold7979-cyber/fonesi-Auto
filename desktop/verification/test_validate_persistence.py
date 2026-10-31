@@ -228,3 +228,59 @@ class PersistencePublicReportTests(unittest.TestCase):
         value['modes']['source']['stages'][0]['receipt'] = WITNESS
         with self.assertRaises(InvalidEvidence):
             validate_report(json.dumps(value).encode())
+
+class ReadyApplicationTests(unittest.TestCase):
+    def inputs(self, mode='source'):
+        from validate_runtime import VERSIONS
+        runtime = {'mode': mode, 'versions': dict(VERSIONS), 'mainReady': True, 'orderlyQuit': True}
+        capture = {'process': {'status': 'SUCCESS', 'exitCode': 0, 'cleanupComplete': True,
+                              'stdoutTruncated': False, 'stderrTruncated': False},
+                   'stdout': 'BOOTSTRAP_READY\nBOOTSTRAP_CLOSED\nPERSISTENCE_MAIN_ORDERLY\nPERSISTENCE_MAIN_RESULT ' + json.dumps(runtime) + '\n', 'stderr': ''}
+        database = {'version': 1, 'mode': mode, 'schemaVersion': 2, 'quarantined': False,
+                    'automaticAdmissionRecorded': True, 'protectedCount': 2, 'ordinaryCount': 1, 'totalCount': 3}
+        return capture, database
+
+    def test_real_main_ready_requires_ordered_markers_and_retirement(self):
+        from validate_persistence import validate_ready
+        capture, database = self.inputs()
+        self.assertTrue(validate_ready(capture, database, 'source')['passed'])
+        capture['process']['cleanupComplete'] = False
+        self.assertFalse(validate_ready(capture, database, 'source')['passed'])
+        capture['stdout'] = capture['stdout'].replace('BOOTSTRAP_CLOSED\n', '')
+        with self.assertRaises(InvalidEvidence):
+            validate_ready(capture, database, 'source')
+
+    def test_ready_database_exact_types_and_negative_facts(self):
+        from validate_persistence import validate_ready
+        for key, value in [('schemaVersion', 1), ('quarantined', True), ('protectedCount', 1),
+                           ('ordinaryCount', 0), ('totalCount', 2), ('automaticAdmissionRecorded', False)]:
+            capture, database = self.inputs()
+            database[key] = value
+            self.assertFalse(validate_ready(capture, database, 'source')['passed'])
+        capture, database = self.inputs()
+        database['protectedCount'] = True
+        with self.assertRaises(InvalidEvidence):
+            validate_ready(capture, database, 'source')
+
+    def test_ready_rejects_duplicate_result_and_private_extra_fields(self):
+        from validate_persistence import validate_ready
+        capture, database = self.inputs()
+        capture['stdout'] = capture['stdout'].replace('"mainReady": true', '"mainReady": false, "mainReady": true')
+        with self.assertRaises(InvalidEvidence):
+            validate_ready(capture, database, 'source')
+        capture, database = self.inputs()
+        database['storeId'] = WITNESS['storeId']
+        with self.assertRaises(InvalidEvidence):
+            validate_ready(capture, database, 'source')
+
+    def test_v2_requires_both_actual_main_summaries_and_preserves_v1(self):
+        from validate_persistence import validate_report, validate_ready
+        helper = PersistencePublicReportTests()
+        value = {'schemaVersion': 2, 'scope': 'HOSTED_KEY_AND_MAIN_READY',
+                 'modes': {mode: helper.public_mode(mode) for mode in ('source', 'package')},
+                 'ready': {mode: validate_ready(*self.inputs(mode), mode) for mode in ('source', 'package')},
+                 'runtimeCopyVerified': True, 'directoryCleanup': True, 'failure': None}
+        self.assertTrue(validate_report(json.dumps(value).encode())['passed'])
+        del value['ready']['package']
+        with self.assertRaises(InvalidEvidence):
+            validate_report(json.dumps(value).encode())

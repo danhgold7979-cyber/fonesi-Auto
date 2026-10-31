@@ -682,3 +682,18 @@ execution, production bootstrap and remaining native maintenance/migration tests
 are still pending. See [qualified evidence](evidence/P1-05-persistence-source-2026-10-31.md).
 No additional canonical task is technically or formally accepted: technical 5/11
 and 5/154; formal 0. Original Phase 0 criteria and old navigation FAIL are unchanged.
+
+P1-05 key-mechanism result at 07:59 UTC: exact-head run41182496843 SUCCESS,
+source/package four-stage conservative provisioning/crash/recovery sequence PASS,
+strict artifact review CLEAR. Actual READY-main/cold-start and remaining native
+matrix work continue under the existing approved P1-05 entry. This resolves the
+key-mechanism assumption only; technical task count remains 5/11 and 5/154, formal0.
+
+P1-05 READY-path increment — 08:12 UTC: the next source/package envelope now runs
+actual production main only after the accepted key sequence and READY preflight,
+then checks migrated database/catalogue state after orderly native retirement.
+Independent source review passed 212 desktop and 61 Python tests, including five
+focused envelope tests. Native READY execution is NOT_RUN. Injected native-dialog answers
+are verification instrumentation, not an installed first-use UX claim. Remaining
+maintenance/restore/crash criteria and unchanged formal gates are retained in the
+[P1-05 evidence](evidence/P1-05-persistence-source-2026-10-31.md).

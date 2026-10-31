@@ -153,3 +153,64 @@ Independent review of the current source/envelope is CLEAR: reviewer reran the f
 all five foundation stages passed. Original Phase 0 SHA256 remains
 `3882e2112129fdc0dcdc69104195cc95d8f90c933a210c9002cd16642873316c`.
 The reviewer did not execute Electron/Windows or install dependencies in this review.
+
+## Observed hosted key mechanism PASS — 07:59 UTC
+
+Coordinator accepted **HOSTED_KEY_MECHANISM_PASS**, not P1-05 task completion, after
+independent strict artifact review. Exact public head
+`990b511e639345905b2d8614cd06f348eb431012`, tree
+`a25a030e2174cb67e8ced37e6878e05ca2eb538c`; Windows run
+[41182496843](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41182496843)
+completed SUCCESS. Actual hosted suites: desktop208, foundation109, Python57,
+PowerShell30. The separate foundation runtime/logging report remains PASS; it is
+not evidence that the new READY persistence path was exercised.
+
+[Retained mechanism sample](P1-05-key-mechanism-sample-2026-10-31.json):
+artifact13034759249, exact original/Git-blob LF bytes **4,643**, SHA256
+`cb4d60a4438ecedfe4e93e146677055c685ae7f59bfa1b722a3a5c9f5c596fe6`.
+The reviewer independently performed duplicate-aware parsing, strict reconstructed
+schema validation/public equality and fixed-field privacy review; no second native
+runtime or duplicate download was claimed.
+
+Both source and naturally packaged modes passed all four ordered stages. Provision
+has no previous backup: `existingBackupMatched` and the derived
+`oldBackupWitnessMatched` are correctly false; seven of its eight raw case booleans
+are true. Each later stage has eight true raw cases and matches the original
+supervisor-held witness. Both actual crash stages returned native NONZERO_EXIT
+**-36861**, with no orderly-quit observation and verified whole-Job retirement.
+The subsequent process recovered/authenticated the SAME old backup. All process
+and directory cleanup predicates are true; failure is null. No raw keys, ciphertext,
+backup IDs, private paths or process logs are retained in the public sample.
+
+This establishes the selected conservative initialization mechanism on this pinned
+Windows source/package execution environment. It does not establish production
+first-use orchestration, actual READY main startup, maintenance dialogs, the complete
+migration/backup/restore failure matrix, cross-user/machine recovery or target-host
+support. Those remain the next P1-05 work; no task count or formal gate changed.
+
+## Production READY-path verification increment — 08:12 UTC
+
+The next hosted envelope retains the accepted four-process key sequence, then
+performs the production pre-native READY preflight and launches the actual compiled
+`main.cjs`, not a parallel test application. It requires the application's READY and
+CLOSED markers, observed orderly quit, exit 0 and whole-Job retirement. Only then does
+an independent read-only SQLite inspection require schema 2, two protected migration
+backups, one startup DAILY backup and persisted admission state. Source and naturally
+packaged modes use the same procedure. The strict version 2 public report explicitly
+labels this `HOSTED_KEY_AND_MAIN_READY`; historical version 1 remains supported as
+mechanism-only evidence.
+
+The production first-use native-dialog callback now captures a selected parent,
+defaults confirmation to Cancel, rechecks ownership after each awaited dialog and
+calls the real provisioning service only on confirmation. Six pure injected-dialog
+tests passed and were independently reviewed. The verification provisioning wrapper
+uses that callback with explicitly injected answers; it does not prove interaction
+with real native dialog widgets or an installed end-user first-use launcher.
+
+Current envelope review passed 61/61 Python tests and 5/5 focused Node tests. The
+latest full desktop aggregate independently passed **212/212** at 08:13 UTC,
+including strict compiler, quality, module graph, build and manifest. The reviewer
+cleared this source/envelope increment; owned test output was empty. Corrected READY/native
+execution remains NOT_RUN until the next exact-head hosted run. Full maintenance,
+copied-profile restore and migration-crash/failure coverage remain pending; no
+P1-05 technical or formal task acceptance follows from this increment.

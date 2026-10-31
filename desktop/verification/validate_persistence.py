@@ -265,10 +265,50 @@ def validate_public_mode(value, mode):
     return passed
 
 
+def validate_ready(capture, database, mode):
+    exact_record(capture, ('process', 'stdout', 'stderr'))
+    process_passed = validate_process(capture['process'])
+    for name in ('stdout', 'stderr'):
+        if type(capture[name]) is not str or len(capture[name].encode('utf-16-le')) // 2 > 32768:
+            reject()
+    lines = capture['stdout'].replace('\r\n', '\n').split('\n')
+    if lines and lines[-1] == '':
+        lines.pop()
+    if len(lines) == 5 and lines[0] == '':
+        lines.pop(0)
+    if len(lines) != 4 or lines[:3] != ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED', 'PERSISTENCE_MAIN_ORDERLY'] or not lines[3].startswith('PERSISTENCE_MAIN_RESULT '):
+        reject()
+    runtime = _parse(lines[3][len('PERSISTENCE_MAIN_RESULT '):].encode('utf8'))
+    exact_record(runtime, ('mode', 'versions', 'mainReady', 'orderlyQuit'))
+    exact_record(runtime['versions'], VERSIONS)
+    if runtime['mode'] != mode or runtime['versions'] != VERSIONS or any(type(runtime[x]) is not bool for x in ('mainReady', 'orderlyQuit')):
+        reject()
+    exact_record(database, ('version', 'mode', 'schemaVersion', 'quarantined', 'automaticAdmissionRecorded', 'protectedCount', 'ordinaryCount', 'totalCount'))
+    for name in ('version', 'schemaVersion', 'protectedCount', 'ordinaryCount', 'totalCount'):
+        if type(database[name]) is not int or not 0 <= database[name] <= 64:
+            reject()
+    if database['version'] != 1 or database['mode'] != mode or any(type(database[x]) is not bool for x in ('quarantined', 'automaticAdmissionRecorded')):
+        reject()
+    passed = (process_passed and runtime['mainReady'] and runtime['orderlyQuit'] and
+              database['schemaVersion'] == 2 and not database['quarantined'] and database['automaticAdmissionRecorded'] and
+              database['protectedCount'] == 2 and database['ordinaryCount'] == 1 and database['totalCount'] == 3 and
+              not any(x in capture['stderr'].splitlines() for x in ('PERSISTENCE_MAIN_FAILED', 'PERSISTENCE_MAIN_DEADLINE', 'BOOTSTRAP_FAILED', 'BOOTSTRAP_CLEANUP_FAILED', 'PERSISTENCE_SHUTDOWN_FAILED', 'LOGGING_DEGRADED')))
+    return {'mode': mode, 'versions': dict(VERSIONS), 'process': dict(capture['process']),
+            'mainReady': runtime['mainReady'], 'orderlyQuit': runtime['orderlyQuit'], 'database': database, 'passed': passed}
+
+
+def ready_files(root, mode):
+    public = validate_ready(_parse(_read_owned(root, f'persistence-ready-capture-{mode}.json')),
+                            _parse(_read_owned(root, f'persistence-ready-database-{mode}.json')), mode)
+    _write_new(root, f'persistence-ready-public-{mode}.json', public)
+    return public['passed']
+
+
 def validate_report(raw):
     value = _parse(raw)
-    exact_record(value, ('schemaVersion', 'scope', 'modes', 'runtimeCopyVerified', 'directoryCleanup', 'failure'))
-    if type(value['schemaVersion']) is not int or value['schemaVersion'] != 1 or value['scope'] != 'HOSTED_KEY_MECHANISM_ONLY':
+    version = value.get('schemaVersion') if type(value) is dict else None
+    exact_record(value, ('schemaVersion', 'scope', 'modes', 'runtimeCopyVerified', 'directoryCleanup', 'failure') + (('ready',) if version == 2 else ()))
+    if type(version) is not int or version not in (1, 2) or value['scope'] != ('HOSTED_KEY_MECHANISM_ONLY' if version == 1 else 'HOSTED_KEY_AND_MAIN_READY'):
         reject()
     if type(value['modes']) is not dict or not set(value['modes']).issubset({'source', 'package'}):
         reject()
@@ -281,6 +321,19 @@ def validate_report(raw):
     passed = value['failure'] is None and value['runtimeCopyVerified'] and value['directoryCleanup']
     for mode, item in value['modes'].items():
         passed = validate_public_mode(item, mode) and passed
+    if version == 2:
+        if type(value['ready']) is not dict or not set(value['ready']).issubset({'source', 'package'}):
+            reject()
+        if value['failure'] is None and set(value['ready']) != {'source', 'package'}:
+            reject()
+        for mode, item in value['ready'].items():
+            exact_record(item, ('mode', 'versions', 'process', 'mainReady', 'orderlyQuit', 'database', 'passed'))
+            runtime = {key: item[key] for key in ('mode', 'versions', 'mainReady', 'orderlyQuit')}
+            capture = {'process': item['process'], 'stdout': 'BOOTSTRAP_READY\nBOOTSTRAP_CLOSED\nPERSISTENCE_MAIN_ORDERLY\nPERSISTENCE_MAIN_RESULT ' + json.dumps(runtime) + '\n', 'stderr': ''}
+            rebuilt = validate_ready(capture, item['database'], mode)
+            if type(item['passed']) is not bool or (item['passed'] and not rebuilt['passed']):
+                reject()
+            passed = item['passed'] and passed
     return {**value, 'passed': passed}
 
 
@@ -309,7 +362,7 @@ def main():
         print('PERSISTENCE_VALIDATION_INVALID')
         return 2
     action, path, mode = sys.argv[1:4]
-    if mode not in ('source', 'package') or action not in ('stage', 'finalize'):
+    if mode not in ('source', 'package') or action not in ('stage', 'finalize', 'ready'):
         print('PERSISTENCE_VALIDATION_INVALID')
         return 2
     try:
@@ -321,7 +374,7 @@ def main():
         else:
             if len(sys.argv) != 4:
                 reject()
-            passed = finalize_files(root, token, mode)
+            passed = ready_files(root, mode) if action == 'ready' else finalize_files(root, token, mode)
     except (OSError, ValueError, UnicodeError, RecursionError):
         print('PERSISTENCE_VALIDATION_INVALID')
         return 2

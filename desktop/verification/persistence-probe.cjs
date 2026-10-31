@@ -234,10 +234,28 @@ try {
         keys,
         control.stage === 'provision',
       );
-      receipt =
-        control.stage === 'provision'
-          ? await service.provision(path.join(root, `backup-parent-${control.mode}`), Date.now())
-          : await service.authenticateBootstrap();
+      if (control.stage === 'provision') {
+        const { runNativePersistenceProvision } = require('../build/persistence-native.cjs');
+        const { assertBorrowedPersistenceLease } = require('../build/persistence-files.cjs');
+        const result = await runNativePersistenceProvision(
+          service,
+          {
+            showOpenDialog: async () => ({
+              canceled: false,
+              filePaths: [path.join(root, `backup-parent-${control.mode}`)],
+            }),
+            showMessageBox: async () => ({ response: 0, checkboxChecked: false }),
+          },
+          () =>
+            assertBorrowedPersistenceLease(
+              { root: dataRoot, parentToken: control.parentToken },
+              control.ownerToken,
+            ),
+          Date.now,
+        );
+        if (result.status !== 'PROVISIONED') throw new Error('PROVISION_DENIED');
+        receipt = result.receipt;
+      } else receipt = await service.authenticateBootstrap();
       cases.backupAuthenticated = true;
       cases.schemaZero = receipt.header.schemaVersion === 0;
       cases.existingBackupMatched =

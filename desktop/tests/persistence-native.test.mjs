@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runNativePersistenceMaintenance } from '../src/main/persistence-native.ts';
+import {
+  runNativePersistenceMaintenance,
+  runNativePersistenceProvision,
+} from '../src/main/persistence-native.ts';
 const id = '12345678-1234-1234-1234-123456789abc';
 function fixture() {
   const calls = [];
@@ -82,4 +85,72 @@ test('native list and cancelled restore remain main-owned and never invoke resto
     'CANCELLED',
   );
   assert.deepEqual(calls, []);
+});
+
+test('first-use native selection cancellation never provisions or replaces storage', async () => {
+  let writes = 0;
+  const service = {
+    provision: async () => {
+      writes++;
+    },
+  };
+  assert.deepEqual(
+    await runNativePersistenceProvision(
+      service,
+      { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+      async () => {},
+      () => 1,
+    ),
+    { status: 'CANCELLED' },
+  );
+  assert.equal(writes, 0);
+});
+test('first-use confirmation binds selected parent and defaults to cancel', async () => {
+  const calls = [];
+  let options;
+  const receipt = { synthetic: true };
+  const result = await runNativePersistenceProvision(
+    {
+      provision: async (...args) => {
+        calls.push(args);
+        return receipt;
+      },
+    },
+    {
+      showOpenDialog: async () => ({ canceled: false, filePaths: ['owned-selected-parent'] }),
+      showMessageBox: async (value) => {
+        options = value;
+        return { response: 0 };
+      },
+    },
+    async () => {},
+    () => 1000,
+  );
+  assert.deepEqual(calls, [['owned-selected-parent', 1000]]);
+  assert.equal(options.defaultId, 1);
+  assert.equal(options.cancelId, 1);
+  assert.equal(result.receipt, receipt);
+});
+test('first-use delayed dialog cannot continue after launcher ownership is lost', async () => {
+  let checks = 0,
+    writes = 0;
+  await assert.rejects(
+    runNativePersistenceProvision(
+      {
+        provision: async () => {
+          writes++;
+        },
+      },
+      {
+        showOpenDialog: async () => ({ canceled: false, filePaths: ['owned'] }),
+        showMessageBox: () => assert.fail(),
+      },
+      async () => {
+        if (++checks === 2) throw new Error('OWNER_LOST');
+      },
+      () => 1,
+    ),
+    /OWNER_LOST/,
+  );
+  assert.equal(writes, 0);
 });

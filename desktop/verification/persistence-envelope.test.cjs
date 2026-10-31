@@ -120,3 +120,51 @@ test('missing current build rejects before any compiled module is loaded', () =>
     f.close();
   }
 });
+test('READY preflight requires exact existing proof and never fabricates missing durability', () => {
+  const f = fixture();
+  try {
+    const token = crypto.randomUUID();
+    fs.writeFileSync(path.join(f.root, '.owner'), token, { flag: 'wx' });
+    assert.equal(call('setup', f.root, 'source').status, 0);
+    assert.equal(call('prepare', f.root, 'source', 'provision').status, 0);
+    const state = JSON.parse(
+      fs.readFileSync(path.join(f.root, 'persistence-state-source.json'), 'utf8'),
+    );
+    const original = {
+      storeId: state.storeId,
+      backupId: crypto.randomUUID(),
+      locationId: crypto.randomUUID(),
+      encryptedSha256: 'a'.repeat(64),
+    };
+    fs.writeFileSync(
+      path.join(f.root, 'persistence-witness-source.json'),
+      JSON.stringify(original),
+      { flag: 'wx' },
+    );
+    const data = path.join(f.root, 'data-source');
+    assert.equal(call('prepare-ready', f.root, 'source').status, 1);
+    assert.equal(fs.existsSync(path.join(data, 'key-durability-proof.json')), false);
+    assert.equal(fs.existsSync(path.join(data, '.ready-launch.json')), false);
+    // Synthetic parser fixture only. No provider or actual durability claim.
+    fs.writeFileSync(
+      path.join(data, 'key-durability-proof.json'),
+      JSON.stringify({ version: 1, ...original, state: 'ORDERLY_AND_ABRUPT_RECOVERED' }),
+      { flag: 'wx' },
+    );
+    fs.writeFileSync(
+      path.join(data, 'key-profile/Local State'),
+      JSON.stringify({
+        os_crypt: { encrypted_key: Buffer.from('DPAPIsynthetic-only').toString('base64') },
+      }),
+      { flag: 'wx' },
+    );
+    assert.equal(call('prepare-ready', f.root, 'source').status, 0);
+    const ready = JSON.parse(fs.readFileSync(path.join(data, '.ready-launch.json'), 'utf8'));
+    assert.equal(ready.state, 'READY');
+    assert.equal(ready.ownerToken, state.ownerToken);
+    assert.equal(ready.root, data);
+    assert.equal(call('prepare-ready', f.root, 'source').status, 1);
+  } finally {
+    f.close();
+  }
+});

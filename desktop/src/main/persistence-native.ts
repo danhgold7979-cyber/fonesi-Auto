@@ -1,4 +1,5 @@
 import type { Dialog } from 'electron';
+import type { BackupReceipt } from './backup-service.ts';
 import type { FoundationPersistence } from './foundation-persistence.ts';
 import { PersistenceMaintenance } from './persistence-maintenance.ts';
 export async function runNativePersistenceMaintenance(
@@ -86,4 +87,47 @@ export async function runNativePersistenceMaintenance(
     },
   });
   return controller.run(args);
+}
+
+// First-use production callback: the trusted launcher opens the owned provisional
+// store and key profile first; only native selection + explicit confirmation admits
+// the schema0 backup. Cancellation never calls provision or selects storage.
+export async function runNativePersistenceProvision(
+  service: FoundationPersistence,
+  dialog: Dialog,
+  assertActive: () => Promise<void>,
+  now: () => number,
+): Promise<
+  Readonly<{ status: 'PROVISIONED'; receipt: BackupReceipt }> | Readonly<{ status: 'CANCELLED' }>
+> {
+  await assertActive();
+  const selected = await dialog.showOpenDialog({
+    title: 'Choose encrypted backup storage',
+    properties: ['openDirectory'],
+  });
+  await assertActive();
+  if (selected.canceled) return { status: 'CANCELLED' };
+  const parent = selected.filePaths[0];
+  if (
+    selected.filePaths.length !== 1 ||
+    typeof parent !== 'string' ||
+    parent.length < 1 ||
+    parent.length > 4096 ||
+    parent.includes('\0')
+  )
+    throw new Error('NATIVE_SELECTION_REJECTED');
+  const confirmed = await dialog.showMessageBox({
+    type: 'warning',
+    title: 'Initialize encrypted foundation storage',
+    message: 'Create an owned backup folder under the selected parent?',
+    detail: `${parent}\nRecovery currently requires this Windows user/machine and retained usable key material. No portable-key claim is made.`,
+    buttons: ['Initialize', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  await assertActive();
+  if (confirmed.response !== 0) return { status: 'CANCELLED' };
+  const receipt = await service.provision(parent, now());
+  return Object.freeze({ status: 'PROVISIONED', receipt });
 }
