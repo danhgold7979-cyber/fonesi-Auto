@@ -1,13 +1,16 @@
 # PHASE-01 — Repository and desktop foundation
 
-**Revision:** 1.2-draft · **Current summary:** 2026-10-31 06:54 UTC
+**Revision:** 1.2-draft · **Current summary:** 2026-10-31 10:54 UTC
 **Full-plan acceptance:** NOT_ACCEPTED · **Execution:** explicitly scoped entries active
 **Current branch:** `phase-01`; no main merge or original Phase 0 acceptance
 **Full-phase execution base:** remains conditional on the original Phase 0 gate
-**Current verified scope:** P1-01/P1-02/P1-03/P1-04/P1-11 task-specific TECHNICAL_PASS;
-formal Phase 0/predecessor acceptance pending. P1-04 owned logging/v2 correlation
-and maintenance recovery passed exact-head Windows checks; no domain service or
-DDL is exposed. Full foundation/UI/persistence acceptance remains incomplete.
+**Current verified scope:** P1-01/P1-02/P1-03/P1-04/P1-05/P1-11 task-specific TECHNICAL_PASS;
+formal Phase 0/predecessor acceptance pending. P1-05 versioned SQLite, encrypted
+backup/restore, native failure matrix and instrumented real first/repeat launcher
+passed exact-head Windows verification; see the
+[qualified criterion audit](../evidence/P1-05-canonical-criterion-audit-2026-10-31.md).
+No domain service is exposed through public IPC. Full phase/UI/secret-store and
+installed-packaging acceptance remain incomplete.
 
 > Phase 0 remains unfinished. Historical pure-source restrictions below were
 > superseded only by recorded narrow entries, including ADR-0006's real public-read

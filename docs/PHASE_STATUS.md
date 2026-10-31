@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-10-31 06:54 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-10-31 10:54 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -34,9 +34,10 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | Application source | PROVISIONAL PHASE 1 WORK AUTHORIZED | Actual foundation/desktop source exists under recorded exceptions; no device/account service or full phase acceptance |
 | P1-01 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Actual map/bindings/cycles/absence/fresh Windows bootstrap verified on 5e4fa521, run41173386584; original Phase0 formal gate still pending. [Criteria/evidence](evidence/P1-01-module-graph-source-2026-10-31.md) |
 | P1-02 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific scope at 04:36 UTC on ff25bee; P1-03/P1-11 technical prerequisites now pass; formal chain remains pending through Phase 0. [Criterion audit](evidence/P1-02-canonical-criterion-audit-2026-10-31.md); accepted full-task counts unchanged |
-| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; P1-01 architecture now TECHNICAL_PASS; formal predecessor chain through Phase0 still pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Five canonical technical scopes now pass including P1-11, not formally accepted tasks |
+| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; P1-01 architecture now TECHNICAL_PASS; formal predecessor chain through Phase0 still pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Six canonical technical scopes now pass including P1-05/P1-11, not formally accepted tasks |
 | P1-11 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted canonical definitions/fixtures/threat review at 05:57 UTC on b3bc1903, run41174482528; formal Phase 0/predecessor chain remains pending. [Evidence/criteria](evidence/P1-11-contract-completion-source-2026-10-31.md) |
 | P1-04 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted foundation logging at 06:54 UTC on fcb1366b, run 41178227952; formal Phase 0 chain remains pending. [Evidence/criteria](evidence/P1-04-logging-source-2026-10-31.md) |
+| P1-05 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted foundation persistence at 10:54 UTC on 2e8c08b7, run 41194352059; exact native matrix, owned write denial and instrumented real launcher passed. [Criterion audit](evidence/P1-05-canonical-criterion-audit-2026-10-31.md). Formal Phase 0 chain remains pending |
 | Phase 0 acceptance | NOT ACCEPTED | 0/10 tasks accepted; all 12 baseline exits unaccepted; independent slices concluded, remaining gates BLOCKED |
 
 ## 3. Historical Phase 0 snapshot before collector hardening
@@ -706,3 +707,16 @@ exact-head Windows execution remains pending.
 Earlier HOSTED_KEY_AND_MAIN_READY_PASS remains the observed native result, not a
 claim that these new paths passed. Technical counts stay 5/11 and 5/154; formal
 acceptance remains 0. See the [current bounded evidence](evidence/P1-05-persistence-source-2026-10-31.md).
+
+## P1-05 technical disposition — 2026-10-31 10:54 UTC
+
+Coordinator accepts the qualified canonical P1-05 scope as TECHNICAL_PASS on
+`2e8c08b7df8448c7db89438891da66bce7b8b715`, exact tree
+`c83aa38ef36b62c4f285faea128d05e41ebf7696`, successful Windows run
+`41194352059` / job `124517397876`. See the
+[criterion audit](evidence/P1-05-canonical-criterion-audit-2026-10-31.md).
+Six canonical technical scopes pass: **6/11 = 54.5%** of Phase 1 tasks and
+**6/154 = 3.9%** across all planned tasks, equal-task technical counts only—not
+weighted implementation/feature progress. Formal accepted tasks remain **0**;
+original Phase 0 criteria/all 12 exits and historical navigation FAIL are unchanged.
+P1-06 is next contract planning only, not source-approved by this disposition.

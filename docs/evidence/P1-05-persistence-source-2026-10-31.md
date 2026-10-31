@@ -1,15 +1,27 @@
-# P1-05 persistence implementation evidence — in progress
+# P1-05 persistence implementation evidence — TECHNICAL_PASS
 
-## Scope and entry
+## Current disposition — 2026-10-31 10:54 UTC
+
+Coordinator accepted P1-05 TECHNICAL_PASS on public
+`2e8c08b7df8448c7db89438891da66bce7b8b715`, exact tree
+`c83aa38ef36b62c4f285faea128d05e41ebf7696`, Windows run `41194352059`,
+job `124517397876` SUCCESS. Desktop 258, foundation 109, Python 93,
+boundary PowerShell 40 and interactive-supervisor 3 tests passed; native matrix
+and instrumented launcher passed with independent fixed-artifact review.
+The [canonical criterion audit](P1-05-canonical-criterion-audit-2026-10-31.md)
+records exact evidence and limitations. Technical counts are 6/11 and 6/154;
+formal acceptance remains zero through the original Phase 0 chain.
+
+## Historical scope and entry
 
 Coordinator authorized the reviewed [persistence contract](../phases/PHASE-01-P1-05-PERSISTENCE-CONTRACT.md)
 and [ADR-0007](../decisions/ADR-0007-foundation-persistence-backup.md) at 07:05 UTC on
 2026-10-31. Work is on `phase-01`, under the recorded development-only exception.
-This is not task acceptance: technical task count remains 5/11; formal acceptance
+At this entry, this was not task acceptance: technical task count remained 5/11; formal acceptance
 remains pending the unchanged Phase 0 chain. No domain/device/account service or
 public v1/v2 IPC method has been added.
 
-## Current source checkpoint — 07:27 UTC
+## Historical source checkpoint — 07:27 UTC
 
 The actual desktop pipeline passed **181/181 tests**, including exact 28-module
 source/import graph, strict compiler, reviewed quality checks, build and manifest.
