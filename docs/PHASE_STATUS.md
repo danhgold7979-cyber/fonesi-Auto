@@ -78,6 +78,9 @@ A blocked Phase may be narrowed/deferred only by an explicit user-approved chang
 
 ## 5. Current next action / execution boundary
 
+**2026-10-31:** renewed coding request is being translated into a [narrow provisional-source amendment](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md), PENDING review/approval. No code started or Phase opened. Host ZIP awaited; it cannot alone certify all Phase0 exits.
+
+
 **21:49 UTC handoff:** See [verified results, remaining evidence and proposed-only security alternative](evidence/PHASE-00-independent-work-handoff-2026-10-30.md). Independent work is concluded, not Phase acceptance; no unchanged lab reruns or invented activity. Target-host/device/policy/security decisions remain the next dependencies.
 
 1. P0-01 code and 18 synthetic tests are implemented. Two post-fix Windows runs passed all 18 cases with 489 assertions and no measured handle growth.
@@ -267,3 +270,23 @@ Hosted12/12 Python+5/5 Node tests and PS parse PASS; sanitized artifact revalida
 collector/offline41131016077 SUCCESS. Stage4/OSrevocation/portability/productionbackup
 NOT_TESTED; normal DPAPI OS access caveat retained. No fullG0-13/P0-09/Phase acceptance
 or navigation/containment waiver; no old desktop retry.
+
+## Scoped approval — 2026-10-31 01:23 UTC
+
+Coordinator explicitly approved proposal commit `b7d0e1168e09e32830e0487a6356ae02259c2d49`
+under the renewed user coding direction: exactly P1-01-S → P1-03-S → P1-11-S,
+with parent review/approval of each next entry. **Current execution: P1-01-S only.**
+Record module map/minimal verified dependency closure before harness/validator work.
+Normal owned build/test tooling is permitted; no new hosted workflow or runtime
+service. Branch remains phase/00-feasibility. This is provisional source authority,
+not opening/accepting full Phase1, Phase0 acceptance, main merge or activation.
+All exclusions, original baseline/12 exits, navigation FAIL, ADR B/C limitations
+and C-03/C-05/V9 requirements remain unchanged. Root coordinates publication.
+
+### P1-01-S provisional source checkpoint — 2026-10-31 01:26 UTC
+
+Approved cross-phase subset only: module map/minimal reviewed23-entry dependency
+closure implemented; Linux scripts-disabled restore and compiler version check PASS,
+8/8 metadata regressions PASS. [Evidence](evidence/P1-01-S-provisional-foundation-2026-10-31.md).
+Independent review CLEAR01:27 UTC; P1-01-S checkpoint complete, full P1-01/Phase1 NOT_ACCEPTED. P1-03-S/P1-11-S next entry awaits root
+approval. No runtime services/new workflow; original host/navigation/Phase0 gates open.

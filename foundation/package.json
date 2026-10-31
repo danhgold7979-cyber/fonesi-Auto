@@ -1,0 +1,16 @@
+{
+  "name": "fonesi-auto-provisional-foundation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure-source provisional foundation; no application entry point",
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": "24.22.1",
+    "npm": "11.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  }
+}

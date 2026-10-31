@@ -6,6 +6,9 @@ Mục tiêu: một quy trình chuẩn để AI/dev đọc plan, lập kế hoạ
 
 ## 1. Nguyên tắc vận hành
 
+**2026-10-31 pending exception:** [cross-phase pure-source proposal](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) is documentation-only, not approved. Its exact subsets could proceed only after recorded explicit approval; no generic parallel-Phase authority or acceptance waiver follows.
+
+
 1. Một thời điểm chỉ triển khai một Phase. Không code Phase tiếp theo khi Phase hiện tại chưa nghiệm thu và merge.
 2. Master Plan là bản đồ tổng thể, không phải chỉ dẫn code trực tiếp. Trước mỗi Phase phải đọc lại Master Plan và lập Phase Execution Plan riêng.
 3. Không viết production code trước khi Phase Plan được người dùng duyệt.
@@ -413,3 +416,15 @@ production key/backup-format selection and Phase acceptance remain unapproved.
 P0-09 dependencies, target host/device/policy and failed navigation/containment gates
 stay open. Independent source/schema review precedes root-coordinated publication;
 actual runtime is NOT_RUN until reviewed hosted evidence exists.
+
+## Scoped approval — 2026-10-31 01:23 UTC
+
+Coordinator explicitly approved proposal commit `b7d0e1168e09e32830e0487a6356ae02259c2d49`
+under the renewed user coding direction: exactly P1-01-S → P1-03-S → P1-11-S,
+with parent review/approval of each next entry. **Current execution: P1-01-S only.**
+Record module map/minimal verified dependency closure before harness/validator work.
+Normal owned build/test tooling is permitted; no new hosted workflow or runtime
+service. Branch remains phase/00-feasibility. This is provisional source authority,
+not opening/accepting full Phase1, Phase0 acceptance, main merge or activation.
+All exclusions, original baseline/12 exits, navigation FAIL, ADR B/C limitations
+and C-03/C-05/V9 requirements remain unchanged. Root coordinates publication.

@@ -56,6 +56,9 @@ Follow docs/13_DOCUMENTATION_CHANGE_POLICY.md. Update canonical living documents
 
 ## 5. Phase and task authorization
 
+A proposed cross-phase exception is tracked in `docs/phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md`. It is NOT APPROVED and grants no code authority. Only explicit recorded approval may permit its exact pure-source subsets; all other sequential/acceptance/security rules below remain unchanged.
+
+
 - Work on one Phase at a time; never start a later Phase before the current Phase is accepted and merged.
 - Before each Phase, re-read the Master Plan and all relevant product/architecture/acceptance documents.
 - Create a detailed Phase Plan from docs/templates/PHASE_PLAN_TEMPLATE.md and obtain explicit user approval before production coding.
@@ -144,3 +147,5 @@ If a command or test was not run, state that explicitly. Never claim success bas
 ## 11. Change history
 
 - 2026-10-30: Clarified sequential authorization and approved exceptions, immutable Phase 0 baseline, evidence/privacy requirements, and start/checkpoint/end reporting. This governance change itself grants no production or product-behavior authorization.
+
+**2026-10-31 01:23 UTC scoped exception approved:** proposal b7d0e11 now permits only P1-01-S first, with separately reviewed next entries P1-03-S/P1-11-S as recorded in the provisional-source amendment and playbook. Earlier pending notes are historical; all other sequential/acceptance/security rules remain. Full Phase1 is not opened or accepted.

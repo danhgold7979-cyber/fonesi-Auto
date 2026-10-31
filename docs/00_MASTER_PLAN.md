@@ -107,6 +107,9 @@ Windows Desktop (Electron + strict TypeScript + React)
 
 ## 6. Master delivery stages
 
+Pending review: [provisional pure-source exception](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) for P1-01-S/P1-03-S/P1-11-S only. No implementation grant or Phase opening exists yet; the sequential default below remains in force until an explicit scoped approval is recorded.
+
+
 Delivery is strictly sequential: **0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11**. The previous phase must be user-accepted and merged, then the next detailed plan approved. Technical independence does not permit parallel phases; an exception would require explicit user approval and governance/plan amendments. See [master task/dependency contracts](04_MASTER_IMPLEMENTATION_PLAN.md), [draft Phase plans](phases/) and [acceptance gates](05_ACCEPTANCE_AND_RISKS.md).
 
 | Stage | Deliverable | Exit condition |
@@ -154,3 +157,5 @@ Each task needs a stable ID, dependency/input contract, deliverable, expected fa
 | 2026-10-30 | 0.1-draft | Original clean-slate planning baseline, preserved in Git. |
 | 2026-10-30 | 0.2-draft | Aligned actual feasibility status, sequential delivery, conditional completion, pending stack choices, requirement traceability and accepted DEC-019/020; no production authorization or Phase acceptance claimed. |
 | 2026-10-30 | 0.3-review | Synchronized accepted C-01…C-22 product/stack directions; separated unresolved technical proofs/inputs from settled preferences. Physical/Phase acceptance unchanged. |
+
+**2026-10-31 01:23 UTC scoped exception approved:** proposal b7d0e11 now permits only P1-01-S first, with separately reviewed next entries P1-03-S/P1-11-S as recorded in the provisional-source amendment and playbook. Earlier pending notes are historical; all other sequential/acceptance/security rules remain. Full Phase1 is not opened or accepted.

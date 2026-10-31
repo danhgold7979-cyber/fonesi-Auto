@@ -16,6 +16,9 @@ In scope: desktop lifecycle, privileges, typed contracts, initial persistence, s
 
 ## 2. Entry, decisions and dependency order
 
+**Pending amendment:** [provisional source exception01](PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) proposes only P1-01-S/P1-03-S/P1-11-S under the current Phase0 branch. It is not approved; full task entry/order/acceptance below remain unchanged. No renderer or privileged runtime is included.
+
+
 - Phase 0 accepted with required physical-device feasibility evidence, approved ADRs and merge SHA; accepted Phase 0 baseline stays untouched.
 - Verify repo/remote/branch/HEAD/status under AGENTS. Create only this integration branch after express authorization; keep all later Phases NOT_STARTED.
 - Accepted C-05 direction is **Electron + strict TypeScript + React + SQLite**, Windows-backed secrets and isolated Python; preserve V9. Exact versions, SQLite binding/migration library, secret-store mechanism, package paths and compatibility still require technical evidence/recorded choices. An incompatible result returns for a decision; do not silently choose another stack. See [accepted checklist C-01…C-22](../16_ACCEPTED_PRODUCT_DECISIONS.md).
@@ -145,3 +148,5 @@ Primary risks: unverified version/binding/compatibility detail (stop, do not gue
 | 2026-10-30 | 1.0-draft | Full Phase 1 task/dependency/test/evidence/rollback plan | Future draft only |
 
 - 2026-10-30 / 1.1-draft: aligned accepted C-05/C-07/C-13/C-14/C-22; retained phase authorization and technical-evidence gates.
+
+**2026-10-31 01:23 UTC scoped exception approved:** proposal b7d0e11 now permits only P1-01-S first, with separately reviewed next entries P1-03-S/P1-11-S as recorded in the provisional-source amendment and playbook. Earlier pending notes are historical; all other sequential/acceptance/security rules remain. Full Phase1 is not opened or accepted.

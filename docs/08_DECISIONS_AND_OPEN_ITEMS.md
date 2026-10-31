@@ -319,3 +319,28 @@ corrupt/missing-profile handling and unresolved backup/key recovery decisions.
 Documentation/source research only; no experiment, production key format, adapter,
 portability or encrypted-backup selection approved. Old host/device/navigation gates
 and P0-09 dependencies remain open. Coordinator review required before further code.
+
+## Pending cross-phase provisional source exception — 2026-10-31 01:18 UTC
+
+The renewed user instruction to continue coding and offer a host ZIP is recorded
+in [exception proposal01](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md).
+Coordinator authorized drafting only. Proposed scope: P1-01-S module boundaries,
+P1-03-S strict/source-check/unit harness and pure P1-11-S unavailable status/error
+validators, on phase/00-feasibility. Candidate tooling uses previously reviewed
+Node24.22.1/TypeScript7.0.2/Node types24.19.2; no new privileged services or labs.
+Approval PENDING; no implementation entry yet. All original Phase0 exits, old
+navigation FAIL, C-03/V9 and full Phase1 acceptance requirements remain unchanged.
+Explicit scoped approval/time must be appended here and in playbook before code;
+provisional work may require rework after real host/security/contract decisions.
+
+## Scoped approval — 2026-10-31 01:23 UTC
+
+Coordinator explicitly approved proposal commit `b7d0e1168e09e32830e0487a6356ae02259c2d49`
+under the renewed user coding direction: exactly P1-01-S → P1-03-S → P1-11-S,
+with parent review/approval of each next entry. **Current execution: P1-01-S only.**
+Record module map/minimal verified dependency closure before harness/validator work.
+Normal owned build/test tooling is permitted; no new hosted workflow or runtime
+service. Branch remains phase/00-feasibility. This is provisional source authority,
+not opening/accepting full Phase1, Phase0 acceptance, main merge or activation.
+All exclusions, original baseline/12 exits, navigation FAIL, ADR B/C limitations
+and C-03/C-05/V9 requirements remain unchanged. Root coordinates publication.
