@@ -116,7 +116,7 @@ negative modifies only a verified owned build copy. Neither is runtime evidence 
 ## Runnable checkpoint pending hosted execution — 2026-10-31
 
 Current local source/build check: **32/32 PASS**, including the real bootstrap
-failure-latch regression. Current Python schema/writer/checkout suite: **34/34 PASS**.
+failure-latch regression. Current Python schema/writer/checkout/diagnostic suite: **37/37 PASS**.
 Node syntax checks and scoped workflow YAML parsing PASS. Nine PowerShell marker
 regressions, official installer, source/package launches, renderer crash and
 changed-asset negatives are **NOT_RUN** here. There is no local PowerShell 5.1 or
@@ -146,3 +146,8 @@ JSON and asset hashes under core.autocrlf=true/core.eol=crlf. The new actual Git
 checkout regression fails on the old policy and passes on the corrected policy.
 No hash normalization or expected-hash replacement is used. First hosted attempt
 stopped at metadata verification; later runtime stages remain unverified.
+
+CI2 passed Windows source32/Python34/PowerShell9 but rejected the private raw
+report before artifact upload. Fixed allowlisted validation stage diagnostics now
+locate that rejection without echoing payloads or relaxing any predicate. Actual
+runtime/cleanup outcomes are not inferred from the supervisor step exit status.

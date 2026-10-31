@@ -66,3 +66,25 @@ is still pending, not a claim that later Windows stages passed.
 Independent checkout-fix review CLEAR at 03:12 UTC: 34/34 Python tests, workflow
 YAML and diff checks PASS; all three protected inputs remain byte-identical to
 original Git blobs and recorded hashes. No runtime performed during this review.
+
+## Second hosted attempt and bounded diagnostics — 03:17 UTC
+
+Exact remote head `1da5791b969288a165b9c87b103ce5ced20118e3`, run
+[41163410248](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41163410248),
+job 124425713752: actual Windows source/build **32/32 PASS**, Python **34/34 PASS**,
+and PowerShell marker **9/9 PASS**. Syntax passed. The supervisor wrote a private
+raw record, but the validator returned `FOUNDATION_VALIDATION_INVALID`; no artifact
+was authorized for upload. A successful supervisor step is not runtime acceptance.
+Installer/runtime cases and cleanup remain unverified from this attempt.
+
+No specific producer/consumer mismatch is established from that generic rejection.
+The next diagnostic patch emits only fixed allowlisted IO/parse/schema/process/
+stdout/output stage codes, plus a supervisor failure enum only after duplicate-aware
+parse and exact type/allowlist validation. No private raw payload or exception text
+is emitted, and no existing condition is relaxed. Three additional diagnostic
+privacy regressions bring the local Python suite to **37/37 PASS**; this is a
+meaningfully instrumented retry, not a blind rerun or an inferred runtime success.
+
+Independent diagnostic-only review CLEAR at 03:18 UTC: 37/37 Python tests and
+diff check PASS; fixed allowlists/privacy and unchanged rejection rules verified.
+The underlying Windows rejection remains unproven pending the next actual result.

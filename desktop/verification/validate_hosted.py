@@ -25,7 +25,8 @@ def bounded_size(value, ceiling, nullable=False):
         reject()
 
 
-def decode_runtime(payload, mode):
+def decode_runtime(payload, mode, diagnostic):
+    diagnostic['stage'] = 'RUN_' + mode.upper() + '_LINES'
     if type(payload) is not str or len(payload.encode('utf-16-le')) // 2 > 32768:
         reject()
     lines = payload.replace('\r\n', '\n').split('\n')
@@ -33,7 +34,9 @@ def decode_runtime(payload, mode):
         lines.pop()
     if len(lines) != 3 or lines[:2] != ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED'] or not lines[2].startswith('FOUNDATION_RESULT '):
         reject()
+    diagnostic['stage'] = 'RUN_' + mode.upper() + '_JSON'
     result = parse(lines[2][len('FOUNDATION_RESULT '):].encode('utf-8'))
+    diagnostic['stage'] = 'RUN_' + mode.upper() + '_RESULT'
     exact_record(result, ('mode', 'versions', 'cases', 'observations'))
     if result['mode'] != mode:
         reject()
@@ -45,8 +48,12 @@ def decode_runtime(payload, mode):
     return result
 
 
-def validate(raw):
+def validate(raw, diagnostic=None):
+    if diagnostic is None:
+        diagnostic = {}
+    diagnostic['stage'] = 'JSON_PARSE'
     data = parse(raw)
+    diagnostic['stage'] = 'OUTER_SCHEMA'
     exact_record(data, ('schemaVersion', 'scope', 'installer', 'runs', 'negatives',
                         'buildVerified', 'binaryHashMatched', 'runtimeCopyVerified',
                         'directoryCleanup', 'packageBytes', 'failure'))
@@ -55,12 +62,15 @@ def validate(raw):
     failure = data['failure']
     if failure is not None and (type(failure) is not str or failure not in FAILURES):
         reject()
+    diagnostic['failure'] = failure
+    diagnostic['stage'] = 'OUTER_FLAGS'
     flags = ('buildVerified', 'binaryHashMatched', 'runtimeCopyVerified', 'directoryCleanup')
     for name in flags:
         if type(data[name]) is not bool:
             reject()
     bounded_size(data['packageBytes'], 512 * 1024 * 1024, nullable=failure is not None)
     passed = failure is None and all(data[name] for name in flags)
+    diagnostic['stage'] = 'INSTALL_PROCESS'
     installer = data['installer']
     if installer is None:
         if failure is None:
@@ -72,6 +82,7 @@ def validate(raw):
         if type(installer['officialMarker']) is not bool:
             reject()
         passed = passed and process_ok and installer['officialMarker']
+    diagnostic['stage'] = 'RUN_COLLECTIONS'
     for name, allowed in (('runs', {'source', 'package'}), ('negatives', {'crash', 'tamper'})):
         if type(data[name]) is not dict or not set(data[name]).issubset(allowed):
             reject()
@@ -79,8 +90,11 @@ def validate(raw):
             reject()
     runs = {}
     for mode, run in data['runs'].items():
+        diagnostic['stage'] = 'RUN_' + mode.upper() + '_SHAPE'
         exact_record(run, ('process', 'payload', 'ownedBytes'))
+        diagnostic['stage'] = 'RUN_' + mode.upper() + '_PROCESS'
         process_ok = validate_process(run['process'])
+        diagnostic['stage'] = 'RUN_' + mode.upper() + '_SIZE'
         bounded_size(run['ownedBytes'], 8 * 1024 * 1024, nullable=failure is not None)
         if type(run['payload']) is not str:
             reject()
@@ -90,12 +104,13 @@ def validate(raw):
         except UnicodeError:
             reject()
         # Failed/incomplete runs never gain synthetic missing cases. Drop private logs.
-        result = decode_runtime(run['payload'], mode) if process_ok else None
+        result = decode_runtime(run['payload'], mode, diagnostic) if process_ok else None
         if result is None and failure is None:
             reject()
         runs[mode] = {'process': run['process'], 'ownedBytes': run['ownedBytes'], 'result': result}
         passed = passed and result is not None and all(result['cases'].values())
     for kind, negative in data['negatives'].items():
+        diagnostic['stage'] = 'NEGATIVE_' + kind.upper()
         fields = ('armed', 'observed', 'bootstrapFailed', 'unexpectedQuit') if kind == 'crash' else ('changed', 'bootstrapFailed', 'unexpectedReady')
         exact_record(negative, (*fields, 'process', 'ownedBytes'))
         validate_process(negative['process'])
@@ -114,12 +129,15 @@ def validate(raw):
     return public
 
 
-def write_validated(raw_path, output_path):
+def write_validated(raw_path, output_path, diagnostic=None):
     """Trusted owned caller paths; regular-file check, capped read, exclusive output.
 
     No hostile concurrent filesystem mutation guarantee. Existing outputs are
     refused, never overwritten or treated as this invocation's success.
     """
+    if diagnostic is None:
+        diagnostic = {}
+    diagnostic['stage'] = 'IO_PARENT'
     import os
     import stat
     from pathlib import Path
@@ -129,15 +147,41 @@ def write_validated(raw_path, output_path):
             reject()
     if raw_path.parent != output_path.parent or not stat.S_ISREG(raw_path.lstat().st_mode):
         reject()
+    diagnostic['stage'] = 'IO_READ'
     with raw_path.open('rb') as source:
-        result = validate(source.read(MAX_BYTES + 1))
+        raw = source.read(MAX_BYTES + 1)
+    result = validate(raw, diagnostic)
+    diagnostic['stage'] = 'PUBLIC_SERIALIZE'
     public_bytes = (json.dumps(result, ensure_ascii=True, indent=2) + '\n').encode('utf-8')
     if len(public_bytes) > MAX_BYTES:
         reject()
+    diagnostic['stage'] = 'OUTPUT_CREATE'
     descriptor = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    diagnostic['stage'] = 'OUTPUT_WRITE'
     with os.fdopen(descriptor, 'wb') as destination:
         destination.write(public_bytes)
     return result['passed']
+
+
+
+DIAGNOSTIC_STAGES = frozenset((
+    'IO_PARENT', 'IO_READ', 'JSON_PARSE', 'OUTER_SCHEMA', 'OUTER_FLAGS',
+    'INSTALL_PROCESS', 'RUN_COLLECTIONS', 'NEGATIVE_CRASH', 'NEGATIVE_TAMPER',
+    'PUBLIC_SERIALIZE', 'OUTPUT_CREATE', 'OUTPUT_WRITE',
+    *(f'RUN_{mode}_{part}' for mode in ('SOURCE', 'PACKAGE')
+      for part in ('SHAPE', 'PROCESS', 'SIZE', 'LINES', 'JSON', 'RESULT')),
+))
+
+
+def diagnostic_lines(diagnostic):
+    # Fixed allowlists only; never emit exception messages or input field values.
+    stage = diagnostic.get('stage')
+    safe_stage = stage if type(stage) is str and stage in DIAGNOSTIC_STAGES else 'UNKNOWN'
+    lines = ['FOUNDATION_VALIDATION_STAGE_' + safe_stage]
+    failure = diagnostic.get('failure')
+    if type(failure) is str and failure in FAILURES:
+        lines.append('FOUNDATION_SUPERVISOR_STAGE_' + failure)
+    return lines
 
 
 def main():
@@ -147,10 +191,13 @@ def main():
         print('FOUNDATION_VALIDATION_INVALID')
         return 2
     root = Path(__file__).resolve().parents[1] / '.runtime'
+    diagnostic = {}
     try:
-        passed = write_validated(root / 'unvalidated.json', root / 'validated.json')
+        passed = write_validated(root / 'unvalidated.json', root / 'validated.json', diagnostic)
     except (OSError, ValueError, UnicodeError, RecursionError):
         print('FOUNDATION_VALIDATION_INVALID')
+        for line in diagnostic_lines(diagnostic):
+            print(line)
         return 2
     # Printed only after this invocation exclusively created and closed the output.
     print('FOUNDATION_VALIDATION_WRITTEN')

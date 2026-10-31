@@ -3,7 +3,7 @@ import unittest
 import tempfile
 from pathlib import Path
 from validate_runtime import CASES, OBSERVATIONS, VERSIONS, InvalidEvidence
-from validate_hosted import validate, write_validated
+from validate_hosted import validate, write_validated, diagnostic_lines
 
 
 def process(code=0):
@@ -39,6 +39,29 @@ class HostedEvidenceTests(unittest.TestCase):
     def rejected(self, value):
         with self.assertRaisesRegex(InvalidEvidence, '^INVALID_RUNTIME_EVIDENCE$'):
             validate(encoded(value))
+
+    def test_diagnostic_stage_locates_rejected_stdout_without_echo(self):
+        value = fixture()
+        value['runs']['source']['payload'] = 'private host path'
+        diagnostic = {}
+        with self.assertRaises(InvalidEvidence):
+            validate(encoded(value), diagnostic)
+        self.assertEqual(diagnostic_lines(diagnostic), ['FOUNDATION_VALIDATION_STAGE_RUN_SOURCE_LINES'])
+
+    def test_diagnostic_allowlist_rejects_private_or_malformed_values(self):
+        for value in ('private host path', {}, [], None, 1):
+            lines = diagnostic_lines({'stage': value, 'failure': value})
+            self.assertEqual(lines, ['FOUNDATION_VALIDATION_STAGE_UNKNOWN'])
+        self.assertEqual(diagnostic_lines({'stage': 'IO_READ', 'failure': 'RUNTIME_FAILED'}),
+                         ['FOUNDATION_VALIDATION_STAGE_IO_READ', 'FOUNDATION_SUPERVISOR_STAGE_RUNTIME_FAILED'])
+
+    def test_invalid_outer_failure_is_never_adopted_as_diagnostic(self):
+        value = fixture()
+        value['failure'] = 'private exception text'
+        diagnostic = {}
+        with self.assertRaises(InvalidEvidence):
+            validate(encoded(value), diagnostic)
+        self.assertEqual(diagnostic_lines(diagnostic), ['FOUNDATION_VALIDATION_STAGE_OUTER_SCHEMA'])
 
     def test_exclusive_output_and_no_stale_success(self):
         with tempfile.TemporaryDirectory() as directory:
