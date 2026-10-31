@@ -163,3 +163,93 @@ All remain LF and byte-identical; no normalization or expected-hash replacement.
 The existing test was extended (suite remains 43/43 PASS), not a fabricated new test.
 Independent follow-up review CLEAR: Python43/43 and diff check PASS; test SHA256
 `2fcd815683d2c0876aa2066d4a6c907fddbb3713035dd207e8c9fe7026fd20da`.
+
+## Exact-head Windows development verification — 2026-10-31 05:07 UTC
+
+[Run 41171124796](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41171124796),
+job **124449111117**, completed **SUCCESS** on remote head
+`ee7e04de9e1597707f95d8406be945fdb0596b63`, exact reviewed tree
+`558d2a9db679435e58988d3985353d4c8c49dc1d` (local source head
+`28cbbfa144f312d5a71a2683241aa67a4c6dc327`). This is the named Windows
+**development verification** machine explicitly approved at 04:55 UTC, not the
+user's PC or product minimum-host certification.
+
+Reported OS: Windows Server 2022 Datacenter 10.0.20348. Setup identifies image
+windows-2022 version `20261025.346.1`; the later ImageOS/ImageVersion environment
+reports `win22/20261026.347.1`. Both observations are retained without inventing a
+reason for their difference. Actual Node **24.22.1**, npm **11.19.1**; clean checkout
+and lifecycle-disabled restore, no fabricated version argument.
+
+| Executed check | Actual result |
+|---|---|
+| Desktop metadata and fresh restore | Exact reviewed 78-entry closure admitted; scripts disabled |
+| Registry signatures/available provenance and advisories | Required fail-fast stages succeeded before native execution; invalid/missing signature lists empty and advisory total 0, as enforced by the recorded runner |
+| Native lint/format + strict compiler/build/manifest + unit/negative fixtures | **63/63 PASS**; native hash/version/config/schema guard and warning-fail fixtures exercised |
+| Foundation metadata/fresh restore/type/boundary/hygiene/unit suite | **86/86 PASS**, 0 failures/cancellations/skips/todos, actual npm 11.19.1 |
+| Duplicate-aware Python/raw-schema/forced-CRLF checkout suite | **43/43 PASS** |
+| PowerShell 5.1 marker/ownership cases | **25/25 PASS** |
+| Real reviewed main/public bridge, source and owned package | **25/25 each**, exact runtime Electron45.1.0/Node24.22.1/Chromium156.0.8078.49 |
+| Renderer crash/tamper and cleanup | Expected NONZERO_EXIT/1, required denial markers, all process and directory cleanup true |
+
+Signature/advisory raw command output is not a public artifact; success follows
+from the tested fail-fast stage predicates, not a new code-benignness/CVE-free
+claim. This run also re-verifies the narrow manual warning fixes in actual runtime.
+
+### Retained sanitized evidence
+
+Artifact **13030848350**, ZIP **1,022 bytes**, SHA256
+`591ba226b144edc2e590af4ea8afefcaee21cc32d973383656bebcf3a316f2ad`.
+Its sole `validated.json` is retained byte-identically as
+[P1-03 tooling runtime sample](P1-03-tooling-runtime-sample-2026-10-31.json):
+**4,380 LF bytes**, SHA256
+`df40f0ee5f1ca61da6b4ca7716d26b708ea7d9f61151baa1193db4f6bf319498`.
+Hashes refer to artifact/Git bytes, not an arbitrary Windows working-copy conversion.
+Download size/ZIP digest/single-entry/64 KiB limit were verified, followed by
+original-byte duplicate-aware parsing and strict reconstructed-envelope validation
+with exact public-output equality. Reconstruction checks content, not a second
+runtime execution.
+
+Source owned bytes **1,231,593**, package profile **1,231,398**, crash **1,231,390**,
+tamper **557,458**; owned package **374,872,996** bytes. Every cleanup/build/binary/
+copy flag true, failure null. `aboutBlankUrlChanged=true` and denial=false remain
+observed; `oldNavigationGate=FAIL_RETAINED` is unchanged. Reviewed sample contains
+no raw logs, credentials, caller IDs, private paths or arbitrary preference values.
+Independent artifact/privacy review CLEAR at 05:08 UTC: original-byte duplicate
+parse, strict reconstruction/public equality and byte identity independently
+confirmed. Reviewer did not redownload the ZIP or execute a second runtime. No
+original Phase 0 gate changes.
+
+## P1-03-specific criterion mapping
+
+- **Deliverable:** strict tsc7 configuration, pinned lint/formatter, named Node unit
+  harness and boundary fixtures exist; exact commands/runtime/restore rules are
+  documented. Full P1-01 architecture/import-graph predecessor is separately pending.
+- **Positive:** fresh named Windows development checkout ran the deterministic
+  passing fixtures and all stages above. Lint/type/assertion fixtures preserve
+  named diagnostic/case context in their captured test evidence; the outer runner
+  reports a bounded failing stage rather than publishing arbitrary raw output.
+- **Negative:** unsafe type, unused-rule violation, warning-only rule, malformed
+  syntax, format drift, failing assertion, skipped/contradictory summary and boundary
+  violations produce nonzero/rejection; isolated owned fixtures are cleaned and
+  cannot masquerade as a passing skipped suite. No numerical coverage percentage
+  was invented.
+- **Evidence/rollback:** exact source/version/hash locks, positive/negative tests,
+  reproducible lifecycle-disabled install and independent review are retained.
+  Revert dependent tooling/config/metadata as a unit; never bypass a failed stage
+  or remove unknown/global resources.
+
+Thus the task-specific tooling verification has executed successfully on the
+approved development machine. **Formal task acceptance remains dependent on full
+P1-01**, not on obtaining user hardware for a linter test. P1-10, target Windows10,
+C-07/HC09/HC13/device/support and all original Phase 0 exits remain separate and
+unaccepted. No full Phase or main merge follows.
+
+### Coordinator disposition — 2026-10-31 05:08 UTC
+
+Coordinator technically accepted the exact-head task-specific scope as
+**TECHNICAL_PASS / formal DEPENDENCIES_PENDING (P1-01)** after independent artifact
+review. This does not increment formally accepted task counts. Aggregate check.mjs
+reports a fixed stage, **not the failing case**; named lint/type/unit diagnostics
+are available through the documented direct reproduction commands and verified
+negative-fixture captures. This distinction is retained, not relabeled as aggregate
+case reporting.

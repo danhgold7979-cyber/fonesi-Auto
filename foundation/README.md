@@ -146,3 +146,9 @@ Windows development runner alongside Linux npm 11.9.0. The packageManager field
 retains the Linux default; engines and metadata validation allow exactly these two
 versions, not a range of new candidates. Hosted commands read the real npm version.
 The locked 23 dependency entries and their historical provenance remain unchanged.
+
+Named Windows development verification is now executed on exact remote
+`ee7e04de9e1597707f95d8406be945fdb0596b63`: all five stages and **86/86** tests PASS
+with actual npm11.19.1 after fresh scripts-disabled restore. Earlier NOT_RUN notes
+are historical subset evidence. [Details and method limits](../docs/evidence/P1-03-tooling-admission-2026-10-31.md)
+retain target-host and full P1-01 acceptance separately.

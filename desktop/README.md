@@ -139,3 +139,25 @@ The development runner also runs native good/bad lint, format and parser fixture
 format idempotence and target/env-denial tests. Check/lint explicitly fail on warnings as well as configured errors and format
 drift. Informational style suggestions remain visible, not suppressed or claimed
 absent. No unsafe linter fix/import sorting is authorized.
+
+### Verified Windows tooling checkpoint
+
+The exact P1-03 tooling head `ee7e04de9e1597707f95d8406be945fdb0596b63` completed
+[Windows run 41171124796](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41171124796):
+desktop63/foundation86/Python43/PowerShell25 tests PASS; source/package public bridge
+25/25 each and all cleanup true. This is the explicitly approved Windows development
+verification method, not user-PC/Windows10 support or whole-task/Phase acceptance.
+See [full provenance and criterion mapping](../docs/evidence/P1-03-tooling-admission-2026-10-31.md).
+
+For failure diagnosis, the aggregate runner intentionally prints a fixed stage, not
+a raw case transcript. From `desktop/`, direct reproduction commands provide the
+owned-source case/diagnostic context:
+
+```sh
+node node_modules/typescript/bin/tsc -p tsconfig.json --pretty false
+node --test --test-reporter=tap tests/policy.test.mjs tests/ipc-contract.test.mjs tests/quality-tool.test.mjs
+node scripts/quality-tool.mjs --inventory 11.9.0
+```
+
+Use actual reviewed npm 11.19.1 for the last command on the named Windows machine.
+These diagnostic commands do not bypass or replace the required aggregate gate.

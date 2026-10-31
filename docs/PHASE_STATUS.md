@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-10-31 04:36 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-10-31 05:08 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -33,6 +33,7 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | Full Phase 1–11 plans | Full acceptance pending | Narrow Phase 1 entries are explicitly approved in the amendment/ADR/playbook; later phases are not implicitly opened |
 | Application source | PROVISIONAL PHASE 1 WORK AUTHORIZED | Actual foundation/desktop source exists under recorded exceptions; no device/account service or full phase acceptance |
 | P1-02 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific scope at 04:36 UTC on ff25bee; full P1-03/P1-11 acceptance pending. [Criterion audit](evidence/P1-02-canonical-criterion-audit-2026-10-31.md); accepted full-task counts unchanged |
+| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; full P1-01 architecture predecessor pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Two canonical task-specific technical scopes now passed (P1-02/P1-03), not two formally accepted tasks |
 | Phase 0 acceptance | NOT ACCEPTED | 0/10 tasks accepted; all 12 baseline exits unaccepted; independent slices concluded, remaining gates BLOCKED |
 
 ## 3. Historical Phase 0 snapshot before collector hardening
@@ -498,3 +499,25 @@ PASS; zero lint warnings/errors under the strict warning gate. Sole reviewed con
 is enforced without assuming nested-config CLI behavior. Ready for named Windows
 development-machine verification; that execution remains NOT_RUN. Full task/Phase
 acceptance and accepted-task counts are unchanged.
+
+### P1-03 Windows tooling verification — 2026-10-31 05:07 UTC
+
+Exact reviewed remote `ee7e04de9e1597707f95d8406be945fdb0596b63`:
+[run 41171124796](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41171124796)
+SUCCESS. Named approved Windows development machine ran signed/advisory-checked
+fresh tooling, desktop **63/63**, foundation **86/86**, Python **43/43**, PS **25/25**,
+and actual source/package runtime **25/25 each**, with all cleanup true. Artifact
+strict content validation PASS; independent content/privacy review CLEAR.
+Task-specific P1-03 verification is complete; **formal acceptance depends on P1-01**
+whole-desktop architecture/import-boundary completion, not a user-host lint test.
+Accepted full-task/Phase counts remain unchanged. Product Windows10/C-07/Phase0/
+device gates and original navigation FAIL are not waived. See
+[criterion/evidence mapping](evidence/P1-03-tooling-admission-2026-10-31.md).
+
+### Coordinator P1-03 technical disposition — 2026-10-31 05:08 UTC
+
+Exact Windows head ee7e04de9e1597707f95d8406be945fdb0596b63 accepted as
+**TECHNICAL_PASS** for P1-03-specific tooling/verification, with **DEPENDENCIES_PENDING**
+for full P1-01. P1-02 and P1-03 are two verified canonical task-specific scopes;
+accepted full-task counts remain 0/11 Phase 1 and 0/154 overall. No effort-weighted
+percentage, full Phase acceptance, target-host waiver or main merge follows.
