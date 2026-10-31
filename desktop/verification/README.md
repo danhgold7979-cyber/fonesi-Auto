@@ -1,7 +1,8 @@
 # Runtime evidence contract (partial implementation)
 
-This directory currently contains only a strict parser and synthetic tests. No
-Windows probe, supervisor or workflow has executed; runtime remains **NOT_RUN**.
+This directory contains a strict parser, synthetic tests and the reviewed runtime
+probe source. No Windows probe, supervisor or workflow has executed; runtime
+remains **NOT_RUN**.
 Run without writing bytecode:
 
 ```sh
@@ -45,3 +46,36 @@ for timeout/launch/access-denied outcomes. This count is not Windows evidence.
 
 Independent read-only review CLEAR at 02:43 UTC on 2026-10-31: 16/16 tests
 rerun PASS; raw duplicate/status/privacy boundaries verified. No runtime executed.
+
+## Probe implementation in progress — not executed
+
+`runtime-probe.cjs` is a test-only entry that requires the unchanged verified
+`build/main.cjs`, observes its actual first window, and later requests ordinary
+`app.quit()`. It does not add a preload, bridge, dispatcher, or replacement main.
+A separate native-window close/reopen exercise uses the real compiled lifecycle
+and policy modules while the application's original window remains open. This is
+module/native integration evidence, not a claim that product multi-window UX is
+implemented. Instrumented package entry and executable-byte identity still require
+the upcoming reviewed supervisor; neither is currently executed.
+
+The probe measures effective WebPreferences, not an OS sandbox token. The pinned
+internal `getLastWebPreferences` binding exists in exact Electron 45.1.0
+[source](https://github.com/electron/electron/blob/v45.1.0/shell/browser/api/electron_api_web_contents.cc#L5440-L5442),
+returning its stored last preferences at lines 4480–4485. It is absent from the
+public TypeScript declarations, so this is a version-specific test dependency,
+not a production API/support promise. Renderer no-Node/name checks supplement,
+not replace, complete source/bundle no-IPC/preload audits.
+
+Network negatives keep the real webRequest policy installed, use an offline
+owned-session safety envelope, and require the specific observed
+`ERR_BLOCKED_BY_CLIENT` failure; ordinary offline/CSP errors cannot pass.
+Original-window document.open, reload and about:blank each have separate Boolean
+observations. No navigation prevention, document identity, replay recovery or old
+gate success is inferred. Initial probe syntax checks pass; every actual runtime
+case remains **NOT_RUN** until the complete execution envelope is reviewed.
+
+Probe-only independent source review CLEAR at 02:48 UTC on 2026-10-31: syntax,
+exact 20-case schema agreement and diff checks PASS. Both navigation-denial event
+paths are observed without changing the policy; the isolated-world check requires
+a successful positive control. Supervisor, package integrity and negative-failure
+evidence remain pending review. No Electron execution occurred.
