@@ -182,3 +182,12 @@ checksum-verified official installer; separate phase-01 Windows workflow only af
 static/source/test review. Implement main/lifecycle/build/pure tests first and return
 a reviewed checkpoint before publication/hosted execution. Root owns publication.
 Original 21-case failure and full manual-authority decision remain unresolved.
+
+## Windows verification implementation entry — 2026-10-31 02:27 UTC
+
+Root verified source checkpoint publication `a5ddf557d61e18c201badb784071e6ba46a608d3`,
+tree `128f980d7443ea0eca67a153650a8fad912421c2`, then directed continuation of the
+already-approved launcher/probe/report-validator/scoped-workflow implementation.
+Record this entry before code; static/tests and independent review precede root
+publication and any hosted run. Old lab/workflow sources remain unchanged. Actual
+Windows runtime evidence is still NOT_RUN; no target-host acceptance is implied.

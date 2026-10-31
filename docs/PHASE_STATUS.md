@@ -360,3 +360,10 @@ records the corrected preflight sequencing defect and all runtime NOT_RUN limits
 Independent review CLEAR at 02:24 UTC, complete source check 31/31 twice.
 Windows launcher/workflow/runtime evidence is next;
 full P1-02 and original Phase0/navigation/authority gates remain unaccepted.
+
+### P1-02 Windows verification implementation — 2026-10-31 02:27 UTC
+
+Reviewed source checkpoint published and verified. Root directed the already-scoped
+owned Windows launcher/probe, strict sanitized report validator and separate phase-01
+workflow. Entry recorded before implementation. No runtime/CI run yet; independent
+review and root publication precede execution. Original acceptance gates unchanged.
