@@ -1,12 +1,12 @@
 # Runtime evidence contract and hosted results
 
-P1-10 local source work is now authorized for an unsigned offline Windows package and
-known-retired launch recovery. [Package verification/entry guide](PACKAGE-NATIVE.md),
-[contract](../../docs/phases/PHASE-01-P1-10-PACKAGING-CONTRACT.md) and
-[source evidence](../../docs/evidence/P1-10-package-recovery-source-2026-10-31.md).
-Hosted package execution remains FAILED before first-Cancel evidence admission; latest fixed launcher failure diagnosis and journal capture compatibility confirmation are pending. No bundle promotion.
-Nine technical scopes/formal0 and P1-06
-cross-user UNMET remain unchanged. No installer, signing or device-service claim.
+P1-10 internal package/known-retired recovery is **TECHNICAL_PASS**, accepted19:16UTC
+on exact c5627b4c/run41232572694. All10 native stages/15 package negatives and independent
+physical ZIP/provenance/license review pass. [Package guide](PACKAGE-NATIVE.md),
+[canonical audit](../../docs/evidence/P1-10-canonical-criterion-audit-2026-10-31.md),
+[chronological evidence](../../docs/evidence/P1-10-package-recovery-source-2026-10-31.md).
+Ten technical scopes (10/11=90.9%;10/154=6.5%), formal0; P1-06 cross-user UNMET.
+No installer/signing/device-service or untouched-launcher claim.
 
 This directory contains a strict parser, synthetic tests and the reviewed runtime
 probe source. Historical CI6 reported 19/20; CI7 passed corrected zero-bridge

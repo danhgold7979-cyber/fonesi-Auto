@@ -1,10 +1,12 @@
 # P1-10 — internal package and known-retired launch recovery
 
-**IN PROGRESS — first Windows package attempt FAILED; no package promotion or task acceptance.**
+**TECHNICAL_PASS / DEPENDENCIES_PENDING — coordinator2026-10-31 19:16UTC.**
+Exact final Windows and physical ZIP evidence passed; earlier failures below remain historical.
+[Canonical criterion audit and technical handoff](P1-10-canonical-criterion-audit-2026-10-31.md).
 Source entry was approved at15:55UTC on2026-10-31 against the independently reviewed
 [contract](../phases/PHASE-01-P1-10-PACKAGING-CONTRACT.md), pre-entry SHA256
 `014e5ebef5449543c911deb1fc4be986ff731face6d7f947fddb06d3d666e4a6`.
-Technical counts remain9/11 and9/154; formal acceptance remains0. P1-06 cross-user
+Technical counts are10/11=90.9% and10/154=6.5%; formal acceptance remains0. P1-06 cross-user
 UNMET, deferred hardware gates and all original release requirements remain unchanged.
 
 ## Implemented source boundaries
@@ -435,3 +437,32 @@ Reviewed SHA256 values:
 - main observer: `dcf7971a9029fb8914f1a3727af44b021f7926280fe1700793e9b68f7393b1cb`
 - shared observer: `b520504070d50eca4dce0d36f3a9cb4c8198e37a9284f0c3d12537d1577cd43e`
 - supervisor: `389798e1fdb4dbfc0cc3f2a9c13ede474e7489e557ee3547b95738847511c506`
+
+
+## Final exact-head Windows package PASS and coordinator disposition
+
+Public `c5627b4cc18a72bcec1833ba94ca582a0673fcaf`, tree
+`4ce5bcac8888e5c9775518dedb72b498f63bc7a8`, run41232572694 completed SUCCESS
+across all five jobs. The [strict fixed sample](P1-10-native-sample-2026-10-31.json)
+is exactly5660 UTF-8 bytes (no trailing newline), SHA256
+`624a1e1c2b3b45643d879bcf6c22c59b90a6198ff347fd0c37cb0a261862c908`,
+artifact13055090211. Independent reconstruction confirms71 native case booleans across
+all10 stages plus15 negatives, all retirement/outside/original/extraction/cleanup true,
+failure null. No failed run above was relabeled PASS.
+
+Package artifact13054311817 contains the promoted470214499-byte ZIP, SHA256
+`c3c67e79f0d4b780e82c6a79433ed267658189268b52c40abf36bbbaf88b8fba`.
+Independent audit verified136 entries (124 listed files+manifest+11 directories), CRC,
+closed inventory/path/type/hash bounds, all72 build inputs against the exact source,
+launcher/helper bytes, complete pinned licenses and no fixture/canary leakage. The exact
+ZIP was extracted for native testing; this is not a directory-copy-only claim.
+
+Coordinator19:16 accepted bounded P1-10 TECHNICAL_PASS. The actual known-retired failed-main
+recovery and RESTORED maintenance entry close the tracked P1-07/P1-08/P1-10 obligations
+for that supported path. Unknown/legacy/unfinished ownership still refuses; no generic
+unlock or power-loss guarantee follows. Native launch evidence uses five audited
+verification substitutions and injected dialog answers/close requests, not untouched
+launcher or genuine human clicks. Internal unsigned/unpacked packaging is not a signed
+installer/public release. Counts10/11=90.9%,10/154=6.5%,formal0; P1-06 cross-user UNMET,
+hardware and formal/main-merge gates unchanged. Phase2 development entry must be reviewed
+under the adopted software-first amendment before branch creation or code.

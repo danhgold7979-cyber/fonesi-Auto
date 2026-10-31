@@ -1,10 +1,10 @@
 # PHASE-01 — Repository and desktop foundation
 
-**Revision:** 1.2-draft · **Current summary:** 2026-10-31 15:45 UTC
+**Revision:** 1.2-draft · **Current summary:** 2026-10-31 19:16 UTC
 **Full-plan acceptance:** NOT_ACCEPTED · **Execution:** explicitly scoped entries active
 **Current branch:** `phase-01`; no main merge or original Phase 0 acceptance
 **Development entry:** adopted software-first amendment permits scoped development; original formal Phase0 gate remains pending
-**Current verified scope:** P1-01/P1-02/P1-03/P1-04/P1-05/P1-07/P1-08/P1-09/P1-11 task-specific TECHNICAL_PASS;
+**Current verified scope:** P1-01/P1-02/P1-03/P1-04/P1-05/P1-07/P1-08/P1-09/P1-10/P1-11 task-specific TECHNICAL_PASS;
 formal Phase 0/predecessor acceptance pending. P1-05 versioned SQLite, encrypted
 backup/restore, native failure matrix and instrumented real first/repeat launcher
 passed exact-head Windows verification; see the
@@ -21,7 +21,10 @@ records all32 reviewed images and the explicit inherited-contrast/data limitatio
 > [status](../PHASE_STATUS.md); this summary is not a full Phase acceptance waiver.
 
 P1-09 explicit demo boundary is TECHNICAL_PASS; [canonical audit](../evidence/P1-09-canonical-criterion-audit-2026-10-31.md).
-Current software implementation remains IN_PROGRESS; P1-06 UNMET and P1-10 launcher/packaging obligations remain.
+P1-10 internal package and known-retired/RESTORED launcher scope is TECHNICAL_PASS;
+[canonical audit and software handoff](../evidence/P1-10-canonical-criterion-audit-2026-10-31.md).
+Ten technical scopes pass (10/11=90.9%;10/154=6.5%); P1-06 remains UNMET and formal accepted count0.
+Phase2 software-first planning may proceed under the adopted amendment, but its code/branch entry requires separate reviewed approval.
 
 ## 1. Outcome, scope and sources
 

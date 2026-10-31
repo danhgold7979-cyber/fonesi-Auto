@@ -3,7 +3,8 @@
 **SOURCE ENTRY APPROVED — 2026-10-31 15:55 UTC.**
 Coordinator approved independently CLEAR pre-entry SHA256
 `014e5ebef5449543c911deb1fc4be986ff731face6d7f947fddb06d3d666e4a6`.
-Exact hosted runner/schema/source execution review remains pending; no task acceptance.
+Coordinator19:16 accepted bounded TECHNICAL_PASS after exact-head Windows and physical ZIP review.
+[Canonical audit](../evidence/P1-10-canonical-criterion-audit-2026-10-31.md); formal dependencies remain pending.
 Implements [canonical P1-10](PHASE-01-desktop-foundation.md#p1-10--ci-and-packaging-smoke)
 and the explicit P1-07/P1-08 retained-lease/RESTORED-launcher obligations. P1-09 passed
 its bounded scope; P1-06 cross-user remains UNMET, formal Phase0/Phase1 gates remain.

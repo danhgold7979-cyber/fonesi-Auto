@@ -1,6 +1,6 @@
 # Internal package verification — P1-10
 
-Current status: hosted package attempts FAILED before first-Cancel evidence admission. Raw script copies now execute and emit a fixed launcher failure; finer operation diagnosis and a capture-only journal compatibility correction await Windows confirmation. No bundle promotion or package-stage PASS is claimed.
+Current status: coordinator19:16 accepted bounded P1-10 TECHNICAL_PASS after all10 native stages/15 package negatives and independent physical ZIP audit passed. [Canonical audit](../../docs/evidence/P1-10-canonical-criterion-audit-2026-10-31.md). Unsigned internal package only; P1-06 UNMET/formal0 remain.
 See the [approved contract](../../docs/phases/PHASE-01-P1-10-PACKAGING-CONTRACT.md) and
 [measured source evidence](../../docs/evidence/P1-10-package-recovery-source-2026-10-31.md).
 
