@@ -1,26 +1,45 @@
 'use strict';
 // Instrumented test entry only. Loads the actual verified application main bundle.
 // No runtime execution until the supervisor and complete evidence path are reviewed.
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('node:path');
-const { securePreferenceEvidence, preloadEvidence } = require('./runtime-measurements.cjs');
+const { securePreferenceEvidence } = require('./runtime-measurements.cjs');
 const { mkdirSync } = require('node:fs');
 const { createLifecycle } = require('../build/lifecycle.cjs');
 const { securePreferences, installWindowPolicy } = require('../build/window-policy.cjs');
 const { ENTRY_URL } = require('../build/asset-policy.cjs');
 const CASE_NAMES = [
   'runtime_versions', 'mode_identity', 'main_bundle_loaded', 'diagnostic_rendered',
-  'secure_preferences', 'no_preload', 'no_node_globals', 'no_application_bridge',
+  'secure_preferences', 'approved_preload', 'no_node_globals', 'bounded_public_bridge',
   'native_menu_absent', 'isolated_world_separate', 'popup_denied',
   'permission_denied', 'download_denied', 'network_policy_denied',
-  'unknown_asset_denied', 'lifecycle_close_reopen', 'document_open_no_authority',
-  'reload_no_authority', 'about_blank_no_authority', 'orderly_quit',
+  'unknown_asset_denied', 'lifecycle_close_reopen', 'document_open_public_only',
+  'reload_session_revoked', 'about_blank_sender_denied', 'orderly_quit',
+  'health_read', 'settings_read', 'ipc_request_denials', 'ipc_sender_denials', 'react_explicit_read',
 ];
 const cases = Object.fromEntries(CASE_NAMES.map((key) => [key, false]));
 const observations = { documentOpenUrlUnchanged: false, reloadUrlUnchanged: false,
   aboutBlankUrlChanged: false, aboutBlankDenialObserved: false };
 const mode = process.env.FONESI_BOOTSTRAP_MODE;
 let stage = 'BOOTSTRAP';
+let actualHandler;
+let mainReady = false;
+const originalHandle = ipcMain.handle;
+ipcMain.handle = function(channel, handler) {
+  if (channel === 'foundation:request:v1') { actualHandler = handler; ipcMain.handle = originalHandle; }
+  return originalHandle.call(this, channel, handler);
+};
+const originalLog = console.log;
+console.log = function(...args) {
+  if (args.length === 1 && args[0] === 'BOOTSTRAP_READY') mainReady = true;
+  originalLog.apply(console, args);
+};
+// Instrumentation observes the real registration/log without replacing its policy.
+function direct(contents, wire, frame = contents.mainFrame) {
+  return JSON.parse(actualHandler({ sender: contents, senderFrame: frame }, wire));
+}
+const healthWire = JSON.stringify({ version: 1, requestId: 'runtime', method: 'health.get' });
+
 let originalWindow;
 let finished = false;
 let testsCompleted = false;
@@ -87,7 +106,8 @@ async function checkNativeLifecycle(ownedSession) {
 const NO_AUTHORITY = `typeof require === 'undefined' && typeof process === 'undefined' &&
   typeof module === 'undefined' && typeof Buffer === 'undefined' &&
   !('electron' in globalThis) && !('lab' in globalThis) &&
-  !('fonesi' in globalThis) && !('api' in globalThis)`;
+  !('fonesi' in globalThis) && !('api' in globalThis) &&
+  (!('foundation' in globalThis) || Object.keys(globalThis.foundation).sort().join(',') === 'health,settings')`;
 
 async function checkBlockedRequest(ownedSession, url) {
   const window = new BrowserWindow({ show: false, webPreferences: securePreferences(ownedSession) });
@@ -134,11 +154,16 @@ async function checkAboutBlank(contents) {
     contents.executeJavaScript("(() => { const a=document.createElement('a'); a.href='about:blank'; document.body.append(a); a.click(); })()")
       .catch(() => {});
   });
-  return await contents.executeJavaScript(NO_AUTHORITY) === true;
+  const expectedDenial = observations.aboutBlankUrlChanged ? 'UNTRUSTED_SENDER' : 'SESSION_REVOKED';
+  return await contents.executeJavaScript(NO_AUTHORITY) === true &&
+    direct(contents, healthWire).code === expectedDenial;
 }
 
 async function runInitialChecks(window) {
   stage = 'INITIAL_CHECKS';
+  const readyDeadline = Date.now() + 3000;
+  while (!mainReady && Date.now() < readyDeadline) await new Promise(resolve => setTimeout(resolve, 10));
+  if (!mainReady || typeof actualHandler !== 'function') throw new Error('MAIN_NOT_READY');
   const contents = window.webContents;
   cases.main_bundle_loaded = BrowserWindow.getAllWindows().length === 1;
   cases.runtime_versions = process.versions.electron === '45.1.0' &&
@@ -172,19 +197,65 @@ async function runInitialChecks(window) {
   const registeredPreloads = contents.session.getPreloadScripts();
   // Combined reviewed configuration/bundle evidence + actual session inventory,
   // not a general proof from an omitted preference field or absent global name.
-  cases.no_preload = preloadEvidence(configured, registeredPreloads);
+  cases.approved_preload = Array.isArray(registeredPreloads) && registeredPreloads.length === 0 &&
+    await contents.executeJavaScript("typeof foundation === 'object' && Object.keys(foundation).sort().join(',') === 'health,settings'") === true;
   // These are ordinary renderer observations, not OS sandbox-token measurement.
   const initial = await contents.executeJavaScript(`(() => ({
     diagnostic: document.body.textContent.includes('UNAVAILABLE'),
     noNode: typeof require === 'undefined' && typeof process === 'undefined' &&
       typeof module === 'undefined' && typeof Buffer === 'undefined',
-    noBridge: !('electron' in globalThis) && !('lab' in globalThis) &&
+    noBridge: typeof foundation === 'object' && Object.keys(foundation).sort().join(',') === 'health,settings' && !('electron' in globalThis) && !('lab' in globalThis) &&
       !('fonesi' in globalThis) && !('api' in globalThis)
   }))()`);
   cases.diagnostic_rendered = initial.diagnostic === true;
   cases.no_node_globals = initial.noNode === true;
   // Must be paired with complete source/bundle audit: absent names alone are not proof.
-  cases.no_application_bridge = initial.noBridge === true;
+  cases.bounded_public_bridge = initial.noBridge === true;
+  stage = 'PUBLIC_IPC';
+  const health = await contents.executeJavaScript('foundation.health().then(JSON.parse)');
+  cases.health_read = health.version === 1 && health.ok === true && health.result.kind === 'health' && health.result.status === 'READY' && health.result.services === 'UNAVAILABLE';
+  const settings = await contents.executeJavaScript('foundation.settings().then(JSON.parse)');
+  cases.settings_read = settings.version === 1 && settings.ok === true && settings.result.kind === 'settings' && settings.result.revision === 0 && settings.result.persistence === 'NOT_PERSISTED' && settings.result.theme === 'LIGHT';
+  const denied = [
+    [null, 'INVALID_TRANSPORT'], ['x'.repeat(513), 'PAYLOAD_TOO_LARGE'], ['{', 'INVALID_JSON'],
+    [JSON.stringify({ version: 2, requestId: 'r', method: 'health.get' }), 'UNSUPPORTED_VERSION'],
+    [JSON.stringify({ version: 1, requestId: 'r', method: 'shell.exec' }), 'UNKNOWN_METHOD'],
+    [JSON.stringify({ version: 1, requestId: 'r', method: 'health.get', path: '/owned-denied' }), 'INVALID_SHAPE'],
+    ['{"version":2,"version":1,"requestId":"r","method":"health.get"}', 'INVALID_SHAPE']
+  ];
+  cases.ipc_request_denials = denied.every(([wire, code]) => direct(contents, wire).code === code);
+  const stranger = new BrowserWindow({ show: false, webPreferences: securePreferences(contents.session) });
+  try {
+    cases.ipc_sender_denials = direct(stranger.webContents, healthWire).code === 'UNTRUSTED_SENDER' &&
+      direct(contents, healthWire, stranger.webContents.mainFrame).code === 'UNTRUSTED_SENDER' &&
+      direct(contents, healthWire, null).code === 'UNTRUSTED_SENDER';
+  } finally { stranger.destroy(); }
+  // Initial empty owned iframe gives real child-frame metadata without a URL,
+  // network request, test preload or relaxation of frame-src 'none'. If Chromium
+  // exposes no such child under this policy, this required case fails explicitly.
+  await contents.executeJavaScript("(() => { const frame=document.createElement('iframe'); frame.id='owned-frame-denial'; document.body.append(frame); return true; })()");
+  const frameDeadline = Date.now() + 1000;
+  let childFrame;
+  do {
+    childFrame = contents.mainFrame.frames.find(frame => frame.parent === contents.mainFrame);
+    if (!childFrame) await new Promise(resolve => setTimeout(resolve, 10));
+  } while (!childFrame && Date.now() < frameDeadline);
+  cases.ipc_sender_denials = cases.ipc_sender_denials && childFrame !== undefined &&
+    direct(contents, healthWire, childFrame).code === 'UNTRUSTED_SENDER';
+  await contents.executeJavaScript("document.getElementById('owned-frame-denial')?.remove(); true");
+  const mountDeadline = Date.now() + 3000;
+  let mounted = false;
+  do {
+    mounted = await contents.executeJavaScript("document.getElementById('health-read') !== null && document.getElementById('bridge-status') !== null") === true;
+    if (!mounted) await new Promise(resolve => setTimeout(resolve, 10));
+  } while (!mounted && Date.now() < mountDeadline);
+  if (!mounted) throw new Error('REACT_NOT_MOUNTED');
+  await contents.executeJavaScript("document.getElementById('health-read').click(); true");
+  const renderDeadline = Date.now() + 3000;
+  do {
+    cases.react_explicit_read = await contents.executeJavaScript("document.getElementById('bridge-status')?.textContent === 'BRIDGE READY / SERVICES UNAVAILABLE'") === true;
+    if (!cases.react_explicit_read) await new Promise(resolve => setTimeout(resolve, 10));
+  } while (!cases.react_explicit_read && Date.now() < renderDeadline);
   stage = 'ISOLATION';
   const isolatedControl = await contents.executeJavaScriptInIsolatedWorld(999, [{ code: 'globalThis.__foundationIsolatedProbe = true; globalThis.__foundationIsolatedProbe === true' }]);
   cases.isolated_world_separate = isolatedControl === true && await contents.executeJavaScript("typeof globalThis.__foundationIsolatedProbe === 'undefined'") === true;
@@ -216,13 +287,17 @@ async function runInitialChecks(window) {
   stage = 'DOCUMENT_OPEN';
   await contents.executeJavaScript("document.open(); document.write('<!doctype html><title>Owned transition probe</title>'); document.close(); true");
   observations.documentOpenUrlUnchanged = contents.getURL() === ENTRY_URL;
-  cases.document_open_no_authority = await contents.executeJavaScript(NO_AUTHORITY) === true;
+  const afterOpen = direct(contents, healthWire);
+  cases.document_open_public_only = await contents.executeJavaScript(NO_AUTHORITY) === true &&
+    ((afterOpen.ok === true && afterOpen.result.kind === 'health' && afterOpen.result.services === 'UNAVAILABLE') || afterOpen.code === 'SESSION_REVOKED');
   stage = 'RELOAD';
   await boundedEvent(contents, 'did-finish-load', () => contents.reload());
   observations.reloadUrlUnchanged = contents.getURL() === ENTRY_URL;
-  cases.reload_no_authority = await contents.executeJavaScript(NO_AUTHORITY) === true;
+  cases.reload_session_revoked = await contents.executeJavaScript(NO_AUTHORITY) === true &&
+    direct(contents, healthWire).code === 'SESSION_REVOKED' &&
+    await contents.executeJavaScript("foundation.health().then(raw => JSON.parse(raw).code === 'SESSION_REVOKED')") === true;
   stage = 'ABOUT_BLANK';
-  cases.about_blank_no_authority = await checkAboutBlank(contents);
+  cases.about_blank_sender_denied = await checkAboutBlank(contents);
   stage = 'ORDERLY_QUIT';
   testsCompleted = true;
   app.quit();

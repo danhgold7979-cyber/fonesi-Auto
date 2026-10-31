@@ -4,11 +4,12 @@ import json
 MAX_BYTES = 65536
 CASES = frozenset((
     'runtime_versions', 'mode_identity', 'main_bundle_loaded', 'diagnostic_rendered',
-    'secure_preferences', 'no_preload', 'no_node_globals', 'no_application_bridge',
+    'secure_preferences', 'approved_preload', 'no_node_globals', 'bounded_public_bridge',
     'native_menu_absent', 'isolated_world_separate', 'popup_denied',
     'permission_denied', 'download_denied', 'network_policy_denied',
-    'unknown_asset_denied', 'lifecycle_close_reopen', 'document_open_no_authority',
-    'reload_no_authority', 'about_blank_no_authority', 'orderly_quit',
+    'unknown_asset_denied', 'lifecycle_close_reopen', 'document_open_public_only',
+    'reload_session_revoked', 'about_blank_sender_denied', 'orderly_quit',
+    'health_read', 'settings_read', 'ipc_request_denials', 'ipc_sender_denials', 'react_explicit_read',
 ))
 OBSERVATIONS = frozenset(('documentOpenUrlUnchanged', 'reloadUrlUnchanged',
                           'aboutBlankUrlChanged', 'aboutBlankDenialObserved'))

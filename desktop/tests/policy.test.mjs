@@ -52,7 +52,7 @@ function fakeSession() {
     on: (name, fn) => events.set(name, fn), removeListener: (name) => events.delete(name) };
 }
 test('session denies permissions/network/download and serves only exact fixed asset', async () => {
-  const session = fakeSession(), dispose = installSessionPolicy(session, 'OWNED');
+  const session = fakeSession(), dispose = installSessionPolicy(session, 'OWNED', 'OWNED_JS');
   let permitted; session.state.request(null, 'any', (value) => { permitted = value; }); assert.equal(permitted, false);
   assert.equal(session.state.check(), false);
   for (const [url, cancel] of [[ENTRY_URL, false], ['https://blocked.invalid/', true]]) {
@@ -60,6 +60,10 @@ test('session denies permissions/network/download and serves only exact fixed as
   }
   let prevented = false; session.events.get('will-download')({ preventDefault() { prevented = true; } }); assert.equal(prevented, true);
   const ok = session.state.protocol({ url: ENTRY_URL, method: 'GET' }); assert.equal(await ok.text(), 'OWNED'); assert.equal(ok.headers.get('content-security-policy'), CSP);
+  const js = session.state.protocol({ url: 'auto-foundation://app/renderer.js', method: 'GET' });
+  assert.equal(await js.text(), 'OWNED_JS'); assert.equal(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
+  assert.equal(js.headers.get('x-content-type-options'), 'nosniff');
+  for (const [url, method] of [['auto-foundation://app/renderer.js?x', 'GET'], ['auto-foundation://app/renderer.js', 'POST']]) assert.equal(session.state.protocol({ url, method }).status, 403);
   assert.equal(session.state.protocol({ url: 'auto-foundation://app/other', method: 'GET' }).status, 403);
   dispose(); assert.equal(session.state.unhandled, true); assert.equal(session.state.before, null); assert.equal(session.events.size, 0);
   assert.equal(session.state.check(), false);
@@ -115,10 +119,16 @@ test('failed installed verification prevents build; successful stages run in ord
   const calls = []; assert.equal(runStages([['RESTORE', () => { calls.push('restore'); return true; }], ['INSTALLED', () => false], ['BUILD', () => { calls.push('build'); return true; }]]).ok, false);
   assert.deepEqual(calls, ['restore']); assert.equal(runStages([['A', () => true], ['B', () => true]]).ok, true);
 });
-test('source and bundle expose no application bridge or effect service', () => {
+test('approved public bridge has no effect service or arbitrary renderer API', () => {
   const main = readFileSync(resolve(root, 'build/main.cjs'), 'utf8');
-  for (const token of ['ipcMain', 'ipcRenderer', 'contextBridge', 'openExternal', 'node:child_process', 'node:sqlite', 'safeStorage']) assert.equal(main.includes(token), false);
-  const html = readFileSync(resolve(root, 'build/status.html'), 'utf8'); assert.equal(/<script|<iframe|<webview/i.test(html), false);
+  for (const token of ['openExternal', 'node:child_process', 'node:sqlite', 'safeStorage']) assert.equal(main.includes(token), false);
+  const html = readFileSync(resolve(root, 'build/status.html'), 'utf8'); assert.equal(/<iframe|<webview/i.test(html), false);
+  assert.equal((html.match(/<script /g) ?? []).length, 1);
+  assert.ok(html.includes('src="auto-foundation://app/renderer.js"'));
+  const preload = readFileSync(resolve(root, 'src/preload.ts'), 'utf8');
+  assert.match(preload, /health: \(\) => client.health\(\)/);
+  assert.match(preload, /settings: \(\) => client.settings\(\)/);
+  assert.equal(preload.includes("exposeInMainWorld('ipcRenderer'"), false);
   assert.equal(html.includes('UNAVAILABLE'), true); // This is a review aid, not a hostile-source sandbox proof.
 });
 
@@ -168,12 +178,12 @@ test('failure disposal cannot start ordinary quit through window-all-closed', ()
   }
 });
 
-test('actual bootstrap uses audited preference factory without preload override', () => {
+test('actual bootstrap uses security floor plus exactly one manifest-bound preload', () => {
   const source = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
-  assert.match(source, /webPreferences: securePreferences\(ownedSession\)/);
-  assert.doesNotMatch(source, /preload\s*:/);
+  assert.match(source, /webPreferences: \{ \.\.\.securePreferences\(ownedSession\), preload: join\(__dirname, 'preload.cjs'\) \}/);
+  assert.equal((source.match(/preload\s*:/g) ?? []).length, 1);
   const bundle = readFileSync(resolve(root, 'build/main.cjs'), 'utf8');
-  assert.doesNotMatch(bundle, /preload\s*:/);
+  assert.equal((bundle.match(/preload\s*:/g) ?? []).length, 1);
 });
 test('runtime probe does not mistake omitted devTools or preload fields for disabled settings', () => {
   const probe = readFileSync(resolve(root, 'verification/runtime-probe.cjs'), 'utf8');
@@ -181,7 +191,7 @@ test('runtime probe does not mistake omitted devTools or preload fields for disa
   assert.equal(probe.includes('preferences.preload'), false);
   for (const operation of ['contents.openDevTools(', 'opened: contents.isDevToolsOpened()',
     'contents.devToolsWebContents === null', 'contents.session.getPreloadScripts()',
-    'preloadEvidence(configured, registeredPreloads)', 'securePreferenceEvidence(preferences, configured']) {
+    'cases.approved_preload =', 'securePreferenceEvidence(preferences, configured']) {
     assert.equal(probe.includes(operation), true);
   }
 });
@@ -211,4 +221,47 @@ test('preload evidence rejects registered scripts and any configured preload pro
   for (const value of ['', undefined, 'synthetic-preload']) {
     assert.equal(preloadEvidence({ ...configured, preload: value }, []), false);
   }
+});
+
+test('actual dispatcher admits only public reads and rejects wrong sender/frame/wire', () => {
+ const { EventEmitter } = require('node:events');
+ const { installFoundationBridge } = require('../build/foundation-bridge.cjs');
+ let handler, removed;
+ const bridge = installFoundationBridge({ handle(channel, fn) { assert.equal(channel, 'foundation:request:v1'); handler = fn; }, removeHandler(channel) { removed = channel; } });
+ const contents = new EventEmitter(); contents.isDestroyed = () => false;
+ contents.mainFrame = { origin: 'auto-foundation://app', url: ENTRY_URL };
+ const window = new EventEmitter(); window.webContents = contents;
+ const view = bridge.attach(window); const event = { sender: contents, senderFrame: contents.mainFrame };
+ const wire = JSON.stringify({ version: 1, requestId: 'r', method: 'health.get' });
+ const read = (ev = event, body = wire, ...extra) => JSON.parse(handler(ev, body, ...extra));
+ assert.equal(read().code, 'SESSION_UNAVAILABLE');
+ contents.emit('did-start-navigation', { isMainFrame: true, url: ENTRY_URL }); assert.equal(view.arm(), true);
+ assert.equal(read().result.status, 'READY');
+ assert.equal(read({ sender: {}, senderFrame: null }).code, 'UNTRUSTED_SENDER');
+ assert.equal(read({ ...event, senderFrame: null }).code, 'UNTRUSTED_SENDER');
+ assert.equal(read({ sender: contents, get senderFrame() { throw new Error('PRIVATE'); } }).code, 'UNTRUSTED_SENDER');
+ contents.isDestroyed = () => true; assert.equal(read().code, 'UNTRUSTED_SENDER'); contents.isDestroyed = () => false;
+ assert.equal(read({ ...event, senderFrame: { ...contents.mainFrame } }).code, 'UNTRUSTED_SENDER');
+ assert.equal(read(event, wire, 'extra').code, 'INVALID_SHAPE');
+ assert.equal(read(event, '{').code, 'INVALID_JSON');
+ contents.mainFrame.origin = 'null'; assert.equal(read().code, 'UNTRUSTED_SENDER'); contents.mainFrame.origin = 'auto-foundation://app';
+ contents.emit('did-start-navigation', { isMainFrame: true, url: 'about:blank' });
+ assert.equal(read().code, 'SESSION_REVOKED'); assert.equal(view.arm(), false);
+ bridge.dispose(); assert.equal(removed, 'foundation:request:v1'); assert.equal(read().code, 'UNTRUSTED_SENDER');
+});
+
+test('observed denied navigation also revokes the actual view before return', () => {
+ const { EventEmitter } = require('node:events');
+ const { installFoundationBridge } = require('../build/foundation-bridge.cjs');
+ for (const eventName of ['will-navigate', 'will-frame-navigate', 'will-redirect']) {
+  let handler;
+  const bridge = installFoundationBridge({ handle(_channel, fn) { handler = fn; }, removeHandler() {} });
+  const contents = new EventEmitter(); contents.isDestroyed = () => false;
+  contents.mainFrame = { origin: 'auto-foundation://app', url: ENTRY_URL };
+  const window = new EventEmitter(); window.webContents = contents;
+  const view = bridge.attach(window); contents.emit('did-start-navigation', { isMainFrame: true, url: ENTRY_URL }); assert.equal(view.arm(), true);
+  contents.emit(eventName, { isMainFrame: true });
+  const response = JSON.parse(handler({ sender: contents, senderFrame: contents.mainFrame }, JSON.stringify({ version: 1, requestId: 'r', method: 'health.get' })));
+  assert.equal(response.code, 'SESSION_REVOKED'); bridge.dispose();
+ }
 });

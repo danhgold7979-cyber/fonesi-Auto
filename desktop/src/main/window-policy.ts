@@ -1,5 +1,5 @@
 import type { Session, BrowserWindow } from 'electron';
-import { CSP, ENTRY_URL, permitsAsset, SCHEME } from './asset-policy.js';
+import { CSP, ENTRY_URL, RENDERER_URL, permitsAsset, SCHEME } from './asset-policy.js';
 
 export function securePreferences(session: Session) {
   return { session, sandbox: true, contextIsolation: true, webSecurity: true,
@@ -7,7 +7,7 @@ export function securePreferences(session: Session) {
     allowRunningInsecureContent: false, webviewTag: false, plugins: false,
     experimentalFeatures: false, devTools: false } as const;
 }
-export function installSessionPolicy(session: Session, html: string): () => void {
+export function installSessionPolicy(session: Session, html: string, renderer: string): () => void {
   session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.setPermissionCheckHandler(() => false);
   session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !permitsAsset(details.url, details.method) }));
@@ -15,7 +15,7 @@ export function installSessionPolicy(session: Session, html: string): () => void
   session.on('will-download', denyDownload);
   session.protocol.handle(SCHEME, (request) => {
     if (!permitsAsset(request.url, request.method)) return new Response('DENIED', { status: 403 });
-    return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8',
+    return new Response(request.url === RENDERER_URL ? renderer : html, { headers: { 'content-type': request.url === RENDERER_URL ? 'text/javascript; charset=utf-8' : 'text/html; charset=utf-8',
       'content-security-policy': CSP, 'x-content-type-options': 'nosniff' } });
   });
   return () => {

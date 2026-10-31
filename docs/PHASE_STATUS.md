@@ -389,3 +389,35 @@ preload/React/IPC health boundary and associated sender/payload tests. Original
 navigation FAIL, Phase 0 exits, full V9 and all activation gates remain unchanged.
 No whole task/Phase acceptance or main merge; accepted counts remain 0/11 Phase 1
 and 0/154 total tasks. Canonical authority-requirement review is documentation only.
+
+### P1-02 remaining boundary proposal — 2026-10-31 04:03 UTC
+
+[ADR-0006](decisions/ADR-0006-foundation-ipc-admission.md) proposes the actual canonical
+main/React/preload boundary and bounded public health/settings reads. Root authorized
+technical decision drafting, not code yet. This is a method-specific main admission
+model with observed view-session revocation, not Document identity or human-intent
+proof. No device/account/secret/path/shell service; settings remain NOT_PERSISTED.
+Independent security review and explicit technical approval precede implementation.
+Old G0-12 FAIL and original Phase 0 exits remain unchanged; no task acceptance follows.
+
+## Bounded P1-02 bridge entry — 2026-10-31 04:06 UTC
+
+Coordinator approved [ADR-0006](decisions/ADR-0006-foundation-ipc-admission.md) after independent design CLEAR under
+the user's delegated Auto authority. Entry recorded before source: two public
+read-only health/settings methods, strict contracts, main-owned view-session,
+sandboxed preload and minimal React diagnostic integration, denial tests and owned
+Windows verification. This explicitly supersedes only ADR-0005 A's blanket code
+block and the prior zero-preload/zero-IPC exclusion for this scope. Old G0-12 20/21
+FAIL and all original Phase 0 exits remain unchanged/unaccepted. No device, account,
+secret, path, shell, settings mutation or persistence service; no V9 redesign or
+full task/Phase acceptance. Branch phase-01; root publishes, no main merge.
+
+### P1-02 public bridge source — 2026-10-31 04:16 UTC
+
+Approved ADR-0006 bounded bridge implemented with main-owned session, strict public
+health/settings reads, sandboxed preload and minimal React diagnostic. Source/build
+50/50 and Python43/43 PASS; adapted source/package Windows25-case contract NOT_RUN.
+[Evidence](evidence/P1-02-public-bridge-source-2026-10-31.md) records dependency67
+provenance, limits and historical-scope distinction. Independent integration/envelope
+review CLEAR at 04:21 UTC, 50/50 and 43/43 independently rerun; no full task acceptance
+or original gate waiver. Root owns publication.

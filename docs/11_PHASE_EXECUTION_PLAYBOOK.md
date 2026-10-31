@@ -448,3 +448,15 @@ Source/build/tests and independent review precede separate scoped Windows verifi
 root owns publication. Original navigation FAIL, all Phase0 exits and full manual
 authority remain unresolved. The suffix describes partial scope, not a new task or
 percentage denominator. This grant does not open unrestricted Phase1 or accept it.
+
+## Bounded P1-02 bridge entry — 2026-10-31 04:06 UTC
+
+Coordinator approved [ADR-0006](decisions/ADR-0006-foundation-ipc-admission.md) after independent design CLEAR under
+the user's delegated Auto authority. Entry recorded before source: two public
+read-only health/settings methods, strict contracts, main-owned view-session,
+sandboxed preload and minimal React diagnostic integration, denial tests and owned
+Windows verification. This explicitly supersedes only ADR-0005 A's blanket code
+block and the prior zero-preload/zero-IPC exclusion for this scope. Old G0-12 20/21
+FAIL and all original Phase 0 exits remain unchanged/unaccepted. No device, account,
+secret, path, shell, settings mutation or persistence service; no V9 redesign or
+full task/Phase acceptance. Branch phase-01; root publishes, no main merge.

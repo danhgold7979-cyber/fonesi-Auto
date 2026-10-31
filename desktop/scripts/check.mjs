@@ -25,7 +25,7 @@ try {
     ['BUILD', () => run(['scripts/build.mjs', npmVersion]).ok],
     ['MANIFEST', () => verifyBuild(root)],
     ['TESTS', () => {
-      const result = run(['--test', '--test-reporter=tap', 'tests/policy.test.mjs']);
+      const result = run(['--test', '--test-reporter=tap', 'tests/policy.test.mjs', 'tests/ipc-contract.test.mjs']);
       const counts = {};
       for (const field of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
         const matches = [...result.stdout.matchAll(new RegExp(`^# ${field} (.*)$`, 'gm'))];

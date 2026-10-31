@@ -1,4 +1,5 @@
-import { app, BrowserWindow, protocol, session, Menu } from 'electron';
+import { installFoundationBridge } from './foundation-bridge.js';
+import { app, BrowserWindow, protocol, session, Menu, ipcMain } from 'electron';
 import { readFileSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -7,7 +8,8 @@ import { prepareOwnedProfile } from './main/profile-owner.js';
 import { ENTRY_URL, SCHEME, ASSET_SHA256 } from './main/asset-policy.js';
 import { securePreferences, installSessionPolicy, installWindowPolicy } from './main/window-policy.js';
 
-// Authority-free internal bootstrap; no preload, bridge, IPC handlers or app services.
+// Public-read-only foundation bridge; no native/domain service authority.
+let bridge: ReturnType<typeof installFoundationBridge> | undefined;
 let disposeSession: (() => void) | undefined;
 let lifecycle: ReturnType<typeof createLifecycle> | undefined;
 let closing = false;
@@ -15,7 +17,7 @@ let cleanupComplete = true;
 function cleanup(): boolean {
   if (closing) return cleanupComplete;
   closing = true;
-  cleanupComplete = disposeResources([() => lifecycle?.dispose(), () => disposeSession?.()]);
+  cleanupComplete = disposeResources([() => bridge?.dispose(), () => lifecycle?.dispose(), () => disposeSession?.()]);
   return cleanupComplete;
 }
 function fail(): void {
@@ -40,7 +42,7 @@ try {
     if (manifest === null || typeof manifest !== 'object' || !('schema' in manifest) || manifest.schema !== 1 ||
       !('outputs' in manifest) || manifest.outputs === null || typeof manifest.outputs !== 'object') throw new Error('BUILD_UNVERIFIED');
     const hashes = manifest.outputs as Record<string, unknown>;
-    const required = ['main.cjs', 'asset-policy.cjs', 'lifecycle.cjs', 'profile-owner.cjs', 'window-policy.cjs', 'status.html'];
+    const required = ['main.cjs', 'asset-policy.cjs', 'lifecycle.cjs', 'profile-owner.cjs', 'window-policy.cjs', 'foundation-bridge.cjs', 'preload.cjs', 'renderer.js', 'status.html'];
     if (Object.keys(hashes).length !== required.length) throw new Error('BUILD_UNVERIFIED');
     for (const name of required) {
       const file = join(__dirname, name), stat = lstatSync(file);
@@ -54,12 +56,14 @@ try {
     const html = asset.toString('utf8');
     Menu.setApplicationMenu(null);
     const ownedSession = session.fromPartition('auto-foundation-owned', { cache: false });
-    disposeSession = installSessionPolicy(ownedSession, html);
+    disposeSession = installSessionPolicy(ownedSession, html, readFileSync(join(__dirname, 'renderer.js'), 'utf8'));
+    bridge = installFoundationBridge(ipcMain);
     lifecycle = createLifecycle(() => {
-      const window = new BrowserWindow({ width: 640, height: 360, show: false, webPreferences: securePreferences(ownedSession) });
+      const window = new BrowserWindow({ width: 640, height: 360, show: false, webPreferences: { ...securePreferences(ownedSession), preload: join(__dirname, 'preload.cjs') } });
       installWindowPolicy(window);
+      const view = bridge!.attach(window);
       window.webContents.on('render-process-gone', fail);
-      window.loadURL(ENTRY_URL).then(() => { if (!window.isDestroyed()) { window.show(); console.log('BOOTSTRAP_READY'); } }).catch(fail);
+      window.loadURL(ENTRY_URL).then(() => { if (!window.isDestroyed()) { if (!view.arm()) throw new Error('VIEW_NOT_ADMITTED'); window.show(); console.log('BOOTSTRAP_READY'); } }).catch(fail);
       return { onClosed: (callback) => window.once('closed', callback), close: () => window.close(),
         destroy: () => { if (!window.isDestroyed()) window.destroy(); } };
     });

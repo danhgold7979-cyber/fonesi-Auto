@@ -142,6 +142,22 @@ class RuntimeEvidenceTests(unittest.TestCase):
             with self.assertRaisesRegex(InvalidEvidence, '^INVALID_RUNTIME_EVIDENCE$'):
                 validate(raw)
 
+    def test_public_bridge_case_set_matches_probe_and_rejects_old_contract(self):
+        import re
+        source = (Path(__file__).parent / 'runtime-probe.cjs').read_text()
+        block = source.split('const CASE_NAMES = [', 1)[1].split('];', 1)[0]
+        names = re.findall(r"'([a-z_]+)'", block)
+        self.assertEqual(len(names), 25)
+        self.assertEqual(set(names), CASES)
+        self.assertEqual(len(names), len(set(names)))
+        old = fixture()
+        old['runs']['source']['cases']['no_preload'] = old['runs']['source']['cases'].pop('approved_preload')
+        self.reject(old)
+        for case in CASES:
+            value = fixture()
+            value['runs']['source']['cases'][case] = False
+            self.assertFalse(validate(encoded(value))['passed'])
+
     def test_bounded_file_read(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'synthetic.json'

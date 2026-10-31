@@ -22,9 +22,13 @@ try {
     sourcemap: false, logLevel: 'silent', write: false };
   const outputs = await build({ ...options, entryPoints: [resolve(root, 'src/main.ts')], external: ['electron'] });
   const pure = await build({ ...options, entryPoints: [resolve(root, 'src/main/asset-policy.ts'), resolve(root, 'src/main/lifecycle.ts'),
-    resolve(root, 'src/main/profile-owner.ts'), resolve(root, 'src/main/window-policy.ts')], outdir: output });
-  for (const item of [...outputs.outputFiles, ...pure.outputFiles]) {
-    const name = item.path === '<stdout>' ? 'main.cjs' : item.path.split(/[\\/]/).at(-1).replace(/\.js$/, '.cjs');
+    resolve(root, 'src/main/profile-owner.ts'), resolve(root, 'src/main/window-policy.ts'), resolve(root, 'src/foundation-bridge.ts')], outdir: output });
+  const preload = await build({ ...options, entryPoints: [resolve(root, 'src/preload.ts')], external: ['electron'], outfile: resolve(output, 'preload.js') });
+  const renderer = await build({ ...options, platform: 'browser', target: 'chrome156', format: 'iife',
+    entryPoints: [resolve(root, 'src/renderer.tsx')], define: { 'process.env.NODE_ENV': '"production"' }, outfile: resolve(output, 'renderer.js') });
+  for (const item of [...outputs.outputFiles, ...pure.outputFiles, ...preload.outputFiles, ...renderer.outputFiles]) {
+    const base = item.path.split(/[\\/]/).at(-1);
+    const name = item.path === '<stdout>' ? 'main.cjs' : base === 'renderer.js' ? base : base.replace(/\.js$/, '.cjs');
     const file = resolve(output, name);
     if (item.contents.length > 8 * 1024 * 1024 || (exists(file) && (!lstatSync(file).isFile() || lstatSync(file).isSymbolicLink()))) throw new Error('OUTPUT_REJECTED');
     writeFileSync(file, item.contents);

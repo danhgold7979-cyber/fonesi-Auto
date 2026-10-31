@@ -10,10 +10,11 @@ task remains P1-02; this checkpoint adds no task/percentage denominator.
   restrictive CSP, denied permissions/downloads/popups/webviews and observed navigation. The default native application menu is explicitly removed.
 - Explicit sandbox/contextIsolation/webSecurity, Node integration off (including
   workers/subframes), no insecure-content/devtools/plugin escape setting.
-- **No preload, application IPC/bridge, dispatcher, external opener, device/account,
-  settings/DB/vault or process service.** Normal Electron/browser and owned profile
-  activity is not claimed to have zero OS effects.
-- Static UNAVAILABLE boot diagnostic under tests/fixtures. No product UI is replaced
+- Approved sandboxed preload and two public read-only IPC methods (health/settings),
+  admitted by main-owned view-session policy. **No external opener, device/account,
+  settings mutation/persistence, DB/vault or process service.** Normal Electron/browser
+  and owned profile activity is not claimed to have zero OS effects.
+- Minimal React UNAVAILABLE diagnostic mounted in the exact owned fixture. No product UI is replaced
   and no React/V9/manual-control requirement is removed. No mocked working devices.
 - Failure cleanup latches shutdown before disposing owned windows/session handlers;
   no recursive crash callback or untouched session due to app.exit bypassing will-quit.
@@ -28,7 +29,8 @@ in Node tests: the Electron package can auto-install on import.
 ## Verified dependency/tool boundary
 
 Existing reviewed candidates: Node 24.22.1, Electron 45.1.0, TypeScript 7.0.2,
-esbuild 0.28.2, Node types 24.19.2. The exact recursive 61-entry lock is inherited
+esbuild 0.28.2, Node types 24.19.2. React/react-dom/types 19.3.0, csstype 3.2.3 and scheduler 0.28.0 extend
+the original closure to the exact recursive 67-entry lock is inherited
 from the existing reviewed Auto lab lock, not fresh range selection. Prior file
 SHA256, complete metadata and reviewed script hashes are recorded in
 `dependency-review.json`. npm 11.9.0 is observed locally; 11.19.1 was observed on the
@@ -61,7 +63,8 @@ metadata → optional scripts-disabled restore → installed checks → strict c
 build → manifest → tests. Any false result or exception stops later stages. No
 semicolon fall-through, generic shell command or automatic runtime download.
 
-The source check currently passes 36/36 tests. Hosted CI7 passed source/package 20/20 each, Python 42/42 and PowerShell 25/25;
+The current source check passes 50/50 tests. The prior zero-bridge source
+checkpoint passed 36/36 tests. Hosted CI7 passed source/package 20/20 each, Python 42/42 and PowerShell 25/25;
 corrected preference/preload measurements now have actual Windows runner evidence.
 See the [runtime evidence](../docs/evidence/P1-02-windows-envelope-source-2026-10-31.md).
 Test tooling uses bounded child invocation (30 seconds/64 KiB, restore 120 seconds),
@@ -96,12 +99,21 @@ Exact raw strings are checked by pure policy tests. Chromium may canonicalize UR
 before handlers; a normalized alias to the same exact owned asset is not claimed
 lexically rejected. No arbitrary URL-to-filesystem conversion exists. Observed
 navigation handlers do not prove that about:blank/document.open cannot transition.
-Original G0-12 source/package 20/21 navigation FAIL remains unchanged. Zero exposed
-application authority is useful here but does not solve full manual/scheduled
-service authority or permit those future methods to be enabled. Full V9 and C-03
+Original G0-12 source/package 20/21 navigation FAIL remains unchanged. The prior zero-bridge result and current strictly public read capability do not
+solve full manual/scheduled service authority or permit future effect methods
+to be enabled. Full V9 and C-03
 remain obligations, not permanently disabled features.
 
 The separately scoped Windows execution envelope and strict artifact contract are
 implemented under [verification](verification/README.md). CI6 remains a valid failed
 report; CI7 passes the corrected bounded measurements. No original navigation gate
 or full P1-02 acceptance follows from this bootstrap slice.
+
+## Current development entry — public read bridge
+
+ADR-0006 approval at 04:06 UTC supersedes the earlier zero-bridge scope only for
+health/settings public reads. The application now includes its own sandboxed preload
+and minimal React diagnostic; earlier zero-preload/source counts are historical.
+[Current source evidence](../docs/evidence/P1-02-public-bridge-source-2026-10-31.md):
+50/50 source/build tests, 43/43 Python; new 25-case Windows contract NOT_RUN.
+No device/account/secret/path/shell/mutation service or full V9 acceptance is implied.

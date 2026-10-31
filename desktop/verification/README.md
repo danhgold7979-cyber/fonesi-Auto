@@ -1,10 +1,10 @@
 # Runtime evidence contract and hosted results
 
 This directory contains a strict parser, synthetic tests and the reviewed runtime
-probe source. Windows CI6 executed and retained a valid failed report: source and
-package each reported 19/20, with secure_preferences false. Corrected DevTools and
-preload measurements remain **NOT_RUN** pending the next exact-head CI. Earlier
-NOT_RUN sections below describe their historical pre-execution checkpoints.
+probe source. Historical CI6 reported 19/20; CI7 passed corrected zero-bridge
+source/package 20/20. The current ADR-0006 public bridge changes the required set
+to 25 cases and remains **NOT_RUN** on Windows. Earlier NOT_RUN sections below
+describe their historical pre-execution checkpoints.
 Run without writing bytecode:
 
 ```sh
@@ -22,7 +22,8 @@ prove the producer observed any fact; the future reviewed probe must supply that
 evidence. The old navigation result is always `FAIL_RETAINED`, not replaced by the
 new no-authority observations.
 
-The 20 named cases describe the proposed source/package smoke boundary. The four
+The original 20 named cases described the zero-bridge smoke boundary; current
+public-bridge verification requires its explicitly revised 25 named cases. The four
 transition observations are facts, not all-true acceptance requirements. Runtime
 failure before a complete result must not manufacture this document; the future
 supervisor needs separately reviewed fixed failure evidence. This was the initial validator-only checkpoint. The later `validate_hosted.py`
@@ -192,3 +193,11 @@ Earlier nine/fifteen-case and NOT_RUN notes above describe historical checkpoint
 [Full evidence](../../docs/evidence/P1-02-windows-envelope-source-2026-10-31.md)
 retains every failed attempt and the original navigation FAIL. This is instrumented
 hosted bootstrap evidence only, not full P1-02, V9, service or target-host acceptance.
+
+## Public bridge contract revision — pending hosted execution
+
+The ADR-0006 application now owns one manifest-bound sandboxed preload. Current
+runtime schema requires 25 exact cases, including public health/settings and actual
+handler denials; historical CI7's zero-preload/zero-bridge case set is not accepted
+as this revision. Source/build50 and Python43 tests pass; adapted runtime NOT_RUN.
+[Source/evidence and instrumentation limits](../../docs/evidence/P1-02-public-bridge-source-2026-10-31.md).

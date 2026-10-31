@@ -56,7 +56,7 @@ Follow docs/13_DOCUMENTATION_CHANGE_POLICY.md. Update canonical living documents
 
 ## 5. Phase and task authorization
 
-Additional recorded approval on 2026-10-31 at 02:08 UTC permits partial P1-02 authority-free bootstrap/lifecycle work on `phase-01`, under `docs/phases/PHASE-01-P1-02-S-AUTHORITY-FREE-PROPOSAL.md`. Zero preload/application IPC or service authority; source review precedes the separately scoped Windows verification. Full Phase/task acceptance and original gates remain unchanged.
+Historical bootstrap approval on 2026-10-31 at 02:08 UTC permitted partial P1-02 authority-free bootstrap/lifecycle work on `phase-01`, under `docs/phases/PHASE-01-P1-02-S-AUTHORITY-FREE-PROPOSAL.md`. Zero preload/application IPC or service authority; source review precedes the separately scoped Windows verification. Full Phase/task acceptance and original gates remain unchanged. The 04:06 UTC entry below explicitly supersedes zero-bridge scope only for the two ADR-0006 public reads.
 
 
 The recorded cross-phase exception in `docs/phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md` was narrowly approved 01:23 UTC on 2026-10-31. P1-01-S is reviewed; P1-03-S entry approved 01:39 UTC; P1-11-S entry approved at 01:51 UTC on 2026-10-31. Current source branch is `phase-01` under the user's one-branch-per-phase direction. No full Phase 1 opening/acceptance, privileged runtime or original Phase 0 gate waiver follows; all other rules remain.
@@ -152,3 +152,15 @@ If a command or test was not run, state that explicitly. Never claim success bas
 - 2026-10-30: Clarified sequential authorization and approved exceptions, immutable Phase 0 baseline, evidence/privacy requirements, and start/checkpoint/end reporting. This governance change itself grants no production or product-behavior authorization.
 
 **2026-10-31 01:23 UTC scoped exception approved:** proposal b7d0e11 now permits only P1-01-S first, with separately reviewed next entries P1-03-S/P1-11-S as recorded in the provisional-source amendment and playbook. Earlier pending notes are historical; all other sequential/acceptance/security rules remain. Full Phase 1 is not opened or accepted.
+
+## Bounded P1-02 bridge entry — 2026-10-31 04:06 UTC
+
+Coordinator approved [ADR-0006](docs/decisions/ADR-0006-foundation-ipc-admission.md) after independent design CLEAR under
+the user's delegated Auto authority. Entry recorded before source: two public
+read-only health/settings methods, strict contracts, main-owned view-session,
+sandboxed preload and minimal React diagnostic integration, denial tests and owned
+Windows verification. This explicitly supersedes only ADR-0005 A's blanket code
+block and the prior zero-preload/zero-IPC exclusion for this scope. Old G0-12 20/21
+FAIL and all original Phase 0 exits remain unchanged/unaccepted. No device, account,
+secret, path, shell, settings mutation or persistence service; no V9 redesign or
+full task/Phase acceptance. Branch phase-01; root publishes, no main merge.
