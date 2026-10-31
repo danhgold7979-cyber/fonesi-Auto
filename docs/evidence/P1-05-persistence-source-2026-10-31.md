@@ -253,7 +253,7 @@ lifetime is not killed by the 120-second initialization limit. Source control fi
 use explicitly synthetic native outcome records; they are not DPAPI/runtime proof.
 Actual launcher testing uses coordinator-approved, exactly audited verification-only
 entrypoint substitutions for dialog answers/auto-close, never production test flags.
-The approval does not claim genuine widget clicks or installed P1-09 packaging.
+The approval does not claim genuine widget clicks or installed P1-10 packaging.
 
 Current author full desktop pipeline passed 238/238 before one additional quality
 scope regression; that regression separately passed in the 12/12 quality suite.
@@ -286,7 +286,7 @@ provider and main code still execute. Only native dialog answers and quit-after-
 READY are instrumented. The outer 120-second test bound does not change production
 `RunInteractive`'s unlimited UI lifetime. Original-backup identity, honest v2
 orderly proof, persisted admission/backups and released lease are checked after
-whole-process retirement. This is not genuine widget interaction or P1-09 installed
+whole-process retirement. This is not genuine widget interaction or P1-10 installed
 packaging. Uploads contain only strict fixed reports, never private captures,
 paths, keys or backup contents.
 
@@ -303,3 +303,25 @@ Independent final source/envelope review at 08:56 UTC passed **247/247 desktop,
 outputs were empty, original Phase 0/native helper hashes unchanged, and final
 workflow/publisher review CLEAR. Native matrix and launcher execution remain
 NOT_RUN pending the coordinator's exact-tree publication.
+
+### First combined Windows attempt — source-stage failure, 10:04 UTC
+
+Public head `8523b1950ca47164e3614a59a9326df0dcf0b7eb` (tree
+`033148c6d92e10c9608fcf3ec6468022eaf4ae7b`) ran in
+[41191079997](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41191079997),
+job 124507825230. The source checker reported `TESTS_FAILED`; native matrix and
+launcher execution were not reached. The original runner's fixed stage-only output
+does not establish which assertion failed, or distinguish test timeout/capture
+failure. No native PASS is inferred and no functional cause is claimed.
+
+A diagnostic-only follow-up preserves the existing 30-second child deadline,
+65,536-byte capture cap and all test success predicates. On failure it emits only a
+fixed process category, six validated numeric summary fields, and at most 16 numeric
+TAP failure ordinals. It never echoes test titles, YAML, exception text, paths or
+captured stdout/stderr. Ordinals identify cases in that exact registered test-run
+order, not a stable cross-revision product identifier. Missing/malformed/duplicate
+summary fields remain unavailable; they never authorize success. Three disclosure/
+bounds regressions pass and the full local pipeline passes **250/250**. The next
+exact-head Windows run is diagnostic, not a claimed fix for the unknown cause.
+Independent diagnostic review CLEAR at 10:05 UTC; reviewer reran the three focused
+regressions, not a second full aggregate. No actual-cause fix or acceptance follows.

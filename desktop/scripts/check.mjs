@@ -3,6 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verify } from './verify-dependencies.mjs';
 import { runStages } from './stages.mjs';
+import { testDiagnostics } from './test-diagnostics.mjs';
 import { verifyBuild } from './build-manifest.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const nodeDir = dirname(process.execPath);
@@ -21,6 +22,18 @@ function run(args, timeout = 30000) {
   return {
     ok: !result.error && !result.signal && result.status === 0,
     stdout: result.stdout ?? '',
+    outcome:
+      result.error?.code === 'ETIMEDOUT'
+        ? 'TIMEOUT'
+        : result.error?.code === 'ENOBUFS'
+          ? 'CAPTURE_LIMIT'
+          : result.error
+            ? 'SPAWN_FAILED'
+            : result.signal
+              ? 'SIGNAL'
+              : result.status === 0
+                ? 'OK'
+                : 'EXIT_NONZERO',
   };
 }
 try {
@@ -118,6 +131,7 @@ try {
           '--test',
           '--test-reporter=tap',
           'tests/policy.test.mjs',
+          'tests/test-diagnostics.test.mjs',
           'tests/ipc-contract.test.mjs',
           'tests/log-contract.test.mjs',
           'tests/persistence-contract.test.mjs',
@@ -149,12 +163,16 @@ try {
           'tests/quality-tool.test.mjs',
           'tests/module-graph.test.mjs',
         ]);
+        const diagnostic = () => {
+          for (const line of testDiagnostics(result.stdout, result.outcome)) console.log(line);
+          return false;
+        };
         const counts = {};
         for (const field of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
           const matches = [...result.stdout.matchAll(new RegExp(`^# ${field} (.*)$`, 'gm'))];
-          if (matches.length !== 1 || !/^(0|[1-9]\d*)$/.test(matches[0][1])) return false;
+          if (matches.length !== 1 || !/^(0|[1-9]\d*)$/.test(matches[0][1])) return diagnostic();
           counts[field] = Number(matches[0][1]);
-          if (!Number.isSafeInteger(counts[field])) return false;
+          if (!Number.isSafeInteger(counts[field])) return diagnostic();
         }
         if (
           !result.ok ||
@@ -165,7 +183,7 @@ try {
           counts.skipped ||
           counts.todo
         )
-          return false;
+          return diagnostic();
         console.log(`TESTS_PASS ${counts.pass}/${counts.tests}`);
         return true;
       },
