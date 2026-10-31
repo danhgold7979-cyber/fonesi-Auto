@@ -1,5 +1,8 @@
 'use strict';
-const fs = require('node:fs'),
+// Verify physical package bytes, including ASAR archives. Electron's node:fs
+// presents archive contents as a virtual directory; original-fs preserves the
+// on-disk archive. Failure to load it is fatal, never a virtual-fs fallback.
+const fs = require(process.versions.electron ? 'original-fs' : 'node:fs'),
   path = require('node:path'),
   crypto = require('node:crypto'),
   { isDeepStrictEqual } = require('node:util');

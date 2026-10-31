@@ -224,6 +224,18 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
     created.push(file);
   };
   for (const dir of [pkg, path.join(pkg, 'app'), path.join(pkg, 'app/launch')]) fs.mkdirSync(dir);
+  const archivePath = path.join(pkg, 'runtime/electron/resources/default_app.asar');
+  for (const dir of ['runtime', 'runtime/electron', 'runtime/electron/resources'])
+    fs.mkdirSync(path.join(pkg, dir));
+  put(archivePath, 'synthetic archive bytes');
+  const archiveRow = {
+    path: 'runtime/electron/resources/default_app.asar',
+    bytes: fs.statSync(archivePath).size,
+    sha256: require('node:crypto')
+      .createHash('sha256')
+      .update(fs.readFileSync(archivePath))
+      .digest('hex'),
+  };
   put(path.join(root, '.owner'), id);
   put(path.join(root, 'package-stage-first-cancel.json'), JSON.stringify(control));
   put(path.join(pkg, 'Launch.ps1'), LAUNCH);
@@ -233,7 +245,9 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
     path.join(pkg, 'app/launch/package-admission.cjs'),
     'module.exports={verifyPackage(p){if(p!==' +
       JSON.stringify(pkg) +
-      ')throw Error("SYNTHETIC_PACKAGE");},assertDataOutsidePackage(p,d){if(p!==' +
+      ')throw Error("SYNTHETIC_PACKAGE");return {files:[' +
+      JSON.stringify(archiveRow) +
+      ']};},digest(p){const b=require("node:fs").readFileSync(p);return {bytes:b.length,sha256:require("node:crypto").createHash("sha256").update(b).digest("hex")};},assertDataOutsidePackage(p,d){if(p!==' +
       JSON.stringify(pkg) +
       '||!d.startsWith(' +
       JSON.stringify(root + path.sep) +
@@ -278,7 +292,8 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
     }
     assert.equal(proof.originalFiles['app/launch/launch-core.ps1'], digest(sourceCore));
     // Actual copied observer, actual copied dependency/read/require/layout/proof path.
-    // Only native environment/versions and package admission are synthetic here.
+    // Native environment/versions, ASAR virtual-directory facade and package admission are synthetic.
+    // Physical archive bytes/stat/hash and all copied observer code are real owned files.
     const copiedObserver = require(path.join(outer, 'observers/package-launch-observer.cjs'));
     const oldEnv = { SystemRoot: process.env.SystemRoot, PATH: process.env.PATH };
     const versionKeys = ['electron', 'node', 'chrome'];
@@ -286,6 +301,18 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
       versionKeys.map((k) => [k, Object.getOwnPropertyDescriptor(process.versions, k)]),
     );
     const versions = require('./package-contract.cjs').VERSIONS;
+    const archiveModule = require('node:module');
+    const archiveLoad = archiveModule._load;
+    const virtualFs = Object.create(fs);
+    virtualFs.lstatSync = (file) =>
+      file === archivePath
+        ? { isDirectory: () => true, isFile: () => false, isSymbolicLink: () => false }
+        : fs.lstatSync(file);
+    archiveModule._load = function (request, parent, isMain) {
+      if (request === 'original-fs') return fs;
+      if (request === 'node:fs') return virtualFs;
+      return archiveLoad.call(this, request, parent, isMain);
+    };
     try {
       process.env.SystemRoot = root;
       process.env.PATH = path.join(root, 'System32');
@@ -293,6 +320,27 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
         Object.defineProperty(process.versions, k, { value: versions[k], configurable: true });
       const actualAdmission = copiedObserver.admission(path.join(outer, 'observers'));
       assert.deepEqual(actualAdmission, { c: control, outer });
+      const physicalAdapter = require(path.join(pkg, 'app/launch/package-admission.cjs'));
+      assert.throws(
+        () => copiedObserver.archiveWitness(pkg, { files: [] }, physicalAdapter),
+        /PACKAGE_ASAR_WITNESS/,
+      );
+      for (const row of [
+        { ...archiveRow, bytes: archiveRow.bytes + 1 },
+        { ...archiveRow, sha256: '0'.repeat(64) },
+      ])
+        assert.throws(
+          () => copiedObserver.archiveWitness(pkg, { files: [row] }, physicalAdapter),
+          /PACKAGE_ASAR_WITNESS/,
+        );
+      const syntheticVirtualStat = virtualFs.lstatSync;
+      virtualFs.lstatSync = fs.lstatSync;
+      assert.throws(
+        () => copiedObserver.archiveWitness(pkg, { files: [archiveRow] }, physicalAdapter),
+        /PACKAGE_ASAR_WITNESS/,
+      );
+      virtualFs.lstatSync = syntheticVirtualStat;
+
       const Module = require('node:module');
       const originalLoad = Module._load;
       const nativeEntry = path.join(pkg, 'app/launch/persistence-initialize.cjs');
@@ -355,6 +403,7 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
         'PACKAGE_OBSERVER_REASON_UNCLASSIFIED',
       ]);
     } finally {
+      archiveModule._load = archiveLoad;
       for (const k of Object.keys(oldEnv)) {
         if (oldEnv[k] === undefined) delete process.env[k];
         else process.env[k] = oldEnv[k];
@@ -395,7 +444,15 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
       if (fs.existsSync(file)) fs.rmdirSync(file);
     }
     for (const file of created.reverse()) fs.unlinkSync(file);
-    for (const dir of [path.join(pkg, 'app/launch'), path.join(pkg, 'app'), pkg, root])
+    for (const dir of [
+      path.join(pkg, 'runtime/electron/resources'),
+      path.join(pkg, 'runtime/electron'),
+      path.join(pkg, 'runtime'),
+      path.join(pkg, 'app/launch'),
+      path.join(pkg, 'app'),
+      pkg,
+      root,
+    ])
       fs.rmdirSync(dir);
   }
 });

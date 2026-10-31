@@ -352,3 +352,46 @@ Reviewed SHA256 values:
 - observer: `39eb7505ae4abe9d0eb0592d7a163831bac7647727f5d2c36b2611e35f055b91`
 - state controller: `759ab74a6b3355bad3eec7f69429705bb725a27e5968bcd260d20b62635c0c61`
 - supervisor: `37508d10b5fd80bb8ba3907b6940f204a992971c6b65b996691bb3badd35e439`
+
+## Seventh hosted attempt — package verification inside Electron
+
+Public head `794307e61149d8bf31d96bede5a53eb59829ba00`, exact tree
+`f63cdf7176ee14d3c4203aa19ab063814dd2366c`, ran in
+[41230892031](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41230892031).
+The four existing jobs passed; package job124625213315 failed. The bound retired
+PROVISION capture now identifies observer phase PACKAGE and fixed PACKAGE_REJECTED.
+The same package had passed verification under bundled Node, so the failure is inside
+Electron's verification path, not a proved corrupted package or ownership failure.
+
+[Electron's official ASAR documentation](https://www.electronjs.org/docs/latest/tutorial/asar-archives#treating-an-asar-archive-as-a-normal-file)
+requires `original-fs` when reading physical archive bytes for checksum verification.
+The [exact45.1.0 implementation](https://raw.githubusercontent.com/electron/electron/v45.1.0/lib/node/asar-fs-wrapper.ts)
+overrides `lstatSync` with archive-aware semantics and preserves pristine bindings for
+`original-fs`. Package admission previously used `node:fs` for physical inventory and
+hashes, including the pinned runtime's `resources/default_app.asar`. This is a
+source-supported filesystem-semantics mismatch; the private failing archive operation
+was not directly exposed by the prior artifact.
+
+The correction selects `original-fs` locally inside the package verifier under Electron
+and retains `node:fs` under Node. It does not set global `process.noAsar`, alter environment
+policy, exclude archive contents from the physical package inventory, or relax any
+path/type/size/hash check. Unavailable physical filesystem support fails closed.
+The next exact native observer additionally requires the known pinned archive's virtual
+directory view to differ from its physical regular-file view and verifies its physical
+bytes/hash against the admitted manifest. This is a verification assertion, not a
+production assumption that arbitrary archives or Electron builds behave identically.
+
+Physical-filesystem checkpoint at18:53UTC: author full desktop **584/584 PASS** and
+DESKTOP_SOURCE_CHECK_PASS; independent **30/30 focused PASS**. Tests exercise the actual
+inventory/digest path against real owned archive bytes and a synthetic archive-aware
+view, plus fail-closed unavailable `original-fs` and unchanged hash/type/size failures.
+The copied observer test executes the mandatory archive witness with explicitly
+synthetic virtual/runtime facts. No local Electron/PowerShell execution is claimed;
+actual pinned Windows observation remains pending. Prior foundation109/Python157 are
+unchanged evidence, not newly rerun.
+
+Reviewed SHA256 values:
+
+- package admission: `9091a3ca8b69125fe807c46f6d8ace0a9e3478082a53b50c86a9d2a63151fd7d`
+- observer: `2657bffc5a771f4e5675e0dad7d7bde714afcb8e8966d2d60be41a14b9058d1e`
+- supervisor: `ed804e7767a62c5359895835cb7e7b69c0284d0f754bade13607f1e4a6d5fd50`

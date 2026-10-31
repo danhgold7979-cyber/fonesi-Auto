@@ -54,6 +54,7 @@ const OBSERVER_PHASES = Object.freeze([
   'ORIGINALS',
   'OBSERVERS',
   'PACKAGE',
+  'ASAR_PHYSICAL',
   'OUTSIDE',
   'VERSIONS',
   'INIT_CONTROL',
@@ -73,6 +74,7 @@ const OBSERVER_REASONS = Object.freeze([
   'PACKAGE_DIALOG',
   'RESTORE_OWNER',
   'PACKAGE_REJECTED',
+  'PACKAGE_ASAR_WITNESS',
   'RESTORE_FILE',
   'RESTORE_LIMIT',
   'RESTORE_SCHEMA',
@@ -107,6 +109,25 @@ function diagnostics(error) {
 }
 function report(error) {
   for (const line of diagnostics(error)) console.error(line);
+}
+function archiveWitness(root, manifest, adapter) {
+  const name = 'runtime/electron/resources/default_app.asar';
+  const rows = manifest.files.filter((row) => row.path === name);
+  if (rows.length !== 1) throw Error('PACKAGE_ASAR_WITNESS');
+  const file = path.join(root, ...name.split('/'));
+  const virtual = require('node:fs').lstatSync(file);
+  const physical = require('original-fs').lstatSync(file);
+  const observed = adapter.digest(file);
+  if (
+    !virtual.isDirectory() ||
+    virtual.isSymbolicLink() ||
+    !physical.isFile() ||
+    physical.isSymbolicLink() ||
+    physical.size !== rows[0].bytes ||
+    observed.bytes !== rows[0].bytes ||
+    observed.sha256 !== rows[0].sha256
+  )
+    throw Error('PACKAGE_ASAR_WITNESS');
 }
 function admission(directory) {
   phase('ENVIRONMENT');
@@ -190,10 +211,11 @@ function admission(directory) {
       throw Error('PACKAGE_PROOF');
   }
   phase('PACKAGE');
-  const { verifyPackage, assertDataOutsidePackage } = require(
-    path.join(c.packageRoot, 'app/launch/package-admission.cjs'),
-  );
-  verifyPackage(c.packageRoot);
+  const adapter = require(path.join(c.packageRoot, 'app/launch/package-admission.cjs'));
+  const { verifyPackage, assertDataOutsidePackage } = adapter;
+  const manifest = verifyPackage(c.packageRoot);
+  phase('ASAR_PHYSICAL');
+  archiveWitness(c.packageRoot, manifest, adapter);
   phase('OUTSIDE');
   for (const p of [c.createParent, c.backupParent, c.restoreParent])
     assertDataOutsidePackage(c.packageRoot, p);
@@ -233,6 +255,7 @@ module.exports = {
   witness,
   record,
   FIELDS,
+  archiveWitness,
   OBSERVER_PHASES,
   OBSERVER_REASONS,
   phase,

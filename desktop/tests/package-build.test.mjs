@@ -257,7 +257,7 @@ function syntheticPolicyPackage(packageRoot) {
     exports: module.exports,
     require: localRequire,
     Buffer,
-    process: { argv: [] },
+    process: { argv: [], versions: {} },
   });
   const verifier = module.exports;
   const write = (name, value) => {
@@ -492,3 +492,86 @@ test('fragmented exact guard still rejects actual demo payload tokens with inter
       assert.throws(() => f.verifier.verifyPackage(p), /PACKAGE_REJECTED/);
     }
   }));
+
+function physicalAdmissionFixture({
+  electron,
+  virtualFs = fs,
+  originalFs = fs,
+  missingOriginal = false,
+} = {}) {
+  const source = readFileSync(resolve(root, 'launch/package-admission.cjs'), 'utf8');
+  const module = { exports: {} },
+    loaded = [];
+  const localRequire = (name) => {
+    loaded.push(name);
+    if (name === 'node:fs') return virtualFs;
+    if (name === 'original-fs') {
+      if (missingOriginal) throw Error('ORIGINAL_FS_UNAVAILABLE');
+      return originalFs;
+    }
+    return require(name);
+  };
+  const process = { argv: [], versions: electron ? { electron } : {} };
+  runInNewContext(source, {
+    module,
+    exports: module.exports,
+    require: localRequire,
+    Buffer,
+    process,
+  });
+  return { admission: module.exports, loaded, process };
+}
+test('package inventory and digest use physical ASAR bytes under Electron without changing global archive policy', () =>
+  owned((p) => {
+    const archive = resolve(p, 'default_app.asar'),
+      bytes = Buffer.from('owned synthetic archive physical bytes');
+    writeFileSync(archive, bytes);
+    const virtualFs = {
+      ...fs,
+      lstatSync(file, ...args) {
+        if (file === archive)
+          return {
+            isFile: () => false,
+            isDirectory: () => true,
+            isSymbolicLink: () => false,
+            size: 0,
+          };
+        return fs.lstatSync(file, ...args);
+      },
+      opendirSync(file, ...args) {
+        if (file === archive) return { readSync: () => null, closeSync() {} };
+        return fs.opendirSync(file, ...args);
+      },
+    };
+    // A synthetic ASAR-aware view reproduces the previous physical-file mismatch;
+    // it is not an Electron execution or an actual ASAR parser implementation.
+    const oldView = physicalAdmissionFixture({ virtualFs }).admission;
+    assert.throws(() => oldView.digest(archive), /PACKAGE_REJECTED/);
+    assert.equal(oldView.inventory(p).files.length, 0);
+    assert.deepEqual([...oldView.inventory(p).directories], ['default_app.asar']);
+    const native = physicalAdmissionFixture({ electron: '45.1.0', virtualFs });
+    assert.equal(native.loaded.includes('original-fs'), true);
+    assert.equal(native.loaded.includes('node:fs'), false);
+    assert.equal(Object.hasOwn(native.process, 'noAsar'), false);
+    const inventory = native.admission.inventory(p);
+    assert.equal(inventory.files.length, 1);
+    assert.equal(inventory.directories.length, 0);
+    assert.equal(inventory.files[0].path, 'default_app.asar');
+    assert.equal(inventory.files[0].bytes, bytes.length);
+    assert.equal(inventory.files[0].sha256, createHash('sha256').update(bytes).digest('hex'));
+    assert.equal(native.admission.digest(archive).sha256, admission.digest(archive).sha256);
+    writeFileSync(archive, Buffer.from('changed bytes'));
+    assert.notEqual(native.admission.digest(archive).sha256, inventory.files[0].sha256);
+  }));
+test('physical filesystem selection fails closed in Electron and uses node fs only in Node', () => {
+  assert.throws(
+    () => physicalAdmissionFixture({ electron: '45.1.0', missingOriginal: true }),
+    /ORIGINAL_FS_UNAVAILABLE/,
+  );
+  const node = physicalAdmissionFixture({ missingOriginal: true });
+  assert.equal(node.loaded.includes('node:fs'), true);
+  assert.equal(node.loaded.includes('original-fs'), false);
+  const source = readFileSync(resolve(root, 'launch/package-admission.cjs'), 'utf8');
+  assert.equal(source.includes('process.noAsar ='), false);
+  assert.equal(source.includes('ELECTRON_NO_ASAR'), false);
+});
