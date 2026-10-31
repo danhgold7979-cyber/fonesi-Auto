@@ -412,3 +412,157 @@ test('capture parser rejects duplicate masking, unknown shape, invalid JSON and 
     32000,
   );
 });
+
+test('complete capture diagnostic vector covers every acceptance predicate with fixed enums', () => {
+  const {
+    captureDiagnostics,
+    CAPTURE_VECTOR,
+    CAPTURE_MARKERS,
+  } = require('../verification/package-state-control.cjs');
+  const c = {
+    process: {
+      status: 'SUCCESS',
+      exitCode: 0,
+      cleanupComplete: true,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    },
+    stdout: 'PERSISTENCE_DESKTOP_CANCELLED\r\n',
+    stderr: '',
+  };
+  const d = captureDiagnostics(JSON.stringify(c), 'first-cancel');
+  assert.deepEqual(d, {
+    SCHEMA: 'VALID',
+    PARSE_REASON: 'VALID',
+    STATUS: 'MATCH',
+    EXIT: 'MATCH',
+    CLEANUP: 'TRUE',
+    STDOUT_TRUNCATED: 'FALSE',
+    STDERR_TRUNCATED: 'FALSE',
+    EXPECTED_MARKER: 'ONE',
+    NONEMPTY_LINES: 'ONE',
+    STDOUT_MATCH: 'EXACT',
+    CANCELLED: 'ONE',
+    CLOSED: 'ZERO',
+    RECOVERED: 'ZERO',
+    FAILURE: 'ZERO',
+    OTHER: 'ZERO',
+    FRAMING: 'STANDARD',
+    STDERR: 'EMPTY',
+  });
+  assert.equal(Object.isFrozen(CAPTURE_VECTOR), true);
+  assert.equal(Object.isFrozen(d), true);
+  assert.equal(Object.keys(d).length, 17);
+  for (const [field, value, expected] of [
+    ['status', 'NONZERO_EXIT', 'STATUS'],
+    ['exitCode', 1, 'EXIT'],
+    ['cleanupComplete', false, 'CLEANUP'],
+    ['stdoutTruncated', true, 'STDOUT_TRUNCATED'],
+    ['stderrTruncated', true, 'STDERR_TRUNCATED'],
+  ]) {
+    const result = captureDiagnostics(
+      JSON.stringify({ ...c, process: { ...c.process, [field]: value } }),
+      'first-cancel',
+    );
+    assert.notEqual(result[expected], d[expected]);
+    assert.equal(Object.keys(result).length, 17);
+    for (const [key, code] of Object.entries(result))
+      assert.ok(CAPTURE_MARKERS.includes(`PACKAGE_CAPTURE_${key}_${code}`));
+  }
+});
+
+test('capture vector classifies marker families, duplicates and framing without private output', () => {
+  const { captureDiagnostics } = require('../verification/package-state-control.cjs');
+  const process = {
+    status: 'SUCCESS',
+    exitCode: 0,
+    cleanupComplete: true,
+    stdoutTruncated: false,
+    stderrTruncated: false,
+  };
+  const out = (stdout, stderr = '') =>
+    captureDiagnostics(JSON.stringify({ process, stdout, stderr }), 'first-cancel');
+  const result = out(
+    'PERSISTENCE_DESKTOP_CANCELLED\nPERSISTENCE_DESKTOP_CANCELLED\nPERSISTENCE_DESKTOP_CLOSED\nPERSISTENCE_DESKTOP_RECOVERED\nPERSISTENCE_DESKTOP_PREPARE_FAILED\nPRIVATE_TOKEN_PATH\n',
+    'PRIVATE_ERROR',
+  );
+  assert.equal(result.EXPECTED_MARKER, 'MULTIPLE');
+  assert.equal(result.NONEMPTY_LINES, 'MULTIPLE');
+  assert.equal(result.STDOUT_MATCH, 'OTHER');
+  assert.equal(result.CANCELLED, 'MULTIPLE');
+  assert.equal(result.CLOSED, 'ONE');
+  assert.equal(result.RECOVERED, 'ONE');
+  assert.equal(result.FAILURE, 'ONE');
+  assert.equal(result.OTHER, 'ONE');
+  assert.equal(result.STDERR, 'PRESENT');
+  assert.equal(JSON.stringify(result).includes('PRIVATE'), false);
+  for (const [raw, framing] of [
+    ['\nPERSISTENCE_DESKTOP_CANCELLED\n', 'LEADING_EMPTY'],
+    ['\n\nPERSISTENCE_DESKTOP_CANCELLED\n', 'EXTRA_EMPTY'],
+    ['PERSISTENCE_DESKTOP_CANCELLED\r', 'BARE_CR'],
+    ['', 'OTHER'],
+  ])
+    assert.equal(out(raw).FRAMING, framing);
+  assert.equal(out('').EXPECTED_MARKER, 'ZERO');
+  assert.equal(out('').NONEMPTY_LINES, 'ZERO');
+  assert.equal(out('PERSISTENCE_DESKTOP_CANCELLED \n').OTHER, 'ONE');
+});
+
+test('invalid or unavailable capture schema still emits the entire safe unavailable vector', () => {
+  const { captureDiagnostics } = require('../verification/package-state-control.cjs');
+  for (const raw of [undefined, 'PRIVATE_JSON_CANARY', '{"process":{},"stdout":"","stderr":""}']) {
+    const d = captureDiagnostics(raw, 'first-cancel');
+    assert.equal(Object.keys(d).length, 17);
+    assert.equal(d.SCHEMA, raw === undefined ? 'UNAVAILABLE' : 'INVALID');
+    assert.ok(
+      Object.entries(d)
+        .filter(([key]) => key !== 'SCHEMA' && key !== 'PARSE_REASON')
+        .every(([, value]) => value === 'UNAVAILABLE'),
+    );
+    assert.equal(JSON.stringify(d).includes('PRIVATE'), false);
+  }
+});
+
+test('capture parse reason vector discriminates every bounded schema rejection without raw errors', () => {
+  const { captureDiagnostics } = require('../verification/package-state-control.cjs');
+  const c = {
+    process: {
+      status: 'SUCCESS',
+      exitCode: 0,
+      cleanupComplete: true,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    },
+    stdout: 'PERSISTENCE_DESKTOP_CANCELLED\n',
+    stderr: '',
+  };
+  const encoded = JSON.stringify(c);
+  const cases = [
+    ['x'.repeat(65537), 'INPUT_LIMIT'],
+    ['{', 'JSON_GRAMMAR'],
+    ['{"process":{"nested":{}}}', 'DEPTH'],
+    ['{"a":0,"b":0,"c":0,"d":0,"e":0,"f":0,"g":0,"h":0,"i":0}', 'PAIRS'],
+    ['{"process":{},"process":{}}', 'DUPLICATE'],
+    ['{}', 'ROOT_KEYS'],
+    ['{"process":{},"stdout":"","stderr":""}', 'PROCESS_KEYS'],
+    [encoded.replace('"status":"SUCCESS"', '"status":true'), 'STATUS_TYPE_OR_ENUM'],
+    [encoded.replace('"exitCode":0', '"exitCode":true'), 'EXIT_TYPE_OR_RANGE'],
+    [encoded.replace('"cleanupComplete":true', '"cleanupComplete":1'), 'BOOLEAN_TYPES'],
+    [JSON.stringify({ ...c, stdout: null }), 'STDOUT_TYPE_OR_LIMIT'],
+    [JSON.stringify({ ...c, stderr: null }), 'STDERR_TYPE_OR_LIMIT'],
+  ];
+  for (const [raw, reason] of cases) {
+    const d = captureDiagnostics(raw, 'first-cancel');
+    assert.equal(d.SCHEMA, 'INVALID');
+    assert.equal(d.PARSE_REASON, reason);
+    assert.equal(Object.keys(d).length, 17);
+  }
+  const source = fs.readFileSync(new URL('../launch/launch-core.ps1', import.meta.url), 'utf8');
+  const failures = [...new Set(source.match(/PERSISTENCE_DESKTOP_[A-Z_]+FAILED/g))];
+  assert.equal(failures.length, 6);
+  for (const marker of failures) {
+    const d = captureDiagnostics(JSON.stringify({ ...c, stdout: `${marker}\n` }), 'first-cancel');
+    assert.equal(d.FAILURE, 'ONE');
+    assert.equal(d.OTHER, 'ZERO');
+  }
+});

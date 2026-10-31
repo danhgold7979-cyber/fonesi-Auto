@@ -201,3 +201,35 @@ reordered-key transport. Prior Python157 and foundation109 evidence is unchanged
 newly rerun. Coordinator approved the same bounded retry after this aggregate; native
 confirmation remains pending and the hosted FAIL is retained. Controller SHA256 is
 `0b004a065758faad1552d72b00866336bc334cce3c218b6d4b71130f191ca109`.
+
+## Third hosted attempt — capture predicates remain unresolved
+
+Public head `a60ae53da618ad9a87d116f08f44868bc2f854e9`, exact tree
+`3a12f0d3b52de4c498861d29d6219db5ff475ae5`, ran in
+[41227313823](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41227313823).
+The four existing regression jobs passed. Package job124614499849 failed at
+`PACKAGE_OBSERVE_CAPTURE` / `PACKAGE_OBSERVE_ERROR_PACKAGE_STATE_REJECTED`;
+artifact13052286946 is1110 bytes/SHA256
+`6822a79e5351446ba34da2e31550958baae68c2203436379587e42c359897590`.
+The outer process still reported SUCCESS, but no first-Cancel evidence was admitted.
+This new error does not by itself distinguish transport shape/type rejection from
+expected process/stdout predicate rejection. No native stage or package promotion is
+claimed;15 packaging negatives and extracted-copy verification remain true.
+
+The next verification-only diagnostic emits the complete bounded capture predicate
+vector in one attempt, without raw stdout/stderr, paths, arbitrary errors or numeric
+payloads. It retains the same capture admission and native success predicates. Source
+inspection did not establish a launcher output/argument defect; in particular, generic
+array-splat rules alone cannot invalidate PowerShell's documented special `@args`
+forwarding behavior. No speculative production launcher change is made.
+
+Complete-vector checkpoint at18:12UTC: author full desktop **574/574 PASS** and
+DESKTOP_SOURCE_CHECK_PASS; independent focused **23/23 PASS**. The17 fixed slots include
+private typed parser-rejection reasons, all process/framing predicates and all six
+existing launcher-failure markers. PowerShell forwards at most one exact allowlisted
+literal per slot, plus the existing boundary/error pair (maximum19 helper lines).
+No raw capture or arbitrary message is forwarded. Prior Python157/foundation109 remain
+unchanged evidence, not newly rerun. Exact controller SHA256
+`31566034b2f83fae2af6091f278218cd20ab53f64eb5b2eed6aa1dba63911eff`;
+supervisor SHA256 `25eca9d90893790b262545d75f5e372dbc32aa630dcf158067c66639b4b209ee`.
+This is diagnostic coverage only, not a functional fix or successful native observation.

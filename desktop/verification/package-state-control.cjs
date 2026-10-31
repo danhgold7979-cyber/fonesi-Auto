@@ -223,8 +223,22 @@ function observer(root, stage, kind) {
 // PowerShell capture transport is JSON, not our own canonical receipt encoding.
 // Consume the bounded grammar before normalization so escaped duplicate keys
 // cannot hide retirement/truncation failures. Arrays/deeper objects are not used.
+const captureParseReasons = new WeakMap();
+function captureParseFailure(reason) {
+  const error = new Error('PACKAGE_STATE_REJECTED');
+  captureParseReasons.set(error, reason);
+  throw error;
+}
 function parseCapture(raw) {
-  if (typeof raw !== 'string' || Buffer.byteLength(raw) > 65536) fail();
+  try {
+    return parseCaptureInput(raw);
+  } catch (error) {
+    if (captureParseReasons.has(error)) throw error;
+    captureParseFailure('JSON_GRAMMAR');
+  }
+}
+function parseCaptureInput(raw) {
+  if (typeof raw !== 'string' || Buffer.byteLength(raw) > 65536) captureParseFailure('INPUT_LIMIT');
   let offset = 0,
     pairs = 0;
   function space() {
@@ -240,16 +254,16 @@ function parseCapture(raw) {
       }
       if (c === '\\') {
         offset++;
-        if (offset >= raw.length) fail();
-      } else if (c.charCodeAt(0) < 32) fail();
+        if (offset >= raw.length) captureParseFailure('JSON_GRAMMAR');
+      } else if (c.charCodeAt(0) < 32) captureParseFailure('JSON_GRAMMAR');
     }
-    fail();
+    captureParseFailure('JSON_GRAMMAR');
   }
   function value(depth) {
     space();
     if (raw[offset] === '"') return string();
     if (raw[offset] === '{') {
-      if (depth > 2) fail();
+      if (depth > 2) captureParseFailure('DEPTH');
       offset++;
       space();
       const out = Object.create(null),
@@ -260,36 +274,37 @@ function parseCapture(raw) {
       }
       for (;;) {
         space();
-        if (raw[offset] !== '"' || ++pairs > 8) fail();
+        if (raw[offset] !== '"') captureParseFailure('JSON_GRAMMAR');
+        if (++pairs > 8) captureParseFailure('PAIRS');
         const key = string();
-        if (keys.has(key)) fail();
+        if (keys.has(key)) captureParseFailure('DUPLICATE');
         keys.add(key);
         space();
-        if (raw[offset++] !== ':') fail();
+        if (raw[offset++] !== ':') captureParseFailure('JSON_GRAMMAR');
         out[key] = value(depth + 1);
         space();
         if (raw[offset] === '}') {
           offset++;
           return out;
         }
-        if (raw[offset++] !== ',') fail();
+        if (raw[offset++] !== ',') captureParseFailure('JSON_GRAMMAR');
       }
     }
     const start = offset;
     while (offset < raw.length && !/[ \t\r\n,}]/.test(raw[offset])) offset++;
-    if (start === offset) fail();
+    if (start === offset) captureParseFailure('JSON_GRAMMAR');
     const atom = JSON.parse(raw.slice(start, offset));
     if (
       atom !== null &&
       typeof atom !== 'boolean' &&
       (typeof atom !== 'number' || !Number.isFinite(atom))
     )
-      fail();
+      captureParseFailure('JSON_GRAMMAR');
     return atom;
   }
   const input = value(1);
   space();
-  if (offset !== raw.length) fail();
+  if (offset !== raw.length) captureParseFailure('JSON_GRAMMAR');
   function keys(v, expected) {
     return (
       v !== null &&
@@ -299,8 +314,8 @@ function parseCapture(raw) {
       expected.every((key) => Object.hasOwn(v, key))
     );
   }
+  if (!keys(input, ['process', 'stdout', 'stderr'])) captureParseFailure('ROOT_KEYS');
   if (
-    !keys(input, ['process', 'stdout', 'stderr']) ||
     !keys(input.process, [
       'status',
       'exitCode',
@@ -309,7 +324,7 @@ function parseCapture(raw) {
       'stderrTruncated',
     ])
   )
-    fail();
+    captureParseFailure('PROCESS_KEYS');
   const p = input.process;
   if (
     ![
@@ -321,21 +336,27 @@ function parseCapture(raw) {
       'LAUNCH_FAILED',
       'ACCESS_DENIED',
       'CLEANUP_FAILED',
-    ].includes(p.status) ||
-    (p.exitCode !== null &&
-      (!Number.isInteger(p.exitCode) ||
-        Object.is(p.exitCode, -0) ||
-        p.exitCode < -2147483648 ||
-        p.exitCode > 2147483647)) ||
+    ].includes(p.status)
+  )
+    captureParseFailure('STATUS_TYPE_OR_ENUM');
+  if (
+    p.exitCode !== null &&
+    (!Number.isInteger(p.exitCode) ||
+      Object.is(p.exitCode, -0) ||
+      p.exitCode < -2147483648 ||
+      p.exitCode > 2147483647)
+  )
+    captureParseFailure('EXIT_TYPE_OR_RANGE');
+  if (
     !['cleanupComplete', 'stdoutTruncated', 'stderrTruncated'].every(
       (key) => typeof p[key] === 'boolean',
-    ) ||
-    typeof input.stdout !== 'string' ||
-    input.stdout.length > 32768 ||
-    typeof input.stderr !== 'string' ||
-    input.stderr.length > 32768
+    )
   )
-    fail();
+    captureParseFailure('BOOLEAN_TYPES');
+  if (typeof input.stdout !== 'string' || input.stdout.length > 32768)
+    captureParseFailure('STDOUT_TYPE_OR_LIMIT');
+  if (typeof input.stderr !== 'string' || input.stderr.length > 32768)
+    captureParseFailure('STDERR_TYPE_OR_LIMIT');
   return {
     process: {
       status: p.status,
@@ -348,8 +369,115 @@ function parseCapture(raw) {
     stderr: input.stderr,
   };
 }
+const CAPTURE_VECTOR = Object.freeze({
+  SCHEMA: ['VALID', 'INVALID', 'UNAVAILABLE'],
+  PARSE_REASON: [
+    'INPUT_LIMIT',
+    'JSON_GRAMMAR',
+    'DEPTH',
+    'PAIRS',
+    'DUPLICATE',
+    'ROOT_KEYS',
+    'PROCESS_KEYS',
+    'STATUS_TYPE_OR_ENUM',
+    'EXIT_TYPE_OR_RANGE',
+    'BOOLEAN_TYPES',
+    'STDOUT_TYPE_OR_LIMIT',
+    'STDERR_TYPE_OR_LIMIT',
+    'VALID',
+    'UNAVAILABLE',
+  ],
+  STATUS: ['MATCH', 'MISMATCH', 'UNAVAILABLE'],
+  EXIT: ['MATCH', 'MISMATCH', 'UNAVAILABLE'],
+  CLEANUP: ['TRUE', 'FALSE', 'UNAVAILABLE'],
+  STDOUT_TRUNCATED: ['TRUE', 'FALSE', 'UNAVAILABLE'],
+  STDERR_TRUNCATED: ['TRUE', 'FALSE', 'UNAVAILABLE'],
+  EXPECTED_MARKER: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  NONEMPTY_LINES: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  STDOUT_MATCH: ['EXACT', 'OTHER', 'UNAVAILABLE'],
+  CANCELLED: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  CLOSED: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  RECOVERED: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  FAILURE: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  OTHER: ['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE'],
+  FRAMING: ['STANDARD', 'LEADING_EMPTY', 'EXTRA_EMPTY', 'BARE_CR', 'OTHER', 'UNAVAILABLE'],
+  STDERR: ['EMPTY', 'PRESENT', 'UNAVAILABLE'],
+});
+for (const values of Object.values(CAPTURE_VECTOR)) Object.freeze(values);
+const CAPTURE_MARKERS = Object.freeze(
+  Object.entries(CAPTURE_VECTOR).flatMap(([key, values]) =>
+    values.map((value) => `PACKAGE_CAPTURE_${key}_${value}`),
+  ),
+);
+let lastCaptureDiagnostic = null;
+function captureDiagnostics(raw, stage) {
+  const result = Object.fromEntries(Object.keys(CAPTURE_VECTOR).map((key) => [key, 'UNAVAILABLE']));
+  let c;
+  try {
+    c = parseCapture(raw);
+    result.SCHEMA = 'VALID';
+    result.PARSE_REASON = 'VALID';
+  } catch (error) {
+    result.SCHEMA = raw === undefined ? 'UNAVAILABLE' : 'INVALID';
+    result.PARSE_REASON =
+      raw === undefined ? 'UNAVAILABLE' : (captureParseReasons.get(error) ?? 'JSON_GRAMMAR');
+    return Object.freeze(result);
+  }
+  const expected = EXPECTED[stage];
+  if (!expected) return Object.freeze(result);
+  const p = c.process,
+    normalized = c.stdout.replace(/\r\n/g, '\n'),
+    records = normalized.split('\n'),
+    lines = records.filter((line) => line !== '');
+  const count = (n) => (n === 0 ? 'ZERO' : n === 1 ? 'ONE' : 'MULTIPLE');
+  result.STATUS = p.status === expected[0] ? 'MATCH' : 'MISMATCH';
+  result.EXIT = p.exitCode === expected[1] ? 'MATCH' : 'MISMATCH';
+  result.CLEANUP = p.cleanupComplete ? 'TRUE' : 'FALSE';
+  result.STDOUT_TRUNCATED = p.stdoutTruncated ? 'TRUE' : 'FALSE';
+  result.STDERR_TRUNCATED = p.stderrTruncated ? 'TRUE' : 'FALSE';
+  result.EXPECTED_MARKER = count(lines.filter((line) => line === expected[2]).length);
+  result.NONEMPTY_LINES = count(lines.length);
+  result.STDOUT_MATCH = lines.length === 1 && lines[0] === expected[2] ? 'EXACT' : 'OTHER';
+  const known = {
+    CANCELLED: 'PERSISTENCE_DESKTOP_CANCELLED',
+    CLOSED: 'PERSISTENCE_DESKTOP_CLOSED',
+    RECOVERED: 'PERSISTENCE_DESKTOP_RECOVERED',
+  };
+  const failures = [
+    'PERSISTENCE_DESKTOP_PREPARE_FAILED',
+    'PERSISTENCE_DESKTOP_SETUP_FAILED',
+    'PERSISTENCE_DESKTOP_INITIALIZATION_FAILED',
+    'PERSISTENCE_DESKTOP_RECOVERY_FAILED',
+    'PERSISTENCE_DESKTOP_APPLICATION_FAILED',
+    'PERSISTENCE_DESKTOP_RELEASE_FAILED',
+  ];
+  for (const [key, marker] of Object.entries(known))
+    result[key] = count(lines.filter((line) => line === marker).length);
+  result.FAILURE = count(lines.filter((line) => failures.includes(line)).length);
+  result.OTHER = count(
+    lines.filter((line) => !Object.values(known).includes(line) && !failures.includes(line)).length,
+  );
+  const framed = [...records];
+  if (framed.at(-1) === '') framed.pop();
+  const leading = framed[0] === '';
+  if (leading) framed.shift();
+  result.FRAMING = normalized.includes('\r')
+    ? 'BARE_CR'
+    : framed.includes('')
+      ? 'EXTRA_EMPTY'
+      : framed.length === 1
+        ? leading
+          ? 'LEADING_EMPTY'
+          : 'STANDARD'
+        : 'OTHER';
+  result.STDERR = c.stderr.length === 0 ? 'EMPTY' : 'PRESENT';
+  return Object.freeze(result);
+}
 function capture(root, stage) {
-  const c = parseCapture(read(path.join(root, `package-capture-${stage}.json`))),
+  lastCaptureDiagnostic = captureDiagnostics(undefined, stage);
+  const raw = read(path.join(root, `package-capture-${stage}.json`));
+  lastCaptureDiagnostic = captureDiagnostics(raw, stage);
+  const c = parseCapture(raw),
     p = c.process,
     expected = EXPECTED[stage];
   if (
@@ -714,6 +842,12 @@ if (require.main === module) {
     if (OBSERVE_PHASES.includes(observationPhase)) {
       process.stderr.write(`PACKAGE_OBSERVE_${observationPhase}\n`);
       process.stderr.write(`PACKAGE_OBSERVE_ERROR_${fixedObservationError(error)}\n`);
+      if (observationPhase === 'CAPTURE' && lastCaptureDiagnostic) {
+        for (const [key, value] of Object.entries(lastCaptureDiagnostic)) {
+          const marker = `PACKAGE_CAPTURE_${key}_${value}`;
+          if (CAPTURE_MARKERS.includes(marker)) process.stderr.write(`${marker}\n`);
+        }
+      }
     }
     process.stdout.write('PACKAGE_STATE_FAILED\n');
     process.exitCode = 1;
@@ -732,4 +866,7 @@ module.exports = {
   parseCapture,
   OBSERVE_PHASES,
   OBSERVE_ERRORS,
+  CAPTURE_VECTOR,
+  CAPTURE_MARKERS,
+  captureDiagnostics,
 };

@@ -166,3 +166,20 @@ test('package control diagnostics forward only complete finite markers before un
   assert.ok(call.indexOf('Show-ControlDiagnostic $p $marker') < call.indexOf('Require $p $marker'));
   assert.ok(call.includes('120000 @{}'));
 });
+test('complete capture predicate vector forwarding stays exactly aligned and bounded', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'Invoke-Package.ps1'), 'utf8');
+  const block = source.match(/\$captureVector=\[ordered\]@\{([\s\S]*?)\n {4}\}/)[1];
+  const actual = Object.fromEntries(
+    [...block.matchAll(/([A-Z_]+)=@\(([^)]*)\)/g)].map((m) => [
+      m[1],
+      [...m[2].matchAll(/'([A-Z_]+)'/g)].map((v) => v[1]),
+    ]),
+  );
+  const { CAPTURE_VECTOR } = require('./package-state-control.cjs');
+  assert.deepEqual(actual, CAPTURE_VECTOR);
+  assert.equal(Object.keys(actual).length, 17);
+  assert.ok(source.includes('if($matched -eq 1 -and $captureShown -lt 17)'));
+  assert.ok(source.includes("$literal='PACKAGE_CAPTURE_'+$key+'_'+$value"));
+  assert.ok(source.includes('Where-Object {$_ -ceq $literal}'));
+  assert.ok(!source.includes('Write-Output $p.Stderr'));
+});

@@ -30,6 +30,35 @@ function Show-ControlDiagnostic($p,[string]$expected){
         foreach($value in $values){$literal=$prefix+$value;if(@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count -eq 1){Write-Output $literal;$shown++;break}}
         if($shown -ge 2){break}
     }
+    $captureVector=[ordered]@{
+        SCHEMA=@('VALID','INVALID','UNAVAILABLE')
+        PARSE_REASON=@('INPUT_LIMIT','JSON_GRAMMAR','DEPTH','PAIRS','DUPLICATE','ROOT_KEYS','PROCESS_KEYS','STATUS_TYPE_OR_ENUM','EXIT_TYPE_OR_RANGE','BOOLEAN_TYPES','STDOUT_TYPE_OR_LIMIT','STDERR_TYPE_OR_LIMIT','VALID','UNAVAILABLE')
+        STATUS=@('MATCH','MISMATCH','UNAVAILABLE')
+        EXIT=@('MATCH','MISMATCH','UNAVAILABLE')
+        CLEANUP=@('TRUE','FALSE','UNAVAILABLE')
+        STDOUT_TRUNCATED=@('TRUE','FALSE','UNAVAILABLE')
+        STDERR_TRUNCATED=@('TRUE','FALSE','UNAVAILABLE')
+        EXPECTED_MARKER=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        NONEMPTY_LINES=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        STDOUT_MATCH=@('EXACT','OTHER','UNAVAILABLE')
+        CANCELLED=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        CLOSED=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        RECOVERED=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        FAILURE=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        OTHER=@('ZERO','ONE','MULTIPLE','UNAVAILABLE')
+        FRAMING=@('STANDARD','LEADING_EMPTY','EXTRA_EMPTY','BARE_CR','OTHER','UNAVAILABLE')
+        STDERR=@('EMPTY','PRESENT','UNAVAILABLE')
+    }
+    $captureShown=0
+    foreach($key in $captureVector.Keys){
+        $matched=0;$selected=$null
+        foreach($value in $captureVector[$key]){
+            $literal='PACKAGE_CAPTURE_'+$key+'_'+$value
+            $count=@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count
+            if($count -gt 0){$matched+=$count;$selected=$literal}
+        }
+        if($matched -eq 1 -and $captureShown -lt 17){Write-Output $selected;$captureShown++}
+    }
 }
 function Node-Control([string]$name,[string[]]$arguments,[string]$marker){$script:allClean=$false;$p=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot $name))+$arguments) 120000 @{};$script:allClean=Retired $p;if(-not $script:allClean -or $p.Status -cne 'SUCCESS' -or $p.ExitCode -ne 0 -or (($p.Stdout -replace '\r\n',"`n").TrimEnd("`n") -cne $marker)){Show-ControlDiagnostic $p $marker};Require $p $marker}
 function Validate([string[]]$arguments){$script:allClean=$false;$p=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_package.py'))+$arguments) 120000 @{};$script:allClean=Retired $p;Require $p 'PACKAGE_VALIDATION_PASS'}
