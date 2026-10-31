@@ -332,3 +332,31 @@ records ordinary-data/getter, proxy, enumeration and correlation privacy limits.
 Independent review CLEAR at 01:55 UTC. No transport/runtime, full task/Phase acceptance
 or new activation grant. All three approved provisional subsets now have source
 checkpoints; further source work requires new explicit scoped approval, not automatic continuation.
+
+### P1-02-S proposal — 2026-10-31 02:04 UTC
+
+[Authority-free lifecycle proposal](phases/PHASE-01-P1-02-S-AUTHORITY-FREE-PROPOSAL.md)
+prepared for coordinator review: actual main bootstrap/resource/lifecycle source,
+zero preload/IPC bridge, static unavailable-only boot fixture, no V9 replacement or
+runtime service. Source implementation and new scoped Windows workflow remain
+pending approval. Original navigation FAIL and full manual-authority design remain
+unresolved independently of the awaited target-host ZIP. No full Phase acceptance.
+
+### P1-02 partial-scope entry — 2026-10-31 02:08 UTC
+
+Root approved the documented authority-free bootstrap/lifecycle implementation.
+Entry recorded before code: no bridge/preload, V9 replacement or privileged service;
+mandatory security controls and exact owned assets. Source/build/tests and review
+precede separate authorized Windows verification. Original navigation FAIL and full
+manual-authority design remain open. This is partial P1-02, not a new canonical task
+or full Phase acceptance; percentage denominator stays 11 tasks / 154 total tasks.
+
+### P1-02 partial source milestone — 2026-10-31 02:20 UTC
+
+Actual authority-free main/lifecycle/resource/profile modules and build pipeline
+implemented on `phase-01`; no bridge/preload or V9 replacement. Linux strict/build/
+manifest checks and 31/31 tests PASS. [Evidence](evidence/P1-02-bootstrap-source-2026-10-31.md)
+records the corrected preflight sequencing defect and all runtime NOT_RUN limits.
+Independent review CLEAR at 02:24 UTC, complete source check 31/31 twice.
+Windows launcher/workflow/runtime evidence is next;
+full P1-02 and original Phase0/navigation/authority gates remain unaccepted.

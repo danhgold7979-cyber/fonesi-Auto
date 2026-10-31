@@ -56,6 +56,9 @@ Follow docs/13_DOCUMENTATION_CHANGE_POLICY.md. Update canonical living documents
 
 ## 5. Phase and task authorization
 
+Additional recorded approval on 2026-10-31 at 02:08 UTC permits partial P1-02 authority-free bootstrap/lifecycle work on `phase-01`, under `docs/phases/PHASE-01-P1-02-S-AUTHORITY-FREE-PROPOSAL.md`. Zero preload/application IPC or service authority; source review precedes the separately scoped Windows verification. Full Phase/task acceptance and original gates remain unchanged.
+
+
 The recorded cross-phase exception in `docs/phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md` was narrowly approved 01:23 UTC on 2026-10-31. P1-01-S is reviewed; P1-03-S entry approved 01:39 UTC; P1-11-S entry approved at 01:51 UTC on 2026-10-31. Current source branch is `phase-01` under the user's one-branch-per-phase direction. No full Phase 1 opening/acceptance, privileged runtime or original Phase 0 gate waiver follows; all other rules remain.
 
 

@@ -355,3 +355,12 @@ and phase-01 at `5eb71d68c0ea839ab00107030307b11717ebb1c6`. Legacy
 phase/00-feasibility is a frozen historical transition branch retaining P1-01-S,
 not an active publication destination; no rewrite/deletion. Full Phase1 not opened/accepted; P1-11-S awaits next
 entry approval. See living git workflow for publication verification status.
+
+## Partial P1-02 approval — 2026-10-31 02:08 UTC
+
+Coordinator approved the [authority-free bootstrap/lifecycle scope](phases/PHASE-01-P1-02-S-AUTHORITY-FREE-PROPOSAL.md)
+on phase-01, with zero preload/application IPC/service authority and no V9 replacement.
+Source/build/tests and independent review precede separate scoped Windows verification;
+root owns publication. Original navigation FAIL, all Phase0 exits and full manual
+authority remain unresolved. The suffix describes partial scope, not a new task or
+percentage denominator. This grant does not open unrestricted Phase1 or accept it.

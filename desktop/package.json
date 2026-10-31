@@ -1,0 +1,13 @@
+{
+  "name": "fonesi-auto-desktop-foundation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal authority-free lifecycle foundation, not a release",
+  "main": "build/main.cjs",
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "electron": "45.1.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}
