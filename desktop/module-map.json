@@ -138,13 +138,15 @@
           "createPersistenceLifecycle": "value"
         },
         "./main/persistence-native.js": {
-          "runNativePersistenceMaintenance": "value"
+          "runNativePersistenceMaintenance": "value",
+          "runNativePersistenceRecovery": "value"
         },
         "./main/persistence-entry.js": {
           "preparedPersistenceEntry": "value",
           "configurePersistenceSession": "value",
           "openPreparedPersistence": "value",
-          "assertPreparedPersistenceLease": "value"
+          "assertPreparedPersistenceLease": "value",
+          "openPreparedPersistenceRecovery": "value"
         },
         "./main/foundation-persistence.js": {
           "FoundationPersistence": "type"
@@ -649,7 +651,8 @@
         "./backup-service.ts": {
           "BackupService": "value",
           "parseBackupReceipt": "value",
-          "BackupReceipt": "type"
+          "BackupReceipt": "type",
+          "BackupLocation": "type"
         },
         "./backup-container.ts": {
           "BackupKeyAdapter": "type"

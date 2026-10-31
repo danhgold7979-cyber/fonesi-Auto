@@ -3,8 +3,9 @@
 The [approved P1-07 contract](../../docs/phases/PHASE-01-P1-07-SETTINGS-CONTRACT.md)
 and [current evidence](../../docs/evidence/P1-07-settings-source-2026-10-31.md)
 control this envelope. The first version1 native run41201915177 passed and was
-independently reviewed. The authorized version2 native admission-negative increment
-is in progress; its actual execution remains NOT_RUN. Full P1-07 is not yet accepted.
+independently reviewed. Version2 run41202834105 also passed with both22-case UI groups;
+its fixed artifact was independently reviewed. Version3 adds the approved reachable
+corruption-recovery matrix; its actual execution remains NOT_RUN. Full P1-07 is not yet accepted.
 
 `Invoke-Settings.ps1` uses the unchanged owned Windows Job/provenance/retirement
 helpers and four-stage synthetic key certification controls. It then runs source
@@ -42,3 +43,16 @@ past timeout. This is adapter/transport instrumentation, not forged native IPC o
 human-intent proof. Late release is observed for150ms with no UI resuccess/second
 dispatch and composed with direct client tests. Version1 retains its exact case map.
 Only four literal new failure-stage markers may be forwarded; no raw errors/paths.
+
+Version3 retains all six version2 settings stages and adds five separately versioned
+recovery stages per mode: schema3 authenticated backup setup, malformed CURRENT
+Cancel/Confirm, then malformed PREVIOUS Cancel/Confirm using the genuine new
+quarantined root. Actual compiled main runs the existing explicit restore literal;
+verification answers native dialogs, witnesses no active corrupt DatabaseSync open,
+and checks source DB/WAL/SHM/vault plus selected backup bytes unchanged. A fresh
+lease on the fully retired first restored root enables the second pair; no live
+profile/lease copy or normal restored-root activation is claimed. Native key-profile,
+checkpoint and private staging writes are not included in a false zero-write claim.
+The source developer launcher's failed-normal-launch retained-lock recovery remains
+P1-10 work with P1-08 UI handoff; this proves actual-main recovery under an already
+legitimate supervisor-owned lease, not a working stale-owner recovery command.

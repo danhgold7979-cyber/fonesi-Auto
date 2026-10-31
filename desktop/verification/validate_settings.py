@@ -19,7 +19,42 @@ CASES = {
 }
 CASES_V1 = CASES
 CASES_V2 = {**CASES_V1, 'ui': CASES_V1['ui'][:-1]+('foreignSenderDenied','childFrameDenied','heldConfirmationRevoked','delayedReplyDiscarded', 'orderlyQuit')}
-SCOPES = {1:'HOSTED_SETTINGS_SCHEMA3',2:'HOSTED_SETTINGS_SCHEMA3_NATIVE_NEGATIVES'}
+SCOPES = {1:'HOSTED_SETTINGS_SCHEMA3',2:'HOSTED_SETTINGS_SCHEMA3_NATIVE_NEGATIVES',3:'HOSTED_SETTINGS_SCHEMA3_RECOVERY'}
+RECOVERY_STAGES=('recovery-setup','current-cancel','current-confirm','previous-cancel','previous-confirm')
+RECOVERY_CASES={
+ 'recovery-setup':('ownedRoot','originalKeyAuthenticated','schema3BackupAuthenticated','bothSettingsRows','orderlyQuit'),
+ 'cancel':('ownedRoot','corruptRowConfirmed','activeDatabaseNeverOpened','noNormalWindow','nativeCancelled','oldFilesUnchanged','noRestoreCreated','orderlyQuit'),
+ 'confirm':('ownedRoot','corruptRowConfirmed','activeDatabaseNeverOpened','noNormalWindow','nativeConfirmed','oldFilesUnchanged','restoredNewRoot','restoredQuarantined','restoredSettingsValid','orderlyQuit')}
+def recovery_cases(stage):
+ if stage not in RECOVERY_STAGES:reject()
+ return RECOVERY_CASES[stage if stage=='recovery-setup' else stage.rsplit('-',1)[1]]
+def recovery_stdout(stage):
+ recovery_cases(stage)
+ return 'SETTINGS_RECOVERY_CLOSED\n' if stage=='recovery-setup' else 'PERSISTENCE_MAINTENANCE_'+('CANCELLED' if stage.endswith('-cancel') else 'COMPLETED')+'\nBOOTSTRAP_CLOSED\nSETTINGS_RECOVERY_CLOSED\n'
+def validate_recovery(raw,capture,mode,stage):
+ if mode not in ('source','package'):reject()
+ value=parse(raw);exact_record(value,('version','mode','stage','versions','cases'))
+ if type(value['version']) is not int or value['version']!=1 or value['mode']!=mode or value['stage']!=stage:reject()
+ exact_record(value['versions'],VERSIONS)
+ if value['versions']!=VERSIONS:reject()
+ exact_record(value['cases'],recovery_cases(stage))
+ if any(type(x) is not bool for x in value['cases'].values()):reject()
+ exact_record(capture,('process','stdout','stderr'));normal=validate_process(capture['process'])
+ for key in ('stdout','stderr'):
+  if type(capture[key]) is not str or len(capture[key].encode('utf-16-le'))//2>32768:reject()
+ lines=capture['stdout'].replace('\r\n','\n').split('\n')
+ if lines and lines[-1]=='':lines.pop()
+ if lines and lines[0]=='':lines=lines[1:]
+ if lines!=recovery_stdout(stage).splitlines():reject()
+ if any(marker in capture['stderr'] for marker in ('RECOVERY_FAILED','RECOVERY_DEADLINE','BOOTSTRAP_FAILED','BOOTSTRAP_CLEANUP_FAILED','PERSISTENCE_SHUTDOWN_FAILED')):reject()
+ return {**value,'process':dict(capture['process']),'passed':normal and all(value['cases'].values())}
+def validate_recovery_public(value,mode,stage):
+ exact_record(value,('version','mode','stage','versions','cases','process','passed'))
+ if type(value['passed']) is not bool:reject()
+ raw={key:value[key] for key in ('version','mode','stage','versions','cases')}
+ rebuilt=validate_recovery(json.dumps(raw).encode(),{'process':value['process'],'stdout':recovery_stdout(stage),'stderr':''},mode,stage)
+ if value['passed'] and not rebuilt['passed']:reject()
+ return value['passed']
 FAILURES=('PREPARE_FAILED','PACKAGE_FAILED','CONTROL_FAILED','PREFLIGHT_FAILED','NATIVE_STAGE_FAILED','STAGE_VALIDATION_FAILED','SEQUENCE_VALIDATION_FAILED','SCREENSHOT_FAILED','CLEANUP_FAILED')
 def parse(raw):
  if type(raw) is not bytes or not 0<len(raw)<=65536:reject()
@@ -27,7 +62,7 @@ def parse(raw):
 def validate_stage(raw,capture,mode,stage):
  if mode not in ('source','package') or stage not in STAGES:reject()
  value=parse(raw);exact_record(value,('version','mode','stage','versions','cases'))
- if type(value['version']) is not int or value['version'] not in SCOPES or value['mode']!=mode or value['stage']!=stage:reject()
+ if type(value['version']) is not int or value['version'] not in (1,2) or value['mode']!=mode or value['stage']!=stage:reject()
  exact_record(value['versions'],VERSIONS)
  if value['versions']!=VERSIONS:reject()
  exact_record(value['cases'],(CASES_V1 if value['version']==1 else CASES_V2)[stage])
@@ -93,7 +128,10 @@ def screenshot(raw):
  if any(pixels[row*(1024*channels+1)]>4 for row in range(768)):reject()
  return {'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'width':width,'height':height}
 def validate_report(raw):
- v=parse(raw);exact_record(v,('version','scope','excludedVaultContext','bootstrap','modes','screenshots','runtimeCopyVerified','directoryCleanup','failure'))
+ v=parse(raw)
+ if type(v) is not dict:reject()
+ keys=('version','scope','excludedVaultContext','bootstrap','modes','screenshots','runtimeCopyVerified','directoryCleanup','failure')
+ exact_record(v,keys+(('recovery',) if type(v.get('version')) is int and v['version']==3 else ()))
  if type(v['version']) is not int or v['version'] not in SCOPES or v['scope']!=SCOPES[v['version']] or v['excludedVaultContext']!='P106_UNMET_NOT_RERUN':reject()
  if any(type(v[k]) is not bool for k in ('runtimeCopyVerified','directoryCleanup')):reject()
  if v['failure'] is not None and (type(v['failure']) is not str or v['failure'] not in FAILURES):reject()
@@ -106,8 +144,15 @@ def validate_report(raw):
   if type(stages) is not dict or not set(stages).issubset(STAGES):reject()
   if v['failure'] is None and set(stages)!=set(STAGES):reject()
   for stage,item in stages.items():
-   if type(item) is not dict or type(item.get('version')) is not int or item['version']!=v['version']:reject()
+   if type(item) is not dict or type(item.get('version')) is not int or item['version']!=(1 if v['version']==1 else 2):reject()
    passed=validate_public(item,mode,stage) and passed
+ if v['version']==3:
+  if type(v['recovery']) is not dict or not set(v['recovery']).issubset({'source','package'}):reject()
+  if v['failure'] is None and set(v['recovery'])!={'source','package'}:reject()
+  for mode,stages in v['recovery'].items():
+   if type(stages) is not dict or not set(stages).issubset(RECOVERY_STAGES):reject()
+   if v['failure'] is None and set(stages)!=set(RECOVERY_STAGES):reject()
+   for stage,item in stages.items():passed=validate_recovery_public(item,mode,stage) and passed
  names={f'{mode}-{theme}' for mode in ('source','package') for theme in ('light','dark')}
  if type(v['screenshots']) is not dict or not set(v['screenshots']).issubset(names) or any(type(item) is not dict for item in v['screenshots'].values()):reject()
  if v['failure'] is None and set(v['screenshots'])!=names:reject()
@@ -127,6 +172,12 @@ def stage_files(root,mode,stage):
  value=validate_stage(_read_owned(root,f'settings-{mode}-{stage}.json'),parse(_read_owned(root,f'settings-capture-{mode}-{stage}.json')),mode,stage)
  if _admit_root(root)!=token:reject()
  _write_new(root,f'settings-public-{mode}-{stage}.json',value)
+ return value['passed']
+def recovery_files(root,mode,stage):
+ token=_admit_root(root)
+ value=validate_recovery(_read_owned(root,f'settings-recovery-{mode}-{stage}.json'),parse(_read_owned(root,f'settings-recovery-capture-{mode}-{stage}.json')),mode,stage)
+ if _admit_root(root)!=token:reject()
+ _write_new(root,f'settings-recovery-public-{mode}-{stage}.json',value)
  return value['passed']
 def screenshot_files(root,mode):
  import os
@@ -153,6 +204,8 @@ def publish(base):
 def main():
  import sys
  try:
+  if len(sys.argv)==5 and sys.argv[1]=='recovery':
+   passed=recovery_files(Path(sys.argv[2]),sys.argv[3],sys.argv[4]);print('SETTINGS_RECOVERY_VALIDATION_PASS' if passed else 'SETTINGS_RECOVERY_VALIDATION_FAIL');return 0 if passed else 1
   if len(sys.argv)==5 and sys.argv[1]=='stage':
    passed=stage_files(Path(sys.argv[2]),sys.argv[3],sys.argv[4]);print('SETTINGS_VALIDATION_PASS' if passed else 'SETTINGS_VALIDATION_FAIL');return 0 if passed else 1
   if len(sys.argv)==4 and sys.argv[1]=='screenshots':

@@ -117,7 +117,7 @@ external actions. A failed final save is visible and prior committed state retai
 
 Crash before COMMIT retains prior CURRENT; crash after COMMIT yields the new entire
 CURRENT plus prior PREVIOUS. No partial mixture. Startup validates exact schema/rows;
-invalid current state is RECOVERY_REQUIRED, never silently reset or import a candidate.
+invalid current state is refused, never silently reset or import a candidate. An already-open settings adapter reports RECOVERY_REQUIRED; normal startup retains the fixed BOOTSTRAP_FAILED diagnostic (internally DATABASE_INVALID), not a fabricated typed renderer response.
 A user-confirmed restore of valid PREVIOUS from an otherwise fully valid database
 is a new revision, not a revision rollback.
 The existing main-owned native confirmation defaults Cancel and must recheck owner,
@@ -125,7 +125,7 @@ view-session and expectedRevision after its await. Cancel writes nothing. No raw
 SQL/file path crosses IPC. Do not bypass the existing exact database validator to salvage one row from a
 corrupt database. If CURRENT or PREVIOUS is malformed (including an untrustworthy
 revision), normal open/writes remain blocked; preserve the original database and
-report RECOVERY_REQUIRED. The available recovery route is the existing explicitly
+retain the fixed startup refusal (or RECOVERY_REQUIRED for an already-open adapter). The available recovery route is the existing explicitly
 confirmed P1-05 authenticated backup restore to a NEW quarantined root, not an
 in-place settings overwrite or fabricated revision. It does not overwrite the old
 database/vault and does not imply recovered external secrets. Thus interrupted
@@ -311,3 +311,29 @@ unconditional. Thus initial maximization cannot make the one-shot hydration read
 race a native autosave. The native fixture now verifies a maximized reopen, and its
 read-only observation helper may poll only exact validated BUSY within five seconds;
 mutation/confirmation/unknown outcomes are never retried.
+
+## Reachable corruption recovery amendment — approved 12:55 UTC
+
+Source tracing after the V2 run exposed that the previous maintenance entry initialized
+the rejected active database before offering restore. The coordinator approves a separate
+restore-only initializer, selected exclusively by the existing
+`--maintenance=restore-to-new` literal. Normal startup and every other operation retain
+full database validation; there is no fallback, row salvage, reset or in-place migration.
+The recovery initializer retains certified runtime, owned root/profile/lease, key proof
+and authentication of the original bootstrap backup, but never opens active SQLite or
+the vault and creates no normal UI/timer. Native selection admits only an exact canonical
+`backup-<UUID>.fonaub` in one existing owned configured location (the existing 64-location
+bound). Its matching bounded receipt/container must pass the existing identity, hash,
+AEAD, schema and fingerprint validation. The selected receipt/hash remains bound across
+Cancel-default confirmation and is revalidated before promotion. Unrelated backup files
+are neither scanned/adopted nor pruned. Only a new quarantined root is produced; old
+database/WAL/SHM/vault bytes remain untouched. Actual malformed CURRENT/PREVIOUS entry
+recovery, cancellation and invalid-candidate/authentication negatives require evidence
+before this row can be accepted. No P1-06 prerequisite or formal Phase0 gate is waived.
+
+At 13:03 UTC the coordinator explicitly scoped this proof to an already valid
+supervisor-owned lease. The source developer launcher has no failed-normal-launch
+stopped-owner recovery command; its retained lock blocks a blind rerun. That usability
+gap remains required P1-10 launch-supervision work (and P1-08 UI handoff), not a claimed
+existing procedure or waived whole-tool requirement. No automatic unlock/lease stealing
+is introduced here, and arbitrary RESTORED-root launcher support remains unclaimed.

@@ -2,6 +2,48 @@ import type { Dialog } from 'electron';
 import type { BackupReceipt } from './backup-service.ts';
 import type { FoundationPersistence } from './foundation-persistence.ts';
 import { PersistenceMaintenance } from './persistence-maintenance.ts';
+// Explicit restore-only route: no SQL catalog or active database is consulted.
+export async function runNativePersistenceRecovery(
+  service: FoundationPersistence,
+  dialog: Dialog,
+  assertActive: () => Promise<void>,
+  checkpoint: string,
+): Promise<'COMPLETED' | 'CANCELLED'> {
+  await assertActive();
+  const selection = await dialog.showOpenDialog({
+    title: 'Choose an owned encrypted recovery backup',
+    properties: ['openFile'],
+    filters: [{ name: 'Fonesi encrypted backup', extensions: ['fonaub'] }],
+  });
+  await assertActive();
+  if (selection.canceled) return 'CANCELLED';
+  if (selection.filePaths.length !== 1 || !selection.filePaths[0])
+    throw new Error('NATIVE_SELECTION_REJECTED');
+  const receipt = await service.recoverySelection(selection.filePaths[0]);
+  const destination = await dialog.showOpenDialog({
+    title: 'Choose a parent for a new quarantined restore',
+    properties: ['openDirectory'],
+  });
+  await assertActive();
+  if (destination.canceled) return 'CANCELLED';
+  if (destination.filePaths.length !== 1 || !destination.filePaths[0])
+    throw new Error('NATIVE_SELECTION_REJECTED');
+  const parent = destination.filePaths[0];
+  const confirmation = await dialog.showMessageBox({
+    type: 'warning',
+    title: 'Confirm main-owned recovery',
+    message: 'Confirm this exact operation?',
+    detail: `Restore backup ${receipt.header.backupId} into a NEW quarantined root under:\n${parent}\nThe existing database and key material remain unchanged.`,
+    buttons: ['Confirm', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  await assertActive();
+  if (confirmation.response !== 0) return 'CANCELLED';
+  await service.restoreRecovery(receipt, parent, checkpoint);
+  return 'COMPLETED';
+}
 export async function runNativePersistenceMaintenance(
   service: FoundationPersistence,
   args: readonly string[],

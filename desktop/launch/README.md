@@ -50,3 +50,37 @@ portable-key claim or genuine-human-intent proof is established here.
 `persistence-launcher.test.mjs` checks source admission/order/argument/lifetime and
 no-raw-console policies. These source regressions do not execute PowerShell,
 compile C#, launch Electron, verify native dialogs or prove kernel behavior.
+
+## Settings corruption and explicit recovery
+
+A malformed CURRENT/PREVIOUS settings row is never repaired during normal startup.
+Startup reports the fixed `BOOTSTRAP_FAILED` marker and preserves the database;
+`RECOVERY_REQUIRED` is the typed result for an already-open settings adapter, not
+a promised startup marker. For an existing admitted FRESH developer root with no
+uncertain prior owner, the explicit operation is:
+
+```powershell
+.\desktop\launch\Invoke-Desktop.ps1 -Root <existing-owned-root> -Maintenance '--maintenance=restore-to-new'
+```
+
+This path authenticates the retained key/bootstrap proof without opening active
+SQLite, asks for one encrypted backup inside an existing owned configured location,
+then a destination parent and Cancel-default confirmation. It validates the exact
+receipt/container again before creating a NEW quarantined root; it neither repairs
+nor overwrites the source database/vault, and does not resume normal external work.
+The current source launcher still admits its documented FRESH/data-main layout;
+arbitrary restored-root launcher support is not implied.
+
+A retained writer lock or uncertain process retirement is a blocking ownership
+condition. Do not delete a lock, reset a profile, or rerun with a forged owner token.
+The existing trusted supervisor must establish complete retirement and valid
+owner admission before another recovery process can run. The native recovery
+verification uses that explicit supervisor-held lease; it is not stale-owner stealing
+or a claim of automatic recovery from unknown ownership.
+
+The current developer launcher has **no** stopped-owner recovery command for a lock
+retained after a failed normal launch. Therefore simply rerunning the command above
+after that failure is not a supported recovery procedure. Closing that failed-launch
+to relaunch usability gap is explicitly retained for P1-10 launch supervision, with
+the P1-08 UI handoff; it is not waived by the bounded P1-07 actual-main restore proof.
+Do not treat this checkpoint as complete end-user/tool recovery.

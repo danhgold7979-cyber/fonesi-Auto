@@ -3,7 +3,7 @@ import { lstat, mkdir, open, rename } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { FoundationDatabase, statement } from './foundation-database.ts';
 import { BackupService, parseBackupReceipt } from './backup-service.ts';
-import type { BackupReceipt } from './backup-service.ts';
+import type { BackupReceipt, BackupLocation } from './backup-service.ts';
 import type { BackupKeyAdapter } from './backup-container.ts';
 import { BackupCatalog } from './backup-catalog.ts';
 import {
@@ -33,6 +33,7 @@ export class FoundationPersistence {
   readonly backups: BackupService;
   private database: FoundationDatabase | null = null;
   private busy = false;
+  private recoveryOnly = false;
   private stopping = false;
   private idleWaiters: (() => void)[] = [];
   private readonly owned: () => Promise<void>;
@@ -134,6 +135,7 @@ export class FoundationPersistence {
   }
   async provision(selectedParent: string, now: number): Promise<BackupReceipt> {
     return this.lane(async () => {
+      if (this.recoveryOnly) throw new Error('DATABASE_NOT_READY');
       if (this.restored) throw new Error('RESTORED_PROVISION_REJECTED');
       await this.catalog.selectLocation(selectedParent, true, now);
       const target = await this.catalog.activeLocation();
@@ -168,35 +170,87 @@ export class FoundationPersistence {
       return current;
     });
   }
+  private async authenticateDurability(): Promise<BackupReceipt[]> {
+    const receipts = await this.registry(),
+      bootstrap = receipts[0];
+    if (!bootstrap) throw new Error('BOOTSTRAP_RECEIPT_MISSING');
+    try {
+      const proof = parsePersistenceProof(
+        await readPersistenceFile(join(this.root, 'key-durability-proof.json')),
+      );
+      if (
+        !proof ||
+        !proofMatchesWitness(proof, {
+          storeId: this.storeId,
+          backupId: bootstrap.header.backupId,
+          locationId: bootstrap.header.locationId,
+          encryptedSha256: bootstrap.encryptedSha256,
+        })
+      )
+        throw new Error();
+    } catch {
+      throw new Error('KEY_DURABILITY_UNPROVEN');
+    }
+    const recovered = await this.backups.validate(
+      await this.catalog.location(bootstrap.header.locationId),
+      bootstrap.header.backupId,
+    );
+    if (JSON.stringify(recovered) !== JSON.stringify(bootstrap))
+      throw new Error('BOOTSTRAP_RECEIPT_CHANGED');
+    return receipts;
+  }
+  async initializeRecovery(): Promise<void> {
+    return this.lane(async () => {
+      if (this.database || this.recoveryOnly) throw new Error('DATABASE_ALREADY_OPEN');
+      await this.authenticateDurability();
+      this.recoveryOnly = true;
+    });
+  }
+  async recoverySelection(path: string): Promise<BackupReceipt> {
+    return this.lane(async () => {
+      if (!this.recoveryOnly || typeof path !== 'string' || path !== resolve(path))
+        throw new Error('RESTORE_ADMISSION_REJECTED');
+      const name = basename(path),
+        id = name.slice(7, -7);
+      if (name !== `backup-${id}.fonaub` || !diagnosticId(id))
+        throw new Error('BACKUP_SELECTION_REJECTED');
+      const matches = (await this.catalog.knownLocations()).filter((r) =>
+        process.platform === 'win32'
+          ? r.absolutePath.toLowerCase() === dirname(path).toLowerCase()
+          : r.absolutePath === dirname(path),
+      );
+      if (matches.length !== 1 || !matches[0]) throw new Error('BACKUP_SELECTION_REJECTED');
+      return this.backups.validate(await this.catalog.location(matches[0].locationId), id);
+    });
+  }
+  async restoreRecovery(
+    receipt: BackupReceipt,
+    parent: string,
+    keyCheckpoint: string,
+  ): Promise<string> {
+    const selected = parseBackupReceipt(JSON.stringify(receipt));
+    if (!selected) throw new Error('BACKUP_RECEIPT_REJECTED');
+    return this.lane(async () => {
+      if (!this.recoveryOnly) throw new Error('RESTORE_ADMISSION_REJECTED');
+      const location = await this.catalog.location(selected.header.locationId);
+      const current = await this.backups.validate(location, selected.header.backupId);
+      if (JSON.stringify(current) !== JSON.stringify(selected))
+        throw new Error('MAINTENANCE_SELECTION_CHANGED');
+      return this.restoreValidated(
+        location,
+        selected.header.backupId,
+        parent,
+        keyCheckpoint,
+        selected,
+      );
+    });
+  }
   async initialize(now: number): Promise<void> {
     return this.lane(async () => {
-      if (this.database) throw new Error('DATABASE_ALREADY_OPEN');
-      const receipts = await this.registry(),
+      if (this.database || this.recoveryOnly) throw new Error('DATABASE_ALREADY_OPEN');
+      const receipts = await this.authenticateDurability(),
         bootstrap = receipts[0];
       if (!bootstrap) throw new Error('BOOTSTRAP_RECEIPT_MISSING');
-      try {
-        const proof = parsePersistenceProof(
-          await readPersistenceFile(join(this.root, 'key-durability-proof.json')),
-        );
-        if (
-          !proof ||
-          !proofMatchesWitness(proof, {
-            storeId: this.storeId,
-            backupId: bootstrap.header.backupId,
-            locationId: bootstrap.header.locationId,
-            encryptedSha256: bootstrap.encryptedSha256,
-          })
-        )
-          throw new Error();
-      } catch {
-        throw new Error('KEY_DURABILITY_UNPROVEN');
-      }
-      const recovered = await this.backups.validate(
-        await this.catalog.location(bootstrap.header.locationId),
-        bootstrap.header.backupId,
-      );
-      if (JSON.stringify(recovered) !== JSON.stringify(bootstrap))
-        throw new Error('BOOTSTRAP_RECEIPT_CHANGED');
       const active = join(this.root, 'active.sqlite');
       let exists = false;
       try {
@@ -404,59 +458,83 @@ export class FoundationPersistence {
       if (typeof record?.location_id !== 'string') throw new Error('RESTORE_BACKUP_UNKNOWN');
       const location = await this.catalog.location(record.location_id);
       await this.backups.validate(location, id);
-      if (
-        !keyCheckpoint.startsWith(join(this.root, 'key-checkpoint-')) ||
-        !keyCheckpoint.endsWith('.json')
-      )
-        throw new Error('RESTORE_KEY_CHECKPOINT_REJECTED');
-      const keyMaterial = await readPersistenceFile(keyCheckpoint);
-      if (!validBackupLocalState(keyMaterial)) throw new Error('RESTORE_KEY_CHECKPOINT_REJECTED');
-      const selected = join(parent, `fonesi-restore-${randomUUID()}`),
-        parentToken = randomUUID();
-      await mkdir(selected);
-      await writePersistenceFile(join(selected, '.owner'), parentToken);
-      const destination = { root: join(selected, `data-${this.storeId}`), parentToken };
-      await createPersistenceRoot(destination, {
-        version: 1,
-        storeId: this.storeId,
-        kind: 'RESTORED',
-        restoreReceiptId: randomUUID(),
-      });
-      const lease = await acquirePersistenceLease(destination, randomUUID()),
-        staging = join(destination.root, 'staging');
-      // Failure preserves the new root and its lease for explicit stopped-owner recovery.
-      await mkdir(staging);
-      await this.backups.restoreToNew(location, id, {
-        staging,
-        active: join(destination.root, 'active.sqlite'),
-        assertOwned: () => lease.assertOwned(),
-      });
-      await writePersistenceFile(
-        join(destination.root, 'backup-locations.json'),
-        JSON.stringify(await this.catalog.config()),
-      );
-      await writePersistenceFile(
-        join(destination.root, 'migration-backups.json'),
-        await readPersistenceFile(join(this.root, 'migration-backups.json')),
-      );
-      await writePersistenceFile(
-        join(destination.root, 'key-durability-proof.json'),
-        await readPersistenceFile(join(this.root, 'key-durability-proof.json')),
-      );
-      await writePersistenceFile(
-        join(destination.root, 'restore-source.json'),
-        JSON.stringify({ version: 1, storeId: this.storeId, backupId: id }),
-      );
-      const profile = join(destination.root, 'key-profile');
-      await mkdir(profile);
-      await writePersistenceFile(
-        join(profile, '.key-profile-owner.json'),
-        JSON.stringify({ version: 1, storeId: this.storeId }),
-      );
-      await writePersistenceFile(join(profile, 'Local State'), keyMaterial);
-      await lease.release();
-      return destination.root;
+      return this.restoreValidated(location, id, parent, keyCheckpoint);
     });
+  }
+  private async restoreValidated(
+    location: BackupLocation,
+    id: string,
+    parent: string,
+    keyCheckpoint: string,
+    expected?: BackupReceipt,
+  ): Promise<string> {
+    await plainPersistenceDirectory(parent);
+    await this.owned();
+    if (
+      !keyCheckpoint.startsWith(join(this.root, 'key-checkpoint-')) ||
+      !keyCheckpoint.endsWith('.json')
+    )
+      throw new Error('RESTORE_KEY_CHECKPOINT_REJECTED');
+    const keyMaterial = await readPersistenceFile(keyCheckpoint);
+    if (!validBackupLocalState(keyMaterial)) throw new Error('RESTORE_KEY_CHECKPOINT_REJECTED');
+    const selected = join(parent, `fonesi-restore-${randomUUID()}`),
+      parentToken = randomUUID();
+    await mkdir(selected);
+    await writePersistenceFile(join(selected, '.owner'), parentToken);
+    const destination = { root: join(selected, `data-${this.storeId}`), parentToken };
+    await createPersistenceRoot(destination, {
+      version: 1,
+      storeId: this.storeId,
+      kind: 'RESTORED',
+      restoreReceiptId: randomUUID(),
+    });
+    const lease = await acquirePersistenceLease(destination, randomUUID()),
+      staging = join(destination.root, 'staging');
+    // Failure preserves the new root and its lease for explicit stopped-owner recovery.
+    await mkdir(staging);
+    await this.backups.restoreToNew(location, id, {
+      staging,
+      active: join(destination.root, 'active.sqlite'),
+      assertOwned: async () => {
+        await this.owned();
+        await lease.assertOwned();
+        const currentLocation = await this.catalog.location(location.locationId);
+        if (currentLocation.directory !== location.directory)
+          throw new Error('BACKUP_LOCATION_REPLACED');
+        if (expected) {
+          const receipt = parseBackupReceipt(
+            await readPersistenceFile(join(location.directory, `backup-${id}.json`)),
+          );
+          if (!receipt || JSON.stringify(receipt) !== JSON.stringify(expected))
+            throw new Error('MAINTENANCE_SELECTION_CHANGED');
+        }
+      },
+    });
+    await writePersistenceFile(
+      join(destination.root, 'backup-locations.json'),
+      JSON.stringify(await this.catalog.config()),
+    );
+    await writePersistenceFile(
+      join(destination.root, 'migration-backups.json'),
+      await readPersistenceFile(join(this.root, 'migration-backups.json')),
+    );
+    await writePersistenceFile(
+      join(destination.root, 'key-durability-proof.json'),
+      await readPersistenceFile(join(this.root, 'key-durability-proof.json')),
+    );
+    await writePersistenceFile(
+      join(destination.root, 'restore-source.json'),
+      JSON.stringify({ version: 1, storeId: this.storeId, backupId: id }),
+    );
+    const profile = join(destination.root, 'key-profile');
+    await mkdir(profile);
+    await writePersistenceFile(
+      join(profile, '.key-profile-owner.json'),
+      JSON.stringify({ version: 1, storeId: this.storeId }),
+    );
+    await writePersistenceFile(join(profile, 'Local State'), keyMaterial);
+    await lease.release();
+    return destination.root;
   }
   async selectLocation(parent: string, now: number): Promise<void> {
     return this.lane(async () => {

@@ -214,3 +214,65 @@ acceptance/count increase remains pending.
 At12:48UTC coordinator approved the exact reviewed version2 bounded hosted execution.
 This is verification-only authorization, not task acceptance or a change to production
 caller authority. Actual new outcomes remain pending.
+
+## 12:54–12:55 UTC: V2 hosted evidence and reachable recovery correction
+
+Exact public `edb1b51cc4846c5d077706496e610f4debf0860a`, tree
+`b76725255cdcbf9744d08b26b3fefd8588be0e31`, run **41202834105** passed both jobs.
+The independently duplicate-aware/strictly reconstructed [V2 sample](P1-07-native-v2-sample-2026-10-31.json)
+is 11,563 LF bytes, SHA256
+`644665e1639e85a08685b8fffbbcb8886bd480ca400907c0642f003f15cd1820`.
+Both modes passed all 22 UI predicates and the six-stage matrix with complete
+cleanup. The coordinator accepted this bounded V2 native result, not full P1-07.
+The new-channel foreign/native-child-frame cases are captured-handler instrumentation;
+the held real preload reply case observes unchanged UI/no second dispatch for 150ms
+after release, composed with direct client late-settlement tests, not an acknowledgment
+from inside preload. V2 image metadata matches the previously inspected V1 images;
+no second V2 image download/byte inspection is claimed.
+
+Read-only canonical criterion mapping then exposed a real recovery-entry gap: the
+old maintenance path initialized the active DB before offering restore, so malformed
+CURRENT/PREVIOUS prevented the promised authenticated restore route from being reached.
+Low-level restore tests did not establish production accessibility. At 12:55 UTC the
+coordinator approved the contract's narrow separate restore-only entry and direct
+native-selected owned backup admission. Normal validation is not bypassed or repaired;
+only the existing explicit restore literal can enter it. New source/native evidence is
+pending. P1-07 remains unaccepted, technical count six/formal zero, and P1-06 cross-user
+verification remains UNMET and is not rerun.
+
+### 13:00 UTC recovery source checkpoint
+
+The separate explicit restore-only production path passes strict TypeScript and the
+44-module graph. Author unchanged persistence entry/native/orchestrator subset:
+17/17 PASS. Independent new recovery suite: 5/5 PASS, including actual SQLite
+malformed CURRENT/PREVIOUS recovery through authenticated containers, retained original
+bytes, wrong-path/authentication/changed-receipt refusal, Cancel-default dialogs and
+owner revocation. Keys/dialog answers and retained sidecar/vault witness bytes in these
+local tests are synthetic; this is not native provider/crash evidence. Normal initialize
+continues to reject malformed rows; recovery-only instances cannot initialize/provision
+or use normal database services. The reviewer cleared this source slice; the new native
+matrix and final aggregate remain pending. Chained restored-root verification will use
+actual compiled main with prepared READY ownership, not claim that the source launcher's
+fixed FRESH/data-main layout supports arbitrary restored-root layouts.
+
+### 13:05 UTC final recovery checkpoint review
+
+Author and independent full desktop aggregate both passed **418/418**; independent
+full Python passed **124/124**, with no skipped/cancelled cases. Unchanged foundation
+**109/109** remains the prior independently reviewed result, not a new run. Exact
+recovery CJS/PS/workflow source and strict report-v3 envelope are independently CLEAR.
+Historical v1/v2 validators remain exact; both source/package five-stage recovery
+groups are mandatory for v3 PASS. Frozen Phase0/native helper hashes and whitespace
+checks pass. New Windows recovery execution is **NOT_RUN**; full task/count unchanged.
+
+Coordinator 13:03 disposition retains the failed-normal-launch lease-reentry usability
+gap for P1-10 launch supervision/P1-08 UI handoff. The current launcher has no stopped-owner
+recovery command; no command is invented, no lock may be blindly deleted, and no automatic
+unlock is added. This checkpoint establishes only actual-main recovery under an already
+valid trusted supervisor-held lease, pending native evidence.
+
+At 13:06 UTC the coordinator approved execution of this exact independently reviewed
+recovery checkpoint: existing restore literal only, no invalid active DB open or
+identity attempt, injected Cancel/Confirm, chained fresh leases, source-byte witnesses
+and new quarantine, with the P1-10 launcher limitation retained. Approval permits
+hosted verification, not a PASS or task/phase acceptance.

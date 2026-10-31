@@ -9,11 +9,15 @@ import { installPreferencesBridge } from './preferences-bridge.js';
 import { openMainSecretStore } from './main/secret-entry.js';
 import type { SecretStore } from './main/secret-store.js';
 import { createPersistenceLifecycle } from './main/persistence-lifecycle.js';
-import { runNativePersistenceMaintenance } from './main/persistence-native.js';
+import {
+  runNativePersistenceMaintenance,
+  runNativePersistenceRecovery,
+} from './main/persistence-native.js';
 import {
   preparedPersistenceEntry,
   configurePersistenceSession,
   openPreparedPersistence,
+  openPreparedPersistenceRecovery,
   assertPreparedPersistenceLease,
 } from './main/persistence-entry.js';
 import type { FoundationPersistence } from './main/foundation-persistence.js';
@@ -199,23 +203,37 @@ try {
       }
       if (persistenceEntry) {
         persistence = await persistenceLifecycle.open(() =>
-          openPreparedPersistence(persistenceEntry, safeStorage, Date.now(), true),
+          maintenance === '--maintenance=restore-to-new'
+            ? openPreparedPersistenceRecovery(persistenceEntry, safeStorage, true)
+            : openPreparedPersistence(persistenceEntry, safeStorage, Date.now(), true),
         );
         if (closing) {
           await persistenceLifecycle.stop();
           return;
         }
         if (maintenance !== 'NORMAL') {
-          const result = await runNativePersistenceMaintenance(
-            persistence,
-            [maintenance],
-            dialog,
-            async () => {
-              if (closing) throw new Error('PERSISTENCE_CLOSED');
-              await persistence?.catalog.config();
-            },
-            persistenceEntry.checkpoint,
-          );
+          const assertActive = async () => {
+            if (closing) throw new Error('PERSISTENCE_CLOSED');
+            await persistence?.catalog.config();
+          };
+          const result =
+            maintenance === '--maintenance=restore-to-new'
+              ? await runNativePersistenceRecovery(
+                  persistence,
+                  dialog,
+                  assertActive,
+                  persistenceEntry.checkpoint,
+                )
+              : await runNativePersistenceMaintenance(
+                  persistence,
+                  [maintenance],
+                  dialog,
+                  async () => {
+                    if (closing) throw new Error('PERSISTENCE_CLOSED');
+                    await persistence?.catalog.config();
+                  },
+                  persistenceEntry.checkpoint,
+                );
           console.log(
             result === 'COMPLETED'
               ? 'PERSISTENCE_MAINTENANCE_COMPLETED'

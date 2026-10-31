@@ -22,6 +22,48 @@ def png(value=0):
  pixels=(b'\0'+bytes([value])*1024*3)*768
  return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1024,768,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(pixels))+chunk(b'IEND',b'')
 class SettingsValidationTests(unittest.TestCase):
+ def test_recovery_stages_exact_controls_and_false_case_never_passes(self):
+  from validate_settings import RECOVERY_STAGES,recovery_cases,recovery_stdout,validate_recovery,validate_recovery_public
+  for mode in ('source','package'):
+   for name in RECOVERY_STAGES:
+    raw={'version':1,'mode':mode,'stage':name,'versions':VERSIONS,'cases':{key:True for key in recovery_cases(name)}}
+    capture={'process':process(),'stdout':recovery_stdout(name),'stderr':''}
+    public=validate_recovery(json.dumps(raw).encode(),capture,mode,name)
+    self.assertTrue(public['passed']);self.assertTrue(validate_recovery_public(public,mode,name))
+    for case in raw['cases']:
+     changed=copy.deepcopy(raw);changed['cases'][case]=False
+     self.assertFalse(validate_recovery(json.dumps(changed).encode(),capture,mode,name)['passed'])
+    for mutation in ({'stdout':capture['stdout']+'PRIVATE\n'},{'stdout':'BOOTSTRAP_READY\n'+capture['stdout']},{'stderr':'RECOVERY_FAILED\n'}):
+     with self.assertRaises(ValueError):validate_recovery(json.dumps(raw).encode(),{**capture,**mutation},mode,name)
+    bad=copy.deepcopy(public);bad['cases']['ownedRoot']=False
+    with self.assertRaises(ValueError):validate_recovery_public(bad,mode,name)
+    data=json.dumps(raw).replace('"ownedRoot": true','"ownedRoot": false,"ownedRoot": true').encode()
+    with self.assertRaises(ValueError):validate_recovery(data,capture,mode,name)
+ def test_actual_recovery_output_exclusive_and_supervisor_uses_fixed_native_route(self):
+  from validate_settings import recovery_files,recovery_cases,recovery_stdout
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory).resolve();(root/'.owner').write_text('12345678-1234-1234-1234-123456789abc')
+   name='current-confirm';raw={'version':1,'mode':'source','stage':name,'versions':VERSIONS,'cases':{key:True for key in recovery_cases(name)}}
+   (root/f'settings-recovery-source-{name}.json').write_text(json.dumps(raw))
+   (root/f'settings-recovery-capture-source-{name}.json').write_text(json.dumps({'process':process(),'stdout':recovery_stdout(name),'stderr':''}))
+   self.assertTrue(recovery_files(root,'source',name))
+   public=json.loads((root/f'settings-recovery-public-source-{name}.json').read_bytes())
+   self.assertNotIn('stdout',public);self.assertTrue(public['passed'])
+   with self.assertRaises(FileExistsError):recovery_files(root,'source',name)
+  script=(Path(__file__).parent/'Invoke-Settings.ps1').read_text()
+  for filename in ('settings-recovery-contract.cjs','settings-recovery-probe.cjs','settings-recovery-control.cjs'):
+   self.assertIn("'"+filename+"'",script)
+  self.assertIn('--maintenance=restore-to-new',script)
+  self.assertIn("[IO.Path]::GetDirectoryName($outer) -cne $container",script)
+  self.assertIn("[IO.File]::ReadAllText($marker.FullName) -cne $control.parentToken",script)
+ def test_report3_requires_recovery_without_changing_historical_report_shapes(self):
+  from validate_settings import RECOVERY_STAGES,recovery_cases,recovery_stdout,validate_recovery
+  report={'version':3,'scope':SCOPES[3],'excludedVaultContext':'P106_UNMET_NOT_RERUN','bootstrap':{},'modes':{},'screenshots':{},'recovery':{},'runtimeCopyVerified':False,'directoryCleanup':False,'failure':'PREPARE_FAILED'}
+  self.assertFalse(validate_report(json.dumps(report).encode())['passed'])
+  for change in ({'version':2,'scope':SCOPES[2]},{'version':True},{'scope':SCOPES[2]}):
+   with self.assertRaises(ValueError):validate_report(json.dumps({**report,**change}).encode())
+  del report['recovery']
+  with self.assertRaises(ValueError):validate_report(json.dumps(report).encode())
  def test_v2_native_negative_cases_are_mandatory_and_false_never_passes(self):
   for mode in ('source','package'):
    for name in STAGES:
@@ -105,6 +147,19 @@ class SettingsValidationTests(unittest.TestCase):
    for name in STAGES:
     raw,capture=stage(mode,name,2);report_v2['modes'][mode][name]=validate_stage(json.dumps(raw).encode(),capture,mode,name)
   self.assertTrue(validate_report(json.dumps(report_v2).encode())['passed'])
+  from validate_settings import RECOVERY_STAGES,recovery_cases,recovery_stdout,validate_recovery
+  report_v3=copy.deepcopy(report_v2);report_v3.update(version=3,scope=SCOPES[3],recovery={})
+  for mode in ('source','package'):
+   report_v3['recovery'][mode]={}
+   for name in RECOVERY_STAGES:
+    raw={'version':1,'mode':mode,'stage':name,'versions':VERSIONS,'cases':{key:True for key in recovery_cases(name)}}
+    report_v3['recovery'][mode][name]=validate_recovery(json.dumps(raw).encode(),{'process':process(),'stdout':recovery_stdout(name),'stderr':''},mode,name)
+  self.assertTrue(validate_report(json.dumps(report_v3).encode())['passed'])
+  bad=copy.deepcopy(report_v3);del bad['recovery']['package']['previous-confirm']
+  with self.assertRaises(ValueError):validate_report(json.dumps(bad).encode())
+  bad=copy.deepcopy(report_v3);bad['recovery']['source']['current-confirm']['cases']['oldFilesUnchanged']=False
+  with self.assertRaises(ValueError):validate_report(json.dumps(bad).encode())
+
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory).resolve();(root/'unvalidated.json').write_text(json.dumps(report_v2))
    for mode in ('source','package'):

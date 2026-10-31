@@ -800,3 +800,15 @@ without production changes. Historical first-pass v1 evidence remains strictly v
 independent final409/409 and Python121/121 also PASS with source/envelopeCLEAR.
 New v2 actual execution remains pending publication. Counts
 remain six technical scopes/formal zero.
+
+P1-07 recovery correction — 12:54–13:05 UTC: V2 native run41202834105 passed,
+strictly reviewed fixed artifact SHA644665e1639e85a08685b8fffbbcb8886bd480ca400907c0642f003f15cd1820.
+Canonical tracing found the old maintenance route could not pass malformed active
+settings validation. Coordinator approved the separate explicit restore-only entry;
+normal DB validation remains unchanged. Actual SQLite recovery tests5/5 and author
+full source418/418 pass. Final independent desktop418/418 and Python124/124
+PASS; unchanged foundation109 retained. Source/native-envelope review is CLEAR;
+hosted five-stage recovery remains pending. The failed-normal-launch
+retained-lease usability gap is explicitly assigned to P1-10/P1-08, not an existing
+recovery procedure or waived whole-tool requirement. P1-07 not yet accepted; counts
+remain six technical scopes/formal zero, and P1-06 cross-user remains UNMET.

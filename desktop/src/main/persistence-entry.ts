@@ -264,6 +264,27 @@ export async function openPreparedPersistence(
   }
 }
 
+export async function openPreparedPersistenceRecovery(
+  entry: PersistenceEntry,
+  provider: AsyncKeyProvider,
+  reviewedBuildVerified: boolean,
+): Promise<FoundationPersistence> {
+  assertCertifiedPersistenceEntry(entry, reviewedBuildVerified);
+  const app = await FoundationPersistence.open(
+    { root: entry.root, parentToken: entry.parentToken },
+    entry.ownerToken,
+    await backupKeys(provider),
+    false,
+  );
+  try {
+    await app.initializeRecovery();
+    return app;
+  } catch (error) {
+    app.close();
+    throw error;
+  }
+}
+
 export function configurePersistenceSession(
   app: Readonly<{ isReady: () => boolean; setPath: (name: 'sessionData', value: string) => void }>,
   entry: PersistenceEntry | undefined,

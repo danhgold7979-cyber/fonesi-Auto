@@ -8,7 +8,7 @@ $owner = $null
 $baseVerified = $false
 $allClean = $true
 $failure = 'PREPARE_FAILED'
-$report = [ordered]@{version=2;scope='HOSTED_SETTINGS_SCHEMA3_NATIVE_NEGATIVES';excludedVaultContext='P106_UNMET_NOT_RERUN';bootstrap=[ordered]@{};modes=[ordered]@{};screenshots=[ordered]@{};runtimeCopyVerified=$false;directoryCleanup=$false;failure=$null}
+$report = [ordered]@{version=3;scope='HOSTED_SETTINGS_SCHEMA3_RECOVERY';excludedVaultContext='P106_UNMET_NOT_RERUN';bootstrap=[ordered]@{};modes=[ordered]@{};recovery=[ordered]@{};screenshots=[ordered]@{};runtimeCopyVerified=$false;directoryCleanup=$false;failure=$null}
 function Retired($Probe) {
     return ($Probe.CleanupComplete -and -not $Probe.StdoutTruncated -and -not $Probe.StderrTruncated -and $Probe.Status -in @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT'))
 }
@@ -37,7 +37,7 @@ function Read-Public([string]$Name) {
 }
 function New-Profile([string]$Name) {
     Assert-OwnedRun $owner
-    if($Name -cnotmatch '^fonesi-auto-foundation-(source|package)-(provision|orderly-auth|abrupt-auth|final-auth|settings-(ui|reopen|before-crash|before-reopen|after-crash|after-reopen))\z'){throw 'PROFILE_NAME'}
+    if($Name -cnotmatch '^fonesi-auto-foundation-(source|package)-(provision|orderly-auth|abrupt-auth|final-auth|settings-(ui|reopen|before-crash|before-reopen|after-crash|after-reopen|recovery-setup|current-cancel|current-confirm|previous-cancel|previous-confirm))\z'){throw 'PROFILE_NAME'}
     $path=Join-Path $owner.Path $Name
     if(Test-Path -LiteralPath $path){throw 'PROFILE_EXISTS'}
     [Fonesi.Phase00.NativeProbe]::ReserveDirectory($path)
@@ -48,7 +48,7 @@ function New-Profile([string]$Name) {
 function Remove-Part([string]$Name,[long]$Limit) {
     if(-not $allClean){throw 'RETIREMENT_UNCONFIRMED'}
     Assert-OwnedRun $owner
-    if($Name -cnotmatch '^(package|data-(source|package)|backup-parent-(source|package)|logs-(source|package)-settings-(ui|reopen)|fonesi-auto-foundation-(source|package)-(provision|orderly-auth|abrupt-auth|final-auth|settings-(ui|reopen|before-crash|before-reopen|after-crash|after-reopen)))\z'){throw 'PART_NAME'}
+    if($Name -cnotmatch '^(package|data-(source|package)|backup-parent-(source|package)|settings-recovery-parent-(source|package)-(current|previous)|logs-(source|package)-settings-(ui|reopen|recovery-setup|current-cancel|current-confirm|previous-cancel|previous-confirm)|fonesi-auto-foundation-(source|package)-(provision|orderly-auth|abrupt-auth|final-auth|settings-(ui|reopen|before-crash|before-reopen|after-crash|after-reopen|recovery-setup|current-cancel|current-confirm|previous-cancel|previous-confirm)))\z'){throw 'PART_NAME'}
     $path=Join-Path $owner.Path $Name;Assert-PlainDirectory $path
     if($Name.StartsWith('fonesi-auto-foundation-')){
         $marker=Get-Item -LiteralPath (Join-Path $path '.owner') -Force
@@ -103,7 +103,7 @@ try {
     [void](Copy-VerifiedTree (Join-Path $desktop 'build') (Join-Path $appRoot 'build') (8L*1024*1024))
 
     $verification=Join-Path $appRoot 'verification';[Fonesi.Phase00.NativeProbe]::ReserveDirectory($verification)
-    foreach($name in @('persistence-probe.cjs','persistence-restore-contract.cjs','persistence-store-contract.cjs','settings-native.cjs','settings-contract.cjs','settings-main-probe.cjs','settings-store-probe.cjs')){
+    foreach($name in @('persistence-probe.cjs','persistence-restore-contract.cjs','persistence-store-contract.cjs','settings-native.cjs','settings-contract.cjs','settings-main-probe.cjs','settings-store-probe.cjs','settings-recovery-contract.cjs','settings-recovery-control.cjs','settings-recovery-probe.cjs')){
         $from=Join-Path $PSScriptRoot $name;$to=Join-Path $verification $name
         [IO.File]::Copy($from,$to,$false)
         if((Get-FileHash $from -Algorithm SHA256).Hash -cne (Get-FileHash $to -Algorithm SHA256).Hash){throw 'PROBE_COPY'}
@@ -168,6 +168,46 @@ try {
             Remove-Part $profileName (8L*1024*1024)
             if($stage -cin @('ui','reopen')){Remove-Part ('logs-'+$mode+'-settings-'+$stage) (8L*1024*1024)}
         }
+        $report.recovery[$mode]=[ordered]@{}
+        foreach($stage in @('recovery-setup','current-cancel','current-confirm','previous-cancel','previous-confirm')){
+            $failure='PREFLIGHT_FAILED';$allClean=$false
+            $prepared=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'settings-recovery-control.cjs'),'prepare',$owner.Path,$mode,$stage)) 120000 @{}
+            $allClean=Retired $prepared;Require-Success $prepared 'SETTINGS_RECOVERY_CONTROL_PREPARED'
+            $controlName='settings-recovery-control-'+$mode+'-'+$stage+'.json'
+            $control=Read-Public $controlName
+            if($control.version -ne 1 -or $control.mode -cne $mode -or $control.stage -cne $stage -or $control.runParentToken -cne $owner.Token){throw 'RECOVERY_CONTROL'}
+            foreach($identity in @($control.parentToken,$control.ownerToken,$control.storeId)){if($identity -isnot [string] -or $identity -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z'){throw 'RECOVERY_IDENTITY'}}
+            $data=[IO.Path]::GetFullPath([string]$control.dataRoot)
+            if($data -cne $control.dataRoot){throw 'RECOVERY_PATH'}
+            if($stage -cin @('previous-cancel','previous-confirm')){
+                $outer=[IO.Path]::GetDirectoryName($data);$container=Join-Path $owner.Path ('settings-recovery-parent-'+$mode+'-current')
+                if([IO.Path]::GetDirectoryName($outer) -cne $container -or [IO.Path]::GetFileName($outer) -cnotmatch '^fonesi-restore-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z' -or [IO.Path]::GetFileName($data) -cne ('data-'+$control.storeId)){throw 'RECOVERY_PATH'}
+                Assert-PlainDirectory $container;Assert-PlainDirectory $outer
+                $marker=Get-Item -LiteralPath (Join-Path $outer '.owner') -Force
+                if($marker.PSIsContainer -or ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $marker.Length -ne 36 -or [IO.File]::ReadAllText($marker.FullName) -cne $control.parentToken){throw 'RECOVERY_OWNER'}
+            }elseif($data -cne (Join-Path $owner.Path ('data-'+$mode)) -or $control.parentToken -cne $owner.Token){throw 'RECOVERY_PATH'}
+            Assert-PlainDirectory $data
+            $profileName='fonesi-auto-foundation-'+$mode+'-settings-'+$stage;$profile=New-Profile $profileName
+            $exe=$sourceExe;[string[]]$arguments=@((Join-Path $PSScriptRoot 'settings-recovery-probe.cjs'))
+            if($stage -cne 'recovery-setup'){$arguments+= '--maintenance=restore-to-new'}
+            if($mode -eq 'package'){
+                $exe=$packageExe;$arguments=@();if($stage -cne 'recovery-setup'){$arguments=@('--maintenance=restore-to-new')}
+                [IO.File]::WriteAllText((Join-Path $appRoot 'package.json'),' {"name":"auto-settings-recovery-verification","version":"0.0.0","main":"verification/settings-recovery-probe.cjs"}')
+            }
+            if((Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant() -cne $manifest.exeSha256){throw 'RUNTIME_CHANGED'}
+            $environment=@{FONESI_PERSISTENCE_RUN_ROOT=$owner.Path;FONESI_PERSISTENCE_CONTROL_NAME=$controlName;FONESI_BOOTSTRAP_ROOT=$profile;FONESI_BOOTSTRAP_MODE=$mode;FONESI_PERSISTENCE_READY_FILE=(Join-Path $data '.ready-launch.json');FONESI_LOG_ROOT=(Join-Path $owner.Path ('logs-'+$mode+'-settings-'+$stage));FONESI_LOG_PARENT_TOKEN=$owner.Token}
+            $failure='NATIVE_STAGE_FAILED';$allClean=$false
+            $native=Invoke-OwnedChild $exe $arguments 120000 $environment
+            $allClean=Retired $native
+            Write-Private (Join-Path $owner.Path ('settings-recovery-capture-'+$mode+'-'+$stage+'.json')) ([ordered]@{process=(Process-Evidence $native);stdout=$native.Stdout;stderr=$native.Stderr})
+            if(-not $allClean){throw 'NATIVE_UNCONFIRMED'}
+            $failure='STAGE_VALIDATION_FAILED';$allClean=$false
+            $validated=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_settings.py'),'recovery',$owner.Path,$mode,$stage)) 120000 @{}
+            $allClean=Retired $validated;Require-Success $validated 'SETTINGS_RECOVERY_VALIDATION_PASS'
+            $report.recovery[$mode][$stage]=Read-Public ('settings-recovery-public-'+$mode+'-'+$stage+'.json')
+            Remove-Part $profileName (8L*1024*1024)
+            if($stage -cne 'recovery-setup'){Remove-Part ('logs-'+$mode+'-settings-'+$stage) (8L*1024*1024)}
+        }
         $failure='SCREENSHOT_FAILED';$allClean=$false
         $pictures=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_settings.py'),'screenshots',$owner.Path,$mode)) 120000 @{}
         $allClean=Retired $pictures;Require-Success $pictures 'SETTINGS_SCREENSHOTS_VERIFIED'
@@ -185,12 +225,14 @@ try {
     foreach($mode in @('source','package')){
         Remove-Part ('data-'+$mode) (128L*1024*1024)
         Remove-Part ('backup-parent-'+$mode) (128L*1024*1024)
+        Remove-Part ('settings-recovery-parent-'+$mode+'-current') (128L*1024*1024)
+        Remove-Part ('settings-recovery-parent-'+$mode+'-previous') (128L*1024*1024)
     }
     Remove-Part 'package' (512L*1024*1024)
     # Remaining exact private control/capture files are never artifact upload inputs.
     Assert-OwnedRun $owner
     $left=Get-BoundedOwnedEntries $owner.Path (1024L*1024)
-    foreach($entry in $left.Entries){if($entry.PSIsContainer -or $entry.Name -cnotmatch '^(\.owner|persistence-(state|control|capture|public|witness|source|package|runtime)-[a-z_-]+\.json|settings-(control|capture|public|screenshots)-[a-z_-]+\.json|settings-(expected|vault-before)-(source|package)\.json|settings-(source|package)-(ui|reopen|before-crash|before-reopen|after-crash|after-reopen)\.json|settings-(source|package)-(light|dark)\.png)$'){throw 'ROOT_REMAINDER'}}
+    foreach($entry in $left.Entries){if($entry.PSIsContainer -or $entry.Name -cnotmatch '^(\.owner|persistence-(state|control|capture|public|witness|source|package|runtime)-[a-z_-]+\.json|settings-(control|capture|public|screenshots)-[a-z_-]+\.json|settings-(expected|vault-before)-(source|package)\.json|settings-recovery-(control|capture|public)-(source|package)-(recovery-setup|current-cancel|current-confirm|previous-cancel|previous-confirm)\.json|settings-recovery-(source|package)-(recovery-setup|current-cancel|current-confirm|previous-cancel|previous-confirm)\.json|settings-recovery-(owner|backup)-(source|package)\.json|settings-recovery-before-(source|package)-(current|previous)\.json|settings-(source|package)-(ui|reopen|before-crash|before-reopen|after-crash|after-reopen)\.json|settings-(source|package)-(light|dark)\.png)$'){throw 'ROOT_REMAINDER'}}
     foreach($entry in $left.Entries){if($entry.Name -cne '.owner'){[IO.File]::Delete($entry.FullName)}}
     Remove-VerifiedOwnedRun $owner $allClean
     $report.directoryCleanup=$true;$report.failure=$null
