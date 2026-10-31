@@ -3,7 +3,7 @@
 This directory contains a strict parser, synthetic tests and the reviewed runtime
 probe source. Historical CI6 reported 19/20; CI7 passed corrected zero-bridge
 source/package 20/20. The current ADR-0006 public bridge changes the required set
-to 25 cases and remains **NOT_RUN** on Windows. Earlier NOT_RUN sections below
+to 25 cases and passed both modes on Windows run 41168294925. Earlier NOT_RUN sections below
 describe their historical pre-execution checkpoints.
 Run without writing bytecode:
 
@@ -199,5 +199,5 @@ hosted bootstrap evidence only, not full P1-02, V9, service or target-host accep
 The ADR-0006 application now owns one manifest-bound sandboxed preload. Current
 runtime schema requires 25 exact cases, including public health/settings and actual
 handler denials; historical CI7's zero-preload/zero-bridge case set is not accepted
-as this revision. Source/build50 and Python43 tests pass; adapted runtime NOT_RUN.
+as this revision. Source/build 50 and Python 43 tests pass; adapted source/package runtime 25/25 PASS on run 41168294925.
 [Source/evidence and instrumentation limits](../../docs/evidence/P1-02-public-bridge-source-2026-10-31.md).

@@ -165,7 +165,7 @@ prepared; actual root cause remains a hypothesis until hosted re-test. Existing
 collector/offline run 41106276557 SUCCESS is independent, not desktop acceptance.
 
 G0-12 hosted attempt 3 (41107363359) confirms two Node candidates and successful
-installer execution after scalar resolution. Actual source Electron45.1.0 launched
+installer execution after scalar resolution. Actual source Electron 45.1.0 launched
 and passed the first3 runtime checks; the source test then FAILED, with18 checks
 unreturned and package mode not reached. Owned installer/runtime cleanup verified.
 A partial-result/fixed-stage marker correction is prepared to isolate the renderer
@@ -234,7 +234,7 @@ Desktop G0-12 source/package20/21 navigationFAIL remains unchanged; no rerun.
 Bounded hosted-only engine experiment authorized in playbook19:43 before code;
 [proposal/approval](evidence/P0-09-sqlite-source-lab-PROPOSAL-2026-10-30.md) and
 [evidence](evidence/P0-09-sqlite-source-lab-2026-10-30.md). Existing pinned
-Node24.22.1/Electron45.1.0 built-in SQLite candidate only; no new binding, renderer
+Node 24.22.1/Electron 45.1.0 built-in SQLite candidate only; no new binding, renderer
 or production schema. Independent review CLEAR,13/13 local schema regressions,
 node syntax/YAML/diff checks PASS; actual Windows/runtime/owned cleanup NOT_RUN.
 Full P0-09 dependencies remain unresolved. G0-12 navigation and ADR-0005 full
@@ -243,7 +243,7 @@ containment proof remain FAIL/BLOCKED; Phase acceptance stays0/10.
 ### P0-09 hosted engine evidence — 2026-10-30 19:58 UTC
 
 Exactb942eae run41119112530 SUCCESS: PowerShell parse,13/13 schema regressions and
-real Node24.22.1/Electron45.1.0 main probes. SQLite3.53.4 available in both;13/13
+real Node 24.22.1/Electron 45.1.0 main probes. SQLite3.53.4 available in both;13/13
 runtime cases each PASS,43 statements each; installer/runtime Job and owned-directory
 cleanup true. Downloaded sanitized artifact revalidated; details/sample hashes in
 [P0-09 evidence](evidence/P0-09-sqlite-source-lab-2026-10-30.md). Collector/offline
@@ -264,7 +264,7 @@ portability/productionbackup NOT_TESTED; old host/device/navigation/Phase gates 
 
 Exactba32bf7 run41131016175 SUCCESS: real create8/8, same-profile restart8/8,
 tamper10/10 checks, all orderly-quit/runtime Job/final-directory cleanup true.
-Electron45.1.0/Node24.22.1;9 observed rotation hints false, no rotation exercise.
+Electron 45.1.0/Node 24.22.1;9 observed rotation hints false, no rotation exercise.
 Hosted12/12 Python+5/5 Node tests and PS parse PASS; sanitized artifact revalidated,
 [details/sample hashes](evidence/G0-13-secret-restart-lab-2026-10-30.md). Separate
 collector/offline41131016077 SUCCESS. Stage4/OSrevocation/portability/productionbackup
@@ -416,8 +416,18 @@ full task/Phase acceptance. Branch phase-01; root publishes, no main merge.
 
 Approved ADR-0006 bounded bridge implemented with main-owned session, strict public
 health/settings reads, sandboxed preload and minimal React diagnostic. Source/build
-50/50 and Python43/43 PASS; adapted source/package Windows25-case contract NOT_RUN.
+50/50 and Python 43/43 PASS; adapted source/package Windows25-case contract NOT_RUN.
 [Evidence](evidence/P1-02-public-bridge-source-2026-10-31.md) records dependency67
 provenance, limits and historical-scope distinction. Independent integration/envelope
 review CLEAR at 04:21 UTC, 50/50 and 43/43 independently rerun; no full task acceptance
 or original gate waiver. Root owns publication.
+
+### P1-02 public bridge Windows result — 2026-10-31 04:24 UTC
+
+[Exact-head evidence](evidence/P1-02-public-bridge-source-2026-10-31.md) now records
+SUCCESS: source/package 25/25 each, source/build 50/50, Python 43/43, PowerShell 25/25,
+typed crash/tamper negatives and all cleanup PASS. Independent fixed-report review
+CLEAR; reviewed JSON retained. The approved bridge now has actual Windows evidence,
+not merely a source checkpoint. Full P1-02/task-prerequisite acceptance disposition
+remains with coordinator; no full Phase acceptance or main merge. Old G0-12 FAIL,
+Phase 0 exits and target-host/device/policy requirements are preserved.

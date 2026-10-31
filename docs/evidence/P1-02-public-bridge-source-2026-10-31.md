@@ -70,7 +70,7 @@ not evidence of exposing generic invoke to the renderer or a native transport fl
 No new preload is added by the probe; the application itself owns the approved preload.
 
 Independent integration/envelope/docs review CLEAR at 04:21 UTC: fresh source/build
-50/50, Python43/43, probe syntax, staged/unstaged diff and 81 local links PASS.
+50/50, Python 43/43, probe syntax, staged/unstaged diff and 81 local links PASS.
 All 67 dependency entries match inherited lock/review; frozen helper/baseline hashes
 unchanged; owned test-output empty. No Windows execution by reviewer. No task/phase acceptance, target-host
 support or later service authority follows from source tests. Root publishes/runs only
@@ -83,3 +83,48 @@ owned initial-empty iframe metadata (no URL/preload/CSP change) is required for
 subframe denial; no exposed child means failure, not skipped coverage. The probe
 waits at most three seconds for React controls to mount before the one explicit
 read; this is not an automatic application retry or renderer-driven arming.
+
+## Exact-head Windows result — 2026-10-31 04:23 UTC
+
+First public-bridge hosted run **SUCCESS** at remote
+`e1e1cdae7d95cd161db4515cb21fad50a4646567`, tree
+`d3e68dbc97fdb3b7d8b864d9e8f14a9f8e7b32df`:
+[run 41168294925](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41168294925),
+job 124440521096. Source/build **50/50**, Python **43/43**, PowerShell **25/25**;
+source and instrumented package each **25/25** actual runtime cases PASS.
+
+Artifact 13030465465 ZIP: 1,024 bytes, SHA256
+`4720f2fc4d8b3a070bc1177ec85f97d3b1238f2d698c00397d8c20d44f734655`.
+The [retained fixed-field JSON](P1-02-public-bridge-sample-2026-10-31.json) is
+Git blob bytes are byte-identical to the downloaded LF-only original: 4,380 bytes, SHA256
+`b614ecb2b3b37cffb6844bc59bdece084f342ed88f2b82476d49455e5a2f328a`.
+Verified ZIP digest/size, single bounded entry and duplicate-aware JSON before retention.
+This hash identifies artifact/Git blob bytes, not a Windows working copy potentially
+converted by local core.autocrlf settings; inspect the Git blob for byte verification.
+
+- Both modes: actual Electron 45.1.0 / Node 24.22.1 / Chromium 156.0.8078.49;
+  approved preload, fixed health/settings and React read, strict request/sender/
+  genuine child-frame denials, isolation/resource controls and orderly quit PASS.
+- Source/package exit 0; owned bytes 1,231,396 /1,231,400. Every Job/capture cleanup
+  true, no truncation. Installer official marker true.
+- Crash expected NONZERO_EXIT 1 with armed/observed/bootstrapFailed true and
+  unexpectedQuit false; owned bytes 1,231,392.
+- Changed asset expected NONZERO_EXIT 1 with changed/bootstrapFailed true and
+  unexpectedReady false; owned bytes 557,458.
+- Build verification, binary equality, runtime copy and directory cleanup true;
+  package bytes 374,866,334; failure null and aggregate passed true.
+- Original-window document.open/reload URL observations remain unchanged; reload
+  session denial passed. About:blank changed URL with no observed navigation denial,
+  but actual handler sender rejection passed. Old G0-12 remains FAIL_RETAINED.
+
+Independent artifact content review CLEAR at 04:24 UTC: duplicate-aware original
+parse, strict 25-case schema reconstruction/public equality and privacy checks PASS.
+Reviewer did not redownload ZIP or relaunch runtime. Reviewed report contains no
+raw logs, private paths, credentials or caller request IDs. Historical CI7 and
+G0-12 artifacts/results remain distinct, not overwritten or relabeled.
+
+This establishes the approved public-bridge Windows runner behavior. It is not full
+Phase 1 acceptance, target-host/Android support, persistent settings, V9 parity,
+service authority or a main merge. Full-task disposition belongs to the coordinator
+against canonical P1-02 and its explicitly reviewed prerequisites; no automatic
+accepted-task numerator change is made in this evidence record.

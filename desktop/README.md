@@ -115,5 +115,5 @@ ADR-0006 approval at 04:06 UTC supersedes the earlier zero-bridge scope only for
 health/settings public reads. The application now includes its own sandboxed preload
 and minimal React diagnostic; earlier zero-preload/source counts are historical.
 [Current source evidence](../docs/evidence/P1-02-public-bridge-source-2026-10-31.md):
-50/50 source/build tests, 43/43 Python; new 25-case Windows contract NOT_RUN.
+50/50 source/build tests, 43/43 Python; new 25-case Windows contract PASS in both source/package on run 41168294925.
 No device/account/secret/path/shell/mutation service or full V9 acceptance is implied.
