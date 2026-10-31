@@ -46,3 +46,23 @@ original activation/acceptance gates remain open. A hosted PASS would establish
 only this authority-free, instrumented runner boundary—not production package,
 manual device control, trusted human intent, confidentiality of future services,
 C-03 unattended workflows, V9 parity or target-host compatibility.
+
+## First hosted attempt and checkout correction — 03:09 UTC
+
+Exact remote head `c66e7be06ef3cb35dd4359b138ad7f5a26e0b7f6`, run
+[41162981945](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41162981945),
+job 124424387792 stopped at `METADATA_FAILED` before restore/installer/runtime.
+Actual setup reported Node 24.22.1 and npm 11.19.1; later tests/probes were skipped.
+
+A local real Git checkout with `core.autocrlf=true` reproduced CRLF conversion of
+both byte-hashed reference JSON files and the fixed HTML asset. The converted lock
+failed the existing exact SHA256 check. Narrow LF attributes preserve these bytes
+instead of normalizing or relaxing verification; old lab blobs are unchanged.
+An actual checkout-index regression forces CRLF configuration and now verifies all
+three original hashes. Source **32/32 PASS**, Python **34/34 PASS** including this
+regression. This fixes a demonstrated prerequisite blocker; hosted confirmation
+is still pending, not a claim that later Windows stages passed.
+
+Independent checkout-fix review CLEAR at 03:12 UTC: 34/34 Python tests, workflow
+YAML and diff checks PASS; all three protected inputs remain byte-identical to
+original Git blobs and recorded hashes. No runtime performed during this review.

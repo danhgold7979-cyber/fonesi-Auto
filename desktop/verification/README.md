@@ -116,7 +116,7 @@ negative modifies only a verified owned build copy. Neither is runtime evidence 
 ## Runnable checkpoint pending hosted execution — 2026-10-31
 
 Current local source/build check: **32/32 PASS**, including the real bootstrap
-failure-latch regression. Current Python schema/writer suite: **33/33 PASS**.
+failure-latch regression. Current Python schema/writer/checkout suite: **34/34 PASS**.
 Node syntax checks and scoped workflow YAML parsing PASS. Nine PowerShell marker
 regressions, official installer, source/package launches, renderer crash and
 changed-asset negatives are **NOT_RUN** here. There is no local PowerShell 5.1 or
@@ -140,3 +140,9 @@ Final independent CLI/workflow/documentation review CLEAR at 03:06 UTC on
 2026-10-31: 33/33 Python tests, YAML and staged/unstaged diff checks PASS. The
 report writer refuses an unverified/rejected parent and revalidates before writing.
 No PowerShell/Electron execution occurred; hosted outcomes remain NOT_RUN.
+
+Windows checkout correction: narrow LF attributes preserve the exact reference
+JSON and asset hashes under core.autocrlf=true/core.eol=crlf. The new actual Git
+checkout regression fails on the old policy and passes on the corrected policy.
+No hash normalization or expected-hash replacement is used. First hosted attempt
+stopped at metadata verification; later runtime stages remain unverified.

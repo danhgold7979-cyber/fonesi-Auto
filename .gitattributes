@@ -3,3 +3,7 @@
 *.ps1 text eol=lf
 *.psm1 text eol=lf
 *.cs text eol=lf
+# Reviewed desktop provenance and fixed asset bytes must survive Windows checkout.
+desktop/** text=auto eol=lf
+tools/phase-00/desktop-stack-lab/package-lock.json text eol=lf
+tools/phase-00/desktop-stack-lab/dependency-review.json text eol=lf
