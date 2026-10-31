@@ -33,3 +33,14 @@ test('failure ordinal output is capped and cannot leak nested diagnostic text', 
     ),
   );
 });
+
+test('restore context forwards only exact known stage and code literals', () => {
+  const lines = testDiagnostics(
+    '# TEST_CONTEXT_RESTORE_PREPARE\n# TEST_CONTEXT_CODE_PERSISTENCE_FILES_REJECTED\n# TEST_CONTEXT_CODE_PRIVATE_PATH\n# TEST_CONTEXT_RESTORE_PREPARE private\n',
+    'EXIT_NONZERO',
+  );
+  assert.ok(lines.includes('TEST_CONTEXT_RESTORE_PREPARE'));
+  assert.ok(lines.includes('TEST_CONTEXT_CODE_PERSISTENCE_FILES_REJECTED'));
+  assert.equal(lines.filter((line) => line.startsWith('TEST_CONTEXT_')).length, 2);
+  assert.ok(!lines.join().includes('PRIVATE'));
+});

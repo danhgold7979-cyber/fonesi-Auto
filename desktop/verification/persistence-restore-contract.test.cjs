@@ -123,9 +123,39 @@ function fixture() {
 }
 test('owned control creates fresh retained restored lease/checkpoint without touching original material', async () => {
   const f = fixture();
+  let stage = 'WITNESS';
+  let failure = null;
+  const report = (error) => {
+    const allowed = [
+      'RESTORE_OWNER',
+      'RESTORE_PROVENANCE',
+      'RESTORE_SOURCE',
+      'RESTORE_CHECKPOINT',
+      'BUILD_UNVERIFIED',
+      'PERSISTENCE_FILES_REJECTED',
+      'KEY_PROFILE_ID_REJECTED',
+      'KEY_PROFILE_MATERIAL_REJECTED',
+      'KEY_PROFILE_CHECKPOINT_FAILED',
+      'ENOENT',
+      'EACCES',
+      'EPERM',
+      'EBUSY',
+      'ENAMETOOLONG',
+      'ERR_ASSERTION',
+    ];
+    const code = allowed.includes(error?.code)
+      ? error.code
+      : allowed.includes(error?.message)
+        ? error.message
+        : 'UNKNOWN';
+    console.log(`TEST_CONTEXT_RESTORE_${stage}`);
+    console.log(`TEST_CONTEXT_CODE_${code}`);
+  };
   try {
     const before = sourceWitness(f.source);
+    stage = 'PREPARE';
     const c = await prepare(f.root, 'source');
+    stage = 'ASSERTIONS';
     assert.equal(c.restoreRoot, f.restored);
     assert.equal(sourceWitness(f.source), before);
     assert.equal(
@@ -133,10 +163,21 @@ test('owned control creates fresh retained restored lease/checkpoint without tou
       fs.readFileSync(path.join(f.restored, 'key-profile', 'Local State'), 'utf8'),
     );
     assert.equal(fs.existsSync(path.join(f.restored, '.writer-lock', 'owner.json')), true);
+    stage = 'REPEAT_DENIAL';
     await assert.rejects(prepare(f.root, 'source'));
+  } catch (error) {
+    report(error);
+    failure = error;
   } finally {
-    f.cleanup();
+    stage = 'CLEANUP';
+    try {
+      f.cleanup();
+    } catch (error) {
+      report(error);
+      failure ??= error;
+    }
   }
+  if (failure) throw failure;
 });
 test('missing/corrupt copied material fail preflight without original key mutations or native startup', async () => {
   for (const missing of [true, false]) {

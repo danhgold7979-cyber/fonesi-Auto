@@ -152,7 +152,11 @@ test('production launch CJS is an active linted corpus, not an ignored directory
     const result = invoke(binary, 'check', [file]);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /lint\/correctness\/noUnusedVariables/);
-    assert.ok(inventory().includes('desktop/launch/persistence-initialize.cjs'));
+    assert.ok(
+      inventory()
+        .map((file) => file.replaceAll('\\', '/'))
+        .includes('desktop/launch/persistence-initialize.cjs'),
+    );
   } finally {
     unlinkSync(file);
     rmdirSync(directory);

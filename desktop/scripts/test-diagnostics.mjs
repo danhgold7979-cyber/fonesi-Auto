@@ -13,6 +13,31 @@ export function testDiagnostics(stdout, outcome) {
       lines.push(`TEST_COUNT_${field.toUpperCase()}_${Number(matches[0][1])}`);
     else lines.push(`TEST_COUNT_${field.toUpperCase()}_UNAVAILABLE`);
   }
+  const contexts = [
+    ...['WITNESS', 'PREPARE', 'ASSERTIONS', 'REPEAT_DENIAL', 'CLEANUP'].map(
+      (value) => `TEST_CONTEXT_RESTORE_${value}`,
+    ),
+    ...[
+      'RESTORE_OWNER',
+      'RESTORE_PROVENANCE',
+      'RESTORE_SOURCE',
+      'RESTORE_CHECKPOINT',
+      'BUILD_UNVERIFIED',
+      'PERSISTENCE_FILES_REJECTED',
+      'KEY_PROFILE_ID_REJECTED',
+      'KEY_PROFILE_MATERIAL_REJECTED',
+      'KEY_PROFILE_CHECKPOINT_FAILED',
+      'ENOENT',
+      'EACCES',
+      'EPERM',
+      'EBUSY',
+      'ENAMETOOLONG',
+      'ERR_ASSERTION',
+      'UNKNOWN',
+    ].map((value) => `TEST_CONTEXT_CODE_${value}`),
+  ];
+  const observed = new Set(stdout.split('\n'));
+  for (const context of contexts) if (observed.has(`# ${context}`)) lines.push(context);
   const ordinals = new Set();
   for (const match of stdout.matchAll(/^not ok ([1-9]\d{0,3})(?: - |$)/gm)) {
     const ordinal = Number(match[1]);

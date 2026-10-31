@@ -325,3 +325,26 @@ bounds regressions pass and the full local pipeline passes **250/250**. The next
 exact-head Windows run is diagnostic, not a claimed fix for the unknown cause.
 Independent diagnostic review CLEAR at 10:05 UTC; reviewer reran the three focused
 regressions, not a second full aggregate. No actual-cause fix or acceptance follows.
+
+### Diagnostic result and portable fixture correction — 10:11 UTC
+
+Diagnostic head `174c1a9e9572e0d229edfce6ab2f471349acb2d3` ran in
+[41191419322](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41191419322),
+job 124508812751: **250 tests, 248 pass, 2 fail**, no cancellation/skip/todo.
+The child exited nonzero, not by timeout/capture limit. Exact-run ordinals mapped to:
+
+- 220: launch CJS quality-corpus fixture. Its inventory comparison used `/` while
+  Windows `path.relative` returns `\\`; the assertion now normalizes separators,
+  matching the existing inventory test convention. Actual lint denial/category and
+  required file inclusion remain mandatory.
+- 241: positive owned restored-control fixture. Its exact failing internal step is
+  still unknown. The fixture now reports only an allowlisted stage/error category
+  on failure; original assertions and failure propagation remain unchanged. A TEMP
+  canonicalization hypothesis is not treated as fact or patched speculatively.
+
+The follow-up local pipeline passes **251/251**, including four safe-diagnostic
+regressions. No service, ownership, native process, schema or cleanup predicate was
+relaxed. Native stages remain unexecuted on both failed Windows attempts.
+Independent narrow source/diagnostic review CLEAR at 10:12 UTC; four focused tests
+passed independently. Cleanup diagnostics preserve the original failure and do not
+replace it with a later cleanup error. The full 251-test run is author evidence.
