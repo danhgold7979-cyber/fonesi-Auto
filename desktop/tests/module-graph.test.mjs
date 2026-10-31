@@ -26,8 +26,8 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual thirty-eight modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 38, runtimeInputs: 38 });
+test('actual forty-four modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 44, runtimeInputs: 44 });
 });
 test('renderer cannot import native, Electron, or main-owned profile services', async () => {
   for (const statement of [
@@ -118,7 +118,10 @@ test('comments strings regex templates and actual JSX do not fabricate imports',
     ),
     [],
   );
-  assert.equal((await sourceImports(actual()['renderer.tsx'], 'tsx')).length, 2);
+  assert.deepEqual(
+    (await sourceImports(actual()['renderer.tsx'], 'tsx')).map((edge) => edge.specifier),
+    ['react-dom/client', 'react', './settings-contract.js'],
+  );
 });
 test('allowed-edge value and type cycles are independently rejected', async () => {
   for (const kind of ['value', 'type']) {
@@ -344,5 +347,16 @@ test('parent-relative edges resolve only exact registered in-root modules', () =
   assert.throws(
     () => localTarget('main/adapter.ts', '../main/../contract.ts', modules),
     /LOCAL_SPECIFIER/,
+  );
+});
+
+test('actual main fixed required bundle inventory equals reviewed manifest outputs', async () => {
+  const { outputs } = await import('../scripts/build-manifest.mjs');
+  const main = actual()['main.ts'];
+  const lists = [...main.matchAll(/const required = \[([\s\S]*?)\];/g)];
+  assert.equal(lists.length, 1);
+  assert.deepEqual(
+    [...lists[0][1].matchAll(/'([^']+)'/g)].map((m) => m[1]),
+    outputs,
   );
 });

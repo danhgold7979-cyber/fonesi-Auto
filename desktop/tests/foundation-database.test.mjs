@@ -56,8 +56,8 @@ test('actual SQLite migration core uses real snapshot witnesses, WAL/FK and reop
         snap.close();
       }
     }, 1000);
-    assert.equal(copies, 2);
-    assert.equal(db.version, 2);
+    assert.equal(copies, 3);
+    assert.equal(db.version, 3);
     const fingerprint = db.fingerprint();
     assert.throws(
       () =>
@@ -243,7 +243,7 @@ test('online snapshot remains coherent while a real second connection commits', 
     await pending;
     snapshot = new FoundationDatabase(target, f.id, true);
     snapshot.validate();
-    assert.equal(snapshot.version, 2);
+    assert.equal(snapshot.version, 3);
     const row = statement(
       snapshot.connection,
       'SELECT created_utc,last_auto_admitted_utc FROM foundation_store',

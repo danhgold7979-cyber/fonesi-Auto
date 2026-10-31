@@ -1,3 +1,4 @@
+import { createInvocationBudget, type InvocationBudget } from './invocation-budget.ts';
 import { localDiagnosticError, validateDiagnosticResponse } from './ipc-diagnostic-contract.ts';
 import type { Method } from './ipc-contract.ts';
 import { errorResponse, RESPONSE_BYTES } from './ipc-contract.ts';
@@ -13,7 +14,7 @@ const defaultTimer: Timer = {
 
 // Native invokes cannot be canceled. Timed-out calls keep their native occupancy
 // until settlement; disposal suppresses delivery, not hypothetical transport work.
-function createClient(invoke: Invoke, timer: Timer, version: 1 | 2) {
+function createClient(invoke: Invoke, timer: Timer, version: 1 | 2, budget: InvocationBudget) {
   const failure = version === 1 ? errorResponse : localDiagnosticError;
   let disposed = false;
   let nextId = 0;
@@ -22,6 +23,8 @@ function createClient(invoke: Invoke, timer: Timer, version: 1 | 2) {
     if (disposed) return Promise.resolve(failure('SESSION_UNAVAILABLE'));
     if (pending.size >= 8) return Promise.resolve(failure('BUSY'));
     if (!Number.isSafeInteger(nextId + 1)) return Promise.resolve(failure('INTERNAL_FAILURE'));
+    const lease = budget.acquire();
+    if (!lease) return Promise.resolve(failure('BUSY'));
     const requestId = `r${++nextId}`;
     return new Promise<string>((resolve) => {
       let delivered = false;
@@ -139,6 +142,7 @@ function createClient(invoke: Invoke, timer: Timer, version: 1 | 2) {
         .finally(() => {
           timer.clear(timerHandle);
           pending.delete(entry);
+          lease.release();
         });
     });
   }
@@ -153,9 +157,17 @@ function createClient(invoke: Invoke, timer: Timer, version: 1 | 2) {
   };
 }
 
-export function createPublicClient(invoke: Invoke, timer: Timer = defaultTimer) {
-  return createClient(invoke, timer, 1);
+export function createPublicClient(
+  invoke: Invoke,
+  timer: Timer = defaultTimer,
+  budget: InvocationBudget = createInvocationBudget(),
+) {
+  return createClient(invoke, timer, 1, budget);
 }
-export function createDiagnosticClient(invoke: Invoke, timer: Timer = defaultTimer) {
-  return createClient(invoke, timer, 2);
+export function createDiagnosticClient(
+  invoke: Invoke,
+  timer: Timer = defaultTimer,
+  budget: InvocationBudget = createInvocationBudget(),
+) {
+  return createClient(invoke, timer, 2, budget);
 }

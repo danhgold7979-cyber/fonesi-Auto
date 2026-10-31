@@ -19,6 +19,7 @@ import {
 import type { PersistenceLocation } from './persistence-files.ts';
 import { validBackupLocalState } from './backup-key-profile.ts';
 import { diagnosticId } from '../log-contract.ts';
+import { DATABASE_VERSION } from '../persistence-contract.ts';
 import { parsePersistenceProof, proofMatchesWitness } from '../persistence-proof.ts';
 import type { PersistenceProof } from '../persistence-proof.ts';
 export type KeyDurabilityProof = PersistenceProof;
@@ -220,7 +221,7 @@ export class FoundationPersistence {
           throw new Error('RESTORE_QUARANTINE_REQUIRED');
         }
       }
-      if (exists && database.version === 2) {
+      if (exists && database.version === DATABASE_VERSION) {
         try {
           await this.catalog.reconcile(database);
           this.database = database;
@@ -313,6 +314,28 @@ export class FoundationPersistence {
     return this.lane(async () => {
       if (!this.database || !diagnosticId(id)) throw new Error('UPGRADE_ADMISSION_REJECTED');
       await this.catalog.acceptUpgrade(this.database, this.backups, id, now);
+    });
+  }
+  settingsAdapter(): Pick<
+    FoundationDatabase,
+    'readSettings' | 'readPreviousSettings' | 'commitSettings'
+  > {
+    const current = () => {
+      if (
+        !this.database ||
+        this.stopping ||
+        this.restored ||
+        this.database.version !== DATABASE_VERSION
+      )
+        throw new Error('SETTINGS_RECOVERY_REQUIRED');
+      return this.database;
+    };
+    current().readSettings();
+    return Object.freeze({
+      readSettings: () => current().readSettings(),
+      readPreviousSettings: () => current().readPreviousSettings(),
+      commitSettings: (expectedRevision, next, admit) =>
+        current().commitSettings(expectedRevision, next, admit),
     });
   }
   async list(): Promise<readonly { backupId: string; reason: string; protected: boolean }[]> {

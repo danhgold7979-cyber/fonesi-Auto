@@ -5,6 +5,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve, win32 } from 'node:path';
 import { MIGRATIONS, TABLES, DATABASE_VERSION, epoch, checksum } from '../persistence-contract.ts';
 import { diagnosticId } from '../log-contract.ts';
+import { snapshotSettings, type SettingsSnapshot } from '../settings-contract.ts';
 // Internal main-only adapter. Caller holds the persistent data-root lease. No SQL
 // or path is accepted from renderer IPC; the integrated owner verifies the root.
 // Physical SQLite spelling only: logical ownership/identity paths remain unchanged.
@@ -51,7 +52,56 @@ function scalar(value: unknown): readonly string[] {
   if (typeof value === 'bigint') return ['integer', value.toString()];
   throw new Error('SQLITE_VALUE_REJECTED');
 }
-function validateRows(name: string, data: Record<string, unknown>[]): void {
+function settingsRow(row: Record<string, unknown>): SettingsSnapshot {
+  const numeric = (key: string) => (typeof row[key] === 'bigint' ? Number(row[key]) : row[key]);
+  const value = snapshotSettings({
+    revision: numeric('revision'),
+    theme: row.theme,
+    dockWidth: numeric('dock_width'),
+    tileWidth: numeric('tile_width'),
+    normalBounds:
+      row.window_x === null &&
+      row.window_y === null &&
+      row.window_width === null &&
+      row.window_height === null
+        ? null
+        : {
+            x: numeric('window_x'),
+            y: numeric('window_y'),
+            width: numeric('window_width'),
+            height: numeric('window_height'),
+          },
+    maximized: row.maximized === 1n ? true : row.maximized === 0n ? false : null,
+  });
+  if (!value) throw new Error('SETTINGS_RECOVERY_REQUIRED');
+  return value;
+}
+function visibleTable(name: string, version: number): boolean {
+  if (version < 1) return false;
+  if (name === 'app_settings_revision') return version >= 3;
+  return version >= 2 || ['foundation_store', 'schema_migration'].includes(name);
+}
+function validateRows(name: string, data: Record<string, unknown>[], version: number): void {
+  if (name === 'app_settings_revision') {
+    if (
+      data.length < 1 ||
+      data.length > 2 ||
+      data.filter((r) => r.slot === 'CURRENT').length !== 1 ||
+      data.some((r) => !['CURRENT', 'PREVIOUS'].includes(String(r.slot)))
+    )
+      throw new Error('SETTINGS_RECOVERY_REQUIRED');
+    const current = data.find((r) => r.slot === 'CURRENT');
+    if (!current) throw new Error('SETTINGS_RECOVERY_REQUIRED');
+    const present = settingsRow(current);
+    if (present.revision > 0 !== data.some((r) => r.slot === 'PREVIOUS'))
+      throw new Error('SETTINGS_RECOVERY_REQUIRED');
+    for (const row of data) {
+      const checked = settingsRow(row);
+      if (row.slot === 'PREVIOUS' && checked.revision >= present.revision)
+        throw new Error('SETTINGS_RECOVERY_REQUIRED');
+    }
+    return;
+  }
   for (const row of data)
     for (const [field, value] of Object.entries(row)) {
       if (value === null) {
@@ -69,7 +119,8 @@ function validateRows(name: string, data: Record<string, unknown>[]): void {
       ) {
         if (typeof value !== 'bigint' || value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER))
           throw new Error('DATABASE_VALUE_REJECTED');
-        if (field === 'snapshot_schema' && value > 2n) throw new Error('DATABASE_VALUE_REJECTED');
+        if (field === 'snapshot_schema' && value > BigInt(version))
+          throw new Error('DATABASE_VALUE_REJECTED');
         continue;
       }
       if (['restore_quarantine', 'protected'].includes(field)) {
@@ -122,6 +173,7 @@ export class FoundationDatabase {
   readonly connection: DatabaseSync;
   private closed = false;
   private migrating = false;
+  private settingsUncertain = false;
   readonly filename: string;
   readonly storeId: string;
   constructor(filename: string, storeId: string, readOnly = false) {
@@ -185,7 +237,7 @@ export class FoundationDatabase {
         sql
           .split(';')
           .map((value) => value.trim())
-          .filter(Boolean),
+          .filter((value) => value.startsWith('CREATE TABLE ')),
       )
       .map((sql) => {
         const name = /^CREATE TABLE ([a-z_]+) /.exec(sql)?.[1];
@@ -201,12 +253,8 @@ export class FoundationDatabase {
     )
       throw new Error('DATABASE_INTEGRITY_FAILED');
     for (const name of Object.keys(TABLES)) {
-      if (
-        version === 0 ||
-        (version === 1 && !['foundation_store', 'schema_migration'].includes(name))
-      )
-        continue;
-      validateRows(name, rows(this.connection, `SELECT * FROM ${name}`));
+      if (!visibleTable(name, version)) continue;
+      validateRows(name, rows(this.connection, `SELECT * FROM ${name}`), version);
     }
     if (version > 0) {
       const identities = rows(this.connection, 'SELECT * FROM foundation_store');
@@ -234,11 +282,7 @@ export class FoundationDatabase {
     const hash = createHash('sha256');
     hash.update(`version:${this.version}\n`);
     for (const [name, key] of Object.entries(TABLES)) {
-      if (
-        this.version < 1 ||
-        (this.version === 1 && !['foundation_store', 'schema_migration'].includes(name))
-      )
-        continue;
+      if (!visibleTable(name, this.version)) continue;
       const schema = rows(this.connection, 'SELECT sql FROM sqlite_schema WHERE name=?', [name])[0]
         ?.sql;
       hash.update(JSON.stringify([name, schema]));
@@ -294,6 +338,106 @@ export class FoundationDatabase {
       }
     } finally {
       this.migrating = false;
+    }
+  }
+  readSettings(): SettingsSnapshot {
+    this.validate();
+    if (this.closed || this.version !== 3 || this.settingsUncertain)
+      throw new Error('SETTINGS_RECOVERY_REQUIRED');
+    const value = rows(
+      this.connection,
+      "SELECT * FROM app_settings_revision WHERE slot='CURRENT'",
+    )[0];
+    if (!value) throw new Error('SETTINGS_RECOVERY_REQUIRED');
+    return settingsRow(value);
+  }
+  readPreviousSettings(): SettingsSnapshot | null {
+    this.readSettings();
+    const value = rows(
+      this.connection,
+      "SELECT * FROM app_settings_revision WHERE slot='PREVIOUS'",
+    )[0];
+    return value ? settingsRow(value) : null;
+  }
+  commitSettings(
+    expectedRevision: number,
+    nextInput: SettingsSnapshot,
+    admit: () => void,
+  ):
+    | { ok: true; value: SettingsSnapshot }
+    | { ok: false; code: 'CONFLICT' | 'WRITE_FAILED' | 'OUTCOME_UNKNOWN' | 'RECOVERY_REQUIRED' } {
+    const next = snapshotSettings(nextInput);
+    if (
+      this.closed ||
+      this.migrating ||
+      this.settingsUncertain ||
+      !epoch(expectedRevision) ||
+      expectedRevision === Number.MAX_SAFE_INTEGER ||
+      !next ||
+      next.revision !== expectedRevision + 1 ||
+      typeof admit !== 'function'
+    )
+      return { ok: false, code: 'RECOVERY_REQUIRED' };
+    let transaction = false,
+      commitStarted = false,
+      admissionError: unknown,
+      admissionFailed = false;
+    try {
+      this.readSettings();
+      this.connection.exec('BEGIN IMMEDIATE');
+      transaction = true;
+      if (this.readSettings().revision !== expectedRevision) {
+        this.connection.exec('ROLLBACK');
+        transaction = false;
+        return { ok: false, code: 'CONFLICT' };
+      }
+      this.connection.exec(
+        "DELETE FROM app_settings_revision WHERE slot='PREVIOUS'; INSERT INTO app_settings_revision SELECT 'PREVIOUS',revision,theme,dock_width,tile_width,window_x,window_y,window_width,window_height,maximized FROM app_settings_revision WHERE slot='CURRENT';",
+      );
+      const b = next.normalBounds;
+      statement(
+        this.connection,
+        "UPDATE app_settings_revision SET revision=?,theme=?,dock_width=?,tile_width=?,window_x=?,window_y=?,window_width=?,window_height=?,maximized=? WHERE slot='CURRENT'",
+        (q) =>
+          q.run(
+            next.revision,
+            next.theme,
+            next.dockWidth,
+            next.tileWidth,
+            b?.x ?? null,
+            b?.y ?? null,
+            b?.width ?? null,
+            b?.height ?? null,
+            next.maximized ? 1 : 0,
+          ),
+      );
+      this.validate();
+      try {
+        admit();
+      } catch (error) {
+        admissionFailed = true;
+        admissionError = error;
+        throw error;
+      }
+      commitStarted = true;
+      this.connection.exec('COMMIT');
+      transaction = false;
+      return { ok: true, value: this.readSettings() };
+    } catch {
+      if (transaction) {
+        try {
+          this.connection.exec('ROLLBACK');
+          transaction = false;
+        } catch {
+          this.settingsUncertain = true;
+        }
+      }
+      if (commitStarted || this.settingsUncertain) {
+        this.settingsUncertain = true;
+        return { ok: false, code: 'OUTCOME_UNKNOWN' };
+      }
+      if (admissionFailed) throw admissionError;
+      return { ok: false, code: 'WRITE_FAILED' };
     }
   }
   async snapshot(destination: string): Promise<number> {

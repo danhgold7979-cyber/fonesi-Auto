@@ -1,5 +1,5 @@
 // Approved foundation-only schema. No domain, account, device or secret columns.
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 export const MIGRATIONS = [
   `CREATE TABLE foundation_store (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
@@ -40,6 +40,24 @@ CREATE TABLE backup_validation (
  plaintext_sha256 TEXT NOT NULL CHECK(length(plaintext_sha256)=64),
  validation_version INTEGER NOT NULL CHECK(validation_version=1)
 ) STRICT;`,
+  `CREATE TABLE app_settings_revision (
+  slot TEXT PRIMARY KEY CHECK(slot IN ('CURRENT','PREVIOUS')),
+  revision INTEGER NOT NULL CHECK(revision BETWEEN 0 AND 9007199254740991),
+  theme TEXT NOT NULL CHECK(theme IN ('LIGHT','DARK')),
+  dock_width INTEGER CHECK(dock_width IS NULL OR dock_width BETWEEN 300 AND 16384),
+  tile_width INTEGER NOT NULL CHECK(tile_width BETWEEN 70 AND 520),
+  window_x INTEGER,
+  window_y INTEGER,
+  window_width INTEGER,
+  window_height INTEGER,
+  maximized INTEGER NOT NULL CHECK(maximized IN (0,1)),
+  CHECK((window_x IS NULL AND window_y IS NULL AND window_width IS NULL AND window_height IS NULL)
+    OR (window_x IS NOT NULL AND window_y IS NOT NULL AND window_width IS NOT NULL AND window_height IS NOT NULL
+      AND window_x BETWEEN -2147483648 AND 2147483647
+      AND window_y BETWEEN -2147483648 AND 2147483647
+      AND window_width BETWEEN 1 AND 16384 AND window_height BETWEEN 1 AND 16384))
+) STRICT;
+INSERT INTO app_settings_revision VALUES('CURRENT',0,'LIGHT',NULL,150,NULL,NULL,NULL,NULL,0);`,
 ] as const;
 export const MAINTENANCE_ARGUMENTS = [
   '--maintenance=backup-now',
@@ -70,6 +88,7 @@ export const TABLES = {
   backup_location: 'location_id',
   backup_record: 'backup_id',
   backup_validation: 'backup_id',
+  app_settings_revision: 'slot',
 } as const;
 export const ORDINARY_BACKUP_LIMIT = 7;
 export const AUTOMATIC_INTERVAL_MS = 86_400_000;

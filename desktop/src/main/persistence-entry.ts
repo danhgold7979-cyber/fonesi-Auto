@@ -49,6 +49,37 @@ function plain(path: string): void {
   )
     throw new Error('PERSISTENCE_ENTRY_REJECTED');
 }
+// Final synchronous main-only lease check at settings COMMIT dispatch. No provider
+// or transport work is started here; the immutable entry was admitted before ready.
+export function assertPreparedPersistenceLease(entry: PersistenceEntry): void {
+  if (
+    entry.root !== resolve(entry.root) ||
+    ![entry.parentToken, entry.ownerToken, entry.storeId].every(diagnosticId)
+  )
+    throw new Error('PERSISTENCE_ENTRY_REJECTED');
+  plain(dirname(entry.root));
+  plain(entry.root);
+  if (
+    read(join(dirname(entry.root), '.owner')) !== entry.parentToken ||
+    read(join(entry.root, '.persistence-owner.json')) !==
+      JSON.stringify({ version: 1, storeId: entry.storeId, kind: 'FRESH', restoreReceiptId: null })
+  )
+    throw new Error('PERSISTENCE_ENTRY_REJECTED');
+  const lock = join(entry.root, '.writer-lock');
+  plain(lock);
+  const entries = opendirSync(lock);
+  try {
+    if (entries.readSync()?.name !== 'owner.json' || entries.readSync() !== null)
+      throw new Error('PERSISTENCE_ENTRY_REJECTED');
+  } finally {
+    entries.closeSync();
+  }
+  if (
+    read(join(lock, 'owner.json')) !==
+    JSON.stringify({ version: 1, storeId: entry.storeId, ownerToken: entry.ownerToken })
+  )
+    throw new Error('PERSISTENCE_ENTRY_REJECTED');
+}
 // Synchronous BEFORE native readiness. This accepts only a prepared production
 // READY control, never verification stage flags or a renderer-provided location.
 export function preparedPersistenceEntry(file: unknown): PersistenceEntry | undefined {

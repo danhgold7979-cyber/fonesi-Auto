@@ -79,7 +79,7 @@ test('orchestrator refuses migration without separate durability evidence, then 
     );
     await app.initialize(1002);
     await assert.rejects(app.initialize(1002), /DATABASE_ALREADY_OPEN/);
-    assert.equal((await app.list()).length, 2);
+    assert.equal((await app.list()).length, 3);
     assert.ok((await app.list()).every((row) => row.protected));
     const manual = await app.backup(1003);
     assert.equal(manual.header.reason, 'MANUAL');
@@ -104,7 +104,7 @@ test('orchestrator refuses migration without separate durability evidence, then 
     try {
       await reopened.initialize(1006);
       assert.equal(await reopened.backup(1007, true), null);
-      assert.equal((await reopened.list()).length, 4);
+      assert.equal((await reopened.list()).length, 5);
     } finally {
       reopened.close();
     }
@@ -168,7 +168,7 @@ test('existing version1 active database migrates behind authenticated content wi
       previous.close();
     }
     await app.initialize(1002);
-    assert.equal((await app.list()).length, 2);
+    assert.equal((await app.list()).length, 3);
     assert.ok((await app.list()).every((row) => row.protected));
   }));
 
@@ -203,7 +203,7 @@ test('corrupted final activation copy is never promoted', async () =>
     }
   }));
 
-for (const snapshotVersion of [0, 2])
+for (const snapshotVersion of [0, 2, 3])
   test(`restored schema${snapshotVersion} root stays quarantined after reopen/migration and automatic admission stays off`, async () =>
     fixture(async ({ root, location, storeId, app }) => {
       const selected = join(root, 'selected');
@@ -221,7 +221,15 @@ for (const snapshotVersion of [0, 2])
         }),
       );
       await app.initialize(1001);
-      const backup = snapshotVersion === 0 ? bootstrap : await app.backup(1002);
+      const backup =
+        snapshotVersion === 0
+          ? bootstrap
+          : snapshotVersion === 3
+            ? await app.backup(1002)
+            : JSON.parse(readFileSync(join(location.root, 'migration-backups.json'), 'utf8')).find(
+                (receipt) => receipt.header.schemaVersion === 2,
+              );
+      assert.equal(backup.header.schemaVersion, snapshotVersion);
       const checkpoint = join(location.root, `key-checkpoint-${randomUUID()}.json`);
       await writePersistenceFile(
         checkpoint,

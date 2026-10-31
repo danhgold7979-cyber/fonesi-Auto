@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, lstatSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  lstatSync,
+  realpathSync,
+  writeFileSync,
+  readFileSync,
+  unlinkSync,
+} from 'node:fs';
 import { resolve, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -11,6 +20,7 @@ import {
 } from '../src/main/persistence-files.ts';
 import { prepareBackupKeyProfile } from '../src/main/backup-key-profile.ts';
 import {
+  assertPreparedPersistenceLease,
   preparedPersistenceEntry,
   configurePersistenceSession,
 } from '../src/main/persistence-entry.ts';
@@ -113,4 +123,45 @@ test('verification stage flags, duplicate keys and unknown owner cannot become p
       writeFileSync(file, raw);
       assert.throws(() => preparedPersistenceEntry(file), /PERSISTENCE_ENTRY_REJECTED/);
     }
+  }));
+
+test('synchronous final lease assertion rejects owner changes and unknown lock entries', async () =>
+  fixture(async ({ file, location }) => {
+    const entry = preparedPersistenceEntry(file);
+    assert.doesNotThrow(() => assertPreparedPersistenceLease(entry));
+    const owner = join(location.root, '.writer-lock', 'owner.json'),
+      original = readFileSync(owner, 'utf8');
+    try {
+      writeFileSync(
+        owner,
+        JSON.stringify({ version: 1, storeId: entry.storeId, ownerToken: randomUUID() }),
+      );
+      assert.throws(() => assertPreparedPersistenceLease(entry), /PERSISTENCE_ENTRY_REJECTED/);
+    } finally {
+      writeFileSync(owner, original);
+    }
+    const extra = join(location.root, '.writer-lock', 'unknown');
+    try {
+      writeFileSync(extra, 'fixed', { flag: 'wx' });
+      assert.throws(() => assertPreparedPersistenceLease(entry), /PERSISTENCE_ENTRY_REJECTED/);
+    } finally {
+      unlinkSync(extra);
+    }
+    const marker = join(location.root, '.persistence-owner.json'),
+      saved = readFileSync(marker, 'utf8');
+    try {
+      writeFileSync(
+        marker,
+        JSON.stringify({
+          version: 1,
+          storeId: randomUUID(),
+          kind: 'FRESH',
+          restoreReceiptId: null,
+        }),
+      );
+      assert.throws(() => assertPreparedPersistenceLease(entry), /PERSISTENCE_ENTRY_REJECTED/);
+    } finally {
+      writeFileSync(marker, saved);
+    }
+    assert.doesNotThrow(() => assertPreparedPersistenceLease(entry));
   }));

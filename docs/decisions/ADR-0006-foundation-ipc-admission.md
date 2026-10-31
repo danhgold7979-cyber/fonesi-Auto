@@ -227,3 +227,15 @@ Both channels share admission/session limits; no log-write/read/export/hold meth
 caller metadata authority or fallback negotiation. Existing security/lifecycle
 checks and old failed immutable-document objective are not waived. Main-owned log
 I/O belongs to the approved logging sink only, not a renderer filesystem service.
+
+## Approved bounded preferences amendment — 2026-10-31 11:55 UTC
+
+Coordinator approved the exact independently reviewed [P1-07 settings contract](../phases/PHASE-01-P1-07-SETTINGS-CONTRACT.md)
+for a separate `foundation:preferences:v1` channel: read/update/reset/restorePrevious
+of nonsecret UI preferences only. Legacy v1/v2 public wire contracts remain unchanged.
+The grant requires shared preload occupancy, exact schemas/CAS, observed view-session
+revocation and final COMMIT admission, native confirmation for reset/rollback, and
+truthful timeout/late-result semantics. It does not claim immutable Document identity
+or genuine human intent. Main-only window geometry uses distinct owned-window/lease
+admission through shutdown. No credential/device/job/path/SQL service is exposed.
+P1-06 cross-user UNMET and formal dependency/Phase 0 gates remain unchanged.

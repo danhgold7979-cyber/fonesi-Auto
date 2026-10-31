@@ -757,3 +757,32 @@ skipped (prior accepted launcher evidence is P1-05, not this head).
 [Exact evidence/sample](evidence/P1-06-secret-store-source-2026-10-31.md).
 Counts remain 6/11 (54.5%), 6/154 (3.9%), formal accepted zero. P1-07 planning is
 explicitly nonsecret/development-parallel only; its P1-06 formal dependency is not waived.
+
+P1-07 source entry — 11:55 UTC: coordinator approved the independently CLEAR exact
+[nonsecret settings contract](phases/PHASE-01-P1-07-SETTINGS-CONTRACT.md) and bounded
+ADR-0006 mutation amendment. Development-only parallel implementation starts while
+P1-06 cross-user remains UNMET; no predecessor/formal acceptance or count change.
+Exact migration 3, CAS/recovery, native window state, compatible audit and scoped CI
+are approved; source/native workflow review precedes hosted execution.
+
+P1-07 local implementation checkpoint — 12:15–12:18 UTC: author full source
+pipeline393/393 passed before the approved hydration refinement; subsequent strict
+compiler/44-module graph/build and focused53/53 passed. Exact CAS, real audit-failure
+composition, shared preload cap, native-window shutdown and one-shot persisted-read
+hydration are implemented. Scoped native schema3 job/envelope remains under review;
+no Windows settings PASS or task-count increase. [Current evidence](evidence/P1-07-settings-source-2026-10-31.md).
+
+P1-07 reviewed source checkpoint — 12:24 UTC: independent full desktop402/402,
+foundation109/109 and Python119/119 PASS. Application and scoped native-envelope
+source CLEAR, including shared-cap hydration, actual SQLite/audit composition,
+COMMIT crash instrumentation and separately gated synthetic screenshots. Actual
+Windows settings runtime is NOT_RUN pending coordinator publication/execution.
+Historical full vault workflow is manual-only; P106_UNMET_NOT_RERUN is explicit.
+Technical count remains6/11, formal0; no P1-07 acceptance is inferred from local tests.
+
+P1-07 final publication candidate — 12:32 UTC: author and independent desktop
+**407/407 PASS**, unchanged independent foundation109/Python119 PASS. Startup
+geometry is gated until first successful admitted GET, without retrying mutations;
+final close capture stays unconditional. Source/envelope CLEAR and coordinator
+bounded execution approval recorded. Windows observations and task acceptance
+remain pending; six technical scopes/formal zero unchanged.

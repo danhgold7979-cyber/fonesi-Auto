@@ -1,0 +1,188 @@
+name: Phase 01 full historical persistence and vault matrix — explicit approval required
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  owned-windows-foundation:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Named Windows development environment and foundation fixtures
+        run: |
+          Write-Output "WINDOWS_DEVELOPMENT_IMAGE=$env:ImageOS/$env:ImageVersion"
+          Write-Output "SOURCE_HEAD=$env:GITHUB_SHA"
+          node --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          Write-Output "ACTUAL_NPM=$npmVersion"
+          node foundation/scripts/verify-bootstrap.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node foundation/scripts/check.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Strict raw-schema synthetic tests
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==119; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: PowerShell 5.1 marker and ownership regressions
+        run: |
+          try { & ./desktop/verification/Test-WindowsBoundary.ps1 }
+          catch { Write-Output 'FOUNDATION_BOUNDARY_TEST_FAILED'; exit 1 }
+      - name: Syntax-check owned runtime and installer entries
+        run: |
+          node --check desktop/verification/runtime-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/logging-evidence.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/logging-store-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/logging-degraded-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/crash-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/install-electron.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-control.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-main-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens=$null; $parseErrors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'desktop/verification/Invoke-Persistence.ps1'),[ref]$tokens,[ref]$parseErrors)
+          if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_SUPERVISOR_SYNTAX_FAILED'; exit 1 }
+          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1')) {
+            $tokens=$null; $parseErrors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd $file),[ref]$tokens,[ref]$parseErrors)
+            if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_LAUNCHER_SYNTAX_FAILED'; exit 1 }
+          }
+          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs','desktop/verification/vault-record-negative.cjs')) {
+            node --check $file
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Owned interactive-lifetime supervisor regressions
+        timeout-minutes: 3
+        run: |
+          $helper=Join-Path $pwd 'tools/phase-00/HostProbeNative.cs'
+          if ((Get-FileHash $helper -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89') { exit 1 }
+          if ('Fonesi.Phase00.NativeProbe' -as [type]) { exit 1 }
+          Add-Type -Path $helper
+          $exe=Join-Path ([Environment]::GetFolderPath('System')) 'WindowsPowerShell/v1.0/powershell.exe'
+          $result=[Fonesi.Phase00.NativeProbe]::Run($exe,[string[]]@('-NoProfile','-NonInteractive','-File',(Join-Path $pwd 'desktop/verification/Test-PersistenceProcess.ps1')),120000,10000,32768)
+          $safeStages=@('INITIALIZE','HELPER','NODE','BASE','FIXTURE','BOUNDED','INTERACTIVE','DESCENDANT','CLEANUP')
+          foreach($stage in $safeStages) {
+            if (@($result.Stdout -split '\r?\n' | Where-Object {$_ -ceq ('PERSISTENCE_PROCESS_STAGE_'+$stage)}).Count -gt 0) {
+              Write-Output ('PERSISTENCE_PROCESS_STAGE_'+$stage)
+            }
+          }
+          if ($result.Status -ne 'SUCCESS' -or $result.ExitCode -ne 0 -or -not $result.CleanupComplete -or $result.StdoutTruncated -or $result.StderrTruncated -or @($result.Stdout -split '\r?\n' | Where-Object {$_ -ceq 'PERSISTENCE_PROCESS_TESTS_PASS 3'}).Count -ne 1) { Write-Output 'PERSISTENCE_PROCESS_TESTS_FAILED'; exit 1 }
+          Write-Output 'PERSISTENCE_PROCESS_TESTS_PASS 3'
+      - name: Owned source-package and typed-negative probes
+        id: probes
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'FOUNDATION_SUPERVISOR_FAILED'; exit 1 }
+      - name: Duplicate-aware validation and fixed-field sanitization
+        id: validation
+        if: always() && steps.probes.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'FOUNDATION_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only this invocation's schema-validated fixed evidence
+        if: always() && steps.validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-foundation-${{ github.sha }}
+          path: desktop/.runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Owned key durability and actual-main READY path
+        id: persistence
+        if: success() && steps.validation.outcome == 'success'
+        run: |
+          try { & ./desktop/verification/Invoke-Persistence.ps1 }
+          catch { Write-Output 'PERSISTENCE_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict fixed-field persistence sanitization
+        id: persistence_validation
+        if: always() && steps.persistence.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_persistence.py publish)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'PERSISTENCE_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only sanitized persistence mechanism evidence
+        if: always() && steps.persistence_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-persistence-mechanism-${{ github.sha }}
+          path: desktop/.persistence-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Instrumented production first launch and persisted-root reopen
+        id: launcher
+        if: success() && steps.persistence_validation.outcome == 'success'
+        timeout-minutes: 5
+        run: |
+          try { & ./desktop/verification/Invoke-PersistenceLauncherE2E.ps1 }
+          catch { Write-Output 'PERSISTENCE_LAUNCH_E2E_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict fixed-field launcher evidence publication
+        id: launcher_validation
+        if: always() && steps.launcher.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_persistence_launcher.py)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'PERSISTENCE_LAUNCHER_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only sanitized instrumented launcher evidence
+        if: always() && steps.launcher_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-persistence-launcher-${{ github.sha }}
+          path: desktop/.runtime/launcher-e2e-validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Record scope limits
+        if: always()
+        run: |
+          'Hosted runner only. Original navigation FAIL retained; no full task/Phase, target-host, device, account or future authority acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

@@ -1,3 +1,4 @@
+import { DATABASE_VERSION } from './persistence-contract.ts';
 // Internal backup format only. Not renderer IPC or a portable-key promise.
 export const BACKUP_MAGIC = 'FONAUB01';
 export const BACKUP_HEADER_BYTES = 65536;
@@ -62,7 +63,7 @@ export function parseBackupHeader(raw: string): BackupHeader | null {
       !['DAILY', 'MANUAL', 'PRE_MIGRATION'].includes(row.reason as string) ||
       !integer(row.snapshotUtc) ||
       !integer(row.schemaVersion) ||
-      row.schemaVersion > 2 ||
+      row.schemaVersion > DATABASE_VERSION ||
       !integer(row.plaintextBytes) ||
       row.plaintextBytes < 1 ||
       row.plaintextBytes > BACKUP_SNAPSHOT_BYTES ||

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { unlink, opendir, lstat } from 'node:fs/promises';
 import { diagnosticId } from '../log-contract.ts';
-import { epoch } from '../persistence-contract.ts';
+import { epoch, DATABASE_VERSION } from '../persistence-contract.ts';
 import { statement } from './foundation-database.ts';
 import type { FoundationDatabase } from './foundation-database.ts';
 import { parseBackupReceipt } from './backup-service.ts';
@@ -211,7 +211,7 @@ export class BackupCatalog {
     });
   }
   private database(db: FoundationDatabase): void {
-    if (db.storeId !== this.storeId || db.version !== 2) reject();
+    if (db.storeId !== this.storeId || db.version < 2 || db.version > DATABASE_VERSION) reject();
     db.validate();
   }
   // Explicit mirror after location selection/migration. It never deletes old mappings.

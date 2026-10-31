@@ -106,6 +106,27 @@ export function installFoundationBridge(
     );
 
   return {
+    admitPreferences(event: IpcMainInvokeEvent) {
+      const view = sessions.get(event.sender),
+        identity = caller(event);
+      if (!view || !identity) return { ok: false as const, code: 'UNTRUSTED_SENDER' as const };
+      const admission = view.admit(identity);
+      if (!admission.ok) return admission;
+      return {
+        ...admission,
+        current: () => {
+          const latest = caller(event);
+          return (
+            admission.current() &&
+            latest !== null &&
+            latest.sender === identity.sender &&
+            latest.isMainFrame &&
+            latest.origin === 'auto-foundation://app' &&
+            latest.url === ENTRY_URL
+          );
+        },
+      };
+    },
     attach(window: BrowserWindow) {
       const contents = window.webContents;
       if (sessions.has(contents)) throw new Error('DUPLICATE_VIEW');

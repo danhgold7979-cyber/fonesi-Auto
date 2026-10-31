@@ -1,4 +1,4 @@
-name: Phase 01 authority-free desktop foundation
+name: Phase 01 foundation and scoped nonsecret settings
 on:
   workflow_dispatch:
   push:
@@ -12,6 +12,7 @@ on:
       - 'tools/phase-00/desktop-stack-lab/package-lock.json'
       - 'tools/phase-00/desktop-stack-lab/dependency-review.json'
       - '.github/workflows/phase-01-desktop-foundation.yml'
+      - '.github/workflows/phase-01-full-persistence-manual.yml'
 permissions:
   contents: read
 jobs:
@@ -63,7 +64,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==107; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==119; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: PowerShell 5.1 marker and ownership regressions
         run: |
@@ -92,12 +93,12 @@ jobs:
           $tokens=$null; $parseErrors=$null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'desktop/verification/Invoke-Persistence.ps1'),[ref]$tokens,[ref]$parseErrors)
           if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_SUPERVISOR_SYNTAX_FAILED'; exit 1 }
-          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1')) {
+          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1','desktop/verification/Invoke-Settings.ps1')) {
             $tokens=$null; $parseErrors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd $file),[ref]$tokens,[ref]$parseErrors)
             if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_LAUNCHER_SYNTAX_FAILED'; exit 1 }
           }
-          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs','desktop/verification/vault-record-negative.cjs')) {
+          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs','desktop/verification/vault-record-negative.cjs','desktop/verification/settings-contract.cjs','desktop/verification/settings-control.cjs','desktop/verification/settings-native.cjs','desktop/verification/settings-main-probe.cjs','desktop/verification/settings-store-probe.cjs')) {
             node --check $file
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -142,58 +143,88 @@ jobs:
           path: desktop/.runtime/validated.json
           if-no-files-found: error
           retention-days: 7
-      - name: Owned key durability and actual-main READY path
-        id: persistence
-        if: success() && steps.validation.outcome == 'success'
-        run: |
-          try { & ./desktop/verification/Invoke-Persistence.ps1 }
-          catch { Write-Output 'PERSISTENCE_SUPERVISOR_FAILED'; exit 1 }
-      - name: Strict fixed-field persistence sanitization
-        id: persistence_validation
-        if: always() && steps.persistence.outcome != 'skipped'
-        run: |
-          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_persistence.py publish)
-          $code = $LASTEXITCODE
-          foreach ($line in $lines) { Write-Output $line }
-          if (@($lines | Where-Object {$_ -ceq 'PERSISTENCE_VALIDATION_WRITTEN'}).Count -eq 1) {
-            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
-          exit $code
-      - name: Upload only sanitized persistence mechanism evidence
-        if: always() && steps.persistence_validation.outputs.written == 'true'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: phase-01-persistence-mechanism-${{ github.sha }}
-          path: desktop/.persistence-runtime/validated.json
-          if-no-files-found: error
-          retention-days: 7
-      - name: Instrumented production first launch and persisted-root reopen
-        id: launcher
-        if: success() && steps.persistence_validation.outcome == 'success'
-        timeout-minutes: 5
-        run: |
-          try { & ./desktop/verification/Invoke-PersistenceLauncherE2E.ps1 }
-          catch { Write-Output 'PERSISTENCE_LAUNCH_E2E_SUPERVISOR_FAILED'; exit 1 }
-      - name: Strict fixed-field launcher evidence publication
-        id: launcher_validation
-        if: always() && steps.launcher.outcome != 'skipped'
-        run: |
-          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_persistence_launcher.py)
-          $code = $LASTEXITCODE
-          foreach ($line in $lines) { Write-Output $line }
-          if (@($lines | Where-Object {$_ -ceq 'PERSISTENCE_LAUNCHER_VALIDATION_WRITTEN'}).Count -eq 1) {
-            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
-          exit $code
-      - name: Upload only sanitized instrumented launcher evidence
-        if: always() && steps.launcher_validation.outputs.written == 'true'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: phase-01-persistence-launcher-${{ github.sha }}
-          path: desktop/.runtime/launcher-e2e-validated.json
-          if-no-files-found: error
-          retention-days: 7
       - name: Record scope limits
         if: always()
         run: |
           'Hosted runner only. Original navigation FAIL retained; no full task/Phase, target-host, device, account or future authority acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  owned-windows-settings:
+    needs: owned-windows-foundation
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare verified owned runtime and package without identity invocation
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'SETTINGS_RUNTIME_PREPARE_FAILED'; exit 1 }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned schema3 settings, real UI restart and COMMIT crash verification
+        id: settings
+        run: |
+          try { & ./desktop/verification/Invoke-Settings.ps1 }
+          catch { Write-Output 'SETTINGS_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict settings evidence publication
+        id: settings_validation
+        if: always() && steps.settings.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_settings.py publish)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'SETTINGS_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          if (@($lines | Where-Object {$_ -ceq 'SETTINGS_SCREENSHOTS_BOUND'}).Count -eq 1) {
+            'screenshots=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only fixed settings evidence
+        if: always() && steps.settings_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-settings-${{ github.sha }}
+          path: desktop/.settings-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload only complete metadata-bound synthetic screenshots
+        if: always() && steps.settings_validation.outputs.written == 'true' && steps.settings_validation.outputs.screenshots == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-settings-screenshots-${{ github.sha }}
+          path: |
+            desktop/.settings-runtime/source-light.png
+            desktop/.settings-runtime/source-dark.png
+            desktop/.settings-runtime/package-light.png
+            desktop/.settings-runtime/package-dark.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explicit scope exclusion
+        if: always()
+        run: |
+          'P1-07 scoped settings only. P106_UNMET_NOT_RERUN: cross-user negative remains unmet; no unchanged identity invocation. Injected dialog answers are not genuine widget clicks. No full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

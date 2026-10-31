@@ -8,7 +8,14 @@
           "createRoot": "value"
         },
         "react": {
-          "useState": "value"
+          "useState": "value",
+          "useRef": "value",
+          "useEffect": "value",
+          "useCallback": "value"
+        },
+        "./settings-contract.js": {
+          "parseSettingsResponse": "value",
+          "PublicSettings": "type"
         }
       }
     },
@@ -24,6 +31,13 @@
         },
         "./preload-client.js": {
           "createDiagnosticClient": "value"
+        },
+        "./invocation-budget.js": {
+          "createInvocationBudget": "value"
+        },
+        "./settings-client.js": {
+          "createSettingsClient": "value",
+          "createSettingsReadiness": "value"
         }
       }
     },
@@ -34,6 +48,10 @@
     "preload-client.ts": {
       "role": "client",
       "imports": {
+        "./invocation-budget.ts": {
+          "createInvocationBudget": "value",
+          "InvocationBudget": "type"
+        },
         "./ipc-diagnostic-contract.ts": {
           "localDiagnosticError": "value",
           "validateDiagnosticResponse": "value"
@@ -95,6 +113,21 @@
     "main.ts": {
       "role": "main",
       "imports": {
+        "./main/settings-window.js": {
+          "captureNativeWindow": "value",
+          "restoreWindowOptions": "value",
+          "restoreMaximized": "value"
+        },
+        "./main/persistence-files.js": {
+          "assertBorrowedPersistenceLease": "value"
+        },
+        "./main/settings-store.js": {
+          "SettingsStore": "value",
+          "SettingsResult": "type"
+        },
+        "./preferences-bridge.js": {
+          "installPreferencesBridge": "value"
+        },
         "./main/secret-entry.js": {
           "openMainSecretStore": "value"
         },
@@ -110,7 +143,8 @@
         "./main/persistence-entry.js": {
           "preparedPersistenceEntry": "value",
           "configurePersistenceSession": "value",
-          "openPreparedPersistence": "value"
+          "openPreparedPersistence": "value",
+          "assertPreparedPersistenceLease": "value"
         },
         "./main/foundation-persistence.js": {
           "FoundationPersistence": "type"
@@ -135,7 +169,8 @@
           "Menu": "value",
           "ipcMain": "value",
           "safeStorage": "value",
-          "dialog": "value"
+          "dialog": "value",
+          "screen": "value"
         },
         "node:fs": {
           "readFileSync": "value",
@@ -213,7 +248,13 @@
     },
     "log-contract.ts": {
       "role": "contract",
-      "imports": {}
+      "imports": {
+        "./settings-contract.ts": {
+          "SETTINGS_ERRORS": "value",
+          "validSettingsRevision": "value",
+          "SettingsErrorCode": "type"
+        }
+      }
     },
     "ipc-diagnostic-contract.ts": {
       "role": "contract",
@@ -370,7 +411,8 @@
           "LogEvent": "type",
           "LogHealth": "type",
           "LogRecord": "type",
-          "VaultAuditFields": "type"
+          "VaultAuditFields": "type",
+          "SettingsAuditFields": "type"
         }
       }
     },
@@ -384,7 +426,11 @@
     },
     "backup-container-contract.ts": {
       "role": "contract",
-      "imports": {}
+      "imports": {
+        "./persistence-contract.ts": {
+          "DATABASE_VERSION": "value"
+        }
+      }
     },
     "main/foundation-database.ts": {
       "role": "main-adapter",
@@ -416,6 +462,10 @@
         },
         "../log-contract.ts": {
           "diagnosticId": "value"
+        },
+        "../settings-contract.ts": {
+          "snapshotSettings": "value",
+          "SettingsSnapshot": "type"
         }
       }
     },
@@ -552,7 +602,8 @@
           "diagnosticId": "value"
         },
         "../persistence-contract.ts": {
-          "epoch": "value"
+          "epoch": "value",
+          "DATABASE_VERSION": "value"
         },
         "./foundation-database.ts": {
           "statement": "value",
@@ -622,6 +673,9 @@
         },
         "../log-contract.ts": {
           "diagnosticId": "value"
+        },
+        "../persistence-contract.ts": {
+          "DATABASE_VERSION": "value"
         },
         "../persistence-proof.ts": {
           "parsePersistenceProof": "value",
@@ -813,6 +867,87 @@
         "../log-contract.ts": {
           "VaultAuditFields": "type",
           "LogHealth": "type"
+        }
+      }
+    },
+    "settings-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "invocation-budget.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "settings-client.ts": {
+      "role": "client",
+      "imports": {
+        "./invocation-budget.ts": {
+          "createInvocationBudget": "value",
+          "InvocationBudget": "type"
+        },
+        "./settings-contract.ts": {
+          "parseSettingsRequest": "value",
+          "parseSettingsResponse": "value",
+          "settingsError": "value",
+          "snapshotPatch": "value",
+          "validSettingsRevision": "value",
+          "SettingsMethod": "type",
+          "SettingsErrorCode": "type"
+        }
+      }
+    },
+    "preferences-bridge.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "electron": {
+          "IpcMain": "type",
+          "IpcMainInvokeEvent": "type"
+        },
+        "./view-session.ts": {
+          "Admission": "type"
+        },
+        "./main/settings-store.ts": {
+          "SettingsStore": "type"
+        },
+        "./settings-contract.ts": {
+          "parseSettingsRequest": "value",
+          "settingsSuccess": "value",
+          "settingsError": "value",
+          "SettingsErrorCode": "type",
+          "SettingsMethod": "type"
+        }
+      }
+    },
+    "main/settings-store.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "../settings-contract.ts": {
+          "DEFAULT_PREFERENCES": "value",
+          "snapshotSettings": "value",
+          "snapshotNativeWindowState": "value",
+          "snapshotPatch": "value",
+          "validSettingsRevision": "value",
+          "SettingsSnapshot": "type",
+          "PublicSettings": "type",
+          "SettingsRequest": "type",
+          "SettingsMethod": "type",
+          "SettingsErrorCode": "type",
+          "NativeWindowState": "type"
+        },
+        "../log-contract.ts": {
+          "SettingsAuditFields": "type"
+        }
+      }
+    },
+    "main/settings-window.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "../settings-contract.ts": {
+          "snapshotNativeWindowState": "value",
+          "NativeWindowState": "type"
         }
       }
     }

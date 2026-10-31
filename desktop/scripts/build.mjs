@@ -81,6 +81,10 @@ try {
       resolve(root, 'src/main/secret-store.ts'),
       resolve(root, 'src/main/secret-provider.ts'),
       resolve(root, 'src/secret-contract.ts'),
+      resolve(root, 'src/settings-contract.ts'),
+      resolve(root, 'src/preferences-bridge.ts'),
+      resolve(root, 'src/main/settings-store.ts'),
+      resolve(root, 'src/main/settings-window.ts'),
     ],
     outdir: output,
   });

@@ -214,3 +214,13 @@ P1-05 narrow proof/lifecycle clarification approved by coordinator at 08:22 UTC 
 orderly recovery proof are separate; no deliberate crash during real first launch.
 Normal interactive lifetime is not subject to the bounded initialization deadline.
 See persistence contract §11 and ADR-0007; all original task/phase gates remain.
+
+## P1-07 bounded parallel entry — 2026-10-31 11:55 UTC
+
+Coordinator approved the independently reviewed [settings contract](docs/phases/PHASE-01-P1-07-SETTINGS-CONTRACT.md)
+for nonsecret preferences, migration 3/CAS recovery, explicit bounded preferences
+IPC, native window-state ownership and compatible audit. This is development-only
+parallel work while P1-06 cross-user evidence remains UNMET; no formal dependency or
+Phase 0 waiver. Legacy IPC/old schema evidence remains; no secret/device/job service
+or V9 redesign. Scoped source/native review precedes publication/execution, and no
+unchanged identity acquisition is retried as part of settings CI.

@@ -226,3 +226,15 @@ strict prepared READY control. The next reviewed envelope exercises actual main
 and inspects migrated state after native retirement; its Windows result is pending.
 Installed first-use orchestration remains a completion gate. `.persistence-runtime/` is private ignored evidence, never a
 fixture or upload source except its explicitly sanitized fixed report.
+
+## P1-07 nonsecret preference integration (source checkpoint)
+
+The [approved settings contract](../docs/phases/PHASE-01-P1-07-SETTINGS-CONTRACT.md)
+adds migration3 CURRENT/PREVIOUS settings, bounded preference IPC and main-owned
+window persistence without changing legacy public v1/v2 wire schemas. The diagnostic
+renderer now hydrates persisted Light/Dark/layout once after main admission; it is
+still not the full V9 interface. Native confirmation uses Cancel by default.
+[Exact evidence](../docs/evidence/P1-07-settings-source-2026-10-31.md) records independent
+407 desktop/109 foundation/119 Python PASS and pending Windows observations.
+[Scoped native verification](verification/SETTINGS-NATIVE.md) explicitly excludes
+P1-06's unmet cross-user criterion; neither task nor Phase acceptance is implied.

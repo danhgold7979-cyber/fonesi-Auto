@@ -1,3 +1,8 @@
+import {
+  SETTINGS_ERRORS,
+  validSettingsRevision,
+  type SettingsErrorCode,
+} from './settings-contract.ts';
 // Fixed main-constructed events only. No exception serialization or caller metadata.
 export type LogHealth = 'AVAILABLE' | 'DEGRADED';
 export type LogEvent =
@@ -80,7 +85,43 @@ export type VaultLogRecord = VaultAuditFields &
     task: 'P1-06';
     event: 'SECRET_OPERATION';
   }>;
-export type LogRecord = LegacyLogRecord | VaultLogRecord;
+export type SettingsAuditFields = Readonly<{
+  operation: 'READ' | 'UPDATE' | 'RESET' | 'RESTORE' | 'WINDOW';
+  phase: 'INTENT' | 'RESULT';
+  diagnosticId: string;
+  expectedRevision: number | null;
+  resultingRevision: number | null;
+  code: 'OK' | SettingsErrorCode;
+}>;
+export type SettingsLogRecord = SettingsAuditFields &
+  Readonly<{
+    schemaVersion: 3;
+    runId: string;
+    sequence: number;
+    utc: string;
+    severity: 'INFO' | 'WARN';
+    component: 'MAIN';
+    task: 'P1-07';
+    event: 'SETTINGS_OPERATION';
+  }>;
+export type LogRecord = LegacyLogRecord | VaultLogRecord | SettingsLogRecord;
+function settingsTuple(record: Record<string, unknown>): boolean {
+  return (
+    record.component === 'MAIN' &&
+    record.task === 'P1-07' &&
+    record.event === 'SETTINGS_OPERATION' &&
+    typeof record.operation === 'string' &&
+    ['READ', 'UPDATE', 'RESET', 'RESTORE', 'WINDOW'].includes(record.operation) &&
+    ['INTENT', 'RESULT'].includes(record.phase as string) &&
+    diagnosticId(record.diagnosticId) &&
+    typeof record.code === 'string' &&
+    (record.code === 'OK' || SETTINGS_ERRORS.includes(record.code as SettingsErrorCode)) &&
+    record.severity === (record.code === 'OK' ? 'INFO' : 'WARN') &&
+    (record.expectedRevision === null || validSettingsRevision(record.expectedRevision)) &&
+    (record.resultingRevision === null || validSettingsRevision(record.resultingRevision)) &&
+    (record.phase !== 'INTENT' || (record.code === 'OK' && record.resultingRevision === null))
+  );
+}
 const vaultCodes: readonly string[] = [
   'OK',
   'AUDIT_UNAVAILABLE',
@@ -229,6 +270,8 @@ export function encodeLogRecord(input: unknown): string | null {
     const version = Object.getOwnPropertyDescriptor(input, 'schemaVersion');
     if (!version || !Object.hasOwn(version, 'value')) return null;
     if (version.value === 2) fields.push('operation', 'phase', 'secretId', 'revision');
+    else if (version.value === 3)
+      fields.push('operation', 'phase', 'expectedRevision', 'resultingRevision');
     else if (version.value !== 1) return null;
     if (Object.getOwnPropertyNames(input).length !== fields.length) return null;
     const record: Record<string, unknown> = {};
@@ -244,7 +287,11 @@ export function encodeLogRecord(input: unknown): string | null {
       !Number.isSafeInteger(record.sequence) ||
       record.sequence <= 0 ||
       !utcTimestamp(record.utc) ||
-      !(record.schemaVersion === 1 ? record.task === 'P1-04' && tuple(record) : vaultTuple(record))
+      !(record.schemaVersion === 1
+        ? record.task === 'P1-04' && tuple(record)
+        : record.schemaVersion === 2
+          ? vaultTuple(record)
+          : settingsTuple(record))
     )
       return null;
     const encoded = JSON.stringify(record) + '\n';

@@ -1,3 +1,11 @@
+import {
+  captureNativeWindow,
+  restoreWindowOptions,
+  restoreMaximized,
+} from './main/settings-window.js';
+import { assertBorrowedPersistenceLease } from './main/persistence-files.js';
+import { SettingsStore, type SettingsResult } from './main/settings-store.js';
+import { installPreferencesBridge } from './preferences-bridge.js';
 import { openMainSecretStore } from './main/secret-entry.js';
 import type { SecretStore } from './main/secret-store.js';
 import { createPersistenceLifecycle } from './main/persistence-lifecycle.js';
@@ -6,6 +14,7 @@ import {
   preparedPersistenceEntry,
   configurePersistenceSession,
   openPreparedPersistence,
+  assertPreparedPersistenceLease,
 } from './main/persistence-entry.js';
 import type { FoundationPersistence } from './main/foundation-persistence.js';
 import { maintenanceArgument } from './persistence-contract.js';
@@ -21,6 +30,7 @@ import {
   ipcMain,
   safeStorage,
   dialog,
+  screen,
 } from 'electron';
 import { readFileSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
@@ -34,8 +44,12 @@ import {
   installWindowPolicy,
 } from './main/window-policy.js';
 
-// Public-read-only foundation bridge; no native/domain service authority.
+// Legacy public reads plus the separately bounded nonsecret preference capability.
 let bridge: ReturnType<typeof installFoundationBridge> | undefined;
+let preferencesBridge: ReturnType<typeof installPreferencesBridge> | undefined;
+let settingsStore: SettingsStore | undefined;
+let settingsDrain: Promise<SettingsResult | null> | undefined;
+let resourcesDisposed = false;
 let disposeSession: (() => void) | undefined;
 let lifecycle: ReturnType<typeof createLifecycle> | undefined;
 let closing = false;
@@ -46,6 +60,7 @@ let loggingNotice = false;
 let persistence: FoundationPersistence | undefined;
 const persistenceLifecycle = createPersistenceLifecycle<FoundationPersistence>();
 const secretLifecycle = createPersistenceLifecycle<SecretStore>();
+const settingsLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
 let backupTimer: ReturnType<typeof setInterval> | undefined;
 function reportLoggingDegraded(): void {
   if (!loggingNotice) {
@@ -54,14 +69,17 @@ function reportLoggingDegraded(): void {
   }
 }
 function cleanup(): boolean {
-  if (closing) return cleanupComplete;
+  if (resourcesDisposed) return cleanupComplete;
+  resourcesDisposed = true;
   closing = true;
   if (backupTimer !== undefined) clearInterval(backupTimer);
-  cleanupComplete = disposeResources([
+  const disposed = disposeResources([
+    () => preferencesBridge?.dispose(),
     () => bridge?.dispose(),
     () => lifecycle?.dispose(),
     () => disposeSession?.(),
   ]);
+  cleanupComplete = disposed && cleanupComplete;
   return cleanupComplete;
 }
 function fail(): void {
@@ -159,6 +177,10 @@ try {
         'secret-store.cjs',
         'secret-provider.cjs',
         'secret-contract.cjs',
+        'settings-contract.cjs',
+        'preferences-bridge.cjs',
+        'settings-store.cjs',
+        'settings-window.cjs',
         'preload.cjs',
         'renderer.js',
         'status.html',
@@ -248,11 +270,22 @@ try {
         readFileSync(join(__dirname, 'renderer.js'), 'utf8'),
       );
       bridge = installFoundationBridge(ipcMain, logger);
+      const settingsDb = persistence?.settingsAdapter();
+      const initialSettings = settingsDb?.readSettings();
       lifecycle = createLifecycle(() => {
         if (bridge === undefined) throw new Error('BRIDGE_UNAVAILABLE');
         const window = new BrowserWindow({
           width: 640,
           height: 360,
+          ...(initialSettings
+            ? restoreWindowOptions(
+                {
+                  normalBounds: initialSettings.normalBounds,
+                  maximized: initialSettings.maximized,
+                },
+                screen.getAllDisplays().map((display) => display.workArea),
+              )
+            : {}),
           show: false,
           webPreferences: {
             ...securePreferences(ownedSession),
@@ -260,6 +293,96 @@ try {
           },
         });
         installWindowPolicy(window);
+        if (settingsDb && persistenceEntry) {
+          let windowTracking = false;
+          settingsStore = new SettingsStore({
+            db: settingsDb,
+            assertOwned: () =>
+              assertBorrowedPersistenceLease(persistenceEntry, persistenceEntry.ownerToken),
+            assertOwnedSync: () => assertPreparedPersistenceLease(persistenceEntry),
+            audit: (fields) => logger?.settingsAudit(fields) ?? Promise.resolve('DEGRADED'),
+            confirm: async (action) => {
+              if (closing || window.isDestroyed()) return false;
+              const answer = await dialog.showMessageBox(window, {
+                type: 'question',
+                buttons: [
+                  'Cancel',
+                  action === 'RESET' ? 'Reset preferences' : 'Restore previous preferences',
+                ],
+                defaultId: 0,
+                cancelId: 0,
+                noLink: true,
+                message:
+                  action === 'RESET'
+                    ? 'Reset nonsecret UI preferences?'
+                    : 'Restore the previous preference revision?',
+              });
+              return answer.response === 1;
+            },
+            readWindow: () => {
+              const value = captureNativeWindow(window);
+              if (!value) throw new Error('SETTINGS_WINDOW_UNAVAILABLE');
+              return value;
+            },
+            windowOwned: () => !window.isDestroyed() && !resourcesDisposed,
+          });
+          void settingsLifecycle
+            .open(async () => ({
+              shutdown: async () => {
+                const saved = await (settingsDrain ?? settingsStore?.shutdown());
+                if (saved && !saved.ok) throw new Error('SETTINGS_SAVE_FAILED');
+              },
+            }))
+            .catch(fail);
+          preferencesBridge = installPreferencesBridge(
+            ipcMain,
+            bridge.admitPreferences,
+            () => settingsStore,
+            (method) => {
+              if (method !== 'preferences.restorePrevious' || window.isDestroyed()) return;
+              const saved = settingsDb.readSettings();
+              if (window.isMaximized()) window.unmaximize();
+              const bounds = restoreWindowOptions(
+                { normalBounds: saved.normalBounds, maximized: saved.maximized },
+                screen.getAllDisplays().map((display) => display.workArea),
+              );
+              window.setBounds({ ...window.getNormalBounds(), ...bounds });
+              restoreMaximized(window, {
+                normalBounds: saved.normalBounds,
+                maximized: saved.maximized,
+              });
+            },
+            () => {
+              windowTracking = true;
+            },
+          );
+          // Startup restore/show events cannot race the first hydrated snapshot.
+          // Failed hydration leaves observation disabled; final close still captures.
+          const observeWindow = () => {
+            if (windowTracking) settingsStore?.observeWindow();
+          };
+          window.on('move', observeWindow);
+          window.on('resize', observeWindow);
+          window.on('maximize', observeWindow);
+          window.on('unmaximize', observeWindow);
+          window.on('close', (event) => {
+            if (!closing) {
+              event.preventDefault();
+              app.quit();
+            }
+          });
+          if (initialSettings)
+            restoreMaximized(window, {
+              normalBounds: initialSettings.normalBounds,
+              maximized: initialSettings.maximized,
+            });
+        } else {
+          preferencesBridge = installPreferencesBridge(
+            ipcMain,
+            bridge.admitPreferences,
+            () => undefined,
+          );
+        }
         const view = bridge.attach(window);
         window.webContents.on('render-process-gone', () => {
           if (!closing) logger?.emit('RENDERER_LOST', 'RENDERER_LOSS');
@@ -270,6 +393,7 @@ try {
           .then(() => {
             if (!window.isDestroyed()) {
               if (!view.arm()) throw new Error('VIEW_NOT_ADMITTED');
+              window.webContents.send('foundation:preferences:ready');
               window.show();
               mainReady = true;
               logger?.emit('STARTUP_READY', 'OK');
@@ -292,9 +416,20 @@ try {
     if (!closing) app.quit();
   });
   const shutdown = createLogShutdown({
-    stop: cleanup,
+    stop: () => {
+      closing = true;
+      if (backupTimer !== undefined) clearInterval(backupTimer);
+      preferencesBridge?.dispose();
+      bridge?.dispose();
+      // Capture native geometry before any window destruction; await the same
+      // settings lane before closing its database or releasing its owner lease.
+      settingsDrain = settingsStore?.shutdown();
+      return cleanupComplete;
+    },
     flush: async () => {
       try {
+        await settingsLifecycle.stop();
+        cleanupComplete = cleanup() && cleanupComplete;
         await secretLifecycle.stop();
         await persistenceLifecycle.stop();
       } catch {
