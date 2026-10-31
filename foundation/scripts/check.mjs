@@ -4,7 +4,7 @@ const stages = [
   ['BOUNDARIES', ['scripts/check-boundaries.mjs']],
   ['TYPECHECK', ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json', '--pretty', 'false']],
   ['HYGIENE', ['scripts/check-hygiene.mjs']],
-  ['TESTS', ['--test', '--test-reporter=tap', 'tests/bootstrap.test.mjs', 'tests/boundaries.test.mjs', 'tests/harness.test.mjs']]
+  ['TESTS', ['--test', '--test-reporter=tap', 'tests/bootstrap.test.mjs', 'tests/boundaries.test.mjs', 'tests/harness.test.mjs', 'tests/validators.test.mjs']]
 ];
 for (const [name, args] of stages) {
   const result = runNode(args);

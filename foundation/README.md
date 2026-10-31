@@ -1,6 +1,6 @@
 # Provisional pure-source foundation
 
-Authorized subsets **P1-01-S/P1-03-S**, not the application or full Phase1. See the
+Authorized subsets **P1-01-S/P1-03-S/P1-11-S**, not the application or full Phase1. See the
 [approved scoped amendment](../docs/phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md).
 No entry point, Electron/React runtime, IPC, I/O service, DB/vault, devices or accounts.
 
@@ -8,7 +8,7 @@ No entry point, Electron/React runtime, IPC, I/O service, DB/vault, devices or a
 
 | Path | Responsibility | Allowed dependency direction |
 |---|---|---|
-| `src/contracts/` | Reserved pure status/error schema module; implementation pending P1-11-S | Other pure contract modules only; no tooling/tests or Node/DOM globals |
+| `src/contracts/` | Pure unavailable-only status/error types and validator | Other pure contract modules only; no tooling/tests or Node/DOM globals |
 | `scripts/` | Development metadata checks; owned repository reads, fixed-code output | Node builtins and reviewed metadata; never imported by contracts |
 | `tests/` | Development-only metadata positive/negative fixtures | Node test/assert, check functions and reviewed metadata |
 | `build/`, `.test-output/` | Future owned generated output, ignored | Not a source or runtime authority |
@@ -92,8 +92,8 @@ a hard peak-memory or hostile-filesystem-race guarantee.
 
 Strict compiler: ES2022, no Node/DOM ambient scope, strict/noUncheckedIndexedAccess/
 exactOptionalPropertyTypes/noUnusedLocals/noUnusedParameters/noImplicitReturns/
-noFallthroughCasesInSwitch, no emit, no skipped library checking. Current source is
-only an empty module marker; P1-11-S validators are still unimplemented. Test/tooling
+noFallthroughCasesInSwitch, no emit, no skipped library checking. P1-11-S source
+now implements only the approved unavailable envelope and fixed validation codes. Test/tooling
 Node builtins are separate from source. Hygiene only checks LF, final newline, no
 tabs/trailing whitespace, selected bounded files and no symlinks: no full formatter
 or general-purpose lint claim.
@@ -103,3 +103,30 @@ These are trusted compiler/test processes, not the Windows Job containment mecha
 or a guarantee that arbitrary child trees can be killed. Test subprocesses remove
 only inherited NODE_TEST_CONTEXT to create an independent runner. No user/global
 environment setting is changed. Windows execution remains NOT_RUN.
+
+## P1-11-S unavailable-only validation
+
+`validateUnavailable(unknown)` returns only `VALID`, `INVALID_SHAPE`,
+`INVALID_FIELD` or `UNSUPPORTED_VERSION`. VALID means this unavailable envelope
+conforms; it never means a workflow/capability is allowed. It returns no input or
+normalized object and grants no TypeScript type-narrowing promise to callers.
+
+Exact own fields: numeric version 1, status UNAVAILABLE, one of the three approved
+reasons, and ASCII alphanumeric/underscore/hyphen correlationId of 1..64 characters.
+Shape is checked before field values. Version representations other than safe
+integers are INVALID_FIELD; safe integers other than 1 are UNSUPPORTED_VERSION.
+Wrong status/reason/correlation is INVALID_FIELD. Own nonenumerable data properties
+are allowed; accessors, symbols, extra/missing keys, non-Object.prototype records
+and arrays are rejected. Descriptor inspection does not invoke ordinary getters
+or coerce field values. No JSON parser or wire/transport authentication is supplied.
+
+Inputs are already-parsed ordinary data. Proxies and compromised globals are outside
+the model: traps may execute or impersonate allowed objects; caught exceptions only
+return INVALID_SHAPE and do not undo trap effects. Property-name enumeration means
+there is no arbitrary input-size/peak-memory bound. ASCII formatting cannot detect
+secrets/PII; even valid correlation identifiers are not automatically safe to log.
+
+Tests compile the actual TypeScript modules into a fresh owned ignored directory
+and import that output. The compiled modules contain no runtime imports (the single
+type-only edge is erased). Output is removed afterward; no package/runtime service
+or publication artifact is produced. This is not actual IPC/host/Phase acceptance.

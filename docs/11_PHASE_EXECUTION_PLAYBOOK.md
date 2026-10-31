@@ -6,7 +6,7 @@ Mục tiêu: một quy trình chuẩn để AI/dev đọc plan, lập kế hoạ
 
 ## 1. Nguyên tắc vận hành
 
-**2026-10-31 scoped exception:** [cross-phase pure-source amendment](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) approved 01:23 UTC; current P1-03-S entry approved 01:39 after P1-01-S review. P1-11-S awaits parent entry approval. Current branch `phase-01`; no generic parallel-Phase authority, full Phase opening or acceptance waiver follows.
+**2026-10-31 scoped exception:** [cross-phase pure-source amendment](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) approved 01:23 UTC; current P1-03-S entry approved 01:39 after P1-01-S review. P1-11-S entry approved at 01:51 UTC. Current branch `phase-01`; no generic parallel-Phase authority, full Phase opening or acceptance waiver follows.
 
 
 1. Một thời điểm chỉ triển khai một Phase. Không code Phase tiếp theo khi Phase hiện tại chưa nghiệm thu và merge.

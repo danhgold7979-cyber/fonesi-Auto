@@ -315,3 +315,20 @@ and phase-01 at `5eb71d68c0ea839ab00107030307b11717ebb1c6`. Legacy
 phase/00-feasibility is a frozen historical transition branch retaining P1-01-S,
 not an active publication destination; no rewrite/deletion. Full Phase1 not opened/accepted; P1-11-S awaits next
 entry approval. See living git workflow for publication verification status.
+
+### P1-11-S entry — 2026-10-31 01:51 UTC
+
+Root approved the exact unavailable-only pure validator subset after published,
+reviewed P1-03-S. Entry recorded before implementation on `phase-01`; no transport,
+runtime service or business schema. Full Phase 1 acceptance and original Phase 0
+host/device/navigation gates remain open. No new CI workflow or push authorized.
+
+### P1-11-S provisional validator checkpoint — 2026-10-31 01:55 UTC
+
+Exact unavailable-only types and pure fixed-code validator implemented. Local and
+independent repeated checks: all five stages PASS, 85/85 tests, no failures, skips,
+cancellations or todos. [Evidence](evidence/P1-11-S-unavailable-validator-2026-10-31.md)
+records ordinary-data/getter, proxy, enumeration and correlation privacy limits.
+Independent review CLEAR at 01:55 UTC. No transport/runtime, full task/Phase acceptance
+or new activation grant. All three approved provisional subsets now have source
+checkpoints; further source work requires new explicit scoped approval, not automatic continuation.

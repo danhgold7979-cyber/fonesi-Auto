@@ -107,7 +107,7 @@ Windows Desktop (Electron + strict TypeScript + React)
 
 ## 6. Master delivery stages
 
-Narrow recorded exception: [provisional pure-source development](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md), approved 2026-10-31 01:23 UTC; P1-03-S entered 01:39 after reviewed P1-01-S, P1-11-S still entry-gated. Current branch `phase-01`; full Phase/activation acceptance remains sequential as below. No general parallel-Phase or privileged-service grant.
+Narrow recorded exception: [provisional pure-source development](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md), approved 2026-10-31 01:23 UTC; P1-03-S entered 01:39 after reviewed P1-01-S, P1-11-S entry approved at 01:51 UTC. Current branch `phase-01`; full Phase/activation acceptance remains sequential as below. No general parallel-Phase or privileged-service grant.
 
 
 Delivery is strictly sequential: **0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11**. The previous phase must be user-accepted and merged, then the next detailed plan approved. Technical independence does not permit parallel phases; an exception would require explicit user approval and governance/plan amendments. See [master task/dependency contracts](04_MASTER_IMPLEMENTATION_PLAN.md), [draft Phase plans](phases/) and [acceptance gates](05_ACCEPTANCE_AND_RISKS.md).
