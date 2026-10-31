@@ -726,7 +726,31 @@ const JOURNAL_MARKERS = Object.freeze(
     values.map((value) => `PACKAGE_JOURNAL_${key}_${value}`),
   ),
 );
+function observerDiagnostics(facts, stderr) {
+  if (
+    facts.BINDING !== 'VALID' ||
+    facts.CHAIN !== 'VALID' ||
+    facts.SETTLEMENT !== 'PRESENT' ||
+    facts.CAPTURE_RETIREMENT !== 'RETIRED' ||
+    !['PROVISION', 'AUTH', 'MAIN'].includes(facts.INTENT) ||
+    typeof stderr !== 'string' ||
+    stderr.length > 32768
+  )
+    return Object.freeze([]);
+  const { OBSERVER_PHASES, OBSERVER_REASONS } = require('./package-launch-observer.cjs');
+  const phases = OBSERVER_PHASES.map((phase) => `PACKAGE_OBSERVER_PHASE_${phase}`);
+  const reasons = OBSERVER_REASONS.map((reason) => `PACKAGE_OBSERVER_REASON_${reason}`);
+  const lines = stderr.replace(/\r\n/g, '\n').split('\n');
+  const selectedPhases = lines.filter((line) => phases.includes(line));
+  const selectedReasons = lines.filter((line) => reasons.includes(line));
+  // Ambiguous duplicated diagnostics are not normalized into an apparent single
+  // observation. Unknown lines remain private and never enter public logs.
+  if (selectedPhases.length !== 1 || selectedReasons.length !== 1) return Object.freeze([]);
+  return Object.freeze([selectedPhases[0], selectedReasons[0]]);
+}
+let lastObserverDiagnostics = Object.freeze([]);
 function journalDiagnostics(root, packageRoot, stage) {
+  lastObserverDiagnostics = Object.freeze([]);
   const out = Object.fromEntries(
     Object.keys(JOURNAL_VECTOR).map((key) => [key, key === 'ERROR' ? 'NONE' : 'UNAVAILABLE']),
   );
@@ -850,6 +874,7 @@ function journalDiagnostics(root, packageRoot, stage) {
           : errors.includes('PACKAGE_OBSERVER_FAILED')
             ? 'OBSERVER_FAILURE'
             : 'OTHER';
+    lastObserverDiagnostics = observerDiagnostics(out, c.stderr);
   } catch (error) {
     out.ERROR = fixedObservationError(error);
   }
@@ -1033,6 +1058,7 @@ if (require.main === module) {
           const marker = `PACKAGE_JOURNAL_${key}_${value}`;
           if (JOURNAL_MARKERS.includes(marker)) process.stderr.write(`${marker}\n`);
         }
+        for (const marker of lastObserverDiagnostics) process.stderr.write(`${marker}\n`);
       }
       if (observationPhase === 'CAPTURE' && lastCaptureDiagnostic) {
         for (const [key, value] of Object.entries(lastCaptureDiagnostic)) {
@@ -1064,4 +1090,5 @@ module.exports = {
   JOURNAL_VECTOR,
   JOURNAL_MARKERS,
   journalDiagnostics,
+  observerDiagnostics,
 };

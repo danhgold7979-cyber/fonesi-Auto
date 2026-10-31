@@ -229,6 +229,16 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
   put(path.join(pkg, 'Launch.ps1'), LAUNCH);
   put(path.join(pkg, 'app/launch/Invoke-Package.ps1'), sourceWrapper);
   put(path.join(pkg, 'app/launch/launch-core.ps1'), sourceCore);
+  put(
+    path.join(pkg, 'app/launch/package-admission.cjs'),
+    'module.exports={verifyPackage(p){if(p!==' +
+      JSON.stringify(pkg) +
+      ')throw Error("SYNTHETIC_PACKAGE");},assertDataOutsidePackage(p,d){if(p!==' +
+      JSON.stringify(pkg) +
+      '||!d.startsWith(' +
+      JSON.stringify(root + path.sep) +
+      '))throw Error("SYNTHETIC_OUTSIDE");}};',
+  );
   let admitted = 0;
   // Synthetic package admission only: exercise the real prepare/materialization path,
   // not native runtime provenance or package admission itself.
@@ -267,6 +277,96 @@ test('actual prepare materializes all eight raw scripts and binds their on-disk 
       assert.equal(digest(actual), expected);
     }
     assert.equal(proof.originalFiles['app/launch/launch-core.ps1'], digest(sourceCore));
+    // Actual copied observer, actual copied dependency/read/require/layout/proof path.
+    // Only native environment/versions and package admission are synthetic here.
+    const copiedObserver = require(path.join(outer, 'observers/package-launch-observer.cjs'));
+    const oldEnv = { SystemRoot: process.env.SystemRoot, PATH: process.env.PATH };
+    const versionKeys = ['electron', 'node', 'chrome'];
+    const descriptors = Object.fromEntries(
+      versionKeys.map((k) => [k, Object.getOwnPropertyDescriptor(process.versions, k)]),
+    );
+    const versions = require('./package-contract.cjs').VERSIONS;
+    try {
+      process.env.SystemRoot = root;
+      process.env.PATH = path.join(root, 'System32');
+      for (const k of versionKeys)
+        Object.defineProperty(process.versions, k, { value: versions[k], configurable: true });
+      const actualAdmission = copiedObserver.admission(path.join(outer, 'observers'));
+      assert.deepEqual(actualAdmission, { c: control, outer });
+      const Module = require('node:module');
+      const originalLoad = Module._load;
+      const nativeEntry = path.join(pkg, 'app/launch/persistence-initialize.cjs');
+      const initControl = path.join(root, 'provision-control.json');
+      put(initControl, JSON.stringify({ stage: 'provision', packageRoot: pkg }));
+      put(nativeEntry, 'module.exports = {};');
+      const previousControl = process.env.FONESI_PERSISTENCE_LAUNCH_CONTROL;
+      process.env.FONESI_PERSISTENCE_LAUNCH_CONTROL = initControl;
+      let nativeRequired = 0;
+      const hooks = [];
+      const electron = {
+        app: {
+          on(event, callback) {
+            assert.equal(event, 'will-quit');
+            hooks.push(callback);
+          },
+          exit() {
+            throw Error('SYNTHETIC_UNEXPECTED_EXIT');
+          },
+        },
+        dialog: {},
+      };
+      Module._load = function (request, parent, isMain) {
+        if (request === 'electron') return electron;
+        if (request === nativeEntry) nativeRequired++;
+        return originalLoad.call(this, request, parent, isMain);
+      };
+      try {
+        require(path.join(outer, 'observers/package-launch-init-probe.cjs'));
+        assert.equal(nativeRequired, 1);
+        assert.equal(hooks.length, 1);
+        assert.deepEqual(
+          await electron.dialog.showOpenDialog({
+            title: 'Choose encrypted backup storage',
+            properties: ['openDirectory'],
+          }),
+          { canceled: true, filePaths: [] },
+        );
+        hooks[0]();
+        const witness = JSON.parse(
+          fs.readFileSync(path.join(outer, 'observer-provision.json'), 'utf8'),
+        );
+        assert.equal(witness.opens, 1);
+        assert.equal(witness.cancelled, true);
+        assert.equal(witness.closed, true);
+        fs.unlinkSync(path.join(outer, 'observer-provision.json'));
+      } finally {
+        Module._load = originalLoad;
+        delete require.cache[nativeEntry];
+        if (previousControl === undefined) delete process.env.FONESI_PERSISTENCE_LAUNCH_CONTROL;
+        else process.env.FONESI_PERSISTENCE_LAUNCH_CONTROL = previousControl;
+      }
+      process.env.PATH = 'not-the-admitted-path';
+      assert.throws(
+        () => copiedObserver.admission(path.join(outer, 'observers')),
+        /PACKAGE_ENVIRONMENT/,
+      );
+      assert.deepEqual(copiedObserver.diagnostics(Error('private-path-secret')), [
+        'PACKAGE_OBSERVER_PHASE_ENVIRONMENT',
+        'PACKAGE_OBSERVER_REASON_UNCLASSIFIED',
+      ]);
+    } finally {
+      for (const k of Object.keys(oldEnv)) {
+        if (oldEnv[k] === undefined) delete process.env[k];
+        else process.env[k] = oldEnv[k];
+      }
+      for (const k of versionKeys) {
+        if (descriptors[k]) Object.defineProperty(process.versions, k, descriptors[k]);
+        else delete process.versions[k];
+      }
+      for (const name of OBSERVERS) delete require.cache[path.join(outer, 'observers', name)];
+      delete require.cache[path.join(pkg, 'app/launch/package-admission.cjs')];
+    }
+
     assert.deepEqual(
       JSON.parse(fs.readFileSync(path.join(outer, 'control.json'), 'utf8')),
       control,
@@ -346,4 +446,41 @@ test('journal diagnostics and direct native catch forwarding are bounded at the 
   assert.ok(fn.includes('$_ -ceq $literal'));
   assert.ok(fn.includes('$matches -eq 1'));
   assert.ok(!fn.includes('Write-Output $p.'));
+});
+
+test('observer diagnostics use fixed phases and own data descriptors without leaking errors', () => {
+  const observer = require('./package-launch-observer.cjs');
+  observer.phase('INIT_CONTROL');
+  assert.deepEqual(
+    observer.diagnostics(
+      Object.defineProperty({}, 'message', {
+        get() {
+          throw Error('private');
+        },
+      }),
+    ),
+    ['PACKAGE_OBSERVER_PHASE_INIT_CONTROL', 'PACKAGE_OBSERVER_REASON_UNCLASSIFIED'],
+  );
+  for (const error of [null, undefined, 'private', Error('C:\\private')])
+    assert.equal(observer.diagnostics(error)[1], 'PACKAGE_OBSERVER_REASON_UNCLASSIFIED');
+  assert.equal(
+    observer.diagnostics(Object.assign(Error('private'), { code: 'MODULE_NOT_FOUND' }))[1],
+    'PACKAGE_OBSERVER_REASON_MODULE_NOT_FOUND',
+  );
+  assert.equal(
+    observer.diagnostics(new SyntaxError('private'))[1],
+    'PACKAGE_OBSERVER_REASON_SYNTAX_ERROR',
+  );
+  const ps = fs.readFileSync(path.join(__dirname, 'Invoke-Package.ps1'), 'utf8');
+  for (const [key, values] of [
+    ['PHASE', observer.OBSERVER_PHASES],
+    ['REASON', observer.OBSERVER_REASONS],
+  ]) {
+    const line = ps.match(new RegExp('        ' + key + '=@\\(([^)]*)\\)'));
+    assert.ok(line);
+    assert.deepEqual(
+      [...line[1].matchAll(/'([^']+)'/g)].map((m) => m[1]),
+      values,
+    );
+  }
 });

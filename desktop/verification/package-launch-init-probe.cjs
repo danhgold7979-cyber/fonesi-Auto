@@ -3,11 +3,12 @@
 const { app, dialog } = require('electron');
 const path = require('node:path');
 const { read } = require('./package-contract.cjs');
-const { admission, witness, record } = require('./package-launch-observer.cjs');
+const { admission, witness, record, phase, report } = require('./package-launch-observer.cjs');
 let opens = 0,
   confirms = 0;
 try {
   const { c, outer } = admission(__dirname);
+  phase('INIT_CONTROL');
   const file = process.env.FONESI_PERSISTENCE_LAUNCH_CONTROL;
   if (
     typeof file !== 'string' ||
@@ -23,6 +24,7 @@ try {
   )
     throw Error('PACKAGE_CONTROL');
   dialog.showOpenDialog = async (options) => {
+    phase('INIT_DIALOG');
     if (
       control.stage !== 'provision' ||
       ++opens !== 1 ||
@@ -35,6 +37,7 @@ try {
       : { canceled: false, filePaths: [c.backupParent] };
   };
   dialog.showMessageBox = async (options) => {
+    phase('INIT_DIALOG');
     if (
       control.stage !== 'provision' ||
       ++confirms !== 1 ||
@@ -54,9 +57,11 @@ try {
       throw Error('PACKAGE_DIALOG');
     return { response: 0, checkboxChecked: false };
   };
+  phase('INIT_REQUIRE');
   require(path.join(c.packageRoot, 'app/launch/persistence-initialize.cjs'));
   app.on('will-quit', () => {
     try {
+      phase('INIT_RECORD');
       record(
         outer,
         witness(c, control.stage, {
@@ -66,12 +71,14 @@ try {
           cancelled: c.stage === 'first-cancel',
         }),
       );
-    } catch {
+    } catch (error) {
+      report(error);
       console.error('PACKAGE_OBSERVER_FAILED');
       app.exit(1);
     }
   });
-} catch {
+} catch (error) {
+  report(error);
   console.error('PACKAGE_OBSERVER_FAILED');
   app.exit(1);
 }

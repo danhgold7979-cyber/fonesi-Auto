@@ -86,6 +86,16 @@ function Show-ControlDiagnostic($p,[string]$expected){
         foreach($value in $journalVector[$key]){$literal='PACKAGE_JOURNAL_'+$key+'_'+$value;$count=@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count;if($count -gt 0){$matched+=$count;$selected=$literal}}
         if($matched -eq 1 -and $journalShown -lt 13){Write-Output $selected;$journalShown++}
     }
+    $observerVector=[ordered]@{
+        PHASE=@('ENVIRONMENT','LAYOUT','CONTROL','OWNER','PROOF_SHAPE','DERIVED_CORE','ORIGINALS','OBSERVERS','PACKAGE','OUTSIDE','VERSIONS','INIT_CONTROL','INIT_DIALOG','INIT_REQUIRE','INIT_RECORD','MAIN_REQUIRE','MAIN_OPERATION','UNKNOWN')
+        REASON=@('PACKAGE_ENVIRONMENT','PACKAGE_CONTROL','PACKAGE_OWNER','PACKAGE_PROOF','PACKAGE_VERSION','PACKAGE_DIALOG','RESTORE_OWNER','PACKAGE_REJECTED','RESTORE_FILE','RESTORE_LIMIT','RESTORE_SCHEMA','RESTORE_READBACK','ENOENT','EACCES','EPERM','MODULE_NOT_FOUND','ERR_REQUIRE_ESM','SYNTAX_ERROR','TYPE_ERROR','UNCLASSIFIED')
+    }
+    $observerShown=0
+    foreach($key in $observerVector.Keys){
+        $matched=0;$selected=$null
+        foreach($value in $observerVector[$key]){$literal='PACKAGE_OBSERVER_'+$key+'_'+$value;$count=@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count;if($count -gt 0){$matched+=$count;$selected=$literal}}
+        if($matched -eq 1 -and $observerShown -lt 2){Write-Output $selected;$observerShown++}
+    }
 }
 function Node-Control([string]$name,[string[]]$arguments,[string]$marker){$script:allClean=$false;$p=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot $name))+$arguments) 120000 @{};$script:allClean=Retired $p;if(-not $script:allClean -or $p.Status -cne 'SUCCESS' -or $p.ExitCode -ne 0 -or (($p.Stdout -replace '\r\n',"`n").TrimEnd("`n") -cne $marker)){Show-ControlDiagnostic $p $marker};Require $p $marker}
 function Validate([string[]]$arguments){$script:allClean=$false;$p=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_package.py'))+$arguments) 120000 @{};$script:allClean=Retired $p;Require $p 'PACKAGE_VALIDATION_PASS'}

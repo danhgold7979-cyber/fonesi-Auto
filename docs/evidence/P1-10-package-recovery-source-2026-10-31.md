@@ -317,3 +317,38 @@ Reviewed SHA256 values:
 - state controller: `fdf851bec5e1c3a9d78191f5626a3a31bd45836987db3ece2be474652db87c80`
 - derived-launch driver: `e0c3082d21422c0d3023d62f9c167f8a2312ba73bc2ab6562fe23375023ee9c3`
 - supervisor: `da446514db4c69f332a8cd2016d8624d591ea99b2e7545c05f4e07a53448cbdc`
+
+## Sixth hosted attempt — bound provision observer failure
+
+Public head `50a6a4b575d6b02b6572bffac8c0369aa11536cb`, exact tree
+`dc65b9d2776a62ff797881983ae5184c68f4e7ba`, ran in
+[41229879174](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41229879174).
+The four existing jobs passed; package job124622174325 failed. Artifact13053421802 is
+1110 bytes/SHA256 `01d9d5cbee5d4707ee784e0852d8e1e7a9c889b3b48c40cc4124905439e2f8dd`.
+The exact fixed diagnostics identify INITIALIZATION_FAILED at sequence03: the bound
+PROVISION intent has a present valid settlement/chain and a retired NONZERO capture,
+empty stdout and `PACKAGE_OBSERVER_FAILED` stderr classification. Its capture was
+canonical in this run. Therefore this observation does not attribute the earlier
+failure to the separately corrected journal serializer incompatibility.
+
+The next bounded diagnostic focuses on actual copied observer admission, control and
+initializer-require boundaries, with finite phase/error categories only. A materialized
+admission regression exercises real copied dependency files and their byte-bound proof,
+with process runtime/environment and package admission substitutions explicitly labeled
+synthetic. No product initialization, key, ownership or runtime guard is relaxed, and no
+successful first-Cancel stage or bundle promotion is claimed from the failed run.
+
+Observer checkpoint at18:43UTC: author full desktop **582/582 PASS** and
+DESKTOP_SOURCE_CHECK_PASS; independent **29/29 focused PASS**. Actual copied-directory
+admission and initializer dialog/will-quit witness composition pass with synthetic
+native/runtime/package-verification facts explicitly isolated. No concrete functional
+cause was reproduced. Observer diagnostics forward only one exact phase/reason pair
+from a valid bound journal, present settlement and retired native-stage capture; raw
+exceptions and private values never escape. Prior foundation109/Python157 are unchanged,
+not newly rerun. Coordinator approved the same bounded diagnostic retry after aggregate.
+
+Reviewed SHA256 values:
+
+- observer: `39eb7505ae4abe9d0eb0592d7a163831bac7647727f5d2c36b2611e35f055b91`
+- state controller: `759ab74a6b3355bad3eec7f69429705bb725a27e5968bcd260d20b62635c0c61`
+- supervisor: `37508d10b5fd80bb8ba3907b6940f204a992971c6b65b996691bb3badd35e439`

@@ -4,7 +4,7 @@ const { app, dialog, BrowserWindow } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { plain, read, uuid } = require('./package-contract.cjs');
-const { admission, witness, record } = require('./package-launch-observer.cjs');
+const { admission, witness, record, phase, report } = require('./package-launch-observer.cjs');
 let ready = 0,
   closed = 0,
   maintenance = 0,
@@ -17,12 +17,14 @@ let ready = 0,
   settingsObserved = false,
   context;
 const originalLog = console.log;
-const fail = () => {
+const fail = (error) => {
+  report(error);
   console.error('PACKAGE_OBSERVER_FAILED');
   app.exit(1);
 };
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function normal() {
+  phase('MAIN_OPERATION');
   const end = Date.now() + 5000;
   let window;
   while (Date.now() < end) {
@@ -195,6 +197,7 @@ try {
       maintenance++;
     originalLog.apply(console, args);
   };
+  phase('MAIN_REQUIRE');
   require(path.join(c.packageRoot, 'app/build/main.cjs'));
   app.on('will-quit', () => {
     try {
@@ -223,10 +226,10 @@ try {
           settingsObserved,
         }),
       );
-    } catch {
-      fail();
+    } catch (error) {
+      fail(error);
     }
   });
-} catch {
-  fail();
+} catch (error) {
+  fail(error);
 }

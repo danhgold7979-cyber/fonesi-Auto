@@ -601,3 +601,64 @@ test('capture parse reason vector discriminates every bounded schema rejection w
     );
   }
 });
+
+test('nested observer diagnostics forward only exact paired literals from a bound retired native capture', () => {
+  const { observerDiagnostics } = require('../verification/package-state-control.cjs');
+  const {
+    OBSERVER_PHASES,
+    OBSERVER_REASONS,
+  } = require('../verification/package-launch-observer.cjs');
+  const phase = `PACKAGE_OBSERVER_PHASE_${OBSERVER_PHASES[0]}`,
+    reason = `PACKAGE_OBSERVER_REASON_${OBSERVER_REASONS[0]}`;
+  const stderr = `PRIVATE_PATH_AND_EXCEPTION\r\n${phase}\r\n${reason}\r\nPACKAGE_OBSERVER_FAILED\r\n`;
+  const facts = {
+    BINDING: 'VALID',
+    CHAIN: 'VALID',
+    SETTLEMENT: 'PRESENT',
+    CAPTURE_RETIREMENT: 'RETIRED',
+    INTENT: 'PROVISION',
+  };
+  for (const stage of ['PROVISION', 'AUTH', 'MAIN'])
+    assert.deepEqual(observerDiagnostics({ ...facts, INTENT: stage }, stderr), [phase, reason]);
+  for (const [key, value] of [
+    ['BINDING', 'INVALID'],
+    ['CHAIN', 'INVALID'],
+    ['SETTLEMENT', 'ABSENT'],
+    ['CAPTURE_RETIREMENT', 'UNCONFIRMED'],
+    ['INTENT', 'SETUP'],
+    ['INTENT', 'RELEASE'],
+  ])
+    assert.deepEqual(observerDiagnostics({ ...facts, [key]: value }, stderr), []);
+  const forwarded = observerDiagnostics(facts, stderr);
+  assert.equal(Object.isFrozen(forwarded), true);
+  assert.equal(JSON.stringify(forwarded).includes('PRIVATE'), false);
+});
+
+test('observer forwarding rejects duplicates, prefixes, unknown diagnostics and over-limit streams', () => {
+  const { observerDiagnostics } = require('../verification/package-state-control.cjs');
+  const {
+    OBSERVER_PHASES,
+    OBSERVER_REASONS,
+  } = require('../verification/package-launch-observer.cjs');
+  const phase = `PACKAGE_OBSERVER_PHASE_${OBSERVER_PHASES[0]}`,
+    reason = `PACKAGE_OBSERVER_REASON_${OBSERVER_REASONS[0]}`;
+  const facts = {
+    BINDING: 'VALID',
+    CHAIN: 'VALID',
+    SETTLEMENT: 'PRESENT',
+    CAPTURE_RETIREMENT: 'RETIRED',
+    INTENT: 'PROVISION',
+  };
+  for (const raw of [
+    `${phase}\n${phase}\n${reason}`,
+    `${phase}\n${reason}\n${reason}`,
+    ` ${phase}\n${reason}`,
+    `${phase}_PRIVATE\n${reason}`,
+    `${phase}\nPACKAGE_OBSERVER_REASON_PRIVATE`,
+    phase,
+    reason,
+    'x'.repeat(32769),
+    null,
+  ])
+    assert.deepEqual(observerDiagnostics(facts, raw), []);
+});
