@@ -14,6 +14,7 @@ const directories = [
   'desktop/scripts',
   'desktop/tests',
   'desktop/verification',
+  'desktop/launch',
 ];
 function rejectConfig(path) {
   try {

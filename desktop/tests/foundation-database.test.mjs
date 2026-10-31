@@ -208,3 +208,62 @@ test('real second-connection write lock blocks migration with typed SQLITE_BUSY'
     f.cleanup();
   }
 });
+
+test('online snapshot remains coherent while a real second connection commits', async () => {
+  const f = fixture();
+  let db, writer, snapshot, pending;
+  try {
+    db = new FoundationDatabase(f.file, f.id);
+    await db.migrate(
+      async (version) => ({
+        backupId: randomUUID(),
+        fingerprint: db.fingerprint(),
+        schemaVersion: version,
+      }),
+      1000,
+    );
+    writer = new DatabaseSync(f.file);
+    const target = join(f.path, 'online.sqlite');
+    let settled = false;
+    pending = db.snapshot(target).finally(() => {
+      settled = true;
+    });
+    // Real WAL connection commit while the production async snapshot is pending.
+    // This is not a promise that the native copy has already reached a given page.
+    assert.equal(settled, false);
+    writer.exec('BEGIN IMMEDIATE');
+    try {
+      writer.exec('UPDATE foundation_store SET created_utc=2000,last_auto_admitted_utc=2000');
+      writer.exec('COMMIT');
+    } catch (error) {
+      writer.exec('ROLLBACK');
+      throw error;
+    }
+    assert.equal(settled, false);
+    await pending;
+    snapshot = new FoundationDatabase(target, f.id, true);
+    snapshot.validate();
+    assert.equal(snapshot.version, 2);
+    const row = statement(
+      snapshot.connection,
+      'SELECT created_utc,last_auto_admitted_utc FROM foundation_store',
+      (s) => s.get(),
+    );
+    assert.ok(
+      (row.created_utc === 1000 && row.last_auto_admitted_utc === null) ||
+        (row.created_utc === 2000 && row.last_auto_admitted_utc === 2000),
+    );
+    assert.equal(
+      statement(db.connection, 'SELECT created_utc FROM foundation_store', (s) => s.get())
+        .created_utc,
+      2000,
+    );
+  } finally {
+    // Retire the owned asynchronous copy even if a prior assertion/write fails.
+    await pending?.catch(() => {});
+    snapshot?.close();
+    writer?.close();
+    db?.close();
+    f.cleanup();
+  }
+});

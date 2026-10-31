@@ -199,13 +199,15 @@ async function run() {
       if (key.checkpoint === null) throw new Error('CHECKPOINT');
       await assertLease();
       write(path.join(location.root, '.ready-launch.json'), {
-        version: 1,
+        version: 2,
         state: 'READY',
         root: location.root,
         parentToken,
         ownerToken: state.ownerToken,
         storeId: state.storeId,
         checkpoint: path.basename(key.checkpoint),
+        runtimeExeSha256: JSON.parse(read(path.join(root, 'persistence-runtime-attestation.json')))
+          .exeSha256,
       });
       console.log('PERSISTENCE_READY_PREPARED');
       return;

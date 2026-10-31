@@ -34,6 +34,12 @@ function Get-BoundedOwnedEntries([string]$Root, [long]$MaxBytes) {
     return [pscustomobject]@{ Entries=$entries.ToArray(); Bytes=$bytes }
 }
 
+function Test-AllowedChildArgument([string]$Argument) {
+    if (-not $Argument.StartsWith('-')) { return $true }
+    return ($Argument -cin @('--maintenance=backup-now','--maintenance=list-backups',
+        '--maintenance=restore-to-new','--maintenance=accept-upgrade','--maintenance=select-backup-folder'))
+}
+
 function Invoke-OwnedChild([string]$Executable, [string[]]$Arguments,
                            [int]$TimeoutMs, [hashtable]$OwnedEnvironment) {
     if ($TimeoutMs -ne 30000 -and $TimeoutMs -ne 120000) { throw 'UNREVIEWED_DEADLINE' }
@@ -43,10 +49,10 @@ function Invoke-OwnedChild([string]$Executable, [string[]]$Arguments,
     # Caller selects exact trusted executable/hash/argument list before this boundary.
     # No shell interpolation; NativeProbe owns a suspended process and all descendants.
     foreach ($argument in $Arguments) {
-        if ($argument.StartsWith('-')) { throw 'CHROMIUM_NODE_SWITCH_REJECTED' }
+        if (-not (Test-AllowedChildArgument $argument)) { throw 'CHROMIUM_NODE_SWITCH_REJECTED' }
     }
     foreach ($key in $OwnedEnvironment.Keys) {
-        if ($key -notin @('FONESI_BOOTSTRAP_ROOT','FONESI_BOOTSTRAP_MODE','FONESI_LOG_ROOT','FONESI_LOG_PARENT_TOKEN','FONESI_PERSISTENCE_RUN_ROOT','FONESI_PERSISTENCE_CONTROL_NAME','FONESI_PERSISTENCE_READY_FILE')) { throw 'ENVIRONMENT_KEY_REJECTED' }
+        if ($key -notin @('FONESI_BOOTSTRAP_ROOT','FONESI_BOOTSTRAP_MODE','FONESI_LOG_ROOT','FONESI_LOG_PARENT_TOKEN','FONESI_PERSISTENCE_RUN_ROOT','FONESI_PERSISTENCE_CONTROL_NAME','FONESI_PERSISTENCE_READY_FILE','FONESI_PERSISTENCE_STORE_CONTROL_NAME','FONESI_PERSISTENCE_MODE')) { throw 'ENVIRONMENT_KEY_REJECTED' }
     }
     $original = [Environment]::GetEnvironmentVariables('Process')
     foreach ($key in $original.Keys) {
@@ -86,4 +92,4 @@ function Get-FixedCleanupReason([string]$Message, [string]$Kind = '', [int]$Nati
     if ($Kind -eq 'IOException') { return 'IO_FAILURE' }
     return 'UNCLASSIFIED'
 }
-Export-ModuleMember -Function Assert-PlainDirectory,Get-BoundedOwnedEntries,Invoke-OwnedChild,Test-ExactlyOneLine,Test-AnyLine,Get-FixedCleanupReason
+Export-ModuleMember -Function Test-AllowedChildArgument,Assert-PlainDirectory,Get-BoundedOwnedEntries,Invoke-OwnedChild,Test-ExactlyOneLine,Test-AnyLine,Get-FixedCleanupReason

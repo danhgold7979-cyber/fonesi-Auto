@@ -52,13 +52,14 @@ async function fixture(run) {
       ),
       file = join(location.root, '.ready-launch.json'),
       control = {
-        version: 1,
+        version: 2,
         state: 'READY',
         root: location.root,
         parentToken,
         ownerToken,
         storeId,
         checkpoint: basename(prepared.checkpoint),
+        runtimeExeSha256: 'a'.repeat(64),
       };
     await writePersistenceFile(file, JSON.stringify(control));
     await run({ file, control, location, profile: prepared });
@@ -106,7 +107,7 @@ test('verification stage flags, duplicate keys and unknown owner cannot become p
   fixture(async ({ file, control }) => {
     for (const raw of [
       JSON.stringify({ ...control, state: 'provision' }),
-      JSON.stringify(control).replace('"version":1', '"version":0,"version":1'),
+      JSON.stringify(control).replace('"version":2', '"version":0,"version":2'),
       JSON.stringify({ ...control, ownerToken: randomUUID() }),
     ]) {
       writeFileSync(file, raw);

@@ -8,7 +8,7 @@ $owner = $null
 $baseVerified = $false
 $allClean = $true
 $failure = 'PREPARE_FAILED'
-$report = [ordered]@{schemaVersion=2; scope='HOSTED_KEY_AND_MAIN_READY'; modes=[ordered]@{}; ready=[ordered]@{}; runtimeCopyVerified=$false; directoryCleanup=$false; failure=$null}
+$report = [ordered]@{schemaVersion=3; scope='HOSTED_KEY_MAIN_STORE_MAINTENANCE_RESTORE'; modes=[ordered]@{}; ready=[ordered]@{}; store=[ordered]@{}; maintenance=[ordered]@{}; restore=[ordered]@{}; runtimeCopyVerified=$false; directoryCleanup=$false; failure=$null}
 function Retired($Probe) {
     return ($Probe.CleanupComplete -and -not $Probe.StdoutTruncated -and -not $Probe.StderrTruncated -and $Probe.Status -in @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT'))
 }
@@ -26,10 +26,39 @@ function Write-Private([string]$Path,$Value) {
 function Require-Success($Probe,[string]$Marker) {
     if(-not (Retired $Probe) -or $Probe.Status -ne 'SUCCESS' -or $Probe.ExitCode -ne 0 -or -not (Test-ExactlyOneLine $Probe.Stdout $Marker)){throw 'CONTROL_FAILED'}
 }
+function Read-FixedPublic([string]$Name) {
+    Assert-OwnedRun $owner
+    if([IO.Path]::GetFileName($Name) -cne $Name){throw 'PUBLIC_NAME_REJECTED'}
+    $path=Join-Path $owner.Path $Name;$item=Get-Item -LiteralPath $path -Force
+    if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -gt 65536){throw 'PUBLIC_STAGE_REJECTED'}
+    return ([IO.File]::ReadAllText($path)|ConvertFrom-Json)
+}
+function New-MatrixProfile([string]$Name) {
+    Assert-OwnedRun $owner
+    if($Name -cnotmatch '^fonesi-auto-foundation-(source|package)-(maintenance|restore|store-(before|after)-commit-(crash|reopen))\z'){throw 'PROFILE_NAME_REJECTED'}
+    $path=Join-Path $owner.Path $Name
+    if(Test-Path -LiteralPath $path){throw 'PROFILE_EXISTS'}
+    [void][IO.Directory]::CreateDirectory($path)
+    $stream=[IO.File]::Open((Join-Path $path '.owner'),[IO.FileMode]::CreateNew)
+    try{$b=[Text.Encoding]::UTF8.GetBytes("FONESI_AUTO_FOUNDATION_PROFILE_V1`n");$stream.Write($b,0,$b.Length)}finally{$stream.Dispose()}
+}
+function Remove-MatrixProfile([string]$Name) {
+    if(-not $allClean){throw 'JOB_RETIREMENT_UNCONFIRMED'}
+    Assert-OwnedRun $owner
+    if($Name -cnotmatch '^fonesi-auto-foundation-(source|package)-(maintenance|restore|store-(before|after)-commit-(crash|reopen))\z'){throw 'PROFILE_NAME_REJECTED'}
+    $path=Join-Path $owner.Path $Name;Assert-PlainDirectory $path
+    $marker=Get-Item -LiteralPath (Join-Path $path '.owner') -Force
+    $expected="FONESI_AUTO_FOUNDATION_PROFILE_V1`n"
+    if($marker.PSIsContainer -or ($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $marker.Length -ne [Text.Encoding]::UTF8.GetByteCount($expected) -or [IO.File]::ReadAllText($marker.FullName) -cne $expected){throw 'PROFILE_OWNER_REJECTED'}
+    $inventory=Get-BoundedOwnedEntries $path (8L*1024*1024)
+    foreach($entry in $inventory.Entries){if(-not $entry.PSIsContainer){[IO.File]::Delete($entry.FullName)}}
+    foreach($entry in @($inventory.Entries|Where-Object {$_.PSIsContainer}|Sort-Object {$_.FullName.Length} -Descending)){[IO.Directory]::Delete($entry.FullName,$false)}
+    [IO.Directory]::Delete($path,$false)
+}
 function Remove-TestTree([string]$Name,[long]$Limit) {
     if(-not $allClean){throw 'JOB_RETIREMENT_UNCONFIRMED'}
     Assert-OwnedRun $owner
-    if($Name -cnotin @('package','data-source','data-package','backup-parent-source','backup-parent-package','logs-source-ready','logs-package-ready')){throw 'PART_NAME_REJECTED'}
+    if($Name -cnotin @('package','data-source','data-package','backup-parent-source','backup-parent-package','logs-source-ready','logs-package-ready','maintenance-backup-parent-source','maintenance-backup-parent-package','maintenance-restore-parent-source','maintenance-restore-parent-package')){throw 'PART_NAME_REJECTED'}
     $path=Join-Path $owner.Path $Name
     if ($Name.StartsWith('logs-')) {
         $marker=Get-Item -LiteralPath (Join-Path $path 'owner.json') -Force
@@ -89,6 +118,12 @@ try {
     $mainProbeCopy=Join-Path $verification 'persistence-main-probe.cjs'
     [IO.File]::Copy($mainProbe,$mainProbeCopy,$false)
     if((Get-FileHash $mainProbe -Algorithm SHA256).Hash -cne (Get-FileHash $mainProbeCopy -Algorithm SHA256).Hash){throw 'PROBE_COPY_FAILED'}
+    foreach($name in @('persistence-store-probe.cjs','persistence-store-contract.cjs','persistence-maintenance-probe.cjs','persistence-maintenance-contract.cjs','persistence-restore-probe.cjs','persistence-restore-contract.cjs')) {
+        $from=Join-Path $PSScriptRoot $name;$to=Join-Path $verification $name
+        [IO.File]::Copy($from,$to,$false)
+        if((Get-FileHash $from -Algorithm SHA256).Hash -cne (Get-FileHash $to -Algorithm SHA256).Hash){throw 'PROBE_COPY_FAILED'}
+    }
+    Write-Private (Join-Path $owner.Path 'persistence-runtime-attestation.json') $manifest
     $report.runtimeCopyVerified=$true
     foreach($mode in @('source','package')){
         $failure='CONTROL_FAILED';$allClean=$false
@@ -177,14 +212,89 @@ try {
             foreach($entry in @($inventory.Entries|Where-Object {$_.PSIsContainer}|Sort-Object {$_.FullName.Length} -Descending)){[IO.Directory]::Delete($entry.FullName,$false)}
             [IO.Directory]::Delete($profile,$false)
         Remove-TestTree ('logs-'+$mode+'-ready') (8L*1024*1024)
-
+        $report.store[$mode]=[ordered]@{}
+        foreach($boundary in @('BEFORE_COMMIT','AFTER_COMMIT')) {
+            $report.store[$mode][$boundary]=[ordered]@{}
+            $suffix=$boundary.ToLowerInvariant()
+            foreach($storeStage in @('crash','reopen')) {
+                $failure='PREFLIGHT_FAILED';$allClean=$false
+                $prepared=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-matrix-control.cjs'),'prepare-store',$owner.Path,$mode,$boundary,$storeStage)) 120000 @{}
+                $allClean=Retired $prepared;Require-Success $prepared 'PERSISTENCE_MATRIX_PREPARED'
+                $profileName='fonesi-auto-foundation-'+$mode+'-store-'+$suffix.Replace('_','-')+'-'+$storeStage
+                New-MatrixProfile $profileName
+                $exe=$sourceExe;[string[]]$arguments=@((Join-Path $PSScriptRoot 'persistence-store-probe.cjs'))
+                if($mode -eq 'package') {
+                    $exe=$packageExe;$arguments=@()
+                    [IO.File]::WriteAllText((Join-Path $appRoot 'package.json'),'{"name":"auto-persistence-store-verification","version":"0.0.0","main":"verification/persistence-store-probe.cjs"}')
+                }
+                if((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -cne $manifest.exeSha256){throw 'RUNTIME_CHANGED'}
+                $failure='NATIVE_STAGE_FAILED';$allClean=$false
+                $native=Invoke-OwnedChild $exe $arguments 120000 @{
+                    FONESI_PERSISTENCE_RUN_ROOT=$owner.Path;
+                    FONESI_PERSISTENCE_STORE_CONTROL_NAME=('persistence-store-control-'+$mode+'-'+$suffix+'-'+$storeStage+'.json')
+                }
+                $allClean=Retired $native
+                Write-Private (Join-Path $owner.Path ('persistence-store-capture-'+$mode+'-'+$suffix+'-'+$storeStage+'.json')) ([ordered]@{process=(Process-Evidence $native);stdout=$native.Stdout;stderr=$native.Stderr})
+                if(-not $allClean){throw 'STORE_RETIREMENT_FAILED'}
+                $failure='STAGE_VALIDATION_FAILED';$allClean=$false
+                $validation=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_persistence_store.py'),$owner.Path,$mode,$boundary,$storeStage)) 120000 @{}
+                $allClean=Retired $validation;Require-Success $validation 'PERSISTENCE_STORE_VALIDATION_PASS'
+                $report.store[$mode][$boundary][$storeStage]=Read-FixedPublic ('persistence-store-public-'+$mode+'-'+$suffix+'-'+$storeStage+'.json')
+                Remove-MatrixProfile $profileName
+            }
+        }
+        $failure='PREFLIGHT_FAILED';$allClean=$false
+        $prepared=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-matrix-control.cjs'),'prepare-maintenance',$owner.Path,$mode)) 120000 @{}
+        $allClean=Retired $prepared;Require-Success $prepared 'PERSISTENCE_MATRIX_PREPARED'
+        $profileName='fonesi-auto-foundation-'+$mode+'-maintenance'
+        New-MatrixProfile $profileName
+        $exe=$sourceExe;[string[]]$arguments=@((Join-Path $PSScriptRoot 'persistence-maintenance-probe.cjs'))
+        if($mode -eq 'package') {
+            $exe=$packageExe;$arguments=@()
+            [IO.File]::WriteAllText((Join-Path $appRoot 'package.json'),'{"name":"auto-persistence-maintenance-verification","version":"0.0.0","main":"verification/persistence-maintenance-probe.cjs"}')
+        }
+        if((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -cne $manifest.exeSha256){throw 'RUNTIME_CHANGED'}
+        $failure='NATIVE_STAGE_FAILED';$allClean=$false
+        $native=Invoke-OwnedChild $exe $arguments 120000 @{
+            FONESI_PERSISTENCE_RUN_ROOT=$owner.Path;
+            FONESI_PERSISTENCE_CONTROL_NAME=('persistence-maintenance-control-'+$mode+'.json')
+        }
+        $allClean=Retired $native
+        Write-Private (Join-Path $owner.Path ('persistence-maintenance-capture-'+$mode+'.json')) ([ordered]@{process=(Process-Evidence $native);stdout=$native.Stdout;stderr=$native.Stderr})
+        if(-not $allClean){throw 'MAINTENANCE_RETIREMENT_FAILED'}
+        $failure='STAGE_VALIDATION_FAILED';$allClean=$false
+        $validation=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_persistence_maintenance.py'),$owner.Path,$mode)) 120000 @{}
+        $allClean=Retired $validation;Require-Success $validation 'PERSISTENCE_MAINTENANCE_VALIDATION_PASS'
+        $report.maintenance[$mode]=Read-FixedPublic ('persistence-maintenance-public-'+$mode+'.json')
+        Remove-MatrixProfile $profileName
+        $failure='PREFLIGHT_FAILED';$allClean=$false
+        $prepared=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-restore-control.cjs'),$owner.Path,$mode)) 120000 @{}
+        $allClean=Retired $prepared;Require-Success $prepared 'PERSISTENCE_RESTORE_CONTROL_PREPARED'
+        $profileName='fonesi-auto-foundation-'+$mode+'-restore'
+        New-MatrixProfile $profileName
+        $exe=$sourceExe;[string[]]$arguments=@((Join-Path $PSScriptRoot 'persistence-restore-probe.cjs'))
+        if($mode -eq 'package') {
+            $exe=$packageExe;$arguments=@()
+            [IO.File]::WriteAllText((Join-Path $appRoot 'package.json'),' {"name":"auto-persistence-restore-verification","version":"0.0.0","main":"verification/persistence-restore-probe.cjs"}')
+        }
+        if((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -cne $manifest.exeSha256){throw 'RUNTIME_CHANGED'}
+        $failure='NATIVE_STAGE_FAILED';$allClean=$false
+        $native=Invoke-OwnedChild $exe $arguments 120000 @{FONESI_PERSISTENCE_RUN_ROOT=$owner.Path;FONESI_PERSISTENCE_MODE=$mode}
+        $allClean=Retired $native
+        Write-Private (Join-Path $owner.Path ('persistence-restore-capture-'+$mode+'.json')) ([ordered]@{process=(Process-Evidence $native);stdout=$native.Stdout;stderr=$native.Stderr})
+        if(-not $allClean){throw 'RESTORE_RETIREMENT_FAILED'}
+        $failure='STAGE_VALIDATION_FAILED';$allClean=$false
+        $validation=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_persistence_restore.py'),$owner.Path,$mode)) 120000 @{}
+        $allClean=Retired $validation;Require-Success $validation 'PERSISTENCE_RESTORE_VALIDATION_PASS'
+        $report.restore[$mode]=Read-FixedPublic ('persistence-restore-public-'+$mode+'.json')
+        Remove-MatrixProfile $profileName
     }
     $failure='CLEANUP_FAILED'
-    foreach($name in @('data-source','data-package','backup-parent-source','backup-parent-package')){Remove-TestTree $name (128L*1024*1024)}
+    foreach($name in @('data-source','data-package','backup-parent-source','backup-parent-package','maintenance-backup-parent-source','maintenance-backup-parent-package','maintenance-restore-parent-source','maintenance-restore-parent-package')){Remove-TestTree $name (128L*1024*1024)}
     Remove-TestTree 'package' (512L*1024*1024)
     Assert-OwnedRun $owner
     $remaining=Get-BoundedOwnedEntries $owner.Path (8L*1024*1024)
-    foreach($entry in $remaining.Entries){if($entry.PSIsContainer -or $entry.Name -cnotmatch '^(\.owner|persistence-(state|control|capture|public|witness|source|package|ready)-[a-z-]+\.json)$'){throw 'UNEXPECTED_REMAINDER'}}
+    foreach($entry in $remaining.Entries){if($entry.PSIsContainer -or $entry.Name -cnotmatch '^(\.owner|persistence-(state|control|capture|public|witness|source|package|ready|store|maintenance|restore|runtime)-[a-z_-]+\.json)$'){throw 'UNEXPECTED_REMAINDER'}}
     foreach($entry in $remaining.Entries){if($entry.Name -cne '.owner'){[IO.File]::Delete($entry.FullName)}}
     Remove-VerifiedOwnedRun $owner $allClean;$report.directoryCleanup=$true
 }catch{$report.failure=$failure}

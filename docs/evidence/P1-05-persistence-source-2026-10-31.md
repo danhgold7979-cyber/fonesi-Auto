@@ -214,3 +214,92 @@ cleared this source/envelope increment; owned test output was empty. Corrected R
 execution remains NOT_RUN until the next exact-head hosted run. Full maintenance,
 copied-profile restore and migration-crash/failure coverage remain pending; no
 P1-05 technical or formal task acceptance follows from this increment.
+
+## Actual READY-path hosted PASS — 08:17 UTC
+
+Coordinator accepted **HOSTED_KEY_AND_MAIN_READY_PASS**, not full P1-05, on public
+head `09ef6a66ff42db139f60c927f55d20385e003fc0`, exact tree
+`855ada668a91ad775c84283356b1c0d6bf6c5d05`, successful Windows run
+[41183789682](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41183789682).
+Actual suites were 212 desktop / 109 foundation / 61 Python / 30 PowerShell.
+[Exact retained READY report](P1-05-ready-sample-2026-10-31.json), artifact
+13035719419, has **5,520 LF bytes**, SHA256
+`b57f69004927fa6478615f4158767d41f81611b93cdeb58bedd73ab3aa7796ba`.
+These hashes describe artifact/Git-blob bytes, not an unconfigured checkout transform.
+Independent duplicate-aware strict v2 reconstruction/public equality and privacy
+review passed; no second native run or duplicate download is claimed.
+
+Both source and packaged modes passed original key recovery, actual main READY,
+orderly exit 0, full process retirement, schema 2, two protected migration backups,
+one startup DAILY backup and its persisted admission, plus directory cleanup.
+This settles that concrete READY path. It does not certify the subsequent new
+production launcher, per-store proof v2, maintenance/crash matrix or restored-profile
+native recovery; those changes require their own exact-head verification.
+
+## Next implementation checkpoint — in progress
+
+The next matrix uses isolated real SQLite before/after-COMMIT crashes, separate
+reopen/history checks, and the actual native maintenance adapter with verification-
+only dialog answers. Seven ordinary copies and protected/released safety copies are
+counted separately. The online-copy fixture commits from a real second WAL connection
+while the snapshot promise is unsettled; it proves coherent before/after contents,
+not a page-copy synchronization barrier. All private captures, IDs and key material
+remain excluded from fixed public reports.
+
+The usable developer launcher now has production native dialog initialization,
+separate orderly original-backup authentication, an honest version-2 per-store proof,
+verified READY handoff and ownership through interactive shutdown. Its normal UI
+lifetime is not killed by the 120-second initialization limit. Source control fixtures
+use explicitly synthetic native outcome records; they are not DPAPI/runtime proof.
+Actual launcher testing uses coordinator-approved, exactly audited verification-only
+entrypoint substitutions for dialog answers/auto-close, never production test flags.
+The approval does not claim genuine widget clicks or installed P1-09 packaging.
+
+Current author full desktop pipeline passed 238/238 before one additional quality
+scope regression; that regression separately passed in the 12/12 quality suite.
+Python 79/79 passed after staging the updated exact LF config/hash bindings so the
+real checkout-index test exercises current bytes. New launch CJS is explicitly part
+of the existing formatter/linter corpus with unchanged rules/packages; config hashes
+were updated, not ignored. Latest complete independent aggregate and native execution
+are still pending. No task-count increase follows.
+
+### Integrated production-launcher and native matrix checkpoint — 08:54 UTC
+
+The author full desktop pipeline now passes **247/247**; the strict Python suite
+passes **92/92**. Earlier counts above are dated checkpoints, not current totals.
+The combined source passed final independent verification as recorded below. No new
+Windows outcome is claimed before exact-head execution.
+
+The matrix now requires both source and packaged results for before/after-COMMIT
+crash recovery, real second-connection SQLITE_BUSY migration denial, all five
+maintenance commands, seven-copy retention and native reopen of the copied
+restored key profile. Restore requires authentication of the original bootstrap
+backup, schema/quarantine and automatic-admission denial, and unchanged source
+DB/key-material witnesses. Missing/corrupt copied-profile negatives are explicitly
+pre-native tests. Historical public schema versions 1/2 remain distinct; the new
+version 3 scope is `HOSTED_KEY_MAIN_STORE_MAINTENANCE_RESTORE`.
+
+A separate fixed report covers the actual developer launcher twice: first
+`CreateUnder`, then reopening the same `Root`. An exclusive verification copy has
+exactly four counted, hash-bound substitutions; original initializer, control,
+provider and main code still execute. Only native dialog answers and quit-after-
+READY are instrumented. The outer 120-second test bound does not change production
+`RunInteractive`'s unlimited UI lifetime. Original-backup identity, honest v2
+orderly proof, persisted admission/backups and released lease are checked after
+whole-process retirement. This is not genuine widget interaction or P1-09 installed
+packaging. Uploads contain only strict fixed reports, never private captures,
+paths, keys or backup contents.
+
+Remaining completion evidence is finite: this combined native matrix and launcher
+must pass on the exact published Windows head, then canonical P1-05 criteria must
+be mapped to the observed outcomes and their limitations. Injected faults, online
+snapshot promise overlap, copied-profile corruption and native dialog automation
+must retain their precise labels; no disk-fill, OS-key revocation, power-loss or
+cross-machine key recovery guarantee is inferred. P1-05 and formal Phase 0/Phase 1
+acceptance remain pending; technical task counts are unchanged.
+
+Independent final source/envelope review at 08:56 UTC passed **247/247 desktop,
+109/109 foundation and 92/92 Python**, with no skipped/cancelled cases. Owned test
+outputs were empty, original Phase 0/native helper hashes unchanged, and final
+workflow/publisher review CLEAR. Native matrix and launcher execution remain
+NOT_RUN pending the coordinator's exact-tree publication.

@@ -73,7 +73,10 @@ try {
       resolve(root, 'src/main/backup-key-profile.ts'),
       resolve(root, 'src/main/persistence-files.ts'),
       resolve(root, 'src/main/foundation-database.ts'),
+      resolve(root, 'src/main/backup-service.ts'),
       resolve(root, 'src/main/persistence-native.ts'),
+      resolve(root, 'src/persistence-proof.ts'),
+      resolve(root, 'src/main/persistence-entry.ts'),
     ],
     outdir: output,
   });

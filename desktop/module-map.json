@@ -613,6 +613,11 @@
         },
         "../log-contract.ts": {
           "diagnosticId": "value"
+        },
+        "../persistence-proof.ts": {
+          "parsePersistenceProof": "value",
+          "proofMatchesWitness": "value",
+          "PersistenceProof": "type"
         }
       }
     },
@@ -643,6 +648,12 @@
           "backupKeys": "value",
           "validBackupLocalState": "value",
           "AsyncKeyProvider": "type"
+        },
+        "../persistence-proof.ts": {
+          "certifiedPersistenceRuntime": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
         }
       }
     },
@@ -677,6 +688,10 @@
     },
     "main/persistence-lifecycle.ts": {
       "role": "main-adapter",
+      "imports": {}
+    },
+    "persistence-proof.ts": {
+      "role": "contract",
       "imports": {}
     }
   }

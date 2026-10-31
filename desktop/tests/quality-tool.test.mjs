@@ -140,3 +140,21 @@ test('nested config is rejected without interpreting its contents', () => {
     rmdirSync(directory);
   }
 });
+
+test('production launch CJS is an active linted corpus, not an ignored directory', () => {
+  const parent = fileURLToPath(new URL('../launch/', import.meta.url));
+  assert.ok(lstatSync(parent).isDirectory() && !lstatSync(parent).isSymbolicLink());
+  assert.equal(realpathSync(parent), parent.replace(/[\\/]$/, ''));
+  const directory = mkdtempSync(`${parent}quality-case-`);
+  const file = `${directory}/fixture.cjs`;
+  try {
+    writeFileSync(file, 'const unused = 1;\n', { flag: 'wx' });
+    const result = invoke(binary, 'check', [file]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /lint\/correctness\/noUnusedVariables/);
+    assert.ok(inventory().includes('desktop/launch/persistence-initialize.cjs'));
+  } finally {
+    unlinkSync(file);
+    rmdirSync(directory);
+  }
+});

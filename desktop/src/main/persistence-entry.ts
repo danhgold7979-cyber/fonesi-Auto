@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { certifiedPersistenceRuntime } from '../persistence-proof.ts';
 import { openSync, readSync, closeSync, lstatSync, realpathSync, opendirSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
 import { diagnosticId } from '../log-contract.ts';
@@ -11,6 +13,7 @@ export type PersistenceEntry = Readonly<{
   storeId: string;
   keyProfile: string;
   checkpoint: string;
+  runtimeExeSha256: string;
 }>;
 function read(path: string): string {
   const stat = lstatSync(path);
@@ -63,7 +66,9 @@ export function preparedPersistenceEntry(file: unknown): PersistenceEntry | unde
     const raw = read(file),
       value = JSON.parse(raw);
     if (
-      value.version !== 1 ||
+      value.version !== 2 ||
+      typeof value.runtimeExeSha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(value.runtimeExeSha256) ||
       value.state !== 'READY' ||
       value.root !== root ||
       !diagnosticId(value.parentToken) ||
@@ -75,13 +80,14 @@ export function preparedPersistenceEntry(file: unknown): PersistenceEntry | unde
     )
       throw new Error();
     const canonical = {
-      version: 1,
+      version: 2,
       state: 'READY',
       root,
       parentToken: value.parentToken,
       ownerToken: value.ownerToken,
       storeId: value.storeId,
       checkpoint: value.checkpoint,
+      runtimeExeSha256: value.runtimeExeSha256,
     };
     if (
       JSON.stringify(canonical) !== raw ||
@@ -158,16 +164,60 @@ export function preparedPersistenceEntry(file: unknown): PersistenceEntry | unde
       storeId: value.storeId,
       keyProfile,
       checkpoint: join(root, value.checkpoint),
+      runtimeExeSha256: value.runtimeExeSha256,
     });
   } catch {
     throw new Error('PERSISTENCE_ENTRY_REJECTED');
   }
 }
+// Production-only native admission. The trusted launcher derives the expected
+// executable hash from its verified official distribution; the app rechecks it.
+// reviewedBuildVerified is supplied only after main has checked every bundle hash.
+export function assertCertifiedPersistenceEntry(
+  entry: PersistenceEntry,
+  reviewedBuildVerified: boolean,
+): void {
+  const stat = lstatSync(process.execPath);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 512 * 1024 * 1024)
+    throw new Error('PERSISTENCE_RUNTIME_UNCERTIFIED');
+  const fd = openSync(process.execPath, 'r'),
+    hash = createHash('sha256'),
+    chunk = Buffer.alloc(65536);
+  let total = 0;
+  try {
+    for (;;) {
+      const count = readSync(fd, chunk, 0, chunk.length, null);
+      if (!count) break;
+      total += count;
+      if (total > stat.size) throw new Error('PERSISTENCE_RUNTIME_UNCERTIFIED');
+      hash.update(chunk.subarray(0, count));
+    }
+  } finally {
+    closeSync(fd);
+  }
+  if (
+    !certifiedPersistenceRuntime({
+      platform: process.platform,
+      arch: process.arch,
+      electron: process.versions.electron ?? '',
+      node: process.versions.node,
+      chrome: process.versions.chrome ?? '',
+      provenance: {
+        officialDistributionVerified:
+          total === stat.size && hash.digest('hex') === entry.runtimeExeSha256,
+        reviewedKeyProfileImplementation: reviewedBuildVerified === true,
+      },
+    })
+  )
+    throw new Error('PERSISTENCE_RUNTIME_UNCERTIFIED');
+}
 export async function openPreparedPersistence(
   entry: PersistenceEntry,
   provider: AsyncKeyProvider,
   now: number,
+  reviewedBuildVerified: boolean,
 ): Promise<FoundationPersistence> {
+  assertCertifiedPersistenceEntry(entry, reviewedBuildVerified);
   const app = await FoundationPersistence.open(
     { root: entry.root, parentToken: entry.parentToken },
     entry.ownerToken,

@@ -208,3 +208,9 @@ expansion. Five exact maintenance literals and owned native folder selection are
 scoped; full V9/product requirements remain. P1-04 technical predecessor passed;
 formal Phase 0 chain remains pending, technical count still 5/11 and 5/154.
 Independent review and actual Windows source/package evidence precede acceptance.
+
+P1-05 narrow proof/lifecycle clarification approved by coordinator at 08:22 UTC on
+2026-10-31 after independent design review: runtime crash certification and per-store
+orderly recovery proof are separate; no deliberate crash during real first launch.
+Normal interactive lifetime is not subject to the bounded initialization deadline.
+See persistence contract §11 and ADR-0007; all original task/phase gates remain.

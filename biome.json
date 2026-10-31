@@ -7,7 +7,7 @@
     "ignoreUnknown": false,
     "includes": [
       "foundation/{src,scripts,tests}/**/*.{ts,tsx,mjs,cjs}",
-      "desktop/{src,scripts,tests,verification}/**/*.{ts,tsx,mjs,cjs}"
+      "desktop/{src,scripts,tests,verification,launch}/**/*.{ts,tsx,mjs,cjs}"
     ],
     "maxSize": 1048576
   },

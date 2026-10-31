@@ -25,3 +25,16 @@ absent; preserve owned original material before corruption testing/native reuse.
 Record entry before code, then coherent source/negative-test checkpoints,
 independent review and exact-head Windows verification. The original 12 Phase 0
 exits, navigation FAIL_RETAINED, C-03/C-04/C-05 and full V9 remain unchanged.
+
+### 2026-10-31 08:19 UTC — first-launch proof clarification
+
+Coordinator selected a usable first-launch distinction: certify abrupt recovery on
+the exact pinned runtime in the mandatory verification matrix, while each real store
+must provision, exit orderly with full tree retirement, and reopen/authenticate its
+original backup under the retained lease. Real first launch must not deliberately
+crash to manufacture a per-store test flag. The exact version-2 proof and preserved
+version-1 historical interpretation are specified in
+[contract §11](../phases/PHASE-01-P1-05-PERSISTENCE-CONTRACT.md#11-usable-first-launch-proof-distinction--2026-10-31-0819-utc).
+Focused design review cleared the clarification; coordinator authorized its
+implementation at 08:22 UTC. No key
+or profile fallback, public bridge expansion or task acceptance is introduced.

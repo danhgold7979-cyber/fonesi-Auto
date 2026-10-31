@@ -87,6 +87,19 @@ test('orchestrator refuses migration without separate durability evidence, then 
     assert.equal(daily.header.reason, 'DAILY');
     assert.equal(await app.backup(1005, true), null);
     app.close();
+    // Synthetic v2 per-store orderly proof is distinct from historical v1 crash proof.
+    writeFileSync(
+      join(location.root, 'key-durability-proof.json'),
+      JSON.stringify({
+        version: 2,
+        storeId,
+        backupId: receipt.header.backupId,
+        locationId: receipt.header.locationId,
+        encryptedSha256: receipt.encryptedSha256,
+        state: 'ORDERLY_REOPEN_AUTHENTICATED',
+        runtimeCertification: 'ELECTRON_45_1_0_WIN_X64_DPAPI_V1',
+      }),
+    );
     const reopened = await FoundationPersistence.open(location, ownerToken, keys, false);
     try {
       await reopened.initialize(1006);

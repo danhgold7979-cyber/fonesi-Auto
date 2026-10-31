@@ -424,3 +424,59 @@ and file promotion/crash semantics are empirical gates, not missing user secrets
 The selected maintenance launcher (§9) supplies explicit manual operations without
 silently widening public IPC; its frozen executable grammar above requires reviewer approval, not implementation guessing.
 No evidence or implementation approval is asserted by this proposal.
+
+## 11. Usable first-launch proof distinction — 2026-10-31 08:19 UTC
+
+Coordinator selected this narrow clarification under delegated technical authority.
+It preserves the original-backup authentication and owned-profile/lease rules; it
+supersedes only the implication that every real store must deliberately crash a
+process before its first migration. Coordinator approved implementation at 08:22 UTC after the focused independent
+design review. Existing verified mechanism evidence is unchanged.
+
+- **Runtime mechanism certification:** the pinned Windows x64 Electron 45.1.0 /
+  Node 24.22.1 / Chromium 156.0.8078.49 mechanism has independently reviewed actual
+  orderly and abrupt recovery evidence (run 41182496843; retained artifact SHA256
+  `cb4d60a4438ecedfe4e93e146677055c685ae7f59bfa1b722a3a5c9f5c596fe6`).
+  A fixed reviewed certification identifier `ELECTRON_45_1_0_WIN_X64_DPAPI_V1`
+  denotes that evidence, not an observation about any newly created store. Version
+  changes or incompatible key/profile implementation changes require recertification;
+  an unavailable certification blocks initialization, never falls back to plaintext.
+  Native admission must compare actual Windows/x64, Electron/Node/Chromium versions
+  and reviewed provider/build provenance with the certification before accepting
+  EITHER version-1 or version-2 store proof. A fixed identifier alone is not proof
+  of the current runtime; historical version 1 never certifies a changed runtime.
+  Cross-platform pure/library fixtures remain explicitly synthetic, not native
+  certification checks.
+- **Per-store initialization:** the trusted launcher retains the exclusive lease
+  across native provision, observed orderly exit and complete process-tree retirement,
+  then preflights the preserved profile and starts a separate process which decrypts
+  and validates the SAME original encrypted schema-0 backup. Only after that process
+  also exits orderly and retires may the launcher write a new canonical proof and
+  admit production main/migrations. No crash is performed on this real first-use path.
+- New proof has exact ordered fields `{version:2, storeId, backupId, locationId,
+  encryptedSha256, state:'ORDERLY_REOPEN_AUTHENTICATED',
+  runtimeCertification:'ELECTRON_45_1_0_WIN_X64_DPAPI_V1'}`. UUID/hash formats remain
+  unchanged. The retained original witness must match all four identity/hash fields;
+  canonical serialization rejects duplicate/unknown fields. Producer is the trusted
+  launcher after process evidence, not the renderer or a supplied ready flag.
+- Historical version 1 `{version:1, ...originalWitness,
+  state:'ORDERLY_AND_ABRUPT_RECOVERED'}` remains readable only as the exact stronger
+  proof previously produced by the verified development envelope. It is never
+  manufactured for ordinary first launch or silently rewritten. Both proof forms
+  require current original-backup authentication again before migration. Proof
+  version is distinct from SQLite schema and public IPC versions.
+- Runtime certification and per-store proof are different facts. Neither implies
+  portable keys, recovery after missing/corrupt key material, genuine-human intent,
+  or durability across untested hardware/power failures. Actual abrupt key and
+  before/after-commit crash matrix tests remain mandatory verification, not product
+  startup behavior. The old Phase 0/navigation failures and task acceptance gates
+  remain unchanged.
+
+The production developer launcher separates native lifetime policies: provisioning,
+authentication and maintenance operations retain their 120-second bound; the normal
+interactive application has no forced 120-second lifetime. Its explicitly selected
+Job supervisor waits for actual root exit/user close, then performs the same bounded
+10-second tree/capture retirement. The lease is released only after confirmed
+retirement and exact orderly application markers; uncertainty preserves ownership.
+The original Phase 0 helper is byte-unchanged; the separate main-launch helper has
+a reviewed source derivation with no CMD/shell API.

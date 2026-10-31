@@ -697,3 +697,12 @@ focused envelope tests. Native READY execution is NOT_RUN. Injected native-dialo
 are verification instrumentation, not an installed first-use UX claim. Remaining
 maintenance/restore/crash criteria and unchanged formal gates are retained in the
 [P1-05 evidence](evidence/P1-05-persistence-source-2026-10-31.md).
+
+P1-05 integrated checkpoint — 2026-10-31 08:54 UTC: author source/build pipeline
+247/247 and Python 92/92 pass. The production developer-launcher first/repeat flow,
+COMMIT crash/BUSY/maintenance matrix and copied-profile restore are implemented;
+independent aggregate review passed 247 desktop / 109 foundation / 92 Python;
+exact-head Windows execution remains pending.
+Earlier HOSTED_KEY_AND_MAIN_READY_PASS remains the observed native result, not a
+claim that these new paths passed. Technical counts stay 5/11 and 5/154; formal
+acceptance remains 0. See the [current bounded evidence](evidence/P1-05-persistence-source-2026-10-31.md).

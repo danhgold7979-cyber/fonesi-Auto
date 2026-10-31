@@ -222,3 +222,20 @@ six degraded-app and ten store-mode predicates. All cleanup passed. Native crash
 artifact counts were 0, so no general dump-confidentiality claim follows. The
 NOT_RUN paragraph above is historical to the source-review checkpoint; consult
 current source evidence for the exact retained JSON/hash and acceptance limits.
+
+## P1-05 production-launcher and persistence matrix
+
+`Invoke-Persistence.ps1` now prepares strict version 3 evidence for source/package
+key recovery, actual main readiness, COMMIT crash recovery, typed SQLite contention,
+maintenance/retention and copied-profile restore. Each dependent stage follows
+verified process retirement; private captures are never uploaded. Historical v1/v2
+reports retain their original narrower meanings.
+
+`Invoke-PersistenceLauncherE2E.ps1` runs an exclusive, four-substitution audited
+copy of the real developer launcher for first creation and same-root reopen.
+Dialog answers and quit-after-READY are verification instrumentation, not genuine
+native widget clicks. Its outer deadline applies only to the test. Production
+interactive lifetime remains unbounded. The separate launcher report requires
+strict validation and a fresh output marker before upload. These new native paths
+are NOT_RUN until exact-head hosted execution; see
+[P1-05 evidence](../../docs/evidence/P1-05-persistence-source-2026-10-31.md).

@@ -148,7 +148,10 @@ try {
         'backup-key-profile.cjs',
         'persistence-files.cjs',
         'foundation-database.cjs',
+        'backup-service.cjs',
         'persistence-native.cjs',
+        'persistence-proof.cjs',
+        'persistence-entry.cjs',
         'preload.cjs',
         'renderer.js',
         'status.html',
@@ -167,7 +170,7 @@ try {
       }
       if (persistenceEntry) {
         persistence = await persistenceLifecycle.open(() =>
-          openPreparedPersistence(persistenceEntry, safeStorage, Date.now()),
+          openPreparedPersistence(persistenceEntry, safeStorage, Date.now(), true),
         );
         if (closing) {
           await persistenceLifecycle.stop();

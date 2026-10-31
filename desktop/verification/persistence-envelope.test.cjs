@@ -158,6 +158,11 @@ test('READY preflight requires exact existing proof and never fabricates missing
       }),
       { flag: 'wx' },
     );
+    fs.writeFileSync(
+      path.join(f.root, 'persistence-runtime-attestation.json'),
+      JSON.stringify({ exeSha256: 'a'.repeat(64) }),
+      { flag: 'wx' },
+    );
     assert.equal(call('prepare-ready', f.root, 'source').status, 0);
     const ready = JSON.parse(fs.readFileSync(path.join(data, '.ready-launch.json'), 'utf8'));
     assert.equal(ready.state, 'READY');

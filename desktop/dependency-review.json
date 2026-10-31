@@ -1891,5 +1891,5 @@
       "prepublish": "npm install --no-save --prefix __tests__ && npm install --no-save --prefix __tests__/__fixtures__"
     }
   },
-  "biomeReviewSha256": "192bd51fe860edbf4e5fbb77a20390dce7ee2614bd738d84ba820e0a4fcab8f6"
+  "biomeReviewSha256": "962af39514805fe837af9ae365c79695e8e49604b52b0796cf4130a85c17c3e0"
 }

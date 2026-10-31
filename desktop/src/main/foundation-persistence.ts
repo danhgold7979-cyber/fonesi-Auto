@@ -19,14 +19,9 @@ import {
 import type { PersistenceLocation } from './persistence-files.ts';
 import { validBackupLocalState } from './backup-key-profile.ts';
 import { diagnosticId } from '../log-contract.ts';
-export type KeyDurabilityProof = Readonly<{
-  version: 1;
-  storeId: string;
-  backupId: string;
-  locationId: string;
-  encryptedSha256: string;
-  state: 'ORDERLY_AND_ABRUPT_RECOVERED';
-}>;
+import { parsePersistenceProof, proofMatchesWitness } from '../persistence-proof.ts';
+import type { PersistenceProof } from '../persistence-proof.ts';
+export type KeyDurabilityProof = PersistenceProof;
 // Only the trusted supervisor records this after actual ordered native exit/tree
 // evidence. Application children cannot advance the persisted proof themselves.
 export class FoundationPersistence {
@@ -178,18 +173,18 @@ export class FoundationPersistence {
       const receipts = await this.registry(),
         bootstrap = receipts[0];
       if (!bootstrap) throw new Error('BOOTSTRAP_RECEIPT_MISSING');
-      const proof: KeyDurabilityProof = {
-        version: 1,
-        storeId: this.storeId,
-        backupId: bootstrap.header.backupId,
-        locationId: bootstrap.header.locationId,
-        encryptedSha256: bootstrap.encryptedSha256,
-        state: 'ORDERLY_AND_ABRUPT_RECOVERED',
-      };
       try {
+        const proof = parsePersistenceProof(
+          await readPersistenceFile(join(this.root, 'key-durability-proof.json')),
+        );
         if (
-          (await readPersistenceFile(join(this.root, 'key-durability-proof.json'))) !==
-          JSON.stringify(proof)
+          !proof ||
+          !proofMatchesWitness(proof, {
+            storeId: this.storeId,
+            backupId: bootstrap.header.backupId,
+            locationId: bootstrap.header.locationId,
+            encryptedSha256: bootstrap.encryptedSha256,
+          })
         )
           throw new Error();
       } catch {

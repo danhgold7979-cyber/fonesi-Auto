@@ -2,6 +2,15 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 Import-Module (Join-Path $PSScriptRoot 'WindowsBoundary.psm1') -Force
 $count = 0
+foreach ($literal in @('--maintenance=backup-now','--maintenance=list-backups','--maintenance=restore-to-new','--maintenance=accept-upgrade','--maintenance=select-backup-folder')) {
+    if (-not (Test-AllowedChildArgument $literal)) { throw 'MAINTENANCE_LITERAL_REJECTED' }
+    $count++
+}
+foreach ($literal in @('--maintenance=unknown','--maintenance=backup-now=extra','--MAINTENANCE=backup-now','--no-sandbox',"--maintenance=backup-now`n")) {
+    if (Test-AllowedChildArgument $literal) { throw 'UNTRUSTED_SWITCH_ALLOWED' }
+    $count++
+}
+
 foreach ($case in @(
     @{text=''; expected=$false},
     @{text='OTHER'; expected=$false},
@@ -125,5 +134,5 @@ try {
         [IO.Directory]::Delete($parent,$false)
     }
 }
-if ($count -ne 30) { throw 'TEST_COUNT_FAILED' }
-Write-Output 'WINDOWS_BOUNDARY_MARKERS_AND_OWNERSHIP_PASS_30'
+if ($count -ne 40) { throw 'TEST_COUNT_FAILED' }
+Write-Output 'WINDOWS_BOUNDARY_MARKERS_AND_OWNERSHIP_PASS_40'
