@@ -396,7 +396,8 @@
         },
         "node:path": {
           "dirname": "value",
-          "resolve": "value"
+          "resolve": "value",
+          "win32": "value"
         },
         "../persistence-contract.ts": {
           "MIGRATIONS": "value",

@@ -2,11 +2,20 @@ import { DatabaseSync, backup } from 'node:sqlite';
 import type { StatementSync, SQLInputValue } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { lstatSync, realpathSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, win32 } from 'node:path';
 import { MIGRATIONS, TABLES, DATABASE_VERSION, epoch, checksum } from '../persistence-contract.ts';
 import { diagnosticId } from '../log-contract.ts';
 // Internal main-only adapter. Caller holds the persistent data-root lease. No SQL
 // or path is accepted from renderer IPC; the integrated owner verifies the root.
+// Physical SQLite spelling only: logical ownership/identity paths remain unchanged.
+// Pinned default Windows VFS has a 1040-byte buffer. Reserve 64 bytes for
+// SQLite sidecars plus NUL; this deliberately does not promise unlimited paths.
+export function sqliteFilename(filename: string, platform: string = process.platform): string {
+  if (platform !== 'win32') return filename;
+  const physical = win32.toNamespacedPath(filename);
+  if (Buffer.byteLength(physical, 'utf8') + 64 + 1 > 1040) throw new Error('DATABASE_PATH_LIMIT');
+  return physical;
+}
 type ClosableStatement = StatementSync & { close: () => void };
 export function statement<T>(
   db: DatabaseSync,
@@ -129,7 +138,7 @@ export class FoundationDatabase {
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 64 * 1024 * 1024)
         throw new Error('DATABASE_FILE_REJECTED');
     } else if (readOnly) throw new Error('DATABASE_MISSING');
-    this.connection = new DatabaseSync(filename, {
+    this.connection = new DatabaseSync(sqliteFilename(filename), {
       readOnly,
       allowExtension: false,
       enableDoubleQuotedStringLiterals: false,
@@ -300,7 +309,11 @@ export class FoundationDatabase {
       size = rows(this.connection, 'PRAGMA page_size')[0]?.page_size;
     if (typeof pages !== 'bigint' || typeof size !== 'bigint' || pages * size > 64n * 1024n * 1024n)
       throw new Error('SNAPSHOT_LIMIT');
-    return backup(this.connection, destination, { source: 'main', target: 'main', rate: 100 });
+    return backup(this.connection, sqliteFilename(destination), {
+      source: 'main',
+      target: 'main',
+      rate: 100,
+    });
   }
   close(): void {
     if (!this.closed) {

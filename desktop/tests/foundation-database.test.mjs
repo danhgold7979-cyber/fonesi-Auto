@@ -11,11 +11,11 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { FoundationDatabase, statement } from '../src/main/foundation-database.ts';
+import { FoundationDatabase, statement, sqliteFilename } from '../src/main/foundation-database.ts';
 const root = fileURLToPath(new URL('..', import.meta.url));
 function fixture() {
   const base = join(root, '.test-output');
@@ -264,6 +264,78 @@ test('online snapshot remains coherent while a real second connection commits', 
     snapshot?.close();
     writer?.close();
     db?.close();
+    f.cleanup();
+  }
+});
+
+test('SQLite internal Windows spelling reserves sidecar bytes without changing logical paths', () => {
+  const path = 'C:\\owned\\literal #?name.sqlite';
+  assert.equal(sqliteFilename(path, 'linux'), path);
+  assert.equal(sqliteFilename(path, 'win32'), win32.toNamespacedPath(path));
+  assert.equal(
+    sqliteFilename('\\\\server\\share\\db.sqlite', 'win32'),
+    win32.toNamespacedPath('\\\\server\\share\\db.sqlite'),
+  );
+  const prefix = 'C:\\';
+  const allowance = 1040 - 65 - Buffer.byteLength(win32.toNamespacedPath(prefix));
+  assert.equal(Buffer.byteLength(sqliteFilename(prefix + 'a'.repeat(allowance), 'win32')), 975);
+  assert.throws(
+    () => sqliteFilename(prefix + 'a'.repeat(allowance + 1), 'win32'),
+    /DATABASE_PATH_LIMIT/,
+  );
+  assert.doesNotThrow(() =>
+    sqliteFilename(prefix + 'é'.repeat(Math.floor(allowance / 2)), 'win32'),
+  );
+  assert.throws(
+    () => sqliteFilename(prefix + 'é'.repeat(Math.floor(allowance / 2) + 1), 'win32'),
+    /DATABASE_PATH_LIMIT/,
+  );
+});
+
+test('owned long SQLite destination uses unchanged logical path for open, backup and reopen', async () => {
+  const f = fixture();
+  let source, reopened;
+  try {
+    let directory = f.path;
+    while (directory.length < 280) {
+      directory = join(directory, 'long-owned-component-0123456789');
+      mkdirSync(directory);
+    }
+    const destination = join(directory, 'copy.sqlite');
+    assert.ok(destination.length > 260 && destination.length < 400);
+    if (process.platform === 'win32') {
+      // Same absent target and ordinary default-VFS call as the prior adapter.
+      // This baseline must actually fail on the certified Windows runtime.
+      let baseline;
+      try {
+        assert.throws(
+          () => {
+            baseline = new DatabaseSync(destination);
+          },
+          (error) => error.code === 'ERR_SQLITE_ERROR' && error.errcode === 14,
+        );
+      } finally {
+        baseline?.close();
+      }
+      assert.equal(existsSync(destination), false);
+    }
+    source = new FoundationDatabase(f.file, f.id);
+    const fingerprint = source.fingerprint();
+    await source.snapshot(destination);
+    reopened = new FoundationDatabase(destination, f.id, true);
+    assert.equal(reopened.filename, destination);
+    assert.equal(reopened.fingerprint(), fingerprint);
+    reopened.close();
+    reopened = undefined;
+    source.close();
+    source = undefined;
+    const fresh = join(directory, 'fresh.sqlite');
+    reopened = new FoundationDatabase(fresh, f.id);
+    assert.equal(reopened.filename, fresh);
+    assert.equal(reopened.version, 0);
+  } finally {
+    reopened?.close();
+    source?.close();
     f.cleanup();
   }
 });
