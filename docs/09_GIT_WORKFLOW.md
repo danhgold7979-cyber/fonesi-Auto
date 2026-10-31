@@ -2,10 +2,31 @@
 
 Repository: danhgold7979-cyber/fonesi-Auto
 Default branch: main
-Updated: 2026-10-30
+Updated: 2026-10-31
 Historical planning branch: `planning/clean-slate-master-plan` (PR #1 merged)
-Active feasibility branch: `phase/00-feasibility`
+Current provisional-source branch: `phase-01`
+Legacy feasibility history: `phase/00-feasibility` (preserved, not rewritten)
 Documentation review branch: `plan`
+
+## Current branch separation — 2026-10-31 01:47 UTC
+
+User explicitly requested: “Mỗi phase rõ ràng mỗi nhánh khác nhau tránh trùng nhau nha. Để dễ theo dõi phân biệt.”
+Current convention is `phase-00`, `phase-01`, then `phase-NN` for each separately
+authorized Phase. Do not create future branches merely to reserve names. Branch
+existence is not Phase entry/acceptance or a permission to merge main.
+
+Coordinator moved the local checkout to `phase-01` at `cabbb05`, preserving dirty
+P1-03-S work; coordinator verified remote `phase-01` at
+`5eb71d68c0ea839ab00107030307b11717ebb1c6`. No push was
+performed by this worker. Legacy `phase/00-feasibility` retains its historical
+P1-01-S commit under the earlier exception; do not rewrite/delete it to pretend that
+history never happened. Coordinator verified remote `phase-00` at
+`4d06c2fbf67f8ce36a05b695f90f493623e56e87` (pre-P1 baseline, tree identical to
+local `6db312a4a201d694fe541fdbc4b66f854e6b7ac4`); local phase-00 also exists.
+Main remains `e85d2c0c67a3aefa11dc390739243653d2b1bbf0`.
+Historical refs/evidence remain unchanged. The narrow source exception is the only
+current cross-phase execution allowance; normal sequential/full acceptance rules
+below still apply to everything else.
 
 ## 1. Recommended model
 
@@ -20,8 +41,9 @@ Do NOT create one branch for every commit or tiny edit. Do NOT create all Phase 
 | main | Stable, accepted project milestones | Permanent | — |
 | planning/clean-slate-master-plan | Historical clean-slate planning baseline | PR #1 already merged | Historical main PR |
 | plan | Documentation normalization only; based on Phase 0 snapshot `34b9649` | This review | Draft PR to phase/00-feasibility; no merge without approval |
-| phase/00-feasibility | Phase 0 feasibility work and evidence | One Phase | main via PR |
-| phase-01 | Phase 1 integration | One Phase | main via PR |
+| phase/00-feasibility | Preserved legacy evidence/history, including earlier provisional P1-01-S checkpoint | Frozen historical transition; no rewrite | No automatic merge |
+| phase-00 | Verified canonical Phase 0 branch | One Phase | main only after acceptance |
+| phase-01 | Current narrowly approved provisional P1 source; full Phase1 entry unaccepted | One Phase | main only after acceptance |
 | feat/p01-01-electron-shell | One substantial feature/task | Short-lived | Active Phase branch |
 | fix/p02-03-adb-reconnect | One bug fix | Short-lived | Active Phase branch |
 | test/p04-02-ui-automator-spike | One test/feasibility task | Short-lived | Active Phase branch |

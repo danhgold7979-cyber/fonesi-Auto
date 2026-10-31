@@ -344,3 +344,14 @@ service. Branch remains phase/00-feasibility. This is provisional source authori
 not opening/accepting full Phase1, Phase0 acceptance, main merge or activation.
 All exclusions, original baseline/12 exits, navigation FAIL, ADR B/C limitations
 and C-03/C-05/V9 requirements remain unchanged. Root coordinates publication.
+
+## Branch separation update — 2026-10-31 01:47 UTC
+
+Latest user direction requires one branch per Phase. Coordinator moved local work
+to `phase-01` at `cabbb05`, preserving reviewed/dirty P1-03-S files. This supersedes
+the earlier keep-phase/00-feasibility branch instruction only, not scope/security
+or acceptance rules. Canonical convention: phase-00/phase-01/phase-NN; coordinator verified phase-00 at `4d06c2fbf67f8ce36a05b695f90f493623e56e87`
+and phase-01 at `5eb71d68c0ea839ab00107030307b11717ebb1c6`. Legacy
+phase/00-feasibility is a frozen historical transition branch retaining P1-01-S,
+not an active publication destination; no rewrite/deletion. Full Phase1 not opened/accepted; P1-11-S awaits next
+entry approval. See living git workflow for publication verification status.

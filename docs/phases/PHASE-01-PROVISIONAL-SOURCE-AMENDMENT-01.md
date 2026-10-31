@@ -18,7 +18,10 @@ The existing sequential rules remain default. Only a separately recorded explici
 approval of this exact exception can supersede their source-development entry
 restriction for the listed subsets, never their acceptance/activation requirements.
 
-Keep branch `phase/00-feasibility`; no branch creation, main merge or release.
+**Historical branch instruction, superseded by the 01:47 UTC branch separation
+update below:** the initial proposal kept `phase/00-feasibility` without branch
+creation. Current provisional source belongs on `phase-01`; legacy history is
+frozen. No main merge or release is authorized.
 Reviewed proposal base: `6db312a4a201d694fe541fdbc4b66f854e6b7ac4`.
 Original `PHASE-00-feasibility.md` SHA256:
 `3882e2112129fdc0dcdc69104195cc95d8f90c933a210c9002cd16642873316c`.
@@ -182,3 +185,24 @@ service. Branch remains phase/00-feasibility. This is provisional source authori
 not opening/accepting full Phase1, Phase0 acceptance, main merge or activation.
 All exclusions, original baseline/12 exits, navigation FAIL, ADR B/C limitations
 and C-03/C-05/V9 requirements remain unchanged. Root coordinates publication.
+
+## P1-03-S entry — 2026-10-31 01:39 UTC
+
+Root approved this next subset after reviewed P1-01-S publication remote5eb71d6,
+tree5efb770c527ebb5a94abd14f1e6661d6b2a646f1. Implement strict compilation,
+Node built-in harness, fail-closed limited import/source checks and explicitly
+limited hygiene, with real negative exit-code fixtures. No full linter/formatter,
+new dependency/runtime/CI workflow or other subset. P1-11-S still awaits next-entry
+approval. User paused other repositories; this agent remains exclusively in Auto.
+Original Phase0 baseline/12 exits/navigation FAIL and all activation gates retained.
+
+## Branch separation update — 2026-10-31 01:47 UTC
+
+Latest user direction requires one branch per Phase. Coordinator moved local work
+to `phase-01` at `cabbb05`, preserving reviewed/dirty P1-03-S files. This supersedes
+the earlier keep-phase/00-feasibility branch instruction only, not scope/security
+or acceptance rules. Canonical convention: phase-00/phase-01/phase-NN; coordinator verified phase-00 at `4d06c2fbf67f8ce36a05b695f90f493623e56e87`
+and phase-01 at `5eb71d68c0ea839ab00107030307b11717ebb1c6`. Legacy
+phase/00-feasibility is a frozen historical transition branch retaining P1-01-S,
+not an active publication destination; no rewrite/deletion. Full Phase1 not opened/accepted; P1-11-S awaits next
+entry approval. See living git workflow for publication verification status.

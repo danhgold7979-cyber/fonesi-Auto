@@ -6,7 +6,7 @@ Mục tiêu: một quy trình chuẩn để AI/dev đọc plan, lập kế hoạ
 
 ## 1. Nguyên tắc vận hành
 
-**2026-10-31 pending exception:** [cross-phase pure-source proposal](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) is documentation-only, not approved. Its exact subsets could proceed only after recorded explicit approval; no generic parallel-Phase authority or acceptance waiver follows.
+**2026-10-31 scoped exception:** [cross-phase pure-source amendment](phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) approved 01:23 UTC; current P1-03-S entry approved 01:39 after P1-01-S review. P1-11-S awaits parent entry approval. Current branch `phase-01`; no generic parallel-Phase authority, full Phase opening or acceptance waiver follows.
 
 
 1. Một thời điểm chỉ triển khai một Phase. Không code Phase tiếp theo khi Phase hiện tại chưa nghiệm thu và merge.
@@ -425,6 +425,17 @@ with parent review/approval of each next entry. **Current execution: P1-01-S onl
 Record module map/minimal verified dependency closure before harness/validator work.
 Normal owned build/test tooling is permitted; no new hosted workflow or runtime
 service. Branch remains phase/00-feasibility. This is provisional source authority,
-not opening/accepting full Phase1, Phase0 acceptance, main merge or activation.
+not opening/accepting full Phase 1, Phase 0 acceptance, main merge or activation.
 All exclusions, original baseline/12 exits, navigation FAIL, ADR B/C limitations
 and C-03/C-05/V9 requirements remain unchanged. Root coordinates publication.
+
+## Branch separation update — 2026-10-31 01:47 UTC
+
+Latest user direction requires one branch per Phase. Coordinator moved local work
+to `phase-01` at `cabbb05`, preserving reviewed/dirty P1-03-S files. This supersedes
+the earlier keep-phase/00-feasibility branch instruction only, not scope/security
+or acceptance rules. Canonical convention: phase-00/phase-01/phase-NN; coordinator verified phase-00 at `4d06c2fbf67f8ce36a05b695f90f493623e56e87`
+and phase-01 at `5eb71d68c0ea839ab00107030307b11717ebb1c6`. Legacy
+phase/00-feasibility is a frozen historical transition branch retaining P1-01-S,
+not an active publication destination; no rewrite/deletion. Full Phase 1 not opened/accepted; P1-11-S awaits next
+entry approval. See living git workflow for publication verification status.

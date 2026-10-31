@@ -290,3 +290,28 @@ closure implemented; Linux scripts-disabled restore and compiler version check P
 8/8 metadata regressions PASS. [Evidence](evidence/P1-01-S-provisional-foundation-2026-10-31.md).
 Independent review CLEAR01:27 UTC; P1-01-S checkpoint complete, full P1-01/Phase1 NOT_ACCEPTED. P1-03-S/P1-11-S next entry awaits root
 approval. No runtime services/new workflow; original host/navigation/Phase0 gates open.
+
+### P1-03-S entry — 2026-10-31 01:39 UTC
+
+Root approved strict/compiler/test/import/hygiene subset after published reviewed
+P1-01-S. Entry recorded before code; no P1-11-S authorization yet. No full Phase1
+opening/acceptance or activation; all original Phase0/navigation gates preserved.
+
+### P1-03-S provisional source checkpoint — 2026-10-31 01:46 UTC
+
+Strict compiler, restricted import/source inventory checks, limited hygiene and
+Node test harness implemented. Local54/54 tests and all five check stages PASS;
+[evidence](evidence/P1-03-S-provisional-harness-2026-10-31.md). Independent review
+CLEAR01:47 UTC, full check54/54 twice. No full formatter/linter or runtime; Windows NOT_RUN. P1-11-S entry still
+requires root approval; original Phase0/navigation/activation gates unchanged.
+
+## Branch separation update — 2026-10-31 01:47 UTC
+
+Latest user direction requires one branch per Phase. Coordinator moved local work
+to `phase-01` at `cabbb05`, preserving reviewed/dirty P1-03-S files. This supersedes
+the earlier keep-phase/00-feasibility branch instruction only, not scope/security
+or acceptance rules. Canonical convention: phase-00/phase-01/phase-NN; coordinator verified phase-00 at `4d06c2fbf67f8ce36a05b695f90f493623e56e87`
+and phase-01 at `5eb71d68c0ea839ab00107030307b11717ebb1c6`. Legacy
+phase/00-feasibility is a frozen historical transition branch retaining P1-01-S,
+not an active publication destination; no rewrite/deletion. Full Phase1 not opened/accepted; P1-11-S awaits next
+entry approval. See living git workflow for publication verification status.

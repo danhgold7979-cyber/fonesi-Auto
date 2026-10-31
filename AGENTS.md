@@ -56,7 +56,7 @@ Follow docs/13_DOCUMENTATION_CHANGE_POLICY.md. Update canonical living documents
 
 ## 5. Phase and task authorization
 
-A proposed cross-phase exception is tracked in `docs/phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md`. It is NOT APPROVED and grants no code authority. Only explicit recorded approval may permit its exact pure-source subsets; all other sequential/acceptance/security rules below remain unchanged.
+The recorded cross-phase exception in `docs/phases/PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md` was narrowly approved 01:23 UTC on 2026-10-31. P1-01-S is reviewed; P1-03-S entry approved 01:39 UTC; P1-11-S still requires parent entry approval. Current source branch is `phase-01` under the user's one-branch-per-phase direction. No full Phase 1 opening/acceptance, privileged runtime or original Phase 0 gate waiver follows; all other rules remain.
 
 
 - Work on one Phase at a time; never start a later Phase before the current Phase is accepted and merged.
@@ -148,4 +148,4 @@ If a command or test was not run, state that explicitly. Never claim success bas
 
 - 2026-10-30: Clarified sequential authorization and approved exceptions, immutable Phase 0 baseline, evidence/privacy requirements, and start/checkpoint/end reporting. This governance change itself grants no production or product-behavior authorization.
 
-**2026-10-31 01:23 UTC scoped exception approved:** proposal b7d0e11 now permits only P1-01-S first, with separately reviewed next entries P1-03-S/P1-11-S as recorded in the provisional-source amendment and playbook. Earlier pending notes are historical; all other sequential/acceptance/security rules remain. Full Phase1 is not opened or accepted.
+**2026-10-31 01:23 UTC scoped exception approved:** proposal b7d0e11 now permits only P1-01-S first, with separately reviewed next entries P1-03-S/P1-11-S as recorded in the provisional-source amendment and playbook. Earlier pending notes are historical; all other sequential/acceptance/security rules remain. Full Phase 1 is not opened or accepted.

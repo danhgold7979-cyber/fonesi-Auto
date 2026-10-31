@@ -2,9 +2,9 @@
 
 **Revision:** 1.1-draft · **Date:** 2026-10-30
 **Plan:** DRAFT / NOT AUTHORIZED · **Execution:** NOT_STARTED
-**Proposed branch:** `phase-01` — not created by this plan
+**Current provisional-source branch:** `phase-01` — coordinated2026-10-31; not full Phase entry
 **Execution base:** accepted `main` SHA to be recorded after Phase 0 acceptance and merge
-**Owner/reviewer:** assign at approval · **Coding authorized:** NO
+**Full-plan coding:** NO · **Narrow source subsets:** separately approved amendment; P1-03-S current, P1-11-S entry gated
 
 > Phase 0 remains unfinished. This plan supplies future execution detail, not permission to start application code. Approval of the planning cleanup is not approval of this Phase. No code, runtime tests or hardware results are claimed here.
 
@@ -16,7 +16,7 @@ In scope: desktop lifecycle, privileges, typed contracts, initial persistence, s
 
 ## 2. Entry, decisions and dependency order
 
-**Pending amendment:** [provisional source exception01](PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) proposes only P1-01-S/P1-03-S/P1-11-S under the current Phase0 branch. It is not approved; full task entry/order/acceptance below remain unchanged. No renderer or privileged runtime is included.
+**Scoped approved amendment:** [provisional source exception01](PHASE-01-PROVISIONAL-SOURCE-AMENDMENT-01.md) permits only the recorded pure-source subsets on `phase-01`: P1-01-S reviewed, P1-03-S entered, P1-11-S awaits parent entry approval. Full task entry/order/acceptance below remain unchanged. No renderer or privileged runtime is included.
 
 
 - Phase 0 accepted with required physical-device feasibility evidence, approved ADRs and merge SHA; accepted Phase 0 baseline stays untouched.
