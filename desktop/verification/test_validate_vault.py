@@ -59,3 +59,35 @@ class VaultTests(unittest.TestCase):
         for code in (None,True,'PRIVATE','EIO',{'code':'EACCES'}):
             with self.assertRaises(InvalidEvidence):check({**value,'accessDeniedCode':code})
         for code in ('EACCES','EPERM','EBUSY'):self.assertTrue(check({**value,'accessDeniedCode':code})['passed'])
+
+    def test_safe_collection_exact_status_vector_is_not_pass(self):
+        from itertools import product
+        from validate_vault import CONTEXT_CASES,CONTEXT_STATUSES,validate_context,context_collection_safe
+        cap=capture();cap['stdout']='VAULT_CONTEXT_RESULT\n'
+        for status in CONTEXT_STATUSES:
+            for bits in product((False,True),repeat=len(CONTEXT_CASES)):
+                raw={'version':1,'status':status,**dict(zip(CONTEXT_CASES,bits))}
+                try:value=validate_context(json.dumps(raw).encode(),json.dumps(cap).encode(),'source')
+                except InvalidEvidence:
+                    self.assertEqual(status,'PASS');self.assertFalse(all(bits));continue
+                expected=status=='TOKEN_UNAVAILABLE' and bits==(True,False,False,False,False,False)
+                self.assertEqual(context_collection_safe(value,'source'),expected)
+                if expected:
+                    self.assertFalse(value['passed']);value['passed']=True
+                    with self.assertRaises(InvalidEvidence):context_collection_safe(value,'source')
+    def test_safe_collection_rejects_every_native_process_uncertainty(self):
+        from validate_vault import CONTEXT_CASES,validate_context,context_collection_safe
+        raw={'version':1,'status':'TOKEN_UNAVAILABLE',**{k:k=='ownerBefore' for k in CONTEXT_CASES}}
+        changes=({'status':'NONZERO_EXIT','exitCode':1},{'status':'TIMEOUT','exitCode':None},
+                 {'status':'LAUNCH_FAILED','exitCode':None},{'status':'CAPTURE_FAILED','exitCode':0},
+                 {'cleanupComplete':False},{'stdoutTruncated':True},{'stderrTruncated':True})
+        for change in changes:
+            cap=capture();cap['stdout']='VAULT_CONTEXT_RESULT\n';cap['process'].update(change)
+            value=validate_context(json.dumps(raw).encode(),json.dumps(cap).encode(),'source')
+            self.assertFalse(context_collection_safe(value,'source'))
+        from pathlib import Path
+        source=(Path(__file__).parent/'Invoke-Persistence.ps1').read_text()
+        self.assertIn("if(-not $allClean){throw 'CONTEXT_VALIDATION_RETIREMENT'}",source)
+        self.assertIn("$validation.Status -ceq 'NONZERO_EXIT' -and $validation.ExitCode -eq 1",source)
+        for marker in ('VAULT_CONTEXT_COLLECTION_SAFE','VAULT_CONTEXT_STATUS_TOKEN_UNAVAILABLE','VAULT_VALIDATION_FAIL'):
+            self.assertIn("Test-ExactlyOneLine $validation.Stdout '"+marker+"'",source)

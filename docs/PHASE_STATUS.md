@@ -734,3 +734,15 @@ P1-06 first native-envelope checkpoint — 11:27 UTC: independent full source/bu
 wrapper is authorized for its first bounded hosted run; actual C#/PowerShell/native
 identity behavior is still NOT_RUN. [Evidence and remaining qualifications](evidence/P1-06-secret-store-source-2026-10-31.md).
 No P1-06 acceptance/count change; six technical tasks and formal zero remain.
+
+
+P1-06 current checkpoint — 11:43 UTC: actual run `41197592146` verified the five
+original source vault stages, including real EPERM publication denial, but returned
+`TOKEN_UNAVAILABLE` before impersonation. **Cross-user criterion UNMET; P1-06 not
+TECHNICAL_PASS.** No rights/identity fallback is authorized. Independently reviewed
+327 desktop / 109 foundation / 107 Python tests now cover the seven-stage
+missing/corrupt increment and exact safe collection of remaining independent
+modes; token-unavailable remains false and final aggregate FAIL. Fully retired,
+validated collection may clean owned artifacts without pretending the unmet test
+passed. Native expanded-mode evidence remains pending. Technical count remains
+6/11 (54.5%), 6/154 (3.9%); formal accepted count remains zero.

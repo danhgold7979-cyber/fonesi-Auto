@@ -2,15 +2,15 @@ import json
 import unittest
 import test_validate_persistence_matrix as previous
 import test_validate_vault as vault
-from validate_vault import STAGES,CONTEXT_CASES,validate_raw,validate_context
+from validate_vault import STAGES,LEGACY_STAGES,CONTEXT_CASES,validate_raw,validate_context
 from validate_persistence import validate_report
 from validate_runtime import InvalidEvidence
 
-def fixture():
-    value=previous.fixture();value['schemaVersion']=4;value['scope']='HOSTED_PERSISTENCE_AND_VAULT';value['vault']={};value['context']={}
+def fixture(version=4):
+    value=previous.fixture();value['schemaVersion']=version;value['scope']='HOSTED_PERSISTENCE_AND_VAULT_NEGATIVES' if version==5 else 'HOSTED_PERSISTENCE_AND_VAULT';value['vault']={};value['context']={}
     for mode in ('source','package'):
         value['vault'][mode]={}
-        for stage in STAGES:
+        for stage in (STAGES if version==5 else LEGACY_STAGES):
             raw=vault.fixture(stage);raw['mode']=mode
             artifacts=json.loads(vault.artifacts(stage));artifacts['mode']=mode
             value['vault'][mode][stage]=validate_raw(json.dumps(raw).encode(),json.dumps(vault.capture()).encode(),mode,stage,json.dumps(artifacts).encode())
@@ -26,7 +26,8 @@ class VaultMatrixTests(unittest.TestCase):
         broken=fixture();del broken['vault']['source']['denied']
         with self.assertRaises(InvalidEvidence):validate_report(json.dumps(broken).encode())
     def test_unavailable_context_is_not_pass_and_failure_partial_stays_honest(self):
-        value=fixture();value['context']['source']['status']='TOKEN_UNAVAILABLE';value['context']['source']['passed']=False
+        value=fixture(5);value['context']['source']['status']='TOKEN_UNAVAILABLE';value['context']['source']['passed']=False
+        value['context']['source']['cases']={k:k=='ownerBefore' for k in CONTEXT_CASES}
         self.assertFalse(validate_report(json.dumps(value).encode())['passed'])
         value['failure']='STAGE_VALIDATION_FAILED';value['vault']['package']={}
         self.assertFalse(validate_report(json.dumps(value).encode())['passed'])
@@ -39,3 +40,15 @@ class VaultMatrixTests(unittest.TestCase):
         with self.assertRaises(InvalidEvidence):validate_report(json.dumps(value).encode())
         raw=json.dumps(fixture()).encode().replace(b'"canaryAbsent": true',b'"canaryAbsent": false,"canaryAbsent": true',1)
         with self.assertRaises(InvalidEvidence):validate_report(raw)
+
+    def test_v5_requires_missing_and_corrupt_in_both_modes(self):
+        self.assertTrue(validate_report(json.dumps(fixture(5)).encode())['passed'])
+        for mode in ('source','package'):
+            for stage in ('missing','corrupt'):
+                value=fixture(5);del value['vault'][mode][stage]
+                with self.assertRaises(InvalidEvidence):validate_report(json.dumps(value).encode())
+                value=fixture(5);value['vault'][mode][stage]['cases']['operationVerified']=False
+                value['vault'][mode][stage]['passed']=False
+                self.assertFalse(validate_report(json.dumps(value).encode())['passed'])
+        value=fixture(5);value['schemaVersion']=4;value['scope']='HOSTED_PERSISTENCE_AND_VAULT'
+        with self.assertRaises(InvalidEvidence):validate_report(json.dumps(value).encode())

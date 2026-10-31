@@ -4,6 +4,7 @@ const { app, safeStorage } = require('electron');
 const fs = require('node:fs');
 const promises = require('node:fs/promises');
 const { observeIndexRename } = require('./vault-denial.cjs');
+const { runRecordNegative } = require('./vault-record-negative.cjs');
 const { createHash } = require('node:crypto');
 const path = require('node:path');
 const { directory, read, write } = require('./vault-owned.cjs');
@@ -148,7 +149,7 @@ try {
   const name = process.env.FONESI_PERSISTENCE_CONTROL_NAME;
   if (
     typeof name !== 'string' ||
-    !/^persistence-vault-control-(source|package)-(create|replace|denied|delete|deleted)\.json$/.test(
+    !/^persistence-vault-control-(source|package)-(create|replace|denied|missing|corrupt|delete|deleted)\.json$/.test(
       name,
     )
   )
@@ -361,6 +362,42 @@ try {
         store = createNativeSecretStore(options);
         await store.verify();
         sameBytes(await store.read(store.grant(['READ']), current), canaries[1]);
+        cases.referenceDenial = true;
+      } else if (control.stage === 'missing' || control.stage === 'corrupt') {
+        const current = reference('replace');
+        await runRecordNegative({
+          kind: control.stage,
+          directory: path.join(data, 'vault'),
+          filename: `secret-${current.id}-r${current.revision}.bin`,
+          backupPath: path.join(
+            root,
+            `persistence-vault-original-${control.mode}-${control.stage}.bin`,
+          ),
+          readOriginal: async () => {
+            await store.close();
+            store = createNativeSecretStore(options);
+            await store.verify();
+            sameBytes(await store.read(store.grant(['READ']), current), canaries[1]);
+            return true;
+          },
+          verifyRejected: async (expectedCode) => {
+            const response = await store.read(store.grant(['READ']), current);
+            denied(response, expectedCode);
+            if (Object.hasOwn(response, 'data')) throw new Error('NEGATIVE_DATA');
+            await store.close();
+            store = createNativeSecretStore(options);
+            let rejected = false;
+            try {
+              await store.verify();
+            } catch (error) {
+              if (error?.fixedCode !== expectedCode) throw new Error('NEGATIVE_CODE');
+              rejected = true;
+            }
+            if (!rejected) throw new Error('NEGATIVE_VERIFY');
+            await store.close();
+            return true;
+          },
+        });
         cases.referenceDenial = true;
       } else if (control.stage === 'delete') {
         const current = reference('replace');

@@ -79,6 +79,8 @@ async function run() {
       scanTree(path.join(root, `logs-${mode}-vault-${selected}`)),
       scanTree(path.join(location.root, 'vault')),
     ];
+    if (selected === 'missing' || selected === 'corrupt')
+      parts.push(scanTree(path.join(root, `persistence-vault-original-${mode}-${selected}.bin`)));
     await assertLease();
     write(path.join(root, `persistence-vault-artifacts-${mode}-${selected}.json`), {
       version: 1,

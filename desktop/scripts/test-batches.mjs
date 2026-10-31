@@ -42,6 +42,7 @@ export const TEST_FILES = Object.freeze([
   'verification/persistence-store-contract.test.cjs',
   'verification/vault-artifacts.test.cjs',
   'verification/vault-contract.test.cjs',
+  'verification/vault-record-negative.test.cjs',
 ]);
 export const TEST_BATCH_SIZE = 16;
 export function tapCounts(stdout) {

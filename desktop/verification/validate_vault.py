@@ -2,7 +2,8 @@
 import json
 import re
 from validate_runtime import exact_record, unique_pairs, reject, validate_process, VERSIONS
-STAGES=('create','replace','denied','delete','deleted')
+LEGACY_STAGES=('create','replace','denied','delete','deleted')
+STAGES=('create','replace','denied','missing','corrupt','delete','deleted')
 CASES=('profileBeforeReady','leaseVerified','providerBound','operationVerified','referenceDenial','auditFlushed','auditCanonical','canaryAbsent','closed')
 
 def parse(raw):
@@ -72,6 +73,13 @@ def validate_context_public(value,mode):
     if type(value['passed']) is not bool or value['passed']!=rebuilt['passed']:reject()
     return value['passed']
 
+def context_collection_safe(value,mode):
+    # Collection permission is NOT acceptance; this exact helper path never impersonated.
+    validate_context_public(value,mode)
+    expected={key:key=='ownerBefore' for key in CONTEXT_CASES}
+    return (value['status']=='TOKEN_UNAVAILABLE' and value['passed'] is False and
+            value['cases']==expected and validate_process(value['process']))
+
 def context_files(root,mode):
     from validate_persistence import _read_owned,_write_new
     if mode not in ('source','package'):reject()
@@ -81,6 +89,7 @@ def context_files(root,mode):
     if _read_owned(root,'.owner')!=token:reject()
     _write_new(root,f'persistence-vault-context-public-{mode}.json',value)
     print('VAULT_CONTEXT_STATUS_'+value['status'])
+    if context_collection_safe(value,mode):print('VAULT_CONTEXT_COLLECTION_SAFE')
     return value['passed']
 
 def main():

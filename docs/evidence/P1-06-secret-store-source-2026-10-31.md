@@ -128,3 +128,48 @@ permits that formatter whitespace while still extracting the exact entry regex.
 The corrected base (without pending negative-stage work) passed the full desktop
 pipeline **320/320**, including quality, strict types, build and manifest checks.
 No native or cross-context result is inferred from the failed quality run.
+
+### Scoped missing/corrupt active-record increment (11:37 UTC)
+
+Coordinator authorized the reviewed same-owned-vault native negatives after the
+entry fix was published. Seven-stage schema 5 adds missing and corrupt ACTIVE
+ciphertext cases before deletion; historical schema 4 retains its exact five-stage
+set. Each case requires an original native-provider canary read, exact fixed denial
+with no returned data, independent fresh-store verify refusal, and exclusive
+witnessed restoration followed by a fresh original-reference read. Index, receipt
+and every other vault file are hash-witnessed unchanged. Corruption flips only the
+last ciphertext/tag byte; it preserves the provider prefix and length.
+
+Original ciphertext copies are private, exclusively written/synced and retained
+until fully retired, validated collection cleanup (including a truthful
+TOKEN_UNAVAILABLE aggregate FAIL). Expected altered state is checked before restoring;
+unexpected state or any uncertainty preserves evidence, retains the primary
+failure and stops later work. No production fault hooks, relaxed provider/schema
+predicates, arbitrary paths or real credentials are introduced. Native outcomes
+remain pending; local helper fixtures do not substitute for actual provider denial.
+
+### Actual unavailable-context outcome and safe independent collection
+
+Run `41197592146` / job `124526788626` failed truthfully at cross-context acquisition.
+Its strict reviewed artifact reports all five source vault stages passing, including
+real `EPERM` for the held-index publication attempt, then `TOKEN_UNAVAILABLE`.
+Owner-before authentication was true; the other five context controls were false;
+the isolated helper itself exited 0 with confirmed cleanup and no truncation.
+There was no impersonation or foreign-provider denial proof. Required cross-user
+acceptance therefore remains explicitly UNMET; technical count stays six/formal zero.
+
+Coordinator approved collection of independent later groups only for that exact
+validated pre-impersonation vector and successful retired native process. The fixed
+COLLECTION_SAFE marker does not change validation exit 1, VALIDATION_FAIL or the
+stored false context result. All other failed/uncertain statuses abort. The final
+aggregate remains FAIL even if both modes and cleanup otherwise complete. No new
+identity mechanism, account/service, privilege/right/ACL change or token borrowing
+is authorized or attempted; no permission-free alternative has been established.
+The local Python suite passes 107/107, including all 448 status/Boolean-vector
+combinations, process uncertainty and complete-later-groups-still-FAIL checks.
+
+
+Independent final review at 11:43 UTC: desktop **327/327**, foundation **109/109**,
+Python **107/107**, clean diff and unchanged native-helper/Phase0 hashes. Seven-stage
+source integration and narrowly validated safe collection are CLEAR for hosted
+verification. These local/source results do not close the actual cross-user gap.

@@ -1,5 +1,13 @@
 'use strict';
-const STAGES = Object.freeze(['create', 'replace', 'denied', 'delete', 'deleted']);
+const STAGES = Object.freeze([
+  'create',
+  'replace',
+  'denied',
+  'missing',
+  'corrupt',
+  'delete',
+  'deleted',
+]);
 const CASES = Object.freeze([
   'profileBeforeReady',
   'leaseVerified',
