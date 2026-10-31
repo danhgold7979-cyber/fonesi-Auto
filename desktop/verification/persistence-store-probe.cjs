@@ -17,6 +17,7 @@ const {
   caseNames,
   validateResult,
   installCommitCrash,
+  observeReadOnlyWrite,
 } = require('./persistence-store-contract.cjs');
 function plain(p) {
   const s = fs.lstatSync(p),
@@ -374,6 +375,54 @@ try {
         cases.migrationBusyDenied &&
         database.version === expected &&
         database.fingerprint() === beforeBusy;
+      // Owned Windows ReadOnly file attribute only: no ACL/account/host setting
+      // changes and no altered production open flags. Observe denial at the
+      // actual migration write, not a backup read or generic constructor error.
+      database.close();
+      database = null;
+      const originalMode = fs.statSync(databasePath).mode & 0o777;
+      let prerequisiteSupplied = false;
+      let deniedAtWrite = false;
+      let typedDenial = false;
+      try {
+        fs.chmodSync(databasePath, originalMode & ~0o222);
+        database = new FoundationDatabase(databasePath, control.storeId);
+        observeReadOnlyWrite(
+          database.connection,
+          () => prerequisiteSupplied,
+          () => {
+            deniedAtWrite = true;
+          },
+        );
+        try {
+          await database.migrate(async (version) => {
+            if (version !== expected) throw new Error('STORE_READONLY_VERSION');
+            prerequisiteSupplied = true;
+            return service.prerequisite(busyBackup);
+          }, Date.now());
+        } catch (error) {
+          typedDenial =
+            error instanceof Error && error.code === 'ERR_SQLITE_ERROR' && error.errcode === 8;
+        }
+      } finally {
+        try {
+          database?.close();
+          database = null;
+        } finally {
+          fs.chmodSync(databasePath, originalMode);
+        }
+      }
+      database = new FoundationDatabase(databasePath, control.storeId, true);
+      const afterDeniedBackup = await service.validate(location, busyReceipt.header.backupId);
+      cases.migrationReadOnlyDenied =
+        prerequisiteSupplied &&
+        deniedAtWrite &&
+        typedDenial &&
+        database.version === expected &&
+        database.fingerprint() === beforeBusy &&
+        afterDeniedBackup.encryptedSha256 === busyBackup.encryptedSha256 &&
+        JSON.stringify(afterDeniedBackup) === JSON.stringify(busyBackup) &&
+        (fs.statSync(databasePath).mode & 0o777) === originalMode;
       database.close();
       database = null;
       cases.databaseClosed = true;

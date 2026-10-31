@@ -75,6 +75,7 @@ function caseNames(stage) {
       'historyExpected',
       'integrityValid',
       'migrationBusyDenied',
+      'migrationReadOnlyDenied',
       'databaseClosed',
     ];
   throw new Error('STORE_STAGE');
@@ -132,10 +133,34 @@ function installCommitCrash(connection, boundary, crash) {
     connection.exec = original;
   };
 }
+// Observation only: execute the unchanged method/SQL and rethrow the same error.
+function observeReadOnlyWrite(connection, admitted, denied) {
+  const original = connection.exec;
+  connection.exec = function (sql) {
+    try {
+      return original.call(this, sql);
+    } catch (error) {
+      if (
+        admitted() &&
+        (sql === 'BEGIN IMMEDIATE' ||
+          (typeof sql === 'string' && sql.startsWith('CREATE TABLE '))) &&
+        error instanceof Error &&
+        error.code === 'ERR_SQLITE_ERROR' &&
+        error.errcode === 8
+      )
+        denied();
+      throw error;
+    }
+  };
+  return () => {
+    connection.exec = original;
+  };
+}
 module.exports = {
   parseControl,
   parseDurabilityProof,
   caseNames,
   validateResult,
   installCommitCrash,
+  observeReadOnlyWrite,
 };

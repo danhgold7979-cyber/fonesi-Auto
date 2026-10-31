@@ -7,6 +7,7 @@ const {
   caseNames,
   validateResult,
   installCommitCrash,
+  observeReadOnlyWrite,
 } = require('./persistence-store-contract.cjs');
 const control = () => ({
   version: 1,
@@ -129,4 +130,43 @@ test('durability proof requires every exact canonical witness field, no duplicat
     `${raw} `,
   ])
     assert.equal(parseDurabilityProof(value), null);
+});
+
+test('read-only evidence observes exact migration write failure after prerequisite without substituting SQL', () => {
+  for (const [sql, admitted, code, errcode, expected] of [
+    ['BEGIN IMMEDIATE', true, 'ERR_SQLITE_ERROR', 8, true],
+    ['CREATE TABLE fixture (id INTEGER)', true, 'ERR_SQLITE_ERROR', 8, true],
+    ['BEGIN IMMEDIATE', false, 'ERR_SQLITE_ERROR', 8, false],
+    ['SELECT 1', true, 'ERR_SQLITE_ERROR', 8, false],
+    ['ROLLBACK', true, 'ERR_SQLITE_ERROR', 8, false],
+    ['BEGIN IMMEDIATE', true, 'ERR_SQLITE_ERROR', 5, false],
+    ['BEGIN IMMEDIATE', true, 'DATABASE_INVALID', 8, false],
+  ]) {
+    const error = Object.assign(new Error('FIXED'), { code, errcode });
+    let observed = false,
+      calls = 0;
+    const connection = {
+      exec(actual) {
+        calls++;
+        assert.equal(actual, sql);
+        throw error;
+      },
+    };
+    const original = connection.exec;
+    const restore = observeReadOnlyWrite(
+      connection,
+      () => admitted,
+      () => {
+        observed = true;
+      },
+    );
+    assert.throws(
+      () => connection.exec(sql),
+      (actual) => actual === error,
+    );
+    assert.equal(observed, expected);
+    assert.equal(calls, 1);
+    restore();
+    assert.equal(connection.exec, original);
+  }
 });

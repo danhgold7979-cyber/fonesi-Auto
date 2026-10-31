@@ -15,7 +15,7 @@ def case_names(stage):
     if stage == 'crash':
         return COMMON + ('commitBoundaryReached',)
     if stage == 'reopen':
-        return COMMON + ('schemaVersionExpected', 'historyExpected', 'integrityValid', 'migrationBusyDenied', 'databaseClosed')
+        return COMMON + ('schemaVersionExpected', 'historyExpected', 'integrityValid', 'migrationBusyDenied', 'migrationReadOnlyDenied', 'databaseClosed')
     reject()
 
 
