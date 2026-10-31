@@ -105,3 +105,15 @@ Compilation, PowerShell and actual identity/native behavior remain NOT_RUN until
 that exact-head hosted run. This is a checkpoint, not full P1-06 acceptance. Native
 missing/corrupt encrypted-record negatives remain a finite completion item (current
 pure/composed tests cover these); no user-host or cross-machine claim is inferred.
+
+### Post-publication entry allowlist correction (11:30 UTC)
+
+Read-only review found that the native probe's control-filename allowlist omitted
+`denied`, although the strict stage contract and supervisor already required it.
+This deterministically rejects that stage before its intended OS denial test; it
+is a source finding, not an observed hosted outcome. Coordinator authorized the
+narrow missing-literal correction and a regression that checks both modes/every
+contract stage against the actual entry regex and rejects unknown/aliased names.
+The focused contract suite passes 3/3; native acceptance predicates, ownership,
+identity constraints and deadlines are unchanged. The initial CI remains running
+on the prior exact head and cannot establish this corrected entry's behavior.

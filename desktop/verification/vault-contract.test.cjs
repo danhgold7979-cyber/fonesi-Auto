@@ -76,3 +76,25 @@ test('audit correlation sorts directory-independent sequence but rejects duplica
     false,
   );
 });
+
+test('native entry control filename admits every exact contract stage and rejects aliases', () => {
+  const source = require('node:fs').readFileSync(require.resolve('./vault-probe.cjs'), 'utf8');
+  const matches = [...source.matchAll(/!\/(\^persistence-vault-control-.*?\$)\/\.test\(name\)/g)];
+  assert.equal(matches.length, 1);
+  const accepted = new RegExp(matches[0][1]);
+  for (const mode of ['source', 'package']) {
+    for (const stage of STAGES) {
+      assert.equal(accepted.test(`persistence-vault-control-${mode}-${stage}.json`), true);
+      assert.equal(
+        accepted.test(`persistence-vault-control-${mode}-${stage.toUpperCase()}.json`),
+        false,
+      );
+    }
+  }
+  for (const name of [
+    'persistence-vault-control-source-unknown.json',
+    '../persistence-vault-control-source-denied.json',
+    'persistence-vault-control-source-denied.json.extra',
+  ])
+    assert.equal(accepted.test(name), false);
+});

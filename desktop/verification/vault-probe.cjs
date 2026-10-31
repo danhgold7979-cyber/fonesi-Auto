@@ -148,7 +148,7 @@ try {
   const name = process.env.FONESI_PERSISTENCE_CONTROL_NAME;
   if (
     typeof name !== 'string' ||
-    !/^persistence-vault-control-(source|package)-(create|replace|delete|deleted)\.json$/.test(name)
+    !/^persistence-vault-control-(source|package)-(create|replace|denied|delete|deleted)\.json$/.test(name)
   )
     throw new Error('CONTROL');
   control = parseControl(read(path.join(root, name)));
