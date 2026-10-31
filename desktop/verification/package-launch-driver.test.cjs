@@ -541,3 +541,109 @@ test('observer diagnostics use fixed phases and own data descriptors without lea
     );
   }
 });
+test('native empty-domain observation preserves the actual Overview header and rejects actual record rows', () => {
+  const { transformSync } = require('esbuild');
+  const { runInNewContext } = require('node:vm');
+  const { domainEmpty } = require('./package-launch-observer.cjs');
+  const jsx = (type, props) => (typeof type === 'function' ? type(props) : { type, props });
+  const module = { exports: {} };
+  runInNewContext(
+    transformSync(fs.readFileSync(path.join(__dirname, '../src/ui/primary-pages.tsx'), 'utf8'), {
+      loader: 'tsx',
+      format: 'cjs',
+      jsx: 'automatic',
+    }).code,
+    {
+      module,
+      exports: module.exports,
+      require(name) {
+        if (name === 'react') return { useState: (v) => [v, () => {}] };
+        if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
+        if (name === './ui-model.js') return { UI_EXPORT_ACTION: 'export' };
+        if (name === './ui-shared.tsx')
+          return Object.fromEntries(
+            ['UnavailableButton', 'EmptyPanel', 'PageHeader', 'StatCard'].map((k) => [
+              k,
+              (p) => jsx('section', p),
+            ]),
+          );
+        throw Error('UNEXPECTED_COMPONENT_DEPENDENCY');
+      },
+    },
+  );
+  function documentFor(devices) {
+    const tree = module.exports.OverviewPage({
+      snapshot: {
+        status: 'READY',
+        provenance: 'SYNTHETIC_TEST',
+        devices,
+        accounts: [],
+        media: [],
+        jobs: [],
+      },
+      selectedDeviceId: '',
+      onFocusDevice() {},
+      onNavigate() {},
+      onUnavailable() {},
+    });
+    const entries = [];
+    function walk(value, parents = []) {
+      if (Array.isArray(value)) {
+        value.forEach((v) => {
+          walk(v, parents);
+        });
+        return;
+      }
+      if (!value || typeof value !== 'object') return;
+      entries.push({ value, parents });
+      walk(value.props?.children, [...parents, value]);
+    }
+    walk(tree);
+    const has = (v, c) =>
+      String(v.props?.className ?? '')
+        .split(/\s+/)
+        .includes(c);
+    return {
+      querySelector() {
+        return { classList: { contains: (name) => name === 'active' } };
+      },
+      getElementById() {
+        return null;
+      },
+      querySelectorAll(selector) {
+        if (selector === '#workspace .device-row.header')
+          return entries.filter(({ value }) => has(value, 'device-row') && has(value, 'header'));
+        if (
+          selector ===
+          '#workspace .devlist-scroller .device-row,#workspace .account-row,#workspace .job-block,#workspace tbody .filecol'
+        )
+          return entries.filter(
+            ({ value, parents }) =>
+              (has(value, 'device-row') && parents.some((v) => has(v, 'devlist-scroller'))) ||
+              has(value, 'account-row') ||
+              has(value, 'job-block') ||
+              (has(value, 'filecol') && parents.some((v) => v.type === 'tbody')),
+          );
+        throw Error('UNREVIEWED_SELECTOR');
+      },
+    };
+  }
+  const empty = documentFor([]);
+  assert.equal(empty.querySelectorAll('#workspace .device-row.header').length, 1);
+  assert.equal(domainEmpty(empty, 'overview'), true);
+  const populated = documentFor([
+    ...Array.from({ length: 3 }, (_, i) => ({
+      id: 'synthetic-device-' + i,
+      name: 'Synthetic ' + i,
+      serial: 'synthetic-' + i,
+      status: 'UNAVAILABLE',
+      connection: 'UNAVAILABLE',
+    })),
+  ]);
+  assert.equal(populated.querySelectorAll('#workspace .device-row.header').length, 1);
+  assert.equal(domainEmpty(populated, 'overview'), false);
+  const missingHeader = { ...empty, querySelectorAll: () => [] };
+  assert.equal(domainEmpty(missingHeader, 'overview'), false);
+  const probe = fs.readFileSync(path.join(__dirname, 'package-launch-main-probe.cjs'), 'utf8');
+  assert.ok(probe.includes('domainEmpty.toString()'));
+});

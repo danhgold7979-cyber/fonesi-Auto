@@ -395,3 +395,43 @@ Reviewed SHA256 values:
 - package admission: `9091a3ca8b69125fe807c46f6d8ace0a9e3478082a53b50c86a9d2a63151fd7d`
 - observer: `2657bffc5a771f4e5675e0dad7d7bde714afcb8e8966d2d60be41a14b9058d1e`
 - supervisor: `ed804e7767a62c5359895835cb7e7b69c0284d0f754bade13607f1e4a6d5fd50`
+
+## Eighth hosted attempt — first Cancel passes; record selector counts a header
+
+Public head `645bea323a7612101a1f75e8cba23ff03189507c`, exact tree
+`d8271fcbd99cb8c4b4f086aa177a3b7682a3e639`, ran in
+[41231627646](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41231627646).
+The existing four jobs passed; package job124627196320 failed later at FIRST_LAUNCH.
+Artifact13053728905 is1509 bytes/SHA256
+`9209f8230dc254b1f180e3e19c1bfa26cf03d3ee9bae69c18097341dd2705503`.
+First-Cancel now has all5 cases true with SUCCESS/exit0/retirement. This exact-head
+native path includes the mandatory physical-versus-virtual archive assertion and
+actual package verification; those assertions are no longer merely local simulations.
+No full package promotion or task acceptance follows from that first stage.
+
+The next MAIN has a valid bound retired NONZERO settlement and observer
+MAIN_OPERATION/UNCLASSIFIED. Source inspection found a deterministic measurement defect:
+the empty-data selector counted `.device-row`, including Overview's permanent
+`.device-row.header`. Consequently a genuine empty Overview could never satisfy the
+zero-record predicate. This is source-reproduced; the private prior throw was not
+exposed separately. The correction measures actual record rows, retains the static
+header, and tests that real synthetic rows still fail the empty-data condition.
+Production UI/data behavior is unchanged. Finite normal-operation phases and all
+existing fixed observer error codes also make residual failures distinguishable without
+raw renderer errors, private paths or relaxed native outcomes.
+
+Record-selector checkpoint at19:04UTC: author full desktop **585/585 PASS** and
+DESKTOP_SOURCE_CHECK_PASS; independent **36/36 focused PASS** (driver14 plus existing
+primary/work component22 covering six pages). The new actual Overview regression
+preserves its header, rejects three real synthetic device rows, and rejects a missing
+header. It is not a newly implemented all-six-page DOM engine. Native traversal clicks
+each page once and waits on bounded read-only active-state observation rather than a
+fixed50ms scheduling assumption; no mutation retry is introduced. Prior
+foundation109/Python157 remain unchanged evidence, not newly rerun. Windows confirmation
+of this measurement correction remains pending; P1-10 is not accepted.
+
+Reviewed SHA256 values:
+
+- main observer: `dcf7971a9029fb8914f1a3727af44b021f7926280fe1700793e9b68f7393b1cb`
+- shared observer: `b520504070d50eca4dce0d36f3a9cb4c8198e37a9284f0c3d12537d1577cd43e`
+- supervisor: `389798e1fdb4dbfc0cc3f2a9c13ede474e7489e557ee3547b95738847511c506`

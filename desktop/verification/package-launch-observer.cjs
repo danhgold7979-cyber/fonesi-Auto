@@ -63,6 +63,17 @@ const OBSERVER_PHASES = Object.freeze([
   'INIT_RECORD',
   'MAIN_REQUIRE',
   'MAIN_OPERATION',
+  'NORMAL_WINDOW_WAIT',
+  'NORMAL_SETTINGS_REQUIRE',
+  'NORMAL_SETTINGS_READ',
+  'NORMAL_OVERVIEW',
+  'NORMAL_ACCOUNTS',
+  'NORMAL_TRACKING',
+  'NORMAL_SETUP',
+  'NORMAL_CALENDAR',
+  'NORMAL_WORKFLOWS',
+  'NORMAL_QUIT',
+  'MAIN_WILL_QUIT',
   'UNKNOWN',
 ]);
 const OBSERVER_REASONS = Object.freeze([
@@ -72,6 +83,14 @@ const OBSERVER_REASONS = Object.freeze([
   'PACKAGE_PROOF',
   'PACKAGE_VERSION',
   'PACKAGE_DIALOG',
+  'PACKAGE_BACKUP',
+  'PACKAGE_DOMAIN_ROWS',
+  'PACKAGE_PAGE_NAVIGATION',
+  'PACKAGE_NOTICE',
+  'PACKAGE_OBSERVATION',
+  'PACKAGE_SETTINGS',
+  'PACKAGE_UNEXPECTED_UI',
+  'PACKAGE_WINDOW',
   'RESTORE_OWNER',
   'PACKAGE_REJECTED',
   'PACKAGE_ASAR_WITNESS',
@@ -230,6 +249,17 @@ function admission(directory) {
     throw Error('PACKAGE_VERSION');
   return { c, outer };
 }
+function domainEmpty(document, page) {
+  return (
+    document.querySelector('#nav [data-page="' + page + '"]').classList.contains('active') &&
+    !document.getElementById('demo-banner') &&
+    (page !== 'overview' ||
+      document.querySelectorAll('#workspace .device-row.header').length === 1) &&
+    document.querySelectorAll(
+      '#workspace .devlist-scroller .device-row,#workspace .account-row,#workspace .job-block,#workspace tbody .filecol',
+    ).length === 0
+  );
+}
 function witness(c, kind, fields) {
   return {
     version: 1,
@@ -256,6 +286,7 @@ module.exports = {
   record,
   FIELDS,
   archiveWitness,
+  domainEmpty,
   OBSERVER_PHASES,
   OBSERVER_REASONS,
   phase,

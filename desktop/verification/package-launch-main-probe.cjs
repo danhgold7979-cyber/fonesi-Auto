@@ -4,7 +4,14 @@ const { app, dialog, BrowserWindow } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { plain, read, uuid } = require('./package-contract.cjs');
-const { admission, witness, record, phase, report } = require('./package-launch-observer.cjs');
+const {
+  admission,
+  witness,
+  record,
+  phase,
+  report,
+  domainEmpty,
+} = require('./package-launch-observer.cjs');
 let ready = 0,
   closed = 0,
   maintenance = 0,
@@ -24,7 +31,7 @@ const fail = (error) => {
 };
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function normal() {
-  phase('MAIN_OPERATION');
+  phase('NORMAL_WINDOW_WAIT');
   const end = Date.now() + 5000;
   let window;
   while (Date.now() < end) {
@@ -42,9 +49,11 @@ async function normal() {
   }
   if (window?.webContents.getURL() !== 'auto-foundation://app/status.html')
     throw Error('PACKAGE_WINDOW');
+  phase('NORMAL_SETTINGS_REQUIRE');
   const { parseSettingsResponse } = require(
     path.join(context.c.packageRoot, 'app/build/settings-contract.cjs'),
   );
+  phase('NORMAL_SETTINGS_READ');
   const deadline = Date.now() + 5000;
   let reply;
   do {
@@ -59,17 +68,29 @@ async function normal() {
   if (!settingsObserved) throw Error('PACKAGE_SETTINGS');
   sixTabsEmpty = true;
   for (const page of ['overview', 'accounts', 'tracking', 'setup', 'calendar', 'workflows']) {
+    phase('NORMAL_' + page.toUpperCase());
     await window.webContents.executeJavaScript(
       `document.querySelector('#nav [data-page="${page}"]').click();true`,
     );
-    await pause(50);
+    const pageDeadline = Date.now() + 5000;
+    let active = false;
+    do {
+      active = await window.webContents.executeJavaScript(
+        `document.querySelector('#nav [data-page="${page}"]').classList.contains('active')`,
+      );
+      if (active) break;
+      await pause(25);
+    } while (Date.now() < pageDeadline);
+    if (!active) throw Error('PACKAGE_PAGE_NAVIGATION');
     sixTabsEmpty =
       sixTabsEmpty &&
       (await window.webContents.executeJavaScript(
-        `document.querySelector('#nav [data-page="${page}"]').classList.contains('active')&&!document.getElementById('demo-banner')&&document.querySelectorAll('#workspace .device-row,#workspace .account-row,#workspace .job-block,#workspace tbody .filecol').length===0`,
+        `(${domainEmpty.toString()})(document,${JSON.stringify(page)})`,
       ));
+    if (!sixTabsEmpty) throw Error('PACKAGE_DOMAIN_ROWS');
   }
   if (!sixTabsEmpty) throw Error('PACKAGE_DOMAIN_ROWS');
+  phase('NORMAL_QUIT');
   requested = true;
   app.quit();
 }
@@ -201,6 +222,7 @@ try {
   require(path.join(c.packageRoot, 'app/build/main.cjs'));
   app.on('will-quit', () => {
     try {
+      phase('MAIN_WILL_QUIT');
       if (
         closed !== 1 ||
         (restore
