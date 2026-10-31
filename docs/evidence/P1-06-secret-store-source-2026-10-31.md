@@ -173,3 +173,43 @@ Independent final review at 11:43 UTC: desktop **327/327**, foundation **109/109
 Python **107/107**, clean diff and unchanged native-helper/Phase0 hashes. Seven-stage
 source integration and narrowly validated safe collection are CLEAR for hosted
 verification. These local/source results do not close the actual cross-user gap.
+
+## Hosted seven-stage collection — bounded PASS, full P1-06 UNMET
+
+- Public source head: `7137e3182dd7701e952ae71f758363915c839db1`.
+- Exact reviewed local source: `96cf35ec9b77e18b6babb730466b27646a88a54e`;
+  tree `aed396d3d4b260450ac067ba670644379c006874`.
+- Hosted Windows run `41198112252` is terminal **FAIL**, deliberately not greenwashed.
+- Retained fixed sanitized [sample](P1-06-collected-sample-2026-10-31.json):
+  21,972 LF bytes; SHA256
+  `f62762944c7f2dfb76377867c3eae45056b99f01620f10c0a678d43713884559`.
+  Digest refers to exact artifact/Git bytes, not a potentially converted checkout.
+
+All seven native vault stages pass in both source and renamed-package modes:
+create, replace, actual EPERM publication denial, missing active ciphertext,
+authentication-failed corrupted ciphertext, delete and deleted restart. Every
+stage requires the real composed provider/store, fixed typed/no-data negatives,
+audit/canary observations and retired process controls. The original-reference
+positive before/after restoration and unchanged other files are mandatory native
+negative predicates, not merely pure fixtures. All existing key/READY/database/
+maintenance/restore groups also passed and directory cleanup is true.
+
+Both cross-context results are **TOKEN_UNAVAILABLE**, owner-before true and all
+other controls false. They establish no foreign identity, foreign-provider positive,
+foreign-owner-blob denial or reversion proof. Strict public `passed:false` is retained;
+`failure:null` means collection completed without a supervisor exception, NOT task
+success. No account/service/rights/ACL/token/identity workaround was attempted.
+The canonical cross-user negative remains UNMET, not replaced by a wrong-key fixture.
+
+Independent reviewer validated the original duplicate-aware bytes against the exact
+committed schema and reconstructed strict private-envelope/public equality; fixed-field
+privacy review CLEAR. That is artifact-content review, not a second native run or
+independent ZIP download. Coordinator accepted **bounded seven-stage native-vault
+PASS only**. P1-06 is not TECHNICAL_PASS; six technical tasks/formal zero remain.
+
+The current production-launcher E2E step is downstream of the failing aggregate and
+was skipped. Its most recent accepted exact-head evidence remains the P1-05 source
+head `2e8c08b7df8448c7db89438891da66bce7b8b715`; do not present that earlier result
+as a rerun of this vault-integrated launcher. Same-owner/pinned-runtime, simulated
+dialog, no arbitrary-dump confidentiality/power-loss/secure-erasure and external-
+vault-not-in-DB-backup limitations remain. No further unchanged token-acquisition retry is planned.

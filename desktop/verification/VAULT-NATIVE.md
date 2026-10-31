@@ -1,11 +1,12 @@
 # P1-06 owned native evidence envelope
 
-Current expanded checkpoint: **missing/corrupt stages and package completion
-remain pending Windows evidence; the required cross-user criterion is UNMET**.
-Run `41197592146` observed all five original source stages, including actual EPERM
-on the held index, then exact TOKEN_UNAVAILABLE before impersonation. The earlier
-entry-guard and format failures remain recorded in the evidence. Coordinator
-approved the bounded reviewed native envelope. This extends the existing persistence run; no installer, account,
+Current hosted outcome: **all seven native vault stages pass in source and renamed-
+package modes; the required cross-user criterion remains UNMET**. Exact run
+`41198112252` collected both modes and confirmed owned cleanup, but both permitted
+context probes returned TOKEN_UNAVAILABLE before impersonation. Overall evidence
+and CI remain FAIL; this is not P1-06 technical acceptance. Earlier guard/format
+failures remain historical. Coordinator accepted only bounded native-vault scope.
+This extends the existing persistence run; no installer, account,
 privilege, ACL, service or production test switch is added.
 
 For source and renamed-package modes, the supervisor retains the existing lease
@@ -64,7 +65,7 @@ Private original ciphertext copies are also scanned after retirement and removed
 only by bounded fully retired, validated collection cleanup (including an explicit
 TOKEN_UNAVAILABLE aggregate FAIL).
 Existing failure and owned cleanup semantics remain fail-closed. No task/phase or
-user-host acceptance follows from source tests or this pending Windows run.
+user-host acceptance follows from these bounded observations.
 
 ## Unavailable-token collection, not acceptance
 

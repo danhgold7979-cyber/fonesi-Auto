@@ -746,3 +746,14 @@ modes; token-unavailable remains false and final aggregate FAIL. Fully retired,
 validated collection may clean owned artifacts without pretending the unmet test
 passed. Native expanded-mode evidence remains pending. Technical count remains
 6/11 (54.5%), 6/154 (3.9%); formal accepted count remains zero.
+
+P1-06 hosted disposition — 11:50 UTC: exact `7137e3182dd7701e952ae71f758363915c839db1`
+run `41198112252` collected all seven native vault stages in both modes with all
+existing persistence groups and cleanup passing. Independent artifact review CLEAR;
+coordinator accepts **bounded native-vault PASS only**. Both context probes returned
+TOKEN_UNAVAILABLE, so full P1-06 is **BLOCKED / cross-user criterion UNMET**, not
+TECHNICAL_PASS. Overall CI/artifact remain FAIL; source launcher E2E downstream was
+skipped (prior accepted launcher evidence is P1-05, not this head).
+[Exact evidence/sample](evidence/P1-06-secret-store-source-2026-10-31.md).
+Counts remain 6/11 (54.5%), 6/154 (3.9%), formal accepted zero. P1-07 planning is
+explicitly nonsecret/development-parallel only; its P1-06 formal dependency is not waived.
