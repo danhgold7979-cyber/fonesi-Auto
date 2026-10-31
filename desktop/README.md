@@ -178,3 +178,9 @@ harmless, to prevent lexical ambiguity hiding source dependencies. Current ordin
 UI text and the actual renderer pass; future syntax needs tested policy review,
 not a feature removal. Type-only edges/directives and dynamic loader denials are
 checked before runtime erasure. [Source evidence/criteria](../docs/evidence/P1-01-module-graph-source-2026-10-31.md).
+
+P1-01 exact module-graph head 5e4fa52173afefc5a9b89fc45deb5adfb1250c89 now passed
+[Windows run 41173386584](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41173386584):
+desktop 85/foundation 86/Python 43/PS 25, actual source/package 25 each and all cleanup
+true. Task-specific graph/bootstrap scope is technically verified; original Phase0
+formal gates, full V9/domain work and task/Phase acceptance remain separate.

@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "scope": "HOSTED_RUNNER_ONLY",
+  "installer": {
+    "process": {
+      "status": "SUCCESS",
+      "exitCode": 0,
+      "cleanupComplete": true,
+      "stdoutTruncated": false,
+      "stderrTruncated": false
+    },
+    "officialMarker": true
+  },
+  "runs": {
+    "source": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "ownedBytes": 1231396,
+      "result": {
+        "mode": "source",
+        "versions": {
+          "electron": "45.1.0",
+          "node": "24.22.1",
+          "chrome": "156.0.8078.49"
+        },
+        "cases": {
+          "runtime_versions": true,
+          "mode_identity": true,
+          "main_bundle_loaded": true,
+          "diagnostic_rendered": true,
+          "secure_preferences": true,
+          "approved_preload": true,
+          "no_node_globals": true,
+          "bounded_public_bridge": true,
+          "native_menu_absent": true,
+          "isolated_world_separate": true,
+          "popup_denied": true,
+          "permission_denied": true,
+          "download_denied": true,
+          "network_policy_denied": true,
+          "unknown_asset_denied": true,
+          "lifecycle_close_reopen": true,
+          "document_open_public_only": true,
+          "reload_session_revoked": true,
+          "about_blank_sender_denied": true,
+          "orderly_quit": true,
+          "health_read": true,
+          "settings_read": true,
+          "ipc_request_denials": true,
+          "ipc_sender_denials": true,
+          "react_explicit_read": true
+        },
+        "observations": {
+          "documentOpenUrlUnchanged": true,
+          "reloadUrlUnchanged": true,
+          "aboutBlankUrlChanged": true,
+          "aboutBlankDenialObserved": false
+        }
+      }
+    },
+    "package": {
+      "process": {
+        "status": "SUCCESS",
+        "exitCode": 0,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "ownedBytes": 1231402,
+      "result": {
+        "mode": "package",
+        "versions": {
+          "electron": "45.1.0",
+          "node": "24.22.1",
+          "chrome": "156.0.8078.49"
+        },
+        "cases": {
+          "runtime_versions": true,
+          "mode_identity": true,
+          "main_bundle_loaded": true,
+          "diagnostic_rendered": true,
+          "secure_preferences": true,
+          "approved_preload": true,
+          "no_node_globals": true,
+          "bounded_public_bridge": true,
+          "native_menu_absent": true,
+          "isolated_world_separate": true,
+          "popup_denied": true,
+          "permission_denied": true,
+          "download_denied": true,
+          "network_policy_denied": true,
+          "unknown_asset_denied": true,
+          "lifecycle_close_reopen": true,
+          "document_open_public_only": true,
+          "reload_session_revoked": true,
+          "about_blank_sender_denied": true,
+          "orderly_quit": true,
+          "health_read": true,
+          "settings_read": true,
+          "ipc_request_denials": true,
+          "ipc_sender_denials": true,
+          "react_explicit_read": true
+        },
+        "observations": {
+          "documentOpenUrlUnchanged": true,
+          "reloadUrlUnchanged": true,
+          "aboutBlankUrlChanged": true,
+          "aboutBlankDenialObserved": false
+        }
+      }
+    }
+  },
+  "negatives": {
+    "crash": {
+      "process": {
+        "status": "NONZERO_EXIT",
+        "exitCode": 1,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "armed": true,
+      "observed": true,
+      "bootstrapFailed": true,
+      "unexpectedQuit": false,
+      "ownedBytes": 1231394
+    },
+    "tamper": {
+      "process": {
+        "status": "NONZERO_EXIT",
+        "exitCode": 1,
+        "cleanupComplete": true,
+        "stdoutTruncated": false,
+        "stderrTruncated": false
+      },
+      "changed": true,
+      "bootstrapFailed": true,
+      "unexpectedReady": false,
+      "ownedBytes": 557458
+    }
+  },
+  "buildVerified": true,
+  "binaryHashMatched": true,
+  "runtimeCopyVerified": true,
+  "directoryCleanup": true,
+  "packageBytes": 374873181,
+  "failure": null,
+  "oldNavigationGate": "FAIL_RETAINED",
+  "passed": true
+}

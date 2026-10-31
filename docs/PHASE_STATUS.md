@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-10-31 05:08 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-10-31 05:40 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -32,8 +32,9 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 | Phase 0 amendment 01 | P0-01 EXECUTION AUTHORIZED | [Amendment](phases/PHASE-00-feasibility-AMENDMENT-01.md) records the later phased-implementation grant; tests and Phase acceptance are separate |
 | Full Phase 1–11 plans | Full acceptance pending | Narrow Phase 1 entries are explicitly approved in the amendment/ADR/playbook; later phases are not implicitly opened |
 | Application source | PROVISIONAL PHASE 1 WORK AUTHORIZED | Actual foundation/desktop source exists under recorded exceptions; no device/account service or full phase acceptance |
+| P1-01 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Actual map/bindings/cycles/absence/fresh Windows bootstrap verified on 5e4fa521, run41173386584; original Phase0 formal gate still pending. [Criteria/evidence](evidence/P1-01-module-graph-source-2026-10-31.md) |
 | P1-02 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific scope at 04:36 UTC on ff25bee; full P1-03/P1-11 acceptance pending. [Criterion audit](evidence/P1-02-canonical-criterion-audit-2026-10-31.md); accepted full-task counts unchanged |
-| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; full P1-01 architecture predecessor pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Two canonical task-specific technical scopes now passed (P1-02/P1-03), not two formally accepted tasks |
+| P1-03 | TECHNICAL_PASS / DEPENDENCIES_PENDING | Coordinator accepted task-specific tooling/Windows development verification at 05:08 UTC on ee7e04de; P1-01 architecture now TECHNICAL_PASS; formal predecessor chain through Phase0 still pending. [Evidence/criteria](evidence/P1-03-tooling-admission-2026-10-31.md). Three canonical task-specific technical scopes now passed (P1-01/P1-02/P1-03), not three formally accepted tasks |
 | Phase 0 acceptance | NOT ACCEPTED | 0/10 tasks accepted; all 12 baseline exits unaccepted; independent slices concluded, remaining gates BLOCKED |
 
 ## 3. Historical Phase 0 snapshot before collector hardening
@@ -551,3 +552,26 @@ Independent current desktop **85/85 PASS**, source/docs CLEAR, 100 links/diff PA
 Actual missing-install CLI evidence is verified; Windows exact-head execution is
 next. Other author's P1-11 proposal remains documentation-only and outside this
 implementation checkpoint. No accepted-task count or main merge follows yet.
+
+### P1-01 named Windows technical closure — 2026-10-31 05:40 UTC
+
+Exact public 5e4fa52173afefc5a9b89fc45deb5adfb1250c89 / tree 38d09630ae6c2657e83102275772033c8f430f97:
+[run 41173386584](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41173386584)
+SUCCESS, desktop 85/foundation 86/Python 43/PS 25, real source/package 25 each, all cleanup
+true. P1-01-specific software criteria **TECHNICAL_PASS**; formal acceptance remains
+**DEPENDENCIES_PENDING (original Phase 0 gate)**. P1-03's architecture prerequisite
+is technically satisfied but its formal chain is not silently accepted. P1-02 and
+P1-03 keep their technical passes; full P1-11 is separate. Three canonical technical
+scopes passed, accepted full-task counts still 0/11 Phase 1 and 0/154 overall; no merge.
+Artifact content validation PASS; independent content/privacy review CLEAR. Old navigation
+FAIL, C-07/HC09/HC13/device/OCR/policy/V9/Phase 0 acceptance gates remain unchanged.
+
+### Coordinator disposition and task-based progress — 2026-10-31 05:40 UTC
+
+P1-01 technical scope accepted on exact hosted 5e4fa521 after independent artifact
+CLEAR. Canonical task-specific technical passes: **3/11 Phase 1 = 27.3%** and
+**3/154 planned tool tasks = 1.9%** (P1-01/P1-02/P1-03). These are equal-task-count
+technical ratios, not effort weights, feature completeness or formal acceptance.
+**Formally accepted tasks remain 0**; original Phase 0/predecessor gates persist.
+P1-11 pure-contract implementation is approved as the next separately recorded
+entry after this reviewed closure; no new IPC/service/persistence authority.

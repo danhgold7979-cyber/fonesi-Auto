@@ -4,6 +4,10 @@
 [module-graph contract](../phases/PHASE-01-P1-01-MODULE-GRAPH-CONTRACT.md).**
 No new package/service/application authority. Root publishes; main unchanged.
 
+**Current disposition (05:40 UTC): TECHNICAL_PASS for P1-01-specific scope; formal
+DEPENDENCIES_PENDING for original Phase 0 acceptance.** Dated source-only pending
+notes below are superseded by the exact-head Windows section, not erased.
+
 ## Implementation
 
 - `desktop/module-map.json`: all 11 actual modules, exact named imports and type/value
@@ -108,3 +112,49 @@ separate adversarial reviewer probes remain correctly attributed. Original Phase
 baseline unchanged. Test SHA256:
 `0c212a6e02a2f60c3cfd8e2307da9f015c692afcc38544f5e3b85b49770ff528`.
 Exact-head Windows verification is next; no full task/Phase acceptance is asserted.
+
+
+## Exact-head Windows and task-specific closure — 2026-10-31 05:40 UTC
+
+[Run 41173386584](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41173386584),
+job **124455853731**, completed **SUCCESS** on public head
+`5e4fa52173afefc5a9b89fc45deb5adfb1250c89`, exact tree
+`38d09630ae6c2657e83102275772033c8f430f97` (local source
+`ba5f4ea7d863e4c6cea083ad77e4493139caea2d`). Named Windows development machine:
+ImageOS/ImageVersion `win22/20261026.347.1`, actual Node24.22.1/npm11.19.1.
+
+- Fresh lifecycle-disabled, reviewed-signature/advisory checked bootstrap and
+  full desktop **85/85 PASS**, including all graph/actual-absence/owned junction
+  fixtures; no skipped failures disguised as success.
+- Foundation **86/86**, Python **43/43**, PowerShell **25/25 PASS**.
+- Actual source and owned package **25/25 each**; crash/tamper expected NONZERO_EXIT/1;
+  every process and directory cleanup true, build/binary/copy verified, failure null.
+- This supplies the previously pending named-host graph/bootstrap evidence for
+  every P1-01-specific software criterion mapped above. It does not supply original
+  Phase0 target-host/device feasibility acceptance or a Windows10 support claim.
+
+Artifact **13032017345**, ZIP **1,023 bytes**, SHA256
+`1e5412142650c866e13f5ef4a3c9d55101f04d8af291685478399b838fb8053c`.
+The sole validated JSON is retained byte-identically as
+[module-graph runtime sample](P1-01-module-graph-runtime-sample-2026-10-31.json):
+**4,380 LF bytes**, SHA256
+`8eb02a715add18a5ef1b8f0dbe50648987fcaf6a457f6528e43071293e1148aa`.
+These hashes describe artifact/Git bytes, not uncontrolled checkout conversion.
+Bounded ZIP digest/single-entry checks, original-byte duplicate-aware parse and
+strict reconstructed-envelope/public-output equality PASS; reconstruction is
+content validation, not a second runtime run.
+
+Owned source/package profiles **1,231,396 / 1,231,402** bytes; crash **1,231,394**,
+tamper **557,458**; owned package **374,873,181** bytes. aboutBlank URL changed=true,
+denial=false; oldNavigationGate **FAIL_RETAINED**. Reviewed fixed sample has no raw
+logs, caller identities, credentials or private paths. Independent content/privacy review CLEAR at 05:41 UTC: original-byte duplicate
+parsing, strict reconstruction/public equality and fixed-field privacy independently
+checked. Reviewer did not redownload the ZIP, retrieve a second runtime log or
+execute a second runtime. Source review was already CLEAR before publication.
+
+Coordinator accepted **P1-01 TECHNICAL_PASS / formal DEPENDENCIES_PENDING (Phase 0)**
+at 05:40 UTC on this exact hosted head.
+P1-03's specific architecture predecessor work is now technically verified, but its
+formal predecessor chain remains pending through P1-01/Phase0. P1-02/P1-03 technical
+passes remain; P1-11 full contract work is still separate. No formally accepted
+full-task count, full Phase acceptance or main merge is inferred.
