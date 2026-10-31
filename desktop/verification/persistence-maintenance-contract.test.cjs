@@ -74,3 +74,77 @@ test('maintenance diagnostics emit only exact fixed stages and codes without exc
   });
   assert.equal(diagnostic('OPEN', hostile), 'PERSISTENCE_MAINTENANCE_STAGE_OPEN_CODE_UNCLASSIFIED');
 });
+test('restore diagnostic codes are exact and delegate unchanged arguments, receiver, result and errors', async () => {
+  const { diagnostic, traceRestore } = require('./persistence-maintenance-contract.cjs');
+  for (const code of ['ENOENT', 'EACCES', 'EPERM', 'ENAMETOOLONG']) {
+    assert.equal(
+      diagnostic('RESTORE_COPY', Object.assign(new Error('private'), { code })),
+      `PERSISTENCE_MAINTENANCE_STAGE_RESTORE_COPY_CODE_${code}`,
+    );
+  }
+  for (const [errcode, code] of [
+    [8, 'SQLITE_READONLY'],
+    [14, 'SQLITE_CANTOPEN'],
+    [13, 'SQLITE_FULL'],
+    [5, 'SQLITE_BUSY'],
+    ['8', 'ERR_SQLITE_ERROR'],
+    [99, 'ERR_SQLITE_ERROR'],
+  ]) {
+    assert.equal(
+      diagnostic(
+        'RESTORE_COPY',
+        Object.assign(new Error('private'), { code: 'ERR_SQLITE_ERROR', errcode }),
+      ),
+      `PERSISTENCE_MAINTENANCE_STAGE_RESTORE_COPY_CODE_${code}`,
+    );
+  }
+  assert.equal(
+    diagnostic('RESTORE_COPY', Object.assign(new Error('private'), { code: 'private' })),
+    'PERSISTENCE_MAINTENANCE_STAGE_RESTORE_COPY_CODE_UNCLASSIFIED',
+  );
+  const argument = {},
+    result = {},
+    failure = new Error('private');
+  let fail = false;
+  const stages = [];
+  const service = {
+    backups: {
+      async restoreToNew(value) {
+        assert.equal(this, service.backups);
+        assert.equal(value, argument);
+        if (fail) throw failure;
+        return result;
+      },
+    },
+    async restore(value) {
+      assert.equal(this, service);
+      return this.backups.restoreToNew(value);
+    },
+  };
+  const original = service.restore,
+    copy = service.backups.restoreToNew;
+  assert.equal(
+    await traceRestore(
+      service,
+      (x) => stages.push(x),
+      () => service.restore(argument),
+    ),
+    result,
+  );
+  assert.deepEqual(stages, ['RESTORE_SERVICE', 'RESTORE_COPY', 'RESTORE_METADATA']);
+  assert.equal(service.restore, original);
+  assert.equal(service.backups.restoreToNew, copy);
+  fail = true;
+  stages.length = 0;
+  await assert.rejects(
+    traceRestore(
+      service,
+      (x) => stages.push(x),
+      () => service.restore(argument),
+    ),
+    (e) => e === failure,
+  );
+  assert.deepEqual(stages, ['RESTORE_SERVICE', 'RESTORE_COPY']);
+  assert.equal(service.restore, original);
+  assert.equal(service.backups.restoreToNew, copy);
+});

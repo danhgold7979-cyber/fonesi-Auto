@@ -91,11 +91,51 @@ const STAGES = Object.freeze([
   'ACCEPT',
   'POST_ACCEPT_BACKUP',
   'RESTORE',
+  'RESTORE_SERVICE',
+  'RESTORE_COPY',
+  'RESTORE_METADATA',
   'RESTORE_VALIDATE',
   'CLOSE',
   'RESULT',
 ]);
 const CODES = Object.freeze([
+  'DATABASE_LOCATION_REJECTED',
+  'DATABASE_INVALID',
+  'DATABASE_SCHEMA_MISMATCH',
+  'DATABASE_FILE_REJECTED',
+  'DATABASE_MISSING',
+  'IO_FAILED',
+  'AUTHENTICATION_FAILED',
+  'KEY_UNAVAILABLE',
+
+  'ENOENT',
+  'EACCES',
+  'EPERM',
+  'ENAMETOOLONG',
+  'ERR_SQLITE_ERROR',
+  'SQLITE_READONLY',
+  'SQLITE_CANTOPEN',
+  'SQLITE_FULL',
+  'SQLITE_BUSY',
+  'RESTORE_ADMISSION_REJECTED',
+  'RESTORE_BACKUP_UNKNOWN',
+  'RESTORE_KEY_CHECKPOINT_REJECTED',
+  'RESTORE_QUARANTINE_REQUIRED',
+  'BACKUP_ID_REJECTED',
+  'BACKUP_IDENTITY_MISMATCH',
+  'BACKUP_RECEIPT_MISMATCH',
+  'BACKUP_RECEIPT_REJECTED',
+  'BACKUP_RECEIPT_LIMIT',
+  'BACKUP_BUSY_OR_LOCATION',
+  'BACKUP_OWNER_REJECTED',
+  'BACKUP_PREREQUISITE_REJECTED',
+  'BACKUP_SELECTION_REJECTED',
+  'BACKUP_LOCATION_REPLACED',
+  'BACKUP_LOCATION_REQUIRED',
+  'BACKUP_CATALOG_LIMIT',
+  'BACKUP_CATALOG_REJECTED',
+  'PERSISTENCE_FILES_REJECTED',
+
   'OWNERSHIP',
   'FILE',
   'LIMIT',
@@ -129,9 +169,41 @@ function diagnostic(stage, error) {
   const admittedStage = STAGES.includes(stage) ? stage : 'UNCLASSIFIED';
   let code = 'UNCLASSIFIED';
   try {
-    const message = error instanceof Error ? error.message : undefined;
-    if (CODES.includes(message)) code = message;
+    if (error instanceof Error) {
+      const native = error.code;
+      if (['ENOENT', 'EACCES', 'EPERM', 'ENAMETOOLONG'].includes(native)) code = native;
+      else if (native === 'ERR_SQLITE_ERROR') {
+        code = 'ERR_SQLITE_ERROR';
+        const sqlite = new Map([
+          [8, 'SQLITE_READONLY'],
+          [14, 'SQLITE_CANTOPEN'],
+          [13, 'SQLITE_FULL'],
+          [5, 'SQLITE_BUSY'],
+        ]);
+        if (sqlite.has(error.errcode)) code = sqlite.get(error.errcode);
+      } else if (CODES.includes(error.message)) code = error.message;
+    }
   } catch {}
   return `PERSISTENCE_MAINTENANCE_STAGE_${admittedStage}_CODE_${code}`;
 }
-module.exports = { CASES, VERSIONS, parse, STAGES, CODES, diagnostic };
+async function traceRestore(service, setStage, operation) {
+  const originalRestore = service.restore;
+  const originalCopy = service.backups.restoreToNew;
+  service.restore = async function (...args) {
+    setStage('RESTORE_SERVICE');
+    return Reflect.apply(originalRestore, this, args);
+  };
+  service.backups.restoreToNew = async function (...args) {
+    setStage('RESTORE_COPY');
+    const value = await Reflect.apply(originalCopy, this, args);
+    setStage('RESTORE_METADATA');
+    return value;
+  };
+  try {
+    return await operation();
+  } finally {
+    service.restore = originalRestore;
+    service.backups.restoreToNew = originalCopy;
+  }
+}
+module.exports = { CASES, VERSIONS, parse, STAGES, CODES, diagnostic, traceRestore };

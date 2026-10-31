@@ -434,3 +434,21 @@ P1-05 is not technically or formally accepted.
 Independent final diagnostic integration review CLEAR at 10:29 UTC: 3/3 Node and
 7/7 Python focused checks passed; the partial artifact was strictly reconstructed
 as FAIL, not upgraded. No functional maintenance cause is yet proven.
+
+### Restore-specific diagnostic refinement — 10:35 UTC
+
+Run [41193060408](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41193060408)
+on `9cb37e2b390620cb0eadeaf5d8e09b5e29432394` reached fixed native
+`RESTORE_CODE_UNCLASSIFIED`, nonzero process exit and validator `RESULT_READ`.
+This establishes failure inside the real restore request before a result was
+written, not its filesystem/SQLite cause. No functional restore fix is inferred.
+
+Verification-only delegation now distinguishes restore SERVICE, COPY and METADATA
+without changing original method receivers, arguments, results or errors. Exact
+existing database/backup/restore error literals and allowlisted OS/SQLite error
+categories are mapped to fixed codes; unknown/private messages remain UNCLASSIFIED.
+PowerShell forwarding uses the identical reviewed literal lists and unchanged
+bounds/PASS predicates. Enum parity and local full **255/255** pass; independent
+focused **4/4** review is CLEAR. The separately reviewed ReadOnly-denial probe is
+held out of this diagnostic tree so it cannot prevent reaching the observed
+restore failure. Its native behavior remains NOT_RUN; no acceptance gap is waived.

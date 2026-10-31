@@ -10,7 +10,12 @@ const { backupKeys, validBackupLocalState } = require('../build/backup-key-profi
 const { assertBorrowedPersistenceLease } = require('../build/persistence-files.cjs');
 const { runNativePersistenceMaintenance } = require('../build/persistence-native.cjs');
 const { prepareOwnedProfile } = require('../build/profile-owner.cjs');
-const { CASES, parse, diagnostic } = require('./persistence-maintenance-contract.cjs');
+const {
+  CASES,
+  parse,
+  diagnostic,
+  traceRestore,
+} = require('./persistence-maintenance-contract.cjs');
 const uuid = (x) =>
   typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(x);
 function plain(p) {
@@ -429,8 +434,13 @@ try {
       const restoreFile = await selectedPath(restore.backupId);
       before = fingerprint();
       if (
-        (await run('--maintenance=restore-to-new', [restoreFile, restoreParent], [0])) !==
-        'COMPLETED'
+        (await traceRestore(
+          service,
+          (value) => {
+            stage = value;
+          },
+          () => run('--maintenance=restore-to-new', [restoreFile, restoreParent], [0]),
+        )) !== 'COMPLETED'
       )
         throw new Error('RESTORE');
       stage = 'RESTORE_VALIDATE';
