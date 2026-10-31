@@ -16,7 +16,7 @@ function Process-Evidence($Probe) {
     return [ordered]@{status=$Probe.Status;exitCode=$Probe.ExitCode;cleanupComplete=$Probe.CleanupComplete;stdoutTruncated=$Probe.StdoutTruncated;stderrTruncated=$Probe.StderrTruncated}
 }
 function Show-FixedUiDiagnostic($Probe) {
-    foreach($marker in @('UI_STAGE_PREPARE','UI_STAGE_HYDRATE','UI_STAGE_PAGES','UI_STAGE_DROPDOWN','UI_STAGE_MODAL','UI_STAGE_DIMENSIONS','UI_STAGE_RESPONSIVE','UI_STAGE_CLOSE','UI_REFERENCE_STAGE_PREPARE','UI_REFERENCE_STAGE_LOAD','UI_REFERENCE_STAGE_PAGES','UI_REFERENCE_STAGE_CLOSE')){
+    foreach($marker in @('UI_STAGE_PREPARE','UI_STAGE_HYDRATE','UI_STAGE_PAGES','UI_STAGE_DROPDOWN','UI_STAGE_MODAL','UI_STAGE_DIMENSIONS','UI_STAGE_RESPONSIVE','UI_STAGE_CLOSE','UI_REFERENCE_STAGE_PREPARE','UI_REFERENCE_STAGE_LOAD','UI_REFERENCE_STAGE_PAGES','UI_REFERENCE_STAGE_CLOSE','UI_REFERENCE_PROGRESS_ENTRY','UI_REFERENCE_PROGRESS_PREPARED','UI_REFERENCE_PROGRESS_LOADED','UI_REFERENCE_PROGRESS_CAPTURED','UI_REFERENCE_PROGRESS_CLOSING','UI_REFERENCE_PROGRESS_WRITTEN')){
         if(@($Probe.Stderr -split '\r?\n' | Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
     }
     foreach($page in @('OVERVIEW','ACCOUNTS','TRACKING','SETUP','CALENDAR','WORKFLOWS')){
@@ -26,6 +26,11 @@ function Show-FixedUiDiagnostic($Probe) {
                 if(@($Probe.Stderr -split '\r?\n' | Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker;return}
             }
         }
+    }
+}
+function Show-FixedUiValidation($Probe) {
+    foreach($marker in @('UI_VALIDATION_STAGE_INITIALIZE','UI_VALIDATION_STAGE_ROOT_OWNER','UI_VALIDATION_STAGE_CAPTURE_READ','UI_VALIDATION_STAGE_RESULT_READ','UI_VALIDATION_STAGE_RESULT_SCHEMA','UI_VALIDATION_STAGE_CAPTURE_SCHEMA','UI_VALIDATION_STAGE_PROCESS','UI_VALIDATION_STAGE_STDOUT','UI_VALIDATION_STAGE_STDERR','UI_VALIDATION_STAGE_CASE_FALSE','UI_VALIDATION_STAGE_OUTPUT_WRITE','UI_PROCESS_SUCCESS','UI_PROCESS_NONZERO_EXIT','UI_PROCESS_EMPTY_OUTPUT','UI_PROCESS_TIMEOUT','UI_PROCESS_LAUNCH_FAILED','UI_PROCESS_ACCESS_DENIED','UI_PROCESS_CLEANUP_FAILED','UI_PROCESS_INVALID','UI_EXIT_NULL','UI_EXIT_ZERO','UI_EXIT_NONZERO','UI_EXIT_INVALID','UI_RETIREMENT_CONFIRMED','UI_RETIREMENT_UNCONFIRMED','UI_REFERENCE_CLOSED_ZERO','UI_REFERENCE_CLOSED_ONE','UI_REFERENCE_CLOSED_MULTIPLE','UI_STDOUT_EMPTY_PRESENT','UI_STDOUT_OTHER_PRESENT','UI_CAPTURE_INVALID','UI_REFERENCE_DEADLINE','UI_REFERENCE_FAILED','UI_FAILED','UI_DEADLINE')){
+        if(@($Probe.Stdout -split '\r?\n' | Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
     }
 }
 function Write-Private([string]$Path,$Value) {
@@ -165,6 +170,7 @@ try {
         if(-not $allClean){throw 'NATIVE_UNCONFIRMED'}
         $failure='STAGE_VALIDATION_FAILED';$allClean=$false
         $validated=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_ui.py'),'stage',$owner.Path,$mode)) 120000 @{}
+        Show-FixedUiValidation $validated
         $allClean=Retired $validated;Require-Success $validated 'UI_VALIDATION_PASS'
         $report.modes[$mode]=Read-Public ('ui-public-'+$mode+'.json')
         Remove-Part $profileName (8L*1024*1024)
@@ -186,7 +192,8 @@ try {
     if(-not $allClean){throw 'NATIVE_UNCONFIRMED'}
     $failure='STAGE_VALIDATION_FAILED';$allClean=$false
     $validated=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_ui.py'),'stage',$owner.Path,'reference')) 120000 @{}
-    $allClean=Retired $validated;Require-Success $validated 'UI_VALIDATION_PASS'
+    Show-FixedUiValidation $validated
+        $allClean=Retired $validated;Require-Success $validated 'UI_VALIDATION_PASS'
     $report.modes.reference=Read-Public 'ui-public-reference.json'
     Remove-Part 'fonesi-auto-foundation-ui-reference' (8L*1024*1024)
     foreach($mode in @('source','package','reference')){

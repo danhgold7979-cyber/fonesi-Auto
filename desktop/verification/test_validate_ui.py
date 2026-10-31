@@ -80,6 +80,8 @@ class UiValidationTests(unittest.TestCase):
   self.assertIn('ReserveDirectory($base)',source);self.assertIn('ReserveDirectory($path)',source)
   markers=re.findall(r"'(UI_(?:REFERENCE_)?STAGE_[A-Z]+)'",source)
   self.assertEqual(len(markers),12);self.assertEqual(len(set(markers)),12)
+  progress=re.findall(r"'(UI_REFERENCE_PROGRESS_[A-Z]+)'",source)
+  self.assertEqual(progress,['UI_REFERENCE_PROGRESS_'+name for name in ('ENTRY','PREPARED','LOADED','CAPTURED','CLOSING','WRITTEN')])
   self.assertIn('$_ -ceq $marker',source);self.assertNotIn('Write-Output $Probe.Stderr',source)
   self.assertIn("@('OVERVIEW','ACCOUNTS','TRACKING','SETUP','CALENDAR','WORKFLOWS')",source)
   self.assertIn("@('LIGHT','DARK')",source)
@@ -122,4 +124,27 @@ class UiValidationTests(unittest.TestCase):
     return code,output.getvalue()
    code,output=run_cli();self.assertEqual(code,0);self.assertIn('UI_VALIDATION_WRITTEN',output);self.assertIn('UI_SCREENSHOTS_BOUND',output)
    code,output=run_cli();self.assertEqual(code,2);self.assertNotIn('WRITTEN',output);self.assertNotIn('BOUND',output)
+ def test_failure_diagnostics_are_fixed_and_identify_missing_reference_result(self):
+  import io
+  from contextlib import redirect_stdout
+  from unittest.mock import patch
+  import validate_ui as validator
+  raw,capture=stage('reference')
+  capture['stdout']='\nUI_REFERENCE_CLOSED\nPRIVATE_CANARY\n'
+  capture['stderr']='private path and secret'
+  markers=validator.capture_diagnostics(capture)
+  self.assertIn('UI_REFERENCE_CLOSED_ONE',markers);self.assertIn('UI_STDOUT_EMPTY_PRESENT',markers);self.assertIn('UI_STDOUT_OTHER_PRESENT',markers)
+  self.assertNotIn('PRIVATE_CANARY',' '.join(markers));self.assertNotIn('private',' '.join(markers))
+  malformed=copy.deepcopy(capture);malformed['process']['status']={'PRIVATE':True};malformed['process']['exitCode']=True
+  self.assertIn('UI_PROCESS_INVALID',validator.capture_diagnostics(malformed));self.assertIn('UI_EXIT_INVALID',validator.capture_diagnostics(malformed))
+  self.assertIn('UI_RETIREMENT_UNCONFIRMED',validator.capture_diagnostics(malformed))
+  for update in ({'status':'TIMEOUT','exitCode':None},{'stdoutTruncated':True},{'stderrTruncated':True},{'cleanupComplete':1}):
+   bad=copy.deepcopy(capture);bad['process'].update(update)
+   self.assertIn('UI_RETIREMENT_UNCONFIRMED',validator.capture_diagnostics(bad))
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory).resolve();(root/'.owner').write_text('12345678-1234-1234-1234-123456789abc')
+   (root/'ui-capture-reference.json').write_text(json.dumps(capture));output=io.StringIO()
+   with patch('sys.argv',['validate_ui.py','stage',str(root),'reference']),redirect_stdout(output):code=validator.main()
+   self.assertEqual(code,2);self.assertIn('UI_VALIDATION_STAGE_RESULT_READ',output.getvalue());self.assertNotIn('PRIVATE_CANARY',output.getvalue());self.assertNotIn(str(root),output.getvalue())
+   self.assertFalse((root/'ui-public-reference.json').exists())
 if __name__=='__main__':unittest.main()

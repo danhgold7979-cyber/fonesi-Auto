@@ -13,6 +13,41 @@ THEMES=('light','dark')
 MAIN_CASES=('realMain','originalKeyAuthenticated','sandboxAndIsolation','exactTabs','productionEmpty','allPagesBothThemes','modalCancel','modalEscape','focusRestored','dropdownKeyboard','dockResize','tileZoom','tableScroll','repeatedNavigation','themePersisted','orderlyQuit')
 REFERENCE_CASES=('referenceHash','isolatedSession','sandboxAndIsolation','exactAssetPolicy','exactTabs','allPagesBothThemes','orderlyQuit')
 FAILURES=('PREPARE_FAILED','PACKAGE_FAILED','CONTROL_FAILED','PREFLIGHT_FAILED','NATIVE_STAGE_FAILED','STAGE_VALIDATION_FAILED','SEQUENCE_VALIDATION_FAILED','SCREENSHOT_FAILED','CLEANUP_FAILED')
+DIAGNOSTIC_STAGE='INITIALIZE'
+DIAGNOSTIC_STAGES=('INITIALIZE','ROOT_OWNER','CAPTURE_READ','RESULT_READ','RESULT_SCHEMA','CAPTURE_SCHEMA','PROCESS','STDOUT','STDERR','CASE_FALSE','OUTPUT_WRITE')
+def diagnostic_stage(value):
+ global DIAGNOSTIC_STAGE
+ if value not in DIAGNOSTIC_STAGES:reject()
+ DIAGNOSTIC_STAGE=value
+
+def capture_diagnostics(capture):
+ # Fixed vocabulary only, including malformed-input branches; no input is returned.
+ if type(capture) is not dict:return ('UI_CAPTURE_INVALID',)
+ result=[];process=capture.get('process')
+ if type(process) is dict:
+  status=process.get('status')
+  if type(status) is str and status in ('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT','TIMEOUT','LAUNCH_FAILED','ACCESS_DENIED','CLEANUP_FAILED'):
+   result.append('UI_PROCESS_'+status)
+  else:result.append('UI_PROCESS_INVALID')
+  code=process.get('exitCode')
+  result.append('UI_EXIT_NULL' if code is None else 'UI_EXIT_ZERO' if type(code) is int and code==0 else 'UI_EXIT_NONZERO' if type(code) is int else 'UI_EXIT_INVALID')
+  retired=False
+  try:
+   validate_process(process)
+   retired=process['status'] in ('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT') and process['cleanupComplete'] and not process['stdoutTruncated'] and not process['stderrTruncated']
+  except (ValueError,TypeError):pass
+  result.append('UI_RETIREMENT_CONFIRMED' if retired else 'UI_RETIREMENT_UNCONFIRMED')
+ for key in ('stdout','stderr'):
+  if type(capture.get(key)) is not str or len(capture[key].encode('utf-16-le'))//2>32768:return tuple(result)+('UI_CAPTURE_INVALID',)
+ lines=capture['stdout'].replace('\r\n','\n').split('\n')
+ if lines and lines[-1]=='':lines.pop()
+ count=lines.count('UI_REFERENCE_CLOSED')
+ result.append('UI_REFERENCE_CLOSED_ZERO' if count==0 else 'UI_REFERENCE_CLOSED_ONE' if count==1 else 'UI_REFERENCE_CLOSED_MULTIPLE')
+ if any(line=='' for line in lines):result.append('UI_STDOUT_EMPTY_PRESENT')
+ if any(line not in ('','UI_REFERENCE_CLOSED','BOOTSTRAP_READY','BOOTSTRAP_CLOSED','UI_CLOSED') for line in lines):result.append('UI_STDOUT_OTHER_PRESENT')
+ for marker in ('UI_REFERENCE_DEADLINE','UI_REFERENCE_FAILED','UI_FAILED','UI_DEADLINE'):
+  if marker in capture['stderr'].splitlines():result.append(marker)
+ return tuple(result)
 def cases(mode):
  if mode not in MODES:reject()
  return REFERENCE_CASES if mode=='reference' else MAIN_CASES+(('responsive',) if mode=='source' else ())
@@ -34,6 +69,7 @@ def expected_stdout(mode):
  cases(mode)
  return ['UI_REFERENCE_CLOSED'] if mode=='reference' else ['BOOTSTRAP_READY','BOOTSTRAP_CLOSED','UI_CLOSED']
 def validate_stage(raw,capture,mode):
+ diagnostic_stage('RESULT_SCHEMA')
  value=parse(raw);exact_record(value,('version','mode','versions','cases','pages','images'))
  if type(value['version']) is not int or value['version']!=1 or value['mode']!=mode:reject()
  exact_record(value['versions'],VERSIONS)
@@ -43,14 +79,19 @@ def validate_stage(raw,capture,mode):
  expected=specs(mode)
  if type(value['images']) is not list or len(value['images'])!=len(expected):reject()
  for item,spec in zip(value['images'],expected):metadata(item,spec)
- exact_record(capture,('process','stdout','stderr'));normal=validate_process(capture['process'])
+ diagnostic_stage('CAPTURE_SCHEMA')
+ exact_record(capture,('process','stdout','stderr'))
+ diagnostic_stage('PROCESS');normal=validate_process(capture['process'])
  for key in ('stdout','stderr'):
   if type(capture[key]) is not str or len(capture[key].encode('utf-16-le'))//2>32768:reject()
+ diagnostic_stage('STDOUT')
  lines=capture['stdout'].replace('\r\n','\n').split('\n')
  if lines and lines[-1]=='':lines.pop()
  if lines and lines[0]=='':lines.pop(0)
  if lines!=expected_stdout(mode):reject()
+ diagnostic_stage('STDERR')
  if any(marker in capture['stderr'] for marker in ('UI_FAILED','UI_DEADLINE','UI_REFERENCE_FAILED','BOOTSTRAP_FAILED','BOOTSTRAP_CLEANUP_FAILED','PERSISTENCE_SHUTDOWN_FAILED')):reject()
+ diagnostic_stage('CASE_FALSE')
  return {**value,'process':dict(capture['process']),'passed':normal and all(value['cases'].values()) and all(value['pages'].values())}
 def validate_public(value,mode):
  exact_record(value,('version','mode','versions','cases','pages','images','process','passed'))
@@ -129,10 +170,15 @@ def read_image(path,spec):
  with path.open('rb') as handle:raw=handle.read(4*1024*1024+1)
  return raw,{'name':spec[0],**screenshot(raw,spec[1],spec[2])}
 def stage_files(root,mode):
- token=_admit_root(root)
- value=validate_stage(_read_owned(root,f'ui-{mode}.json'),parse(_read_owned(root,f'ui-capture-{mode}.json')),mode)
+ cases(mode);diagnostic_stage('ROOT_OWNER');token=_admit_root(root)
+ diagnostic_stage('CAPTURE_READ');capture=parse(_read_owned(root,f'ui-capture-{mode}.json'))
+ for marker in capture_diagnostics(capture):print(marker)
+ diagnostic_stage('RESULT_READ');raw=_read_owned(root,f'ui-{mode}.json')
+ value=validate_stage(raw,capture,mode)
+ diagnostic_stage('ROOT_OWNER')
  if _admit_root(root)!=token:reject()
- _write_new(root,f'ui-public-{mode}.json',value)
+ diagnostic_stage('OUTPUT_WRITE');_write_new(root,f'ui-public-{mode}.json',value)
+ if not value['passed']:diagnostic_stage('CASE_FALSE')
  return value['passed']
 def screenshot_files(root,mode):
  import os
@@ -164,12 +210,15 @@ def main():
  import sys
  try:
   if len(sys.argv)==4 and sys.argv[1]=='stage':
-   passed=stage_files(Path(sys.argv[2]),sys.argv[3]);print('UI_VALIDATION_PASS' if passed else 'UI_VALIDATION_FAIL');return 0 if passed else 1
+   passed=stage_files(Path(sys.argv[2]),sys.argv[3])
+   if not passed:print('UI_VALIDATION_STAGE_'+DIAGNOSTIC_STAGE)
+   print('UI_VALIDATION_PASS' if passed else 'UI_VALIDATION_FAIL');return 0 if passed else 1
   if len(sys.argv)==4 and sys.argv[1]=='screenshots':
    screenshot_files(Path(sys.argv[2]),sys.argv[3]);print('UI_SCREENSHOTS_VERIFIED');return 0
   if len(sys.argv)!=2 or sys.argv[1]!='publish':reject()
   passed,bound=publish(Path(__file__).resolve().parents[1]/'.ui-runtime')
  except (OSError,ValueError,UnicodeError,RecursionError,TypeError,StopIteration):
+  print('UI_VALIDATION_STAGE_'+DIAGNOSTIC_STAGE if DIAGNOSTIC_STAGE in DIAGNOSTIC_STAGES else 'UI_VALIDATION_STAGE_INITIALIZE')
   print('UI_VALIDATION_INVALID');return 2
  print('UI_VALIDATION_WRITTEN')
  if bound:print('UI_SCREENSHOTS_BOUND')

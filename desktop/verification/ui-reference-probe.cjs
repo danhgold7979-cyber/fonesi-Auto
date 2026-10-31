@@ -5,6 +5,7 @@ const { app, BrowserWindow, session, protocol, Menu } = require('electron');
 const fs = require('node:fs'),
   path = require('node:path'),
   { randomUUID } = require('node:crypto');
+fs.writeSync(2, 'UI_REFERENCE_PROGRESS_ENTRY\n');
 const {
   PAGES,
   THEMES,
@@ -97,6 +98,7 @@ async function run() {
       privileges: { standard: true, secure: true, supportFetchAPI: false, stream: false },
     },
   ]);
+  fs.writeSync(2, 'UI_REFERENCE_PROGRESS_PREPARED\n');
   await app.whenReady();
   Menu.setApplicationMenu(null);
   ownedSession = session.fromPartition(`ui-reference-${randomUUID()}`, { cache: false });
@@ -144,6 +146,7 @@ async function run() {
   window.webContents.on('preload-error', fail);
   phase = 'LOAD';
   await window.loadURL(URL);
+  fs.writeSync(2, 'UI_REFERENCE_PROGRESS_LOADED\n');
   window.setContentSize(1440, 900);
   window.webContents.setZoomFactor(1);
   await pause(250);
@@ -187,6 +190,7 @@ async function run() {
       images.push(saveImage(root, spec, await window.webContents.capturePage()));
     }
   }
+  fs.writeSync(2, 'UI_REFERENCE_PROGRESS_CAPTURED\n');
   cases.allPagesBothThemes = Object.values(pages).every(Boolean);
   if (
     !Object.entries(cases)
@@ -196,6 +200,7 @@ async function run() {
     throw Error('UI_REFERENCE_CASES');
   phase = 'CLOSE';
   complete = true;
+  fs.writeSync(2, 'UI_REFERENCE_PROGRESS_CLOSING\n');
   window.close();
   closed = window.isDestroyed();
   app.quit();
@@ -213,6 +218,7 @@ app.on('will-quit', () => {
     const output = { version: 1, mode: 'reference', versions: actual, cases, pages, images };
     validateResult(JSON.stringify(output));
     write(path.join(root, 'ui-reference.json'), output);
+    fs.writeSync(2, 'UI_REFERENCE_PROGRESS_WRITTEN\n');
     clearTimeout(deadline);
     fs.writeSync(1, 'UI_REFERENCE_CLOSED\n');
   } catch {

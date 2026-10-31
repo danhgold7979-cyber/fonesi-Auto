@@ -294,3 +294,22 @@ test('theme mutation reconciles the visible renderer revision after native geome
   await assert.rejects(run('dark'), /STALE_REVISION/);
   assert.equal(calls.filter((value) => value === '#theme-toggle').length, 1);
 });
+
+test('reference progress markers are six fixed stderr literals bound to completed lifecycle operations', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'ui-reference-probe.cjs'), 'utf8');
+  const names = ['ENTRY', 'PREPARED', 'LOADED', 'CAPTURED', 'CLOSING', 'WRITTEN'];
+  const markers = [...source.matchAll(/fs\.writeSync\(2, 'UI_REFERENCE_PROGRESS_([A-Z]+)\\n'\)/g)];
+  assert.deepEqual(
+    markers.map((match) => match[1]),
+    names,
+  );
+  const at = (name) => source.indexOf(`UI_REFERENCE_PROGRESS_${name}`);
+  assert.ok(at('ENTRY') < source.indexOf("require('./ui-contract.cjs')"));
+  assert.ok(at('PREPARED') < source.indexOf('await app.whenReady()'));
+  assert.ok(at('LOADED') > source.indexOf('await window.loadURL(URL)'));
+  assert.ok(at('CAPTURED') > source.indexOf('images.push(saveImage'));
+  assert.ok(at('CLOSING') < source.indexOf('window.close()'));
+  assert.ok(at('WRITTEN') > source.indexOf("write(path.join(root, 'ui-reference.json'), output)"));
+  assert.equal([...source.matchAll(/fs\.writeSync\(1,/g)].length, 1);
+  assert.ok(source.includes("fs.writeSync(1, 'UI_REFERENCE_CLOSED\\n')"));
+});
