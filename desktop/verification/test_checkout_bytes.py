@@ -18,6 +18,8 @@ class CheckoutBytesTests(unittest.TestCase):
             'tools/phase-00/desktop-stack-lab/package-lock.json': review['sourceLockSha256'],
             'tools/phase-00/desktop-stack-lab/dependency-review.json': review['sourceReviewSha256'],
             'desktop/tests/fixtures/unavailable.html': asset_hash,
+            'ui-reference/Fonesi-Auto-V9-UI-Reference.html':
+                '26519dda4d65f4712258b9f3c136b785126121260e6fae8d8ada1bbb84363efe',
         }
         style_hash = re.search(r"STYLE_SHA256 = '([0-9a-f]{64})'", asset_source).group(1)
         expected['desktop/assets/v9.css'] = style_hash
