@@ -106,7 +106,9 @@ export class OwnedLogFiles {
     this.storeId = storeId;
     this.ownerToken = ownerToken;
   }
-  static async acquire(location: LogLocation): Promise<OwnedLogFiles> {
+  static async acquire(location: LogLocation, expectedOwnerToken?: string): Promise<OwnedLogFiles> {
+    if (expectedOwnerToken !== undefined && !diagnosticId(expectedOwnerToken))
+      throw new Error('LOG_OWNER_REJECTED');
     await parent(location);
     let fresh = false;
     try {
@@ -131,7 +133,7 @@ export class OwnedLogFiles {
     if (fresh && names.length !== 0) throw new Error('LOG_OWNER_REJECTED');
     const lock = join(location.root, '.writer-lock');
     await mkdir(lock);
-    const files = new OwnedLogFiles(location, storeId, randomUUID());
+    const files = new OwnedLogFiles(location, storeId, expectedOwnerToken ?? randomUUID());
     await exclusive(
       join(lock, 'owner.json'),
       JSON.stringify({

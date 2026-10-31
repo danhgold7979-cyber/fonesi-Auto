@@ -37,6 +37,7 @@ export class FoundationPersistence {
   private stopping = false;
   private idleWaiters: (() => void)[] = [];
   private readonly owned: () => Promise<void>;
+  private readonly assertDataLocation: (selected: string) => void;
   private constructor(
     root: string,
     storeId: string,
@@ -44,6 +45,7 @@ export class FoundationPersistence {
     catalog: BackupCatalog,
     backups: BackupService,
     owned: () => Promise<void>,
+    assertDataLocation: (selected: string) => void,
   ) {
     this.root = root;
     this.storeId = storeId;
@@ -51,16 +53,19 @@ export class FoundationPersistence {
     this.catalog = catalog;
     this.backups = backups;
     this.owned = owned;
+    this.assertDataLocation = assertDataLocation;
   }
   static async open(
     location: PersistenceLocation,
     ownerToken: string,
     keys: BackupKeyAdapter,
     fresh: boolean,
+    assertDataLocation: (selected: string) => void = () => {},
   ): Promise<FoundationPersistence> {
     const admitted = Object.freeze({ root: location.root, parentToken: location.parentToken });
     const owned = () => assertBorrowedPersistenceLease(admitted, ownerToken);
     await owned();
+    assertDataLocation(admitted.root);
     const provenance = await verifyPersistenceRoot(admitted),
       staging = join(admitted.root, 'staging');
     if (fresh) await mkdir(staging);
@@ -84,6 +89,7 @@ export class FoundationPersistence {
         staging,
         assertOwned: async (target) => {
           await owned();
+          assertDataLocation(target.directory);
           const known = await catalog.location(target.locationId);
           if (known.directory !== target.directory) throw new Error('BACKUP_LOCATION_REPLACED');
         },
@@ -97,6 +103,7 @@ export class FoundationPersistence {
       catalog,
       backups,
       owned,
+      assertDataLocation,
     );
   }
   private async lane<T>(operation: () => Promise<T>): Promise<T> {
@@ -137,6 +144,7 @@ export class FoundationPersistence {
     return this.lane(async () => {
       if (this.recoveryOnly) throw new Error('DATABASE_NOT_READY');
       if (this.restored) throw new Error('RESTORED_PROVISION_REJECTED');
+      this.assertDataLocation(selectedParent);
       await this.catalog.selectLocation(selectedParent, true, now);
       const target = await this.catalog.activeLocation();
       if (!target) throw new Error('BACKUP_LOCATION_REQUIRED');
@@ -469,6 +477,7 @@ export class FoundationPersistence {
     expected?: BackupReceipt,
   ): Promise<string> {
     await plainPersistenceDirectory(parent);
+    this.assertDataLocation(parent);
     await this.owned();
     if (
       !keyCheckpoint.startsWith(join(this.root, 'key-checkpoint-')) ||
@@ -539,6 +548,7 @@ export class FoundationPersistence {
   async selectLocation(parent: string, now: number): Promise<void> {
     return this.lane(async () => {
       if (!this.database) throw new Error('DATABASE_NOT_READY');
+      this.assertDataLocation(parent);
       await this.catalog.selectLocation(parent, true, now);
       await this.catalog.mirrorLocations(this.database);
     });

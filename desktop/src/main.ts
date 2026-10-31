@@ -133,6 +133,7 @@ try {
           ? { root: process.env.FONESI_LOG_ROOT, parentToken: process.env.FONESI_LOG_PARENT_TOKEN }
           : undefined,
         () => reportLoggingDegraded(),
+        persistenceEntry?.ownerToken,
       );
       if (closing) {
         await logger.close();

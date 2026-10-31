@@ -55,9 +55,10 @@ export class LogStore {
     location: LogLocation,
     now: string,
     fault: StoreFault = () => {},
+    expectedOwnerToken?: string,
   ): Promise<LogStore> {
     if (!utcTimestamp(now)) throw new Error('LOG_TIME_REJECTED');
-    const files = await OwnedLogFiles.acquire(location),
+    const files = await OwnedLogFiles.acquire(location, expectedOwnerToken),
       store = new LogStore(files, fault);
     const hold = await files.document('holds.json', 'holds'),
       state = await files.document('state.json', 'state');

@@ -529,3 +529,23 @@ test('metadata writes bind exact document kind and record identity to filename',
     f.cleanup();
   }
 });
+
+test('main-owned preallocated log token is exact and invalid tokens fail before creating the root', async () => {
+  const f = fixture();
+  try {
+    await assert.rejects(OwnedLogFiles.acquire(f.location, 'invalid'), /LOG_OWNER_REJECTED/);
+    assert.equal(existsSync(f.location.root), false);
+    const expected = randomUUID(),
+      files = await OwnedLogFiles.acquire(f.location, expected);
+    assert.equal(files.ownerToken, expected);
+    const lock = parseStoreDocument(
+      await readLogFile(join(f.location.root, '.writer-lock/owner.json'), 4096),
+      'lock',
+      files.storeId,
+    );
+    assert.equal(lock.ownerToken, expected);
+    await files.release();
+  } finally {
+    f.cleanup();
+  }
+});

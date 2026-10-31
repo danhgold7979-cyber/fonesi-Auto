@@ -183,3 +183,14 @@ required checks. Record exact image/head and actual Node/npm versions; include
 foundation strict/type/unit/boundary fixtures, not merely source formatting.
 No user Windows 10/target-host support, C-07/HC09/HC13/Phase 0/device gate or full
 P1-10 acceptance follows. Original task requirements and product scope remain.
+
+
+### P1-10 source entry — 2026-10-31 15:55 UTC
+
+Coordinator approved the independently reviewed [internal package/recovery contract](PHASE-01-P1-10-PACKAGING-CONTRACT.md)
+at exact pre-entry SHA256 `014e5ebef5449543c911deb1fc4be986ff731face6d7f947fddb06d3d666e4a6`.
+This implements the canonical packaging smoke plus the explicitly retained known-retired
+lease/RESTORED launcher obligations. Local source and focused tests do not establish
+Windows package readiness; exact native envelope review/execution and criterion audit
+remain pending. [Current evidence](../evidence/P1-10-package-recovery-source-2026-10-31.md).
+Nine technical scopes/formal0/P1-06 UNMET and original hardware/release gates remain.

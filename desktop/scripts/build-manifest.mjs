@@ -35,6 +35,10 @@ export const outputs = [
 ];
 export const inputs = [
   'launch/Invoke-Desktop.ps1',
+  'launch/Invoke-Package.ps1',
+  'launch/launch-core.ps1',
+  'launch/launch-journal.cjs',
+  'launch/package-admission.cjs',
   'launch/persistence-initialize.cjs',
   'launch/persistence-launch-control.cjs',
   'native/PersistenceProcess.cs',
@@ -98,6 +102,8 @@ export const inputs = [
   'src/main/window-policy.ts',
   'tests/fixtures/unavailable.html',
   'scripts/build.mjs',
+  'scripts/build-package.mjs',
+  'scripts/package-manifest.mjs',
   'scripts/recover-logs.mjs',
   'scripts/build-manifest.mjs',
 ];

@@ -14,6 +14,7 @@ export type PersistenceEntry = Readonly<{
   keyProfile: string;
   checkpoint: string;
   runtimeExeSha256: string;
+  packageRoot?: string;
 }>;
 function read(path: string): string {
   const stat = lstatSync(path);
@@ -97,7 +98,7 @@ export function preparedPersistenceEntry(file: unknown): PersistenceEntry | unde
     const raw = read(file),
       value = JSON.parse(raw);
     if (
-      value.version !== 2 ||
+      ![2, 3].includes(value.version) ||
       typeof value.runtimeExeSha256 !== 'string' ||
       !/^[0-9a-f]{64}$/.test(value.runtimeExeSha256) ||
       value.state !== 'READY' ||
@@ -111,7 +112,7 @@ export function preparedPersistenceEntry(file: unknown): PersistenceEntry | unde
     )
       throw new Error();
     const canonical = {
-      version: 2,
+      version: value.version,
       state: 'READY',
       root,
       parentToken: value.parentToken,
@@ -119,12 +120,24 @@ export function preparedPersistenceEntry(file: unknown): PersistenceEntry | unde
       storeId: value.storeId,
       checkpoint: value.checkpoint,
       runtimeExeSha256: value.runtimeExeSha256,
+      ...(value.version === 3 ? { packageRoot: value.packageRoot } : {}),
     };
     if (
       JSON.stringify(canonical) !== raw ||
       read(join(dirname(root), '.owner')) !== value.parentToken
     )
       throw new Error();
+    if (value.version === 3) {
+      if (
+        typeof value.packageRoot !== 'string' ||
+        value.packageRoot !== resolve(value.packageRoot) ||
+        resolve(value.packageRoot, 'app/build') !==
+          (typeof __dirname === 'string' ? __dirname : dirname(process.argv[1] ?? ''))
+      )
+        throw new Error();
+      plain(value.packageRoot);
+      persistenceDataGuard(value.packageRoot)(root);
+    }
     const provenanceRaw = read(join(root, '.persistence-owner.json')),
       provenance = JSON.parse(provenanceRaw);
     if (
@@ -196,6 +209,7 @@ export function preparedPersistenceEntry(file: unknown): PersistenceEntry | unde
       keyProfile,
       checkpoint: join(root, value.checkpoint),
       runtimeExeSha256: value.runtimeExeSha256,
+      ...(value.version === 3 ? { packageRoot: value.packageRoot } : {}),
     });
   } catch {
     throw new Error('PERSISTENCE_ENTRY_REJECTED');
@@ -208,6 +222,12 @@ export function assertCertifiedPersistenceEntry(
   entry: PersistenceEntry,
   reviewedBuildVerified: boolean,
 ): void {
+  if (
+    entry.packageRoot !== undefined &&
+    resolve(entry.packageRoot, 'runtime/electron/electron.exe').toLowerCase() !==
+      process.execPath.toLowerCase()
+  )
+    throw new Error('PERSISTENCE_RUNTIME_UNCERTIFIED');
   const stat = lstatSync(process.execPath);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 512 * 1024 * 1024)
     throw new Error('PERSISTENCE_RUNTIME_UNCERTIFIED');
@@ -254,6 +274,7 @@ export async function openPreparedPersistence(
     entry.ownerToken,
     await backupKeys(provider),
     false,
+    persistenceDataGuard(entry.packageRoot),
   );
   try {
     await app.initialize(now);
@@ -275,6 +296,7 @@ export async function openPreparedPersistenceRecovery(
     entry.ownerToken,
     await backupKeys(provider),
     false,
+    persistenceDataGuard(entry.packageRoot),
   );
   try {
     await app.initializeRecovery();
@@ -283,6 +305,26 @@ export async function openPreparedPersistenceRecovery(
     app.close();
     throw error;
   }
+}
+
+export function persistenceDataGuard(packageRoot?: string): (selected: string) => void {
+  if (packageRoot === undefined) return () => {};
+  plain(packageRoot);
+  const fold = (value: string) => (process.platform === 'win32' ? value.toLowerCase() : value);
+  const base = fold(resolve(packageRoot));
+  return (selected: string) => {
+    if (typeof selected !== 'string' || selected !== resolve(selected))
+      throw new Error('PACKAGE_DATA_LOCATION_REJECTED');
+    plain(selected);
+    const target = fold(selected);
+    const sep = process.platform === 'win32' ? '\\' : '/';
+    if (
+      target === base ||
+      target.startsWith(base + sep) ||
+      base.startsWith(target.endsWith(sep) ? target : target + sep)
+    )
+      throw new Error('PACKAGE_DATA_LOCATION_REJECTED');
+  };
 }
 
 export function configurePersistenceSession(

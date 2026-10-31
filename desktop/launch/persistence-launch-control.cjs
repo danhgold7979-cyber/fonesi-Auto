@@ -3,7 +3,7 @@
 // in its private owned launch directory. No renderer IPC or arbitrary service API.
 const fs = require('node:fs'),
   path = require('node:path'),
-  { randomUUID } = require('node:crypto');
+  { createHash } = require('node:crypto');
 const uuid = (v) =>
   typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
 function plain(p) {
@@ -82,7 +82,15 @@ function witness(v) {
   return v;
 }
 function capture(launch, stage) {
-  const c = parse(path.join(launch, stage + '-capture.json'));
+  const raw = read(path.join(launch, stage + '-capture.json'));
+  const journal = require('./launch-journal.cjs').inspect(path.dirname(launch), launch);
+  const matched = journal.settlements.filter((item) => item.stage === stage.toUpperCase());
+  if (
+    matched.length !== 1 ||
+    createHash('sha256').update(raw).digest('hex') !== matched[0].captureSha256
+  )
+    throw new Error('CAPTURE_BINDING');
+  const c = JSON.parse(raw);
   keys(c, ['process', 'stdout', 'stderr']);
   keys(c.process, ['status', 'exitCode', 'cleanupComplete', 'stdoutTruncated', 'stderrTruncated']);
   if (
@@ -116,6 +124,132 @@ function capture(launch, stage) {
     throw new Error('NATIVE_FAILURE');
   return lines;
 }
+function logDocument(file, names) {
+  const raw = read(file),
+    value = JSON.parse(raw);
+  keys(value, names);
+  if (raw !== JSON.stringify(value) + '\n' || value.schemaVersion !== 1 || !uuid(value.storeId))
+    throw new Error('LOG_OWNERSHIP');
+  return { raw, value };
+}
+function prepareLogProof(root, launch, header) {
+  const logRoot = path.join(root, 'logs-main');
+  let priorOwnerSha256 = null;
+  if (!absent(logRoot)) {
+    plain(logRoot);
+    if (!absent(path.join(logRoot, '.writer-lock'))) throw new Error('LOG_RECOVERY_REQUIRED');
+    const owner = logDocument(path.join(logRoot, 'owner.json'), ['schemaVersion', 'storeId']);
+    priorOwnerSha256 = createHash('sha256').update(owner.raw).digest('hex');
+  }
+  const value = {
+    version: 1,
+    launchId: header.launchId,
+    parentToken: header.parentToken,
+    ownerToken: header.ownerToken,
+    logRoot,
+    priorOwnerSha256,
+    writerAbsent: true,
+  };
+  const file = path.join(launch, 'log-launch-proof.json');
+  if (absent(file)) write(file, value);
+  else if (read(file) !== JSON.stringify(value)) throw new Error('LOG_PROOF_CHANGED');
+}
+async function recoverLogs(root, launch, header, journal) {
+  const logRoot = path.join(root, 'logs-main');
+  if (absent(logRoot)) return;
+  plain(logRoot);
+  const lock = path.join(logRoot, '.writer-lock');
+  if (absent(lock)) return;
+  plain(lock);
+  const proof = parse(path.join(launch, 'log-launch-proof.json'));
+  keys(proof, [
+    'version',
+    'launchId',
+    'parentToken',
+    'ownerToken',
+    'logRoot',
+    'priorOwnerSha256',
+    'writerAbsent',
+  ]);
+  if (
+    proof.version !== 1 ||
+    proof.launchId !== header.launchId ||
+    proof.parentToken !== header.parentToken ||
+    proof.ownerToken !== header.ownerToken ||
+    proof.logRoot !== logRoot ||
+    proof.writerAbsent !== true ||
+    (proof.priorOwnerSha256 !== null && !/^[0-9a-f]{64}$/.test(proof.priorOwnerSha256))
+  )
+    throw new Error('LOG_RECOVERY_REQUIRED');
+  const state = journal.inspect(root, launch),
+    mains = state.settlements.filter((item) => item.stage === 'MAIN');
+  if (mains.length !== 1) throw new Error('LOG_RECOVERY_REQUIRED');
+  const owner = logDocument(path.join(logRoot, 'owner.json'), ['schemaVersion', 'storeId']);
+  if (
+    proof.priorOwnerSha256 !== null &&
+    createHash('sha256').update(owner.raw).digest('hex') !== proof.priorOwnerSha256
+  )
+    throw new Error('LOG_RECOVERY_REQUIRED');
+  const file = path.join(launch, 'log-recovery-owner.json');
+  let expected;
+  if (absent(file)) {
+    const entries = fs.opendirSync(lock);
+    try {
+      if (entries.readSync()?.name !== 'owner.json' || entries.readSync() !== null)
+        throw new Error('LOG_RECOVERY_REQUIRED');
+    } finally {
+      entries.closeSync();
+    }
+    const identity = logDocument(path.join(lock, 'owner.json'), [
+      'schemaVersion',
+      'storeId',
+      'ownerToken',
+      'pid',
+    ]).value;
+    if (
+      identity.storeId !== owner.value.storeId ||
+      !uuid(identity.ownerToken) ||
+      identity.ownerToken !== header.ownerToken ||
+      !Number.isSafeInteger(identity.pid) ||
+      identity.pid < 1
+    )
+      throw new Error('LOG_RECOVERY_REQUIRED');
+    expected = {
+      version: 1,
+      launchId: header.launchId,
+      ownerToken: header.ownerToken,
+      logStoreId: identity.storeId,
+      logOwnerToken: identity.ownerToken,
+      mainCaptureSha256: mains[0].captureSha256,
+    };
+    write(file, expected);
+  } else expected = parse(file);
+  keys(expected, [
+    'version',
+    'launchId',
+    'ownerToken',
+    'logStoreId',
+    'logOwnerToken',
+    'mainCaptureSha256',
+  ]);
+  if (
+    expected.version !== 1 ||
+    expected.launchId !== header.launchId ||
+    expected.ownerToken !== header.ownerToken ||
+    expected.logStoreId !== owner.value.storeId ||
+    !uuid(expected.logOwnerToken) ||
+    expected.logOwnerToken !== header.ownerToken ||
+    expected.mainCaptureSha256 !== mains[0].captureSha256
+  )
+    throw new Error('LOG_RECOVERY_REQUIRED');
+  const result = await require('../build/log-recovery.cjs').recoverLogStore(
+    { root: logRoot, parentToken: header.parentToken },
+    expected.logStoreId,
+    expected.logOwnerToken,
+    true,
+  );
+  if (result !== 'RECOVERED') throw new Error('LOG_RECOVERY_REQUIRED');
+}
 async function run() {
   const [action, root, launch] = process.argv.slice(2);
   if (
@@ -128,12 +262,39 @@ async function run() {
       'observe-auth',
       'prepare-ready',
       'release',
+      'recover',
     ].includes(action) ||
     process.versions.node !== '24.22.1'
   )
     throw new Error('ARGUMENTS');
-  const { verifyBuild } = await import('../scripts/build-manifest.mjs');
-  if (!verifyBuild(path.resolve(__dirname, '..'))) throw new Error('BUILD');
+  const journal = require('./launch-journal.cjs');
+  const current = journal.inspect(root, launch),
+    header = current.header;
+  const stages = {
+    setup: 'SETUP',
+    'prepare-provision': 'PREPARE_PROVISION',
+    'observe-provision': 'OBSERVE_PROVISION',
+    'prepare-auth': 'PREPARE_AUTH',
+    'observe-auth': 'OBSERVE_AUTH',
+    'prepare-ready': 'PREPARE_READY',
+    release: 'RELEASE',
+    recover: 'RECOVERY',
+  };
+  if (!current.pending || current.pending.stage !== stages[action])
+    throw new Error('JOURNAL_STAGE');
+  if (header.entryMode === 'SOURCE') {
+    const { verifyBuild } = await import('../scripts/build-manifest.mjs');
+    if (!verifyBuild(path.resolve(__dirname, '..'))) throw new Error('BUILD');
+  } else if (header.entryMode === 'PACKAGE') {
+    require('./package-admission.cjs').verifyPackage(path.resolve(__dirname, '../..'));
+  } else throw new Error('ENTRY_MODE');
+  if (action === 'recover') {
+    journal.eligibleRecovery(root, launch, true);
+    await recoverLogs(root, launch, header, journal);
+    journal.recover(root, launch);
+    console.log('PERSISTENCE_LAUNCH_CONTROL_PASS');
+    return;
+  }
   const files = require('../build/persistence-files.cjs'),
     profile = require('../build/backup-key-profile.cjs'),
     proofs = require('../build/persistence-proof.cjs');
@@ -147,29 +308,37 @@ async function run() {
     throw new Error('LAUNCH');
   const parentToken = read(path.join(root, '.owner'));
   if (!uuid(parentToken)) throw new Error('OWNER');
-  const location = { root: path.join(root, 'data-main'), parentToken },
+  const location = { root: header.dataRoot, parentToken },
     stateFile = path.join(launch, 'state.json');
   if (action === 'setup') {
+    if (absent(location.root) && path.basename(location.root) !== 'data-main')
+      throw new Error('STORE_MISSING');
     if (absent(location.root))
       await files.createPersistenceRoot(location, {
         version: 1,
-        storeId: randomUUID(),
+        storeId: header.storeId,
         kind: 'FRESH',
         restoreReceiptId: null,
       });
     const provenance = await files.verifyPersistenceRoot(location);
-    if (provenance.kind !== 'FRESH') throw new Error('RESTORED_MAINTENANCE_REQUIRED');
-    const ownerToken = randomUUID();
-    await files.acquirePersistenceLease(location, ownerToken);
+    if (
+      provenance.storeId !== header.storeId ||
+      (provenance.kind === 'RESTORED' && header.maintenance === 'NORMAL')
+    )
+      throw new Error('RESTORED_MAINTENANCE_REQUIRED');
+    const ownerToken = header.ownerToken;
     const runtime = parse(path.join(launch, 'runtime-attestation.json'));
     if (
       runtime.version !== 1 ||
       runtime.electron !== '45.1.0' ||
+      runtime.exeSha256 !== header.executableSha256 ||
       typeof runtime.exeSha256 !== 'string' ||
       !/^[0-9a-f]{64}$/.test(runtime.exeSha256)
     )
       throw new Error('RUNTIME');
     const needsProvision = absent(path.join(location.root, 'migration-backups.json'));
+    if (provenance.kind === 'RESTORED' && needsProvision)
+      throw new Error('RESTORED_PROVISION_DENIED');
     // Existing missing/corrupt initialization is not silently reset: only an empty
     // staged catalogue from an observed prior cancellation is retryable below.
     if (needsProvision && !absent(path.join(location.root, 'staging'))) {
@@ -189,14 +358,18 @@ async function run() {
         throw new Error('PROVISION_INTERRUPTED');
     }
     write(stateFile, {
-      version: 1,
+      version: 2,
       root,
       parentToken,
       ownerToken,
       storeId: provenance.storeId,
       needsProvision,
       runtimeExeSha256: runtime.exeSha256,
+      dataRoot: location.root,
+      provenance,
     });
+    await files.acquirePersistenceLease(location, ownerToken);
+    journal.recordAcquired(root, launch);
     console.log('PERSISTENCE_LAUNCH_CONTROL_PASS');
     return;
   }
@@ -209,9 +382,15 @@ async function run() {
     'storeId',
     'needsProvision',
     'runtimeExeSha256',
+    'dataRoot',
+    'provenance',
   ]);
   if (
-    state.version !== 1 ||
+    state.version !== 2 ||
+    state.dataRoot !== header.dataRoot ||
+    state.ownerToken !== header.ownerToken ||
+    state.storeId !== header.storeId ||
+    state.runtimeExeSha256 !== header.executableSha256 ||
     state.root !== root ||
     state.parentToken !== parentToken ||
     ![state.ownerToken, state.storeId].every(uuid) ||
@@ -222,6 +401,10 @@ async function run() {
     throw new Error('STATE');
   const owned = () => files.assertBorrowedPersistenceLease(location, state.ownerToken);
   await owned();
+  if (
+    JSON.stringify(await files.verifyPersistenceRoot(location)) !== JSON.stringify(state.provenance)
+  )
+    throw new Error('PROVENANCE_CHANGED');
   if (action === 'prepare-provision' || action === 'prepare-auth') {
     const stage = action.slice(8);
     if (stage === 'provision' && !state.needsProvision) throw new Error('STAGE');
@@ -239,7 +422,7 @@ async function run() {
     );
     plain(profilePath);
     write(path.join(launch, stage + '-control.json'), {
-      version: 1,
+      version: header.entryMode === 'PACKAGE' ? 3 : 2,
       stage,
       root,
       parentToken,
@@ -249,6 +432,9 @@ async function run() {
       fresh,
       profile: profilePath,
       runtimeExeSha256: state.runtimeExeSha256,
+      dataRoot: state.dataRoot,
+      provenance: state.provenance,
+      ...(header.entryMode === 'PACKAGE' ? { packageRoot: path.resolve(__dirname, '../..') } : {}),
     });
   } else if (action === 'observe-provision' || action === 'observe-auth') {
     const stage = action.slice(8),
@@ -305,13 +491,14 @@ async function run() {
       write(path.join(launch, stage + '-observed.json'), result);
     }
   } else if (action === 'prepare-ready') {
+    prepareLogProof(root, launch, header);
     if (parse(path.join(launch, 'auth-observed.json')).status !== 'AUTHENTICATED')
       throw new Error('AUTH_MISSING');
     const key = await profile.prepareBackupKeyProfile(location.root, state.storeId, false, owned);
     if (key.checkpoint === null) throw new Error('CHECKPOINT');
     const ready = path.join(location.root, '.ready-launch.json'),
       bytes = JSON.stringify({
-        version: 2,
+        version: header.entryMode === 'PACKAGE' ? 3 : 2,
         state: 'READY',
         root: location.root,
         parentToken,
@@ -319,6 +506,9 @@ async function run() {
         storeId: state.storeId,
         checkpoint: path.basename(key.checkpoint),
         runtimeExeSha256: state.runtimeExeSha256,
+        ...(header.entryMode === 'PACKAGE'
+          ? { packageRoot: path.resolve(__dirname, '../..') }
+          : {}),
       });
     if (absent(ready)) await files.writePersistenceFile(ready, bytes);
     else await files.replacePersistenceFile(ready, bytes);

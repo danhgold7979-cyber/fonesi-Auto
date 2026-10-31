@@ -271,3 +271,51 @@ for (const snapshotVersion of [0, 2, 3])
         await lease.release();
       }
     }));
+
+test('packaged persistence refuses backup and restore writes into its admitted application tree', async () =>
+  fixture(async ({ root, location, storeId, ownerToken, app }) => {
+    const { persistenceDataGuard } = await import('../src/main/persistence-entry.ts');
+    const packageRoot = join(root, 'package'),
+      inside = join(packageRoot, 'inside'),
+      outside = join(root, 'outside');
+    mkdirSync(packageRoot);
+    mkdirSync(inside);
+    mkdirSync(outside);
+    writeFileSync(join(packageRoot, 'payload'), 'immutable');
+    app.close();
+    const guarded = await FoundationPersistence.open(
+      location,
+      ownerToken,
+      keys,
+      false,
+      persistenceDataGuard(packageRoot),
+    );
+    try {
+      await assert.rejects(guarded.provision(inside, 1000), /PACKAGE_DATA_LOCATION_REJECTED/);
+      assert.equal(existsSync(join(location.root, 'staging/install.sqlite')), false);
+      const receipt = await guarded.provision(outside, 1001);
+      await writePersistenceFile(
+        join(location.root, 'key-durability-proof.json'),
+        JSON.stringify({
+          version: 1,
+          storeId,
+          backupId: receipt.header.backupId,
+          locationId: receipt.header.locationId,
+          encryptedSha256: receipt.encryptedSha256,
+          state: 'ORDERLY_AND_ABRUPT_RECOVERED',
+        }),
+      );
+      await guarded.initialize(1002);
+      const before = readFileSync(join(location.root, 'active.sqlite'));
+      await assert.rejects(guarded.selectLocation(inside, 1003), /PACKAGE_DATA_LOCATION_REJECTED/);
+      await assert.rejects(
+        guarded.restore(receipt.header.backupId, inside, 'not-used'),
+        /PACKAGE_DATA_LOCATION_REJECTED/,
+      );
+      assert.equal(readFileSync(join(packageRoot, 'payload'), 'utf8'), 'immutable');
+      assert.deepEqual((await import('node:fs')).readdirSync(inside), []);
+      assert.deepEqual(readFileSync(join(location.root, 'active.sqlite')), before);
+    } finally {
+      guarded.close();
+    }
+  }));

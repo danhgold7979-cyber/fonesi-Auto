@@ -3,6 +3,7 @@
 const { app, dialog } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const { witnessPath } = require('./persistence-launch-e2e-control.cjs');
 let opens = 0,
   confirms = 0,
   control,
@@ -62,7 +63,7 @@ try {
   require('../launch/persistence-initialize.cjs');
   app.on('will-quit', () => {
     const result = { version: 1, stage: control.stage, opens, confirms };
-    const fd = fs.openSync(path.join(launch, control.stage + '-dialog-witness.json'), 'wx', 0o600);
+    const fd = fs.openSync(witnessPath(launch, control.stage), 'wx', 0o600);
     try {
       fs.writeFileSync(fd, JSON.stringify(result));
       fs.fsyncSync(fd);

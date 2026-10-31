@@ -49,10 +49,17 @@ export class ApplicationLogger {
   static async open(
     location: LogLocation | undefined,
     notice: LogNotice,
+    expectedOwnerToken?: string,
   ): Promise<ApplicationLogger> {
     let store: LogStore | undefined;
     try {
-      if (location) store = await LogStore.open(location, new Date().toISOString());
+      if (location)
+        store = await LogStore.open(
+          location,
+          new Date().toISOString(),
+          undefined,
+          expectedOwnerToken,
+        );
     } catch {
       /* Fixed health only; never native message. */
     }

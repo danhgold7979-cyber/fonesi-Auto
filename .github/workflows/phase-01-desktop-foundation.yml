@@ -64,7 +64,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==142; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==157; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: PowerShell 5.1 marker and ownership regressions
         run: |
@@ -93,12 +93,12 @@ jobs:
           $tokens=$null; $parseErrors=$null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'desktop/verification/Invoke-Persistence.ps1'),[ref]$tokens,[ref]$parseErrors)
           if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_SUPERVISOR_SYNTAX_FAILED'; exit 1 }
-          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1','desktop/verification/Invoke-Settings.ps1','desktop/verification/Invoke-Ui.ps1','desktop/verification/Invoke-Demo.ps1','desktop/launch/Invoke-Demo.ps1')) {
+          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1','desktop/verification/Invoke-Settings.ps1','desktop/verification/Invoke-Ui.ps1','desktop/verification/Invoke-Demo.ps1','desktop/launch/Invoke-Demo.ps1','desktop/launch/Invoke-Package.ps1','desktop/launch/launch-core.ps1','desktop/verification/Invoke-Package.ps1')) {
             $tokens=$null; $parseErrors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd $file),[ref]$tokens,[ref]$parseErrors)
             if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_LAUNCHER_SYNTAX_FAILED'; exit 1 }
           }
-          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs','desktop/verification/vault-record-negative.cjs','desktop/verification/settings-contract.cjs','desktop/verification/settings-control.cjs','desktop/verification/settings-native.cjs','desktop/verification/settings-main-probe.cjs','desktop/verification/settings-store-probe.cjs','desktop/verification/settings-recovery-contract.cjs','desktop/verification/settings-recovery-control.cjs','desktop/verification/settings-recovery-probe.cjs','desktop/verification/ui-contract.cjs','desktop/verification/ui-main-probe.cjs','desktop/verification/ui-reference-probe.cjs','desktop/verification/demo-contract.cjs','desktop/verification/demo-control.cjs','desktop/verification/demo-probe.cjs','desktop/verification/demo-production-probe.cjs','desktop/launch/demo-launch-control.cjs')) {
+          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs','desktop/verification/vault-record-negative.cjs','desktop/verification/settings-contract.cjs','desktop/verification/settings-control.cjs','desktop/verification/settings-native.cjs','desktop/verification/settings-main-probe.cjs','desktop/verification/settings-store-probe.cjs','desktop/verification/settings-recovery-contract.cjs','desktop/verification/settings-recovery-control.cjs','desktop/verification/settings-recovery-probe.cjs','desktop/verification/ui-contract.cjs','desktop/verification/ui-main-probe.cjs','desktop/verification/ui-reference-probe.cjs','desktop/verification/demo-contract.cjs','desktop/verification/demo-control.cjs','desktop/verification/demo-probe.cjs','desktop/verification/demo-production-probe.cjs','desktop/launch/demo-launch-control.cjs','desktop/launch/launch-journal.cjs','desktop/launch/package-admission.cjs','desktop/verification/package-build-entry.mjs','desktop/verification/package-contract.cjs','desktop/verification/package-control.cjs','desktop/verification/package-state-control.cjs','desktop/verification/package-owned-files.cjs','desktop/verification/package-launch-driver.cjs','desktop/verification/package-launch-observer.cjs','desktop/verification/package-launch-init-probe.cjs','desktop/verification/package-launch-main-probe.cjs')) {
             node --check $file
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -419,3 +419,98 @@ jobs:
         if: always()
         run: |
           'P1-09 scoped explicit demo build/profile boundary; source/package instrumented demo and actual production empty-state controls. Synthetic fixtures are not domain services. P106_UNMET_NOT_RERUN remains unmet; no identity invocation. No full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  owned-windows-package:
+    needs: owned-windows-foundation
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare verified owned runtime and package without identity invocation
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'PACKAGE_RUNTIME_PREPARE_FAILED'; exit 1 }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build exclusive offline internal package candidate
+        run: |
+          try {
+            $base=Join-Path $pwd 'desktop/.package-build'
+            node -e "require('node:fs').mkdirSync(process.argv[1])" $base
+            if ($LASTEXITCODE -ne 0) { throw 'PACKAGE_BASE' }
+            $license=Join-Path $base 'node-LICENSE'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/nodejs/node/v24.22.1/LICENSE' -OutFile $license -MaximumRedirection 0
+            if ((Get-FileHash -LiteralPath $license -Algorithm SHA256).Hash.ToLowerInvariant() -cne '5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace') { throw 'PACKAGE_LICENSE' }
+            $npmVersion=(& npm --version)
+            if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { throw 'PACKAGE_NPM' }
+            $tree=(& git rev-parse 'HEAD^{tree}')
+            if ($LASTEXITCODE -ne 0 -or @($tree).Count -ne 1 -or $tree -cnotmatch '^[a-f0-9]{40}$') { throw 'PACKAGE_TREE' }
+            node desktop/verification/package-build-entry.mjs ([string]$npmVersion).Trim() $env:GITHUB_SHA ([string]$tree).Trim() $license
+            if ($LASTEXITCODE -ne 0) { throw 'PACKAGE_BUILD' }
+          } catch { Write-Output 'PACKAGE_CANDIDATE_FAILED'; exit 1 }
+      - name: Owned relocated package and known-retired recovery verification
+        id: package
+        run: |
+          try { & ./desktop/verification/Invoke-Package.ps1 }
+          catch { Write-Output 'PACKAGE_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict package evidence and gated bundle publication
+        id: package_validation
+        if: always() && steps.package.outcome != 'skipped'
+        run: |
+          $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_package.py publish)
+          $code=$LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'PACKAGE_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          if (@($lines | Where-Object {$_ -ceq 'PACKAGE_PROMOTION_READY'}).Count -eq 1) {
+            'bundle=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only fixed package evidence
+        if: always() && steps.package_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-package-evidence-${{ github.sha }}
+          path: desktop/.package-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload only fully verified internal offline bundle
+        if: always() && steps.package_validation.outputs.written == 'true' && steps.package_validation.outputs.bundle == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-internal-package-${{ github.sha }}
+          path: |
+            desktop/.package-runtime/Fonesi-Auto.zip
+            desktop/.package-runtime/Fonesi-Auto.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explicit scope exclusion
+        if: always()
+        run: |
+          'P1-10 unsigned internal package and instrumented packaged-launcher recovery only. No installed release, signing or genuine dialog-click claim. P106_UNMET_NOT_RERUN and physical-device gates remain unmet; no identity invocation or full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

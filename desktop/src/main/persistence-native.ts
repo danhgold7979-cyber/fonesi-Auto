@@ -41,7 +41,24 @@ export async function runNativePersistenceRecovery(
   });
   await assertActive();
   if (confirmation.response !== 0) return 'CANCELLED';
-  await service.restoreRecovery(receipt, parent, checkpoint);
+  const restoredRoot = await service.restoreRecovery(receipt, parent, checkpoint);
+  // Restore is already committed. A failed native notice must not turn that
+  // known outcome into an unknown/failed restore or cause a second restore.
+  try {
+    await assertActive();
+    await dialog.showMessageBox({
+      type: 'info',
+      title: 'Quarantined restore created',
+      message: 'Restore completed in a new quarantined root.',
+      detail: `Created store:\n${restoredRoot}\nThis store is maintenance-only. Use -Store "${restoredRoot}" with -Maintenance "--maintenance=restore-to-new". Normal launch is blocked.`,
+      buttons: ['OK'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+  } catch {
+    // Native notification is best effort; no private path is sent to logs/IPC.
+  }
   return 'COMPLETED';
 }
 export async function runNativePersistenceMaintenance(

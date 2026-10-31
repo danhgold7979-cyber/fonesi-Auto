@@ -12,3 +12,6 @@ build/
 /demo-build/
 /.demo-runtime/
 /.demo-verification/
+
+/.package-build/
+/.package-runtime/

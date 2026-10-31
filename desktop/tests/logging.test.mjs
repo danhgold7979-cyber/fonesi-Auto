@@ -302,3 +302,21 @@ test('offline maintenance requires explicit stopped-owner acknowledgment and fix
     assert.equal(result.stderr, '');
   }
 });
+
+test('actual application logger carries admitted launch owner identity into owned file lock', async () => {
+  const f = fixture(),
+    expected = randomUUID();
+  let logger;
+  try {
+    logger = await ApplicationLogger.open(f.location, () => {}, expected);
+    assert.equal(logger.health, 'AVAILABLE');
+    assert.equal(
+      JSON.parse(readFileSync(join(f.location.root, '.writer-lock/owner.json'), 'utf8')).ownerToken,
+      expected,
+    );
+    assert.equal(await logger.close(), 'FLUSHED');
+  } finally {
+    await logger?.close();
+    f.cleanup();
+  }
+});

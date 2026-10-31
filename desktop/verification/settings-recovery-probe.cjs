@@ -27,6 +27,8 @@ let root,
   openAttempts = 0,
   openDialogs = 0,
   confirmDialogs = 0,
+  noticeDialogs = 0,
+  noticeValid = false,
   windowsCreated = 0;
 app.on('browser-window-created', () => {
   windowsCreated++;
@@ -256,6 +258,26 @@ try {
       };
     };
     dialog.showMessageBox = async (options) => {
+      if (options.type === 'info') {
+        noticeDialogs++;
+        const target = restored(c.destinationParent, c.storeId);
+        const expected = {
+          type: 'info',
+          title: 'Quarantined restore created',
+          message: 'Restore completed in a new quarantined root.',
+          detail: `Created store:\n${target.root}\nThis store is maintenance-only. Use -Store "${target.root}" with -Maintenance "--maintenance=restore-to-new". Normal launch is blocked.`,
+          buttons: ['OK'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        };
+        noticeValid =
+          noticeDialogs === 1 &&
+          confirmDialogs === 1 &&
+          !c.stage.endsWith('-cancel') &&
+          JSON.stringify(options) === JSON.stringify(expected);
+        return { response: 0, checkboxChecked: false };
+      }
       const expected = {
         type: 'warning',
         title: 'Confirm main-owned recovery',
@@ -292,7 +314,13 @@ try {
       if (c.stage === 'recovery-setup') {
         if (!finished || setupService) throw Error('RECOVERY_SETUP');
       } else {
-        if (maintenance !== 1 || closed !== 1 || openDialogs !== 2 || confirmDialogs !== 1)
+        if (
+          maintenance !== 1 ||
+          closed !== 1 ||
+          openDialogs !== 2 ||
+          confirmDialogs !== 1 ||
+          (c.stage.endsWith('-cancel') ? noticeDialogs !== 0 : noticeDialogs !== 1 || !noticeValid)
+        )
           throw Error('RECOVERY_EXIT');
         cases.activeDatabaseNeverOpened = openAttempts === 0;
         cases.noNormalWindow = windowsCreated === 0 && BrowserWindow.getAllWindows().length === 0;

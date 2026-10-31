@@ -1,0 +1,409 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url),
+  j = require('../launch/launch-journal.cjs');
+const write = (file, value) =>
+  fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value), { flag: 'wx' });
+function fixture(t) {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-journal-'));
+  t.after(() => fs.rmSync(parent, { recursive: true }));
+  write(path.join(parent, '.owner'), randomUUID());
+  const launch = path.join(parent, 'launch-' + randomUUID());
+  fs.mkdirSync(launch);
+  write(path.join(launch, '.owner'), randomUUID());
+  const root = path.join(parent, 'data-main');
+  const header = j.plan(parent, launch, root, 'SOURCE', 'NORMAL', 'a'.repeat(64));
+  return { parent, launch, root, header };
+}
+function process(exit = 0) {
+  return {
+    status: exit === 0 ? 'SUCCESS' : 'NONZERO_EXIT',
+    exitCode: exit,
+    cleanupComplete: true,
+    stdoutTruncated: false,
+    stderrTruncated: false,
+  };
+}
+function capture(f, n, exit = 0, patch = {}) {
+  write(path.join(f.launch, `capture-${String(n).padStart(2, '0')}.json`), {
+    process: { ...process(exit), ...patch },
+    stdout: 'FIXED\n',
+    stderr: '',
+  });
+}
+function setup(f) {
+  j.appendIntent(f.parent, f.launch, 1, 'SETUP');
+  fs.mkdirSync(f.root);
+  write(path.join(f.root, '.persistence-owner.json'), {
+    version: 1,
+    storeId: f.header.storeId,
+    kind: 'FRESH',
+    restoreReceiptId: null,
+  });
+  fs.mkdirSync(path.join(f.root, '.writer-lock'));
+  write(path.join(f.root, '.writer-lock/owner.json'), {
+    version: 1,
+    storeId: f.header.storeId,
+    ownerToken: f.header.ownerToken,
+  });
+  j.recordAcquired(f.parent, f.launch);
+  capture(f, 1);
+  j.settle(f.parent, f.launch, 1);
+}
+function failedControl(f) {
+  setup(f);
+  j.appendIntent(f.parent, f.launch, 2, 'PREPARE_AUTH');
+  capture(f, 2, 1);
+  j.settle(f.parent, f.launch, 2);
+}
+function snapshot(root) {
+  const values = {};
+  function walk(dir) {
+    for (const name of fs.readdirSync(dir).sort()) {
+      const file = path.join(dir, name),
+        s = fs.lstatSync(file);
+      if (s.isDirectory()) walk(file);
+      else values[path.relative(root, file)] = fs.readFileSync(file).toString('hex');
+    }
+  }
+  walk(root);
+  return values;
+}
+test('plan precedes acquisition and exact schemas reject duplicates, aliases and near metadata', (t) => {
+  const f = fixture(t);
+  assert.equal(fs.existsSync(f.root), false);
+  assert.equal(j.inspect(f.parent, f.launch).nextSequence, 1);
+  const raw = fs.readFileSync(path.join(f.launch, 'launch-journal.json'), 'utf8');
+  assert.deepEqual(j.parse('header', raw), f.header);
+  for (const bad of [
+    raw + '\n',
+    raw.replace('"version":1', '"version":1,"version":1'),
+    raw.replace('SOURCE', 'DEMO'),
+    raw.replace('NORMAL', 'arbitrary'),
+  ])
+    assert.throws(() => j.parse('header', bad));
+  assert.throws(() => j.recordAcquired(f.parent, f.launch));
+});
+test('all sequence hashes bind exact raw intent, capture and settlement and pending cannot be bypassed', (t) => {
+  const f = fixture(t);
+  setup(f);
+  j.appendIntent(f.parent, f.launch, 2, 'PREPARE_AUTH');
+  assert.throws(() => j.appendIntent(f.parent, f.launch, 3, 'RELEASE'));
+  assert.throws(() => j.recoveryIntent(f.parent, f.launch, 3));
+  capture(f, 2);
+  j.settle(f.parent, f.launch, 2);
+  const state = j.inspect(f.parent, f.launch);
+  assert.equal(state.latest.stage, 'PREPARE_AUTH');
+  assert.equal(state.pending, null);
+  assert.equal(
+    state.intents[1].previousSettlementSha256,
+    j.sha(fs.readFileSync(path.join(f.launch, 'settled-01.json'))),
+  );
+  fs.appendFileSync(path.join(f.launch, 'capture-02.json'), ' ');
+  assert.throws(() => j.inspect(f.parent, f.launch));
+});
+test('nonretired or truncated native outcomes leave pending intent and forbid recovery', (t) => {
+  for (const patch of [
+    { cleanupComplete: false },
+    { stdoutTruncated: true },
+    { stderrTruncated: true },
+    { status: 'TIMEOUT', exitCode: null },
+    { status: 'CAPTURE_FAILED', exitCode: 1 },
+    { status: 'SUCCESS', exitCode: 1 },
+  ]) {
+    const f = fixture(t);
+    setup(f);
+    j.appendIntent(f.parent, f.launch, 2, 'PREPARE_AUTH');
+    capture(f, 2, 0, patch);
+    assert.throws(() => j.settle(f.parent, f.launch, 2));
+    assert.throws(() => j.recoveryIntent(f.parent, f.launch, 3));
+    assert.ok(fs.existsSync(path.join(f.root, '.writer-lock/owner.json')));
+  }
+});
+test('known retired failure permits receipt-backed removal and completed recovery pointer handoff only', (t) => {
+  const f = fixture(t);
+  failedControl(f);
+  j.recoveryIntent(f.parent, f.launch, 3);
+  j.recover(f.parent, f.launch);
+  assert.equal(fs.existsSync(path.join(f.root, '.writer-lock')), false);
+  assert.throws(() => j.completed(f.parent, f.launch));
+  capture(f, 3);
+  j.settle(f.parent, f.launch, 3);
+  assert.equal(j.completed(f.parent, f.launch).latest.stage, 'RECOVERY');
+  const next = path.join(f.parent, 'launch-' + randomUUID());
+  fs.mkdirSync(next);
+  write(path.join(next, '.owner'), randomUUID());
+  const h = j.plan(f.parent, next, f.root, 'SOURCE', 'NORMAL', 'a'.repeat(64));
+  assert.notEqual(h.ownerToken, f.header.ownerToken);
+  assert.ok(fs.existsSync(path.join(f.launch, 'lease-recovery.json')));
+});
+test('parent pointer cannot be replaced by new launch or alternate store while old ownership is pending', (t) => {
+  const f = fixture(t);
+  failedControl(f);
+  const next = path.join(f.parent, 'launch-' + randomUUID());
+  fs.mkdirSync(next);
+  write(path.join(next, '.owner'), randomUUID());
+  const before = snapshot(f.parent);
+  assert.throws(() => j.plan(f.parent, next, f.root, 'SOURCE', 'NORMAL', 'a'.repeat(64)));
+  assert.deepEqual(snapshot(f.parent), before);
+});
+test('empty interrupted lock requires prior acquisition, exact recovery receipt and completed recovery-control settlement', (t) => {
+  const f = fixture(t);
+  failedControl(f);
+  j.recoveryIntent(f.parent, f.launch, 3);
+  const original = fs.rmdirSync;
+  fs.rmdirSync = function (file, ...args) {
+    if (file === path.join(f.root, '.writer-lock')) throw Error('INJECTED');
+    return original.call(this, file, ...args);
+  };
+  try {
+    assert.throws(() => j.recover(f.parent, f.launch));
+  } finally {
+    fs.rmdirSync = original;
+  }
+  assert.equal(fs.readdirSync(path.join(f.root, '.writer-lock')).length, 0);
+  assert.throws(() => j.recoveryIntent(f.parent, f.launch, 4));
+  capture(f, 3, 1);
+  j.settle(f.parent, f.launch, 3);
+  j.recoveryIntent(f.parent, f.launch, 4);
+  j.recover(f.parent, f.launch);
+  capture(f, 4);
+  j.settle(f.parent, f.launch, 4);
+  assert.equal(j.completed(f.parent, f.launch).latest.sequence, 4);
+});
+test('unknown lock entries, changed owner and legacy missing journals reject unchanged', (t) => {
+  for (const mutation of ['extra', 'owner', 'receipt']) {
+    const f = fixture(t);
+    failedControl(f);
+    if (mutation === 'extra') write(path.join(f.root, '.writer-lock/foreign'), 'x');
+    if (mutation === 'owner') fs.writeFileSync(path.join(f.root, '.writer-lock/owner.json'), '{}');
+    if (mutation === 'receipt') {
+      fs.unlinkSync(path.join(f.launch, 'lease-acquired.json'));
+      fs.unlinkSync(path.join(f.root, '.writer-lock/owner.json'));
+    }
+    const before = snapshot(f.parent);
+    assert.throws(() => j.recoveryIntent(f.parent, f.launch, 3));
+    assert.deepEqual(snapshot(f.parent), before);
+  }
+  const f = fixture(t);
+  fs.unlinkSync(path.join(f.launch, 'launch-journal.json'));
+  assert.throws(() => j.inspect(f.parent, f.launch));
+});
+test('missing acquisition may only be attributed to completed SETUP with unchanged exact owner', (t) => {
+  const f = fixture(t);
+  setup(f);
+  fs.unlinkSync(path.join(f.launch, 'lease-acquired.json'));
+  j.recoveryIntent(f.parent, f.launch, 2);
+  assert.ok(fs.existsSync(path.join(f.launch, 'lease-acquired.json')));
+  j.recover(f.parent, f.launch);
+  assert.equal(fs.existsSync(path.join(f.root, '.writer-lock')), false);
+});
+test('sixteen-sequence ceiling and unexpected higher/malformed names are fail closed', (t) => {
+  const f = fixture(t);
+  setup(f);
+  for (let n = 2; n <= 16; n++) {
+    const stage = { 2: 'PREPARE_AUTH', 3: 'AUTH', 4: 'OBSERVE_AUTH' }[n] ?? 'PREPARE_READY';
+    j.appendIntent(f.parent, f.launch, n, stage);
+    capture(f, n);
+    j.settle(f.parent, f.launch, n);
+  }
+  assert.throws(() => j.appendIntent(f.parent, f.launch, 17, 'MAIN'));
+  write(path.join(f.launch, 'intent-17.json'), '{}');
+  assert.throws(() => j.inspect(f.parent, f.launch));
+});
+
+test('fixed control/native order rejects skipped admission and permits completed normal release', (t) => {
+  const f = fixture(t);
+  setup(f);
+  for (const stage of ['MAIN', 'AUTH', 'RELEASE', 'SETUP'])
+    assert.throws(() => j.appendIntent(f.parent, f.launch, 2, stage));
+  const stages = [
+    'PREPARE_AUTH',
+    'AUTH',
+    'OBSERVE_AUTH',
+    'PREPARE_READY',
+    'PREPARE_READY',
+    'MAIN',
+    'RELEASE',
+  ];
+  for (let index = 0; index < stages.length; index++) {
+    const n = index + 2,
+      stage = stages[index];
+    j.appendIntent(f.parent, f.launch, n, stage);
+    if (stage === 'RELEASE') {
+      write(path.join(f.root, `.released-${f.header.ownerToken}.json`), {
+        version: 1,
+        storeId: f.header.storeId,
+        ownerToken: f.header.ownerToken,
+      });
+      fs.unlinkSync(path.join(f.root, '.writer-lock/owner.json'));
+      fs.rmdirSync(path.join(f.root, '.writer-lock'));
+    }
+    capture(f, n);
+    j.settle(f.parent, f.launch, n);
+  }
+  assert.equal(j.completed(f.parent, f.launch).latest.stage, 'RELEASE');
+  assert.throws(() => j.appendIntent(f.parent, f.launch, 9, 'RECOVERY'));
+});
+
+test('recovery preserves application bytes and rejects wrong parent pointer and oversized evidence', (t) => {
+  const f = fixture(t);
+  failedControl(f);
+  for (const name of [
+    'active.sqlite',
+    'active.sqlite-wal',
+    'active.sqlite-shm',
+    'private-vault.bin',
+  ])
+    write(path.join(f.root, name), `OWNED_SYNTHETIC_${name}`);
+  const expected = [
+    'active.sqlite',
+    'active.sqlite-wal',
+    'active.sqlite-shm',
+    'private-vault.bin',
+  ].map((name) => [name, fs.readFileSync(path.join(f.root, name), 'utf8')]);
+  const pointer = path.join(f.parent, '.launcher-current.json'),
+    original = fs.readFileSync(pointer, 'utf8');
+  const changed = JSON.parse(original);
+  changed.ownerToken = randomUUID();
+  fs.writeFileSync(pointer, JSON.stringify(changed));
+  const before = snapshot(f.parent);
+  assert.throws(() => j.recoveryIntent(f.parent, f.launch, 3));
+  assert.deepEqual(snapshot(f.parent), before);
+  fs.writeFileSync(pointer, original);
+  j.recoveryIntent(f.parent, f.launch, 3);
+  j.recover(f.parent, f.launch);
+  for (const [name, raw] of expected)
+    assert.equal(fs.readFileSync(path.join(f.root, name), 'utf8'), raw);
+  write(path.join(f.launch, 'capture-03.json'), 'x'.repeat(65537));
+  assert.throws(() => j.settle(f.parent, f.launch, 3));
+});
+
+test('unknown journal files and gaps cannot be ignored even when an older settlement passed', (t) => {
+  for (const name of ['unrecognized.json', 'capture-03.json', 'intent-1.json']) {
+    const f = fixture(t);
+    setup(f);
+    write(path.join(f.launch, name), '{}');
+    const before = snapshot(f.parent);
+    assert.throws(() => j.inspect(f.parent, f.launch));
+    assert.deepEqual(snapshot(f.parent), before);
+  }
+});
+
+test('malformed preexisting recovery receipt is rejected before another intent or acquisition write', (t) => {
+  for (const missingAcquisition of [false, true]) {
+    const f = fixture(t);
+    setup(f);
+    if (missingAcquisition) fs.unlinkSync(path.join(f.launch, 'lease-acquired.json'));
+    write(path.join(f.launch, 'lease-recovery.json'), '{}');
+    const before = snapshot(f.parent);
+    assert.throws(() => j.recoveryIntent(f.parent, f.launch, 2));
+    assert.deepEqual(snapshot(f.parent), before);
+  }
+});
+
+test('only exact current launch profiles with owned markers fit the bounded journal inventory', (t) => {
+  const f = fixture(t);
+  const profile = path.join(f.launch, `fonesi-auto-foundation-${f.header.launchId}-main`);
+  fs.mkdirSync(profile);
+  write(path.join(profile, '.owner'), 'FONESI_AUTO_FOUNDATION_PROFILE_V1\n');
+  assert.equal(j.inspect(f.parent, f.launch).nextSequence, 1);
+  fs.writeFileSync(path.join(profile, '.owner'), 'FOREIGN');
+  assert.throws(() => j.inspect(f.parent, f.launch));
+  fs.writeFileSync(path.join(profile, '.owner'), 'FONESI_AUTO_FOUNDATION_PROFILE_V1\n');
+  const unknown = path.join(f.launch, 'unregistered-profile');
+  fs.mkdirSync(unknown);
+  assert.throws(() => j.inspect(f.parent, f.launch));
+  fs.rmdirSync(unknown);
+  fs.writeFileSync(path.join(profile, 'oversized'), Buffer.alloc(8 * 1024 * 1024));
+  assert.throws(() => j.inspect(f.parent, f.launch));
+});
+
+test('plan binds FRESH data-main and RESTORED exact store child before any journal mutation', (t) => {
+  for (const kind of ['FRESH', 'RESTORED']) {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-journal-kind-'));
+    t.after(() => fs.rmSync(parent, { recursive: true }));
+    write(path.join(parent, '.owner'), randomUUID());
+    const launch = path.join(parent, `launch-${randomUUID()}`);
+    fs.mkdirSync(launch);
+    write(path.join(launch, '.owner'), randomUUID());
+    const storeId = randomUUID(),
+      restoreReceiptId = kind === 'RESTORED' ? randomUUID() : null;
+    const data = path.join(parent, kind === 'RESTORED' ? 'data-main' : `data-${storeId}`);
+    fs.mkdirSync(data);
+    write(path.join(data, '.persistence-owner.json'), {
+      version: 1,
+      storeId,
+      kind,
+      restoreReceiptId,
+    });
+    if (kind === 'RESTORED')
+      write(path.join(data, '.restore-receipt.json'), {
+        version: 1,
+        storeId,
+        restoreReceiptId,
+        quarantined: true,
+      });
+    const before = snapshot(parent);
+    assert.throws(() => j.plan(parent, launch, data, 'SOURCE', 'restore-to-new', 'a'.repeat(64)));
+    assert.deepEqual(snapshot(parent), before);
+  }
+});
+
+test('recovery rechecks exact root provenance including forbidden FRESH restore receipt before mutation', (t) => {
+  const f = fixture(t);
+  failedControl(f);
+  write(path.join(f.root, '.restore-receipt.json'), {
+    version: 1,
+    storeId: f.header.storeId,
+    restoreReceiptId: randomUUID(),
+    quarantined: true,
+  });
+  const before = snapshot(f.parent);
+  assert.throws(() => j.recoveryIntent(f.parent, f.launch, 3));
+  assert.deepEqual(snapshot(f.parent), before);
+});
+
+test('RESTORED receipt deletion or tampering after acquisition prevents recovery unchanged', (t) => {
+  for (const missing of [true, false]) {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-journal-restored-'));
+    t.after(() => fs.rmSync(parent, { recursive: true }));
+    write(path.join(parent, '.owner'), randomUUID());
+    const launch = path.join(parent, `launch-${randomUUID()}`);
+    fs.mkdirSync(launch);
+    write(path.join(launch, '.owner'), randomUUID());
+    const storeId = randomUUID(),
+      restoreReceiptId = randomUUID(),
+      root = path.join(parent, `data-${storeId}`);
+    fs.mkdirSync(root);
+    write(path.join(root, '.persistence-owner.json'), {
+      version: 1,
+      storeId,
+      kind: 'RESTORED',
+      restoreReceiptId,
+    });
+    const receipt = path.join(root, '.restore-receipt.json');
+    write(receipt, { version: 1, storeId, restoreReceiptId, quarantined: true });
+    const header = j.plan(parent, launch, root, 'SOURCE', 'restore-to-new', 'a'.repeat(64));
+    j.appendIntent(parent, launch, 1, 'SETUP');
+    fs.mkdirSync(path.join(root, '.writer-lock'));
+    write(path.join(root, '.writer-lock/owner.json'), {
+      version: 1,
+      storeId,
+      ownerToken: header.ownerToken,
+    });
+    j.recordAcquired(parent, launch);
+    capture({ launch }, 1);
+    j.settle(parent, launch, 1);
+    if (missing) fs.unlinkSync(receipt);
+    else fs.writeFileSync(receipt, '{}');
+    const before = snapshot(parent);
+    assert.throws(() => j.recoveryIntent(parent, launch, 2));
+    assert.deepEqual(snapshot(parent), before);
+  }
+});

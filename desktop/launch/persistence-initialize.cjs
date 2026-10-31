@@ -8,7 +8,10 @@ const { prepareOwnedProfile } = require('../build/profile-owner.cjs');
 const { backupKeys, validBackupLocalState } = require('../build/backup-key-profile.cjs');
 const { FoundationPersistence } = require('../build/foundation-persistence.cjs');
 const { runNativePersistenceProvision } = require('../build/persistence-native.cjs');
-const { assertCertifiedPersistenceEntry } = require('../build/persistence-entry.cjs');
+const {
+  assertCertifiedPersistenceEntry,
+  persistenceDataGuard,
+} = require('../build/persistence-entry.cjs');
 const { assertBorrowedPersistenceLease } = require('../build/persistence-files.cjs');
 const uuid = (v) =>
   typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
@@ -90,7 +93,7 @@ try {
   const raw = read(file);
   control = JSON.parse(raw);
   const exact = {
-    version: 1,
+    version: control.version,
     stage: control.stage,
     root: control.root,
     parentToken: control.parentToken,
@@ -100,8 +103,11 @@ try {
     fresh: control.fresh,
     profile: control.profile,
     runtimeExeSha256: control.runtimeExeSha256,
+    ...(control.version >= 2 ? { dataRoot: control.dataRoot, provenance: control.provenance } : {}),
+    ...(control.version === 3 ? { packageRoot: control.packageRoot } : {}),
   };
   if (
+    ![1, 2, 3].includes(control.version) ||
     JSON.stringify(exact) !== raw ||
     !['provision', 'auth'].includes(control.stage) ||
     path.basename(file) !== control.stage + '-control.json' ||
@@ -111,6 +117,15 @@ try {
     !/^[0-9a-f]{64}$/.test(control.runtimeExeSha256)
   )
     throw new Error('CONTROL');
+  if (control.version === 3) {
+    if (
+      typeof control.packageRoot !== 'string' ||
+      control.packageRoot !== path.resolve(__dirname, '../..')
+    )
+      throw new Error('PACKAGE_ROOT');
+    require('./package-admission.cjs').verifyPackage(control.packageRoot);
+    persistenceDataGuard(control.packageRoot)(control.root);
+  }
   plain(control.root);
   if (
     path.dirname(launch) !== control.root ||
@@ -119,13 +134,55 @@ try {
     read(path.join(control.root, '.owner')) !== control.parentToken
   )
     throw new Error('OWNER');
-  const data = path.join(control.root, 'data-main');
-  plain(data);
+  const data = control.version >= 2 ? control.dataRoot : path.join(control.root, 'data-main');
   if (
-    read(path.join(data, '.persistence-owner.json')) !==
-    JSON.stringify({ version: 1, storeId: control.storeId, kind: 'FRESH', restoreReceiptId: null })
+    typeof data !== 'string' ||
+    path.dirname(data) !== control.root ||
+    !/^data-[a-z0-9-]+$/.test(path.basename(data))
   )
     throw new Error('OWNER');
+  plain(data);
+  const provenance =
+    control.version >= 2
+      ? control.provenance
+      : { version: 1, storeId: control.storeId, kind: 'FRESH', restoreReceiptId: null };
+  if (
+    !provenance ||
+    Object.keys(provenance).join('|') !== 'version|storeId|kind|restoreReceiptId' ||
+    provenance.version !== 1 ||
+    provenance.storeId !== control.storeId ||
+    !['FRESH', 'RESTORED'].includes(provenance.kind) ||
+    (provenance.kind === 'FRESH'
+      ? provenance.restoreReceiptId !== null
+      : !uuid(provenance.restoreReceiptId)) ||
+    read(path.join(data, '.persistence-owner.json')) !== JSON.stringify(provenance)
+  )
+    throw new Error('OWNER');
+  if (provenance.kind === 'RESTORED') {
+    if (
+      control.fresh ||
+      control.stage !== 'auth' ||
+      path.basename(data) !== 'data-' + control.storeId
+    )
+      throw new Error('RESTORED_PROVISION_DENIED');
+    if (
+      read(path.join(data, '.restore-receipt.json')) !==
+      JSON.stringify({
+        version: 1,
+        storeId: control.storeId,
+        restoreReceiptId: provenance.restoreReceiptId,
+        quarantined: true,
+      })
+    )
+      throw new Error('RESTORE_RECEIPT');
+  } else {
+    try {
+      fs.lstatSync(path.join(data, '.restore-receipt.json'));
+      throw new Error('RESTORE_RECEIPT');
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
+  }
   const lock = path.join(data, '.writer-lock');
   plain(lock);
   single(lock, 'owner.json');
@@ -162,7 +219,13 @@ try {
   for (const [k, v] of Object.entries(paths)) app.setPath(k, v);
   app.setPath('sessionData', keys);
   // Caller verified official runtime and current build before loading this entry.
-  assertCertifiedPersistenceEntry({ runtimeExeSha256: control.runtimeExeSha256 }, true);
+  assertCertifiedPersistenceEntry(
+    {
+      runtimeExeSha256: control.runtimeExeSha256,
+      ...(control.version === 3 ? { packageRoot: control.packageRoot } : {}),
+    },
+    true,
+  );
   app
     .whenReady()
     .then(async () => {
@@ -174,6 +237,7 @@ try {
         control.ownerToken,
         await backupKeys(safeStorage),
         control.fresh,
+        persistenceDataGuard(control.version === 3 ? control.packageRoot : undefined),
       );
       let receipt;
       if (control.stage === 'provision') {

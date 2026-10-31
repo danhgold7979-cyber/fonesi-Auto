@@ -3,6 +3,7 @@
 const { app } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const { witnessPath } = require('./persistence-launch-e2e-control.cjs');
 let ready = 0,
   closed = 0,
   requested = false;
@@ -30,7 +31,7 @@ try {
       app.exit(1);
       return;
     }
-    const fd = fs.openSync(path.join(launch, 'ui-witness.json'), 'wx', 0o600);
+    const fd = fs.openSync(witnessPath(launch, 'ui'), 'wx', 0o600);
     try {
       fs.writeFileSync(
         fd,

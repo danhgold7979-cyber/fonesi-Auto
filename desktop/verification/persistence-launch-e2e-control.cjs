@@ -2,7 +2,8 @@
 const fs = require('node:fs'),
   path = require('node:path'),
   crypto = require('node:crypto');
-const ORIGINAL_SHA = '560c30f55e9b650f4041c6f504097ec62a6c16c80ce0108ceb37c8591967cd4a';
+const ORIGINAL_SHA = '874f8b9f623d9ee9990541dad3c60779e6307fdcf28500ba1f6a0cd5141023db';
+const WRAPPER_SHA = 'ee36256d501505e395b90229d723d49f1dca6c0a690e866906aab1a8b3ceb8c5';
 const CASES = [
   'audited_copy',
   'first_provisioned',
@@ -51,6 +52,28 @@ function read(p) {
     fs.closeSync(fd);
   }
 }
+function witnessPath(launch, kind) {
+  if (!['provision', 'auth', 'ui'].includes(kind)) throw Error('WITNESS_KIND');
+  plain(launch);
+  const managed = path.dirname(launch),
+    firstUse = path.dirname(managed),
+    root = path.dirname(firstUse);
+  for (const directory of [managed, firstUse, root]) plain(directory);
+  const launchId = path.basename(launch).slice(7),
+    managedId = path.basename(managed).slice(12);
+  if (
+    path.basename(launch) !== 'launch-' + launchId ||
+    !uuid(launchId) ||
+    path.basename(managed) !== 'Fonesi-Auto-' + managedId ||
+    !uuid(managedId) ||
+    path.basename(firstUse) !== 'first-use' ||
+    !uuid(read(path.join(root, '.owner'))) ||
+    !uuid(read(path.join(managed, '.owner'))) ||
+    !uuid(read(path.join(launch, '.owner')))
+  )
+    throw Error('WITNESS_OWNER');
+  return path.join(root, 'launcher-witness-' + launchId + '-' + kind + '.json');
+}
 function parse(p) {
   const raw = read(p),
     value = JSON.parse(raw);
@@ -92,12 +115,9 @@ function transform(source, desktop) {
       "$desktop=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))",
       `$desktop='${desktop.replaceAll("'", "''")}'`,
     ],
+    ['$launchTools=$PSScriptRoot', "$launchTools=Join-Path $desktop 'launch'"],
     [
-      "Join-Path $PSScriptRoot 'persistence-launch-control.cjs'",
-      "Join-Path $desktop 'launch/persistence-launch-control.cjs'",
-    ],
-    [
-      "Join-Path $PSScriptRoot 'persistence-initialize.cjs'",
+      "Join-Path $launchTools 'persistence-initialize.cjs'",
       "Join-Path $desktop 'verification/persistence-launch-init-probe.cjs'",
     ],
     [
@@ -180,14 +200,23 @@ async function run() {
   if (!verifyBuild(desktop)) throw new Error('BUILD');
   plain(root);
   if (!uuid(read(path.join(root, '.owner')))) throw new Error('OWNER');
-  const original = read(path.join(desktop, 'launch/Invoke-Desktop.ps1')),
+  const wrapper = read(path.join(desktop, 'launch/Invoke-Desktop.ps1'));
+  if (
+    hash(wrapper) !== WRAPPER_SHA ||
+    !wrapper.includes(". (Join-Path $PSScriptRoot 'launch-core.ps1')") ||
+    !wrapper.includes("-EntryMode 'SOURCE'")
+  )
+    throw new Error('WRAPPER_CHANGED');
+  const original = read(path.join(desktop, 'launch/launch-core.ps1')),
     copied = transform(original, desktop),
     copy = path.join(root, 'Invoke-Desktop.instrumented.ps1');
   if (action === 'prepare') {
     fs.mkdirSync(path.join(root, 'first-use'));
-    write(copy, copied);
+    write(copy, wrapper);
+    write(path.join(root, 'launch-core.ps1'), copied);
     write(path.join(root, 'copy.json'), {
       version: 1,
+      wrapperSha: hash(wrapper),
       originalSha: hash(original),
       copySha: hash(copied),
       substitutions: 4,
@@ -196,10 +225,12 @@ async function run() {
     return;
   }
   if (
-    read(copy) !== copied ||
+    read(copy) !== wrapper ||
+    read(path.join(root, 'launch-core.ps1')) !== copied ||
     JSON.stringify(parse(path.join(root, 'copy.json'))) !==
       JSON.stringify({
         version: 1,
+        wrapperSha: hash(wrapper),
         originalSha: hash(original),
         copySha: hash(copied),
         substitutions: 4,
@@ -240,13 +271,13 @@ async function run() {
     throw new Error('STATE');
   capture(launch, 'auth', ['PERSISTENCE_INITIALIZE_ORDERLY']);
   capture(launch, 'main', ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED']);
-  const authDialog = parse(path.join(launch, 'auth-dialog-witness.json'));
+  const authDialog = parse(witnessPath(launch, 'auth'));
   if (authDialog.stage !== 'auth' || authDialog.opens !== 0 || authDialog.confirms !== 0)
     throw new Error('DIALOG');
   if (!first) {
     const provision = parse(path.join(launch, 'provision-observed.json'));
     capture(launch, 'provision', ['PERSISTENCE_INITIALIZE_ORDERLY']);
-    const dialog = parse(path.join(launch, 'provision-dialog-witness.json'));
+    const dialog = parse(witnessPath(launch, 'provision'));
     if (
       provision.status !== 'PROVISIONED' ||
       JSON.stringify(provision.witness) !== JSON.stringify(auth.witness) ||
@@ -263,7 +294,7 @@ async function run() {
   )
     throw new Error('REPROVISION');
   if (
-    JSON.stringify(parse(path.join(launch, 'ui-witness.json'))) !==
+    JSON.stringify(parse(witnessPath(launch, 'ui'))) !==
     JSON.stringify({ version: 1, ready: true, quitRequested: true, closed: true })
   )
     throw new Error('UI');
@@ -334,4 +365,4 @@ if (require.main === module)
     console.log('PERSISTENCE_LAUNCH_E2E_FAILED');
     process.exitCode = 1;
   });
-module.exports = { transform, fixedResult, CASES, ORIGINAL_SHA };
+module.exports = { transform, fixedResult, CASES, ORIGINAL_SHA, WRAPPER_SHA, witnessPath };

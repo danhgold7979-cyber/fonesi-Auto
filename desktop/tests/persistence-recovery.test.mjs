@@ -236,13 +236,18 @@ test('native recovery cancels at every dialog and confirms only the selected rec
   for (const cancelAt of [0, 1, 2, 3]) {
     const receipt = Object.freeze({ header: Object.freeze({ backupId: randomUUID() }) }),
       calls = [];
-    let dialogIndex = 0;
+    let dialogIndex = 0,
+      notices = 0,
+      noticeOptions;
     const service = {
       recoverySelection: async (path) => {
         assert.equal(path, 'selected-private-backup');
         return receipt;
       },
-      restoreRecovery: async (...args) => calls.push(args),
+      restoreRecovery: async (...args) => {
+        calls.push(args);
+        return 'created-private-store';
+      },
     };
     const dialog = {
       showOpenDialog: async (options) => {
@@ -254,6 +259,11 @@ test('native recovery cancels at every dialog and confirms only the selected rec
         };
       },
       showMessageBox: async (options) => {
+        if (options.type === 'info') {
+          notices++;
+          noticeOptions = options;
+          return { response: 0 };
+        }
         assert.deepEqual(options.buttons, ['Confirm', 'Cancel']);
         assert.equal(options.defaultId, 1);
         assert.equal(options.cancelId, 1);
@@ -269,6 +279,19 @@ test('native recovery cancels at every dialog and confirms only the selected rec
       ),
       cancelAt === 3 ? 'COMPLETED' : 'CANCELLED',
     );
+    assert.equal(notices, cancelAt === 3 ? 1 : 0);
+    if (cancelAt === 3)
+      assert.deepEqual(noticeOptions, {
+        type: 'info',
+        title: 'Quarantined restore created',
+        message: 'Restore completed in a new quarantined root.',
+        detail:
+          'Created store:\ncreated-private-store\nThis store is maintenance-only. Use -Store "created-private-store" with -Maintenance "--maintenance=restore-to-new". Normal launch is blocked.',
+        buttons: ['OK'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
     assert.deepEqual(
       calls,
       cancelAt === 3 ? [[receipt, 'selected-private-parent', 'owned-private-checkpoint']] : [],
@@ -299,4 +322,34 @@ test('native recovery rechecks ownership after confirmation before restore', asy
     ),
     /OWNERSHIP_REVOKED/,
   );
+});
+
+test('completed native restore remains completed when its private completion notice fails', async () => {
+  const { runNativePersistenceRecovery } = await import('../src/main/persistence-native.ts');
+  let restores = 0,
+    notices = 0;
+  const result = await runNativePersistenceRecovery(
+    {
+      recoverySelection: async () => ({ header: { backupId: randomUUID() } }),
+      restoreRecovery: async () => {
+        restores++;
+        return 'actual-created-private-store';
+      },
+    },
+    {
+      showOpenDialog: async () => ({ canceled: false, filePaths: ['private-selection'] }),
+      showMessageBox: async (options) => {
+        if (options.type === 'info') {
+          notices++;
+          throw Error('PRIVATE_NATIVE_NOTICE_FAILURE');
+        }
+        return { response: 0 };
+      },
+    },
+    async () => {},
+    'private-checkpoint',
+  );
+  assert.equal(result, 'COMPLETED');
+  assert.equal(restores, 1);
+  assert.equal(notices, 1);
 });

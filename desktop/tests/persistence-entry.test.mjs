@@ -165,3 +165,43 @@ test('synchronous final lease assertion rejects owner changes and unknown lock e
     }
     assert.doesNotThrow(() => assertPreparedPersistenceLease(entry));
   }));
+
+test('package data guard rejects own tree and ancestors while source entry remains unchanged', async () =>
+  fixture(async ({ location }) => {
+    const { persistenceDataGuard } = await import('../src/main/persistence-entry.ts');
+    const base = resolve(location.root, '..'),
+      pack = join(base, 'package'),
+      inside = join(pack, 'inside'),
+      outside = join(base, 'outside');
+    mkdirSync(pack);
+    mkdirSync(inside);
+    mkdirSync(outside);
+    const guard = persistenceDataGuard(pack);
+    for (const selected of [base, pack, inside, join(pack, '..', 'package')])
+      assert.throws(() => guard(selected), /PACKAGE_DATA_LOCATION_REJECTED/);
+    assert.doesNotThrow(() => guard(outside));
+    assert.doesNotThrow(() => persistenceDataGuard()(pack));
+  }));
+
+test('private PACKAGE READYv3 binds exact package entry and rejects mode/path substitution', async () =>
+  fixture(async ({ file, control, location }) => {
+    const pack = join(resolve(location.root, '..'), 'package'),
+      other = join(resolve(location.root, '..'), 'other');
+    mkdirSync(pack);
+    mkdirSync(join(pack, 'app'));
+    mkdirSync(join(pack, 'app/build'));
+    mkdirSync(other);
+    const old = process.argv[1];
+    try {
+      // Parser/custody test only: actual executable certification is a separate native gate.
+      process.argv[1] = join(pack, 'app/build/main.cjs');
+      writeFileSync(file, JSON.stringify({ ...control, version: 3, packageRoot: pack }));
+      assert.equal(preparedPersistenceEntry(file).packageRoot, pack);
+      writeFileSync(file, JSON.stringify({ ...control, version: 3, packageRoot: other }));
+      assert.throws(() => preparedPersistenceEntry(file), /PERSISTENCE_ENTRY_REJECTED/);
+      writeFileSync(file, JSON.stringify({ ...control, version: 2, packageRoot: pack }));
+      assert.throws(() => preparedPersistenceEntry(file), /PERSISTENCE_ENTRY_REJECTED/);
+    } finally {
+      process.argv[1] = old;
+    }
+  }));
