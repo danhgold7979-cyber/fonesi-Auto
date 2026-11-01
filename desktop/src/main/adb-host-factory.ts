@@ -78,6 +78,55 @@ const OTHER_PROGRESS = [
   'NATIVE_RETIRE_BEGIN',
   'NATIVE_RETIRE_END',
 ] as const;
+const COMPILE_IDS = [
+  'SOURCE_CODE_ERROR',
+  'COMPILER_ERRORS',
+  'ASSEMBLY_NOT_FOUND',
+  'ASSEMBLY_LOAD_ERRORS',
+  'COMMAND_NOT_FOUND',
+  'PARAMETER_BINDING',
+  'OTHER',
+] as const;
+const COMPILE_TYPES = [
+  'IO',
+  'PATH_TOO_LONG',
+  'ACCESS',
+  'WIN32',
+  'EXTERNAL',
+  'DIRECTORY_NOT_FOUND',
+  'INVALID_OPERATION',
+  'ARGUMENT',
+  'FILE_NOT_FOUND',
+  'FILE_LOAD',
+  'BAD_IMAGE',
+  'CMDLET',
+  'COMMAND_NOT_FOUND',
+  'PARAMETER_BINDING',
+  'OTHER',
+  'NONE',
+] as const;
+type CompileFailure = Readonly<{
+  id: (typeof COMPILE_IDS)[number];
+  type: (typeof COMPILE_TYPES)[number];
+  inner: (typeof COMPILE_TYPES)[number];
+  cs: string;
+}>;
+function compileFrame(line: string): CompileFailure | null {
+  const parts = line.split('|');
+  if (parts.length !== 5 || parts[0] !== 'HOST_BOOTSTRAP_COMPILE_ERROR') return null;
+  const [, id, type, inner, cs] = parts;
+  if (
+    !COMPILE_IDS.some((v) => v === id) ||
+    !COMPILE_TYPES.some((v) => v === type) ||
+    !COMPILE_TYPES.some((v) => v === inner) ||
+    !(
+      typeof cs === 'string' &&
+      (cs === 'OTHER' || cs === 'NONE' || (cs.length === 6 && /^CS[0-9]{4}$/.test(cs)))
+    )
+  )
+    return null;
+  return Object.freeze({ id, type, inner, cs }) as CompileFailure;
+}
 const observationKey = (o: RuntimeReadObservation) =>
   JSON.stringify([o.release, o.archiveSha256, o.manifestSha256, o.installationRevision, o.adbPath]);
 export function createHostFactory(
@@ -131,6 +180,8 @@ export function createHostFactory(
   let diagnosticLine = '',
     helperPhase: string | null = null,
     phaseCount = 0;
+  let compileFailure: CompileFailure | null = null,
+    compileFrames = 0;
   const progress = new Set<string>();
   let bootstrapProgress = 0,
     requestWriteCompleted = false;
@@ -293,7 +344,12 @@ export function createHostFactory(
               line,
             );
           const marker = /^HOST_(BOOTSTRAP|READER|NATIVE)_PROGRESS_([A-Z_]+)$/.exec(line);
-          if (phase) {
+          if (line.startsWith('HOST_BOOTSTRAP_COMPILE_ERROR')) {
+            compileFrames++;
+            compileFailure = compileFrames === 1 ? compileFrame(line) : null;
+            if (compileFailure) helperPhase = 'COMPILE';
+            rejected = true;
+          } else if (phase) {
             phaseCount++;
             helperPhase = phaseCount === 1 ? (phase[1] ?? null) : null;
             rejected = true;
@@ -464,6 +520,7 @@ export function createHostFactory(
               ? 'RUNNING'
               : 'NOT_STARTED',
         phase: helperPhase,
+        compileFailure,
         progress: Object.freeze([...progress]),
         requestWriteCompleted,
         exit: childResult ? (childResult.code === 0 ? 'ZERO' : 'NONZERO') : 'NONE',

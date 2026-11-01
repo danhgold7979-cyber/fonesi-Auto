@@ -685,3 +685,33 @@ test('current verification root is exclusively fixed r with canonical owner and 
     f.close();
   }
 });
+
+test('compiler identifier forwarding remains exact unique and bounded without raw output', () => {
+  const { observerMarkers } = require('./retained-host-control.cjs');
+  const base = 'RETAINED_HOST_PHASE_VERSION\nRETAINED_HOST_FAILED\n';
+  assert.ok(
+    observerMarkers(base + 'RETAINED_HOST_DIAGNOSTIC_COMPILECS_CS9999\n').includes(
+      'RETAINED_HOST_DIAGNOSTIC_COMPILECS_CS9999',
+    ),
+  );
+  for (const suffix of ['CS12345', 'CS12x4', 'CS1234/private'])
+    assert.equal(
+      observerMarkers(base + 'RETAINED_HOST_DIAGNOSTIC_COMPILECS_' + suffix + '\n').length,
+      2,
+    );
+  assert.equal(
+    observerMarkers(
+      base + 'RETAINED_HOST_DIAGNOSTIC_COMPILECS_CS9999\nRETAINED_HOST_DIAGNOSTIC_COMPILECS_NONE\n',
+    ).length,
+    2,
+  );
+  const ps = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, 'Invoke-RetainedHostCheck.ps1'),
+    'utf8',
+  );
+  assert.ok(
+    ps.includes(
+      "$slot -ceq 'COMPILECS' -and $line -cmatch '\\ARETAINED_HOST_DIAGNOSTIC_COMPILECS_CS[0-9]{4}\\z'",
+    ),
+  );
+});

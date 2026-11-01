@@ -476,3 +476,55 @@ Frozen supported-layout SHA256 values:
 - `desktop/verification/Invoke-RetainedHostCheck.ps1`: `4fa3c8b954e05b601faa1acc48dadc7ac99fb7ac2c98c9b0406a74da8a88aa7f`.
 - `desktop/verification/validate_retained_host.py`: `903c90244c66f0bac20acc74841f27ec9b07dcb95921e9e5d63cd565e225f366`.
 - `.github/workflows/phase-02-software.yml`: `e13c8fb125a18c369c3a1e90a468cba8f6243a920b1add9273a54ed68bfabc11`.
+
+## Supported-layout actual result — 12:27 UTC
+
+Public `239d5894d255163dc11a4a1aba1e81791322968b` / CI41306175483 passes
+1047/109/233. Managed artifact13083541667 remains414-byte strict PASS/SHA41e93f3c…;
+native artifact13083630940 remains392-byte strict NONZERO/FAIL/SHAd87a7375… (exact
+full hashes retained above). The supported layout now actually reaches ENVIRONMENT,
+CONTEXT, ASSETS and COMPILE_BEGIN. Add-Type does not reach COMPILE_END; caught phase
+COMPILE yields TRANSPORT_FAILED/UNCERTAIN. This is progress beyond the prior pre-entry
+stall, not successful native admission, VERSION or EOF. Historical fixture slots are
+correctly UNAVAILABLE and were not executed again.
+
+Source/primary documentation review finds the same four C# files and effective
+mscorlib/System/System.Core dependencies as the passing managed compilation. Add-Type
+supports multiple paths and its CodeDOM path compiles them together; no split-compilation
+or missing-reference fix is inferred. CodeDOM temporary files/default compiler options
+and in-memory loading differ from the explicit managed csc campaign. Therefore the next
+narrow delta classifies the caught native ErrorRecord using fixed ID and exact exception
+type categories, with a six-character CSdddd identifier only from a trusted native
+compiler target type. No raw Message, stack, source line, path or target stringification.
+A single atomic failure frame records all fields before the channel rejects, preventing
+split-chunk rejection from hiding the later diagnostic. Unknown/duplicate/malformed
+frames remain unclean; compiler diagnostics never authorize execution or PASS.
+
+Primary implementation references are Windows-derived/historical, not a claim of exact
+hosted5.1 binary identity: [Add-Type](https://raw.githubusercontent.com/PowerShell/PowerShell/v6.0.0-alpha.9/src/Microsoft.PowerShell.Commands.Utility/commands/utility/AddType.cs),
+[CodeDOM temporary files](https://raw.githubusercontent.com/microsoft/referencesource/main/System/compmod/system/codedom/compiler/TempFiles.cs).
+Arguments, assembly references, deadlines, process ownership and success predicates
+remain unchanged pending the actual classified error.
+
+Final diagnostic-only source evidence: factory22 distinct affected cases covered by
+21-case author run plus the new exact LF/CRLF grammar case and overlapping final frame
+rechecks; observer/contract18/18 PASS; control22 cases covered by21 passing cases and
+an exact PS-table-order assertion repaired/rechecked; historical fixture derivation1/1
+PASS after its source-pin refresh (materialized6608 bytes). Two local assertions still
+expected the prior <=8 grammar/table order; both were corrected to the stricter exact
+six-character grammar/current exact table and rerun, without changing acceptance.
+An initial root-relative helper check was invoked from desktop cwd and failed before
+loading; corrected root invocation passed. The actual sole graph89/strict TypeScript/
+BUILD_VERIFIED pipeline passed. Eight changed JS/TS files pass warning-level quality.
+No full aggregate, unchanged C# fixture or Python rerun is claimed. Expected hosted
+1055/109/233 remains NOT_RUN. Native C# sources, compiler arguments and references
+are unchanged; only the failure classification/bootstrap hash changes.
+
+Frozen compile-classification SHA256 values:
+- `desktop/launch/Invoke-RetainedHost.ps1`: `f8742cb01bf8bfbf7c9bfe891be2c8a6b70d699951d80efb7baf611c14193d64`.
+- `desktop/src/main/adb-host-factory.ts`: `5b0f26df741c49fd069c60e98fb9122e0f995867e0d80f179ba6b11f6f3dbbb4`.
+- `desktop/verification/retained-host-contract.cjs`: `078f05935d4feeeff3245c8e42244618f43c920674f17f203135d56faedb52ef`.
+- `desktop/verification/retained-host-main-probe.cjs`: `d2b0732545370a11bedf535d40c39da2ad1757cd25bf39789735dde1677c7366`.
+- `desktop/verification/retained-host-control.cjs`: `a5f77d1d4ec17dc715cb460e767d080a9b2d94753471c8822ab19d35b1f83031`.
+- `desktop/verification/Invoke-RetainedHostCheck.ps1`: `155d380b5e73f6878683ea2ac327297d2cd69915def86e2debedb00d139e3832`.
+- `desktop/verification/retained-pipe-startup.cjs`: `adab3653ef7007e3d58d091364e8690e12f5d8193f657d48b3efe9cd7f4801c9`.

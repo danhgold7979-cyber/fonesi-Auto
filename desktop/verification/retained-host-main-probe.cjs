@@ -9,6 +9,8 @@ const {
   PIPE_DIAGNOSTICS,
   pipeDiagnostic,
   progressDiagnostic,
+  compileDiagnostic,
+  diagnosticValue,
   contextDiagnostic,
   reason,
   CASES,
@@ -139,6 +141,7 @@ function runObserver() {
       const values = {
         ...contextFacts,
         ...progressDiagnostic(e),
+        ...compileDiagnostic(e),
         ...pipeDiagnostic(pipeFacts),
         REASON: reason(error),
         OUTCOME: hostResult?.outcome,
@@ -147,9 +150,9 @@ function runObserver() {
         HELPERPHASE: e?.phase,
         HELPEREXIT: e?.exit,
       };
-      for (const [slot, allowed] of Object.entries(DIAGNOSTICS)) {
+      for (const slot of Object.keys(DIAGNOSTICS)) {
         if (pipeEmitted && Object.hasOwn(PIPE_DIAGNOSTICS, slot)) continue;
-        const value = allowed.includes(values[slot]) ? values[slot] : 'UNAVAILABLE';
+        const value = diagnosticValue(slot, values[slot]) ? values[slot] : 'UNAVAILABLE';
         fs.writeSync(2, `RETAINED_HOST_DIAGNOSTIC_${slot}_${value}\n`);
       }
       pipeEmitted = true;

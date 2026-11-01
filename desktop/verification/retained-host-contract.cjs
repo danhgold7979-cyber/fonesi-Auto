@@ -160,6 +160,55 @@ const DIAGNOSTICS = Object.freeze({
     'UNAVAILABLE',
   ]),
   HELPEREXIT: Object.freeze(['ZERO', 'NONZERO', 'NONE', 'UNAVAILABLE']),
+  COMPILEID: Object.freeze([
+    'SOURCE_CODE_ERROR',
+    'COMPILER_ERRORS',
+    'ASSEMBLY_NOT_FOUND',
+    'ASSEMBLY_LOAD_ERRORS',
+    'COMMAND_NOT_FOUND',
+    'PARAMETER_BINDING',
+    'OTHER',
+    'UNAVAILABLE',
+  ]),
+  COMPILETYPE: Object.freeze([
+    'IO',
+    'PATH_TOO_LONG',
+    'ACCESS',
+    'WIN32',
+    'EXTERNAL',
+    'DIRECTORY_NOT_FOUND',
+    'INVALID_OPERATION',
+    'ARGUMENT',
+    'FILE_NOT_FOUND',
+    'FILE_LOAD',
+    'BAD_IMAGE',
+    'CMDLET',
+    'COMMAND_NOT_FOUND',
+    'PARAMETER_BINDING',
+    'OTHER',
+    'NONE',
+    'UNAVAILABLE',
+  ]),
+  COMPILEINNER: Object.freeze([
+    'IO',
+    'PATH_TOO_LONG',
+    'ACCESS',
+    'WIN32',
+    'EXTERNAL',
+    'DIRECTORY_NOT_FOUND',
+    'INVALID_OPERATION',
+    'ARGUMENT',
+    'FILE_NOT_FOUND',
+    'FILE_LOAD',
+    'BAD_IMAGE',
+    'CMDLET',
+    'COMMAND_NOT_FOUND',
+    'PARAMETER_BINDING',
+    'OTHER',
+    'NONE',
+    'UNAVAILABLE',
+  ]),
+  COMPILECS: Object.freeze(['NONE', 'OTHER', 'UNAVAILABLE']),
   CONTEXTSITE: Object.freeze([
     ...Array.from({ length: 64 }, (_, i) => `SITE_${String(i + 1).padStart(2, '0')}`),
     'UNAVAILABLE',
@@ -184,6 +233,52 @@ const DIAGNOSTICS = Object.freeze({
     PROGRESS.map((name) => [`PROGRESS_${name}`, Object.freeze(['YES', 'NO', 'UNAVAILABLE'])]),
   ),
 });
+function diagnosticValue(slot, value) {
+  return (
+    typeof value === 'string' &&
+    value.length <= 64 &&
+    (DIAGNOSTICS[slot]?.includes(value) ||
+      (slot === 'COMPILECS' && value.length === 6 && /^CS[0-9]{4}$/.test(value)))
+  );
+}
+function compileDiagnostic(evidence) {
+  const out = {
+    COMPILEID: 'UNAVAILABLE',
+    COMPILETYPE: 'UNAVAILABLE',
+    COMPILEINNER: 'UNAVAILABLE',
+    COMPILECS: 'UNAVAILABLE',
+  };
+  try {
+    if (!evidence || typeof evidence !== 'object') return out;
+    const d = Object.getOwnPropertyDescriptor(evidence, 'compileFailure');
+    if (
+      !d ||
+      !('value' in d) ||
+      !d.value ||
+      typeof d.value !== 'object' ||
+      !Object.isFrozen(d.value)
+    )
+      return out;
+    const value = d.value,
+      fields = { id: 'COMPILEID', type: 'COMPILETYPE', inner: 'COMPILEINNER', cs: 'COMPILECS' },
+      accepted = {};
+    if (Reflect.ownKeys(value).length !== 4) return out;
+    for (const [key, slot] of Object.entries(fields)) {
+      const item = Object.getOwnPropertyDescriptor(value, key);
+      if (
+        !item ||
+        !('value' in item) ||
+        !diagnosticValue(slot, item.value) ||
+        item.value === 'UNAVAILABLE'
+      )
+        return out;
+      accepted[slot] = item.value;
+    }
+    return accepted;
+  } catch {
+    return out;
+  }
+}
 function pipeDiagnostic(pair) {
   const out = Object.fromEntries(Object.keys(PIPE_DIAGNOSTICS).map((k) => [k, 'UNAVAILABLE']));
   for (const mode of PIPE_MODES) {
@@ -407,6 +502,8 @@ module.exports = {
   pipeDiagnostic,
   PROGRESS,
   progressDiagnostic,
+  compileDiagnostic,
+  diagnosticValue,
   DIAGNOSTICS,
   contextDiagnostic,
   reason,

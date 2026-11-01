@@ -652,3 +652,96 @@ test('actual adb basename and native asset paths obey conservative directory/fil
     rmSync(base, { recursive: true, force: true });
   }
 });
+
+test('atomic compile diagnostic binds all fixed fields before pending request rejection, including split chunks', async () => {
+  const frame = 'HOST_BOOTSTRAP_COMPILE_ERROR|SOURCE_CODE_ERROR|CMDLET|INVALID_OPERATION|CS0246\n';
+  for (const chunks of [[frame], [frame.slice(0, 17), frame.slice(17, 62), frame.slice(62)]]) {
+    const f = fixture({
+      hold: true,
+      exitCode: 1,
+      request(_q, child) {
+        queueMicrotask(() => {
+          for (const chunk of chunks) child.stderr.write(chunk);
+        });
+      },
+    });
+    try {
+      assert.notEqual((await f.factory.execute(f.cap, f.request())).outcome, 'OBSERVED');
+      assert.equal(f.factory.evidence.phase, 'COMPILE');
+      assert.deepEqual(f.factory.evidence.compileFailure, {
+        id: 'SOURCE_CODE_ERROR',
+        type: 'CMDLET',
+        inner: 'INVALID_OPERATION',
+        cs: 'CS0246',
+      });
+      assert.ok(Object.isFrozen(f.factory.evidence.compileFailure));
+      assert.equal(await f.factory.close(), 'UNRETIRED');
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+test('compile diagnostic rejects unknown raw fields and duplicate frames without cleanup authority', async () => {
+  const frame = 'HOST_BOOTSTRAP_COMPILE_ERROR|OTHER|OTHER|NONE|NONE\n';
+  for (const stderr of [
+    frame + frame,
+    frame.replace('|OTHER|', '|private-path-canary|'),
+    frame.replace('|NONE\n', '|CS99999\n'),
+    frame.replace('\n', '|extra\n'),
+  ]) {
+    const f = fixture({ stderr, exitCode: 1 });
+    try {
+      await f.factory.execute(f.cap, f.request());
+      assert.equal(await f.factory.close(), 'UNRETIRED');
+      assert.equal(f.factory.evidence.compileFailure, null);
+      assert.equal(JSON.stringify(f.factory.evidence).includes('canary'), false);
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+test('bootstrap compile classification is bounded exact runtime types and precedes legacy rejection', () => {
+  const source = readFileSync(
+    new URL('../launch/Invoke-RetainedHost.ps1', import.meta.url),
+    'utf8',
+  );
+  assert.ok(
+    source.indexOf("if($phase -ceq 'COMPILE'){try{Compile-Frame $_}catch{}}") <
+      source.indexOf("[Console]::Error.WriteLine('HOST_BOOTSTRAP_PHASE_'+$phase)"),
+  );
+  const classifier = source.slice(
+    source.indexOf('function Compile-Type'),
+    source.indexOf('function Reject'),
+  );
+  assert.match(classifier, /\$Record.GetType\(\) -ne \[System.Management.Automation.ErrorRecord\]/);
+  assert.match(classifier, /\$fq.Length -le 256/);
+  assert.match(classifier, /\$number.Length -eq 6/);
+  assert.match(classifier, /Microsoft.PowerShell.Commands.AddTypeCompilerError/);
+  assert.match(classifier, /System.CodeDom.Compiler.CompilerError/);
+  assert.equal((classifier.match(/InnerException/g) || []).length, 1);
+  assert.doesNotMatch(classifier, /\.Message|\.StackTrace|\.ToString\(/);
+  assert.equal((classifier.match(/Console\]::Error.WriteLine/g) || []).length, 1);
+});
+
+test('any exact six-character compiler identifier remains diagnostic failure only', async () => {
+  const f = fixture({
+    stderr: 'HOST_BOOTSTRAP_COMPILE_ERROR|COMPILER_ERRORS|OTHER|NONE|CS9999\n',
+    exitCode: 1,
+  });
+  try {
+    await f.factory.execute(f.cap, f.request());
+    assert.equal(await f.factory.close(), 'UNRETIRED');
+    assert.equal(f.factory.evidence.compileFailure.cs, 'CS9999');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('bootstrap compiler identifier grammar rejects final LF and CRLF before atomic framing', () => {
+  const ps = readFileSync(join(import.meta.dirname, '../launch/Invoke-RetainedHost.ps1'), 'utf8');
+  assert.ok(ps.includes("$number.Length -eq 6 -and $number -cmatch '\\ACS[0-9]{4}\\z'"));
+  const exact = (value) => value.length === 6 && /^CS[0-9]{4}$/.test(value);
+  assert.equal(exact('CS1234'), true);
+  assert.equal(exact('CS1234\n'), false);
+  assert.equal(exact('CS1234\r\n'), false);
+});

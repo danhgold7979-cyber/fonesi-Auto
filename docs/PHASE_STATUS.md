@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 12:19 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 12:34 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -36,15 +36,14 @@ stitched checkpoint (remaining151 tests plus earlier passed batches); no new ful
 aggregate count or native PASS is inferred. The user approved the
 [single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
 and necessary important checkpoint publication. After a test-only Windows CRLF repair,
-public `e34e63d5811d85679e33c0cc2b6fcf84ea20983c` / CI41304568866 passes1044/109/232
-and instrumented four-source compilation/eight managed groups. Native remains TIMEOUT.
-Read-only post-retirement facts show short fixture entry, then fully materialized deep
-fixture without entry; parameter cases never ran. The exact blocking call is unknown.
-The next coherent candidate shortens only the verification-owned runroot (all product
-UUID/runtime/hash grammar unchanged) and adds conservative production path-budget
-refusal before helper writes/spawn. Actual VERSION/EOF will run directly on that supported
-layout, without replaying the old-depth reproducer. Historical fixtures remain unavailable,
-not fake PASS. Canonical P2-02 acceptance remains pending; no server/device/profile adoption.
+public `239d5894d255163dc11a4a1aba1e81791322968b` / CI41306175483 passes1047/109/233
+and instrumented four-source compilation/eight managed groups. Supported short owned
+layout now reaches actual bootstrap ENVIRONMENT/CONTEXT/ASSETS/COMPILE_BEGIN; Add-Type
+throws at COMPILE before native admission/VERSION. The caught error remains unclassified.
+A fixed atomic compiler-error diagnostic is being prepared; no guessed reference, flag,
+policy or deadline changes. Product UUID/runtime/hash grammar remains unchanged; old
+long-depth fixtures stay historical and were not rerun. Native VERSION/EOF and canonical
+P2-02 acceptance remain pending; no server/device/profile adoption.
 
 ## 1. Status definitions
 

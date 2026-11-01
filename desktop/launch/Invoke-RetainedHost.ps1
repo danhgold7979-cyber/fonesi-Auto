@@ -8,6 +8,55 @@ function Progress([string]$Slot) {
     if($Slot -cnotin @('ENVIRONMENT','CONTEXT','ASSETS','COMPILE_BEGIN','COMPILE_END','PARENT_BEGIN','PARENT_END','READER','CLOSE')){Reject}
     if(-not $progressSlots.ContainsKey($Slot)){$progressSlots[$Slot]=$true;try{[Console]::Error.WriteLine('HOST_BOOTSTRAP_PROGRESS_'+$Slot)}catch{}}
 }
+function Compile-Type($Value) {
+    if($null -eq $Value){return 'NONE'}
+    switch -CaseSensitive ($Value.GetType().FullName) {
+        'System.IO.IOException' {return 'IO'}
+        'System.IO.PathTooLongException' {return 'PATH_TOO_LONG'}
+        'System.UnauthorizedAccessException' {return 'ACCESS'}
+        'System.ComponentModel.Win32Exception' {return 'WIN32'}
+        'System.Runtime.InteropServices.ExternalException' {return 'EXTERNAL'}
+        'System.IO.DirectoryNotFoundException' {return 'DIRECTORY_NOT_FOUND'}
+        'System.InvalidOperationException' {return 'INVALID_OPERATION'}
+        'System.ArgumentException' {return 'ARGUMENT'}
+        'System.IO.FileNotFoundException' {return 'FILE_NOT_FOUND'}
+        'System.IO.FileLoadException' {return 'FILE_LOAD'}
+        'System.BadImageFormatException' {return 'BAD_IMAGE'}
+        'System.Management.Automation.CmdletInvocationException' {return 'CMDLET'}
+        'System.Management.Automation.CommandNotFoundException' {return 'COMMAND_NOT_FOUND'}
+        'System.Management.Automation.ParameterBindingException' {return 'PARAMETER_BINDING'}
+        default {return 'OTHER'}
+    }
+}
+function Compile-Frame([System.Management.Automation.ErrorRecord]$Record) {
+    $id='OTHER';$type='OTHER';$inner='NONE';$cs='NONE'
+    try {
+        if($Record.GetType() -ne [System.Management.Automation.ErrorRecord]){throw 'FIXED'}
+        $fq=$Record.FullyQualifiedErrorId
+        if($null -ne $fq -and $fq.Length -le 256){
+            $part=$fq.Split(',')[0]
+            switch -CaseSensitive ($part) {
+                'SOURCE_CODE_ERROR' {$id='SOURCE_CODE_ERROR'}
+                'COMPILER_ERRORS' {$id='COMPILER_ERRORS'}
+                'ASSEMBLY_NOT_FOUND' {$id='ASSEMBLY_NOT_FOUND'}
+                'ASSEMBLY_LOAD_ERRORS' {$id='ASSEMBLY_LOAD_ERRORS'}
+                'CommandNotFoundException' {$id='COMMAND_NOT_FOUND'}
+                'NamedParameterNotFound' {$id='PARAMETER_BINDING'}
+                'PositionalParameterNotFound' {$id='PARAMETER_BINDING'}
+            }
+        }
+        $exception=$Record.Exception
+        $type=Compile-Type $exception
+        if($null -ne $exception){$inner=Compile-Type $exception.InnerException}
+        $target=$Record.TargetObject
+        if($null -ne $target -and $target.GetType().FullName -cin @('Microsoft.PowerShell.Commands.AddTypeCompilerError','System.CodeDom.Compiler.CompilerError')){
+            $number=$target.ErrorNumber
+            $cs='OTHER'
+            if($number -is [string] -and $number.Length -eq 6 -and $number -cmatch '\ACS[0-9]{4}\z'){$cs=$number}
+        }
+    } catch {$id='OTHER';$type='OTHER';$inner='OTHER';$cs='OTHER'}
+    [Console]::Error.WriteLine('HOST_BOOTSTRAP_COMPILE_ERROR|'+$id+'|'+$type+'|'+$inner+'|'+$cs)
+}
 function Reject { throw 'HOST_BOOTSTRAP_REJECTED' }
 function Plain([string]$Path,[bool]$Directory=$false) {
     if(-not [IO.Path]::IsPathRooted($Path) -or [IO.Path]::GetFullPath($Path) -cne $Path){Reject}
@@ -78,6 +127,7 @@ try {
     $admission.Dispose();$admission=$null
     exit 0
 } catch {
+    if($phase -ceq 'COMPILE'){try{Compile-Frame $_}catch{}}
     [Console]::Error.WriteLine('HOST_BOOTSTRAP_PHASE_'+$phase)
     [Console]::Error.WriteLine('HOST_BOOTSTRAP_FAILED')
     exit 1

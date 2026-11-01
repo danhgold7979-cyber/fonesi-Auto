@@ -408,7 +408,7 @@ function state(root, completed = true) {
 }
 function observerMarkers(raw) {
   if (typeof raw !== 'string' || raw.length > 32768) return [];
-  const { PHASES, DIAGNOSTICS } = require('./retained-host-contract.cjs');
+  const { PHASES, DIAGNOSTICS, diagnosticValue } = require('./retained-host-contract.cjs');
   const lines = raw.split(/\r?\n/),
     matched = lines.filter((line) =>
       PHASES.some((phase) => line === 'RETAINED_HOST_PHASE_' + phase),
@@ -430,9 +430,10 @@ function observerMarkers(raw) {
     return out;
   }
   const out = [matched[0], 'RETAINED_HOST_FAILED'];
-  for (const [slot, values] of Object.entries(DIAGNOSTICS)) {
-    const observed = lines.filter((line) =>
-      values.some((value) => line === 'RETAINED_HOST_DIAGNOSTIC_' + slot + '_' + value),
+  for (const slot of Object.keys(DIAGNOSTICS)) {
+    const prefix = 'RETAINED_HOST_DIAGNOSTIC_' + slot + '_';
+    const observed = lines.filter(
+      (line) => line.startsWith(prefix) && diagnosticValue(slot, line.slice(prefix.length)),
     );
     if (observed.length === 1) out.push(observed[0]);
   }

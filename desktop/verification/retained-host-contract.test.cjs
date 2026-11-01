@@ -16,6 +16,8 @@ const {
   pipeDiagnostic,
   PROGRESS,
   progressDiagnostic,
+  compileDiagnostic,
+  diagnosticValue,
   contextDiagnostic,
   deriveMain,
   validateResult,
@@ -730,4 +732,77 @@ test('thrown failure diagnostic write still clears deadline and exits once witho
   assert.equal(result.executed, 0);
   assert.equal(result.result, null);
   assert.deepEqual(result.stderr, []);
+});
+
+test('compile diagnostic projection permits only frozen exact fixed fields and bounded compiler identifiers', () => {
+  const tuple = Object.freeze({
+    id: 'SOURCE_CODE_ERROR',
+    type: 'CMDLET',
+    inner: 'IO',
+    cs: 'CS9999',
+  });
+  assert.deepEqual(compileDiagnostic({ compileFailure: tuple }), {
+    COMPILEID: 'SOURCE_CODE_ERROR',
+    COMPILETYPE: 'CMDLET',
+    COMPILEINNER: 'IO',
+    COMPILECS: 'CS9999',
+  });
+  for (const value of [
+    'CS12345',
+    'CS123',
+    'CS12x4',
+    'CS1234/private',
+    'private',
+    'CS1234\n',
+    'CS1234\r\n',
+  ])
+    assert.equal(diagnosticValue('COMPILECS', value), false);
+  let reads = 0;
+  const getter = Object.freeze(
+    Object.defineProperty({}, 'compileFailure', {
+      get() {
+        reads++;
+        throw Error('private');
+      },
+    }),
+  );
+  const nested = Object.freeze(
+    Object.defineProperty({ ...tuple }, 'cs', {
+      get() {
+        reads++;
+        return 'CS0001';
+      },
+    }),
+  );
+  for (const value of [
+    getter,
+    { compileFailure: nested },
+    { compileFailure: { ...tuple } },
+    { compileFailure: Object.freeze({ ...tuple, path: 'private' }) },
+    { compileFailure: Object.freeze({ ...tuple, type: 'private' }) },
+  ])
+    assert.ok(Object.values(compileDiagnostic(value)).every((x) => x === 'UNAVAILABLE'));
+  assert.equal(reads, 0);
+});
+test('actual observer forwards atomic compile failure without promoting native outcome', async () => {
+  const result = await simulatedObserver(false, {
+    evidence: {
+      compileFailure: Object.freeze({
+        id: 'SOURCE_CODE_ERROR',
+        type: 'CMDLET',
+        inner: 'IO',
+        cs: 'CS9999',
+      }),
+    },
+  });
+  assert.equal(result.code, 1);
+  assert.equal(result.executed, 1);
+  assert.equal(result.result, null);
+  for (const line of [
+    'COMPILEID_SOURCE_CODE_ERROR',
+    'COMPILETYPE_CMDLET',
+    'COMPILEINNER_IO',
+    'COMPILECS_CS9999',
+  ])
+    assert.equal(result.stderr.filter((x) => x === `RETAINED_HOST_DIAGNOSTIC_${line}\n`).length, 1);
 });
