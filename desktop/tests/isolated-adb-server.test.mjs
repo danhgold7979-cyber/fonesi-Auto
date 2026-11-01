@@ -153,8 +153,8 @@ test('checked-in fresh PS entry binds complete source closure and exact pins wit
   assert.doesNotMatch(outer, /Invoke-Expression|process\.noAsar|Set-Acl|New-LocalUser/);
 });
 
-test('ordinary source pushes cannot invoke development binaries; version and server require separate manual opt-ins', () => {
-  const workflow = read('../../.github/workflows/phase-02-software.yml');
+function assertManualGates(raw) {
+  const workflow = raw.replace(/\r\n/g, '\n');
   for (const flag of ['run_adb_version', 'run_adb_server']) {
     assert.match(
       workflow,
@@ -168,6 +168,18 @@ test('ordinary source pushes cannot invoke development binaries; version and ser
       "if: github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
     ),
   );
+  for (const [flag, name] of [
+    [
+      'run_adb_version',
+      'Owned exact app-local version command only, no server or device operations',
+    ],
+    ['run_adb_server', 'Owned isolated foreground server and fixed host-version health only'],
+  ]) {
+    const step = workflow.split(`      - name: ${name}\n`);
+    assert.equal(step.length, 2);
+    const body = step[1].split('      - name: ')[0];
+    assert.ok(body.startsWith(`        if: inputs.${flag}\n        run: |\n`));
+  }
   const sourceJob = section(
     workflow,
     '  windows-software-only:',
@@ -175,4 +187,25 @@ test('ordinary source pushes cannot invoke development binaries; version and ser
   );
   assert.doesNotMatch(sourceJob, /Invoke-PlatformTools|fetch_platform_tools/);
   assert.equal((workflow.match(/fetch_platform_tools.py/g) ?? []).length, 1);
+}
+
+test('ordinary source pushes cannot invoke development binaries; version and server require separate manual opt-ins', () => {
+  const workflow = read('../../.github/workflows/phase-02-software.yml').replace(/\r\n/g, '\n');
+  assertManualGates(workflow);
+  assertManualGates(workflow.replace(/\n/g, '\r\n'));
+  for (const flag of ['run_adb_version', 'run_adb_server']) {
+    assert.throws(() => assertManualGates(workflow.replace(`${flag}:`, `${flag}_missing:`)));
+    assert.throws(() =>
+      assertManualGates(
+        workflow.replace(
+          `if: inputs.${flag}\n        run: |\n          try`,
+          'if: true\n        run: |\n          try',
+        ),
+      ),
+    );
+  }
+  assert.throws(() => assertManualGates(workflow.replace(/default: false/g, 'default: true')));
+  assert.throws(() =>
+    assertManualGates(workflow.replace("github.event_name == 'workflow_dispatch' && ", '')),
+  );
 });

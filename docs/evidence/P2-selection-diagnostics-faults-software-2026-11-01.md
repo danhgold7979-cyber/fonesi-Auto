@@ -82,3 +82,15 @@ every file exactly once and no partial success on capture/timeout/exit failure. 
 source functionality, test omission, output-cap increase or exception relaxation.
 The prior711 local aggregate is retained, not rerun solely for this scheduling change;
 actual corrected Windows result remains pending publication.
+
+## Windows checkout framing correction
+
+Run41270182641 at public `71410f8dbe1e9da62bd8364b1a65e0c338470610`
+exposed the underlying assertion: batch3 completed71 tests,70 passed and the manual
+workflow-gate assertion failed. The checked-in YAML becomes CRLF on Windows; its
+source-inspection regex expected LF. The assertion now normalizes only CRLF framing,
+not workflow conditions. Both valid LF/CRLF forms pass; missing inputs, always-on
+steps, true defaults and missing workflow-dispatch admission are rejected. Affected
+server/source tests6/6 PASS. Review strengthened the existing substring assertion to bind each exact execution
+step to its own opt-in; changing either single execution gate to always-on rejects. No product/runtime/workflow change and no repeated full local aggregate;
+Windows confirmation remains pending. The existing-profile server refusal is unchanged.
