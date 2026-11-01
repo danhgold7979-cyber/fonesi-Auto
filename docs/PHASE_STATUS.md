@@ -1,12 +1,14 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 17:03 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 17:21 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+
+Current four-launch campaign first CI41330753933 passed desktop1189/foundation109 but stopped at the stale Python discovery263 assertion before tests; native SKIPPED. Exact count274 workflow/test repair is prepared; no native acceptance is inferred.
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
-Current bounded Windows preparation: [four-stage retained rollback runner](evidence/P2-retained-rollback-windows-campaign-2026-11-01.md) now implements explicit derived36 seed → current PACKAGE37 upgrade → PACKAGE36 rollback → PACKAGE36 reopen. Current10-group managed proof and actual runtime outcome remain NOT_RUN; final exact runner review/execution disposition is pending. No server/device/HTTPS or whole-task claim.
+Current bounded Windows preparation: [four-stage retained rollback runner](evidence/P2-retained-rollback-windows-campaign-2026-11-01.md) now implements explicit derived36 seed → current PACKAGE37 upgrade → PACKAGE36 rollback → PACKAGE36 reopen. Current10-group managed proof and actual runtime outcome remain NOT_RUN; final exact runner review was CLEAR and bounded execution was authorized; first hosted attempt stopped at the source inventory gate. No server/device/HTTPS or whole-task claim.
 
-Current local metadata checkpoint: [reviewed36.0.0 retained prior](evidence/P2-prior-360-metadata-2026-11-01.md) is now source-adopted alongside unchanged37.0.1 INSTALL target. Exact official bytes/NOTICE/provenance were reviewed;41 affected tests and strict types/build pass. This supersedes the sole-pin limitation below, not the remaining real rollback/native proof. Publication is to be batched with the necessary refreshed runner.
+Current local metadata checkpoint: [reviewed36.0.0 retained prior](evidence/P2-prior-360-metadata-2026-11-01.md) is now source-adopted alongside unchanged37.0.1 INSTALL target. Exact official bytes/NOTICE/provenance were reviewed;41 affected tests and strict types/build pass. This supersedes the sole-pin limitation below, not the remaining real rollback/native proof. Metadata and reviewed runner were published together as public `ecc333e3a562264daa860453369a087595c3bb18`; current actual native proof remains pending.
 
 Current active source task: **P2-01 — trusted Platform Tools / retained-runtime rollback (task1 of13)**. The [catalog-aware rollback source checkpoint](evidence/P2-retained-runtime-rollback-source-2026-11-01.md) now composes actual owned synthetic A→B→A/reopen and candidate-specific custody/factory/issuer. That last published882fb0b checkpoint retained the sole37.0.1 pin; the local metadata adoption above now admits the exact prior candidate, while current Windows rollback proof remains pending. Changed native/bootstrap bytes invalidate old managed reuse; historical native opt-ins are suspended pending a refreshed reviewed runner. Prior SOURCE/PACKAGE positives below remain accepted only for their exact historical bytes. Exact sole-pin source checkpoint public `882fb0b129e90e9cab7959b2c63e3ed9918831fc`, CI41326960595 now passes1155/109/263; all native jobs were skipped.
 

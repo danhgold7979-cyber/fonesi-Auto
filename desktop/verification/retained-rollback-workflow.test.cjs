@@ -10,6 +10,8 @@ const condition =
   "    if: (github.event_name == 'workflow_dispatch' && inputs.run_retained_rollback) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[retained-rollback]'))";
 function gate(value) {
   const s = value.replaceAll('\r\n', '\n');
+  assert.match(s, /assert s\.countTestCases\(\)==274; r=unittest\.TextTestRunner/);
+  assert.match(s, /r\.wasSuccessful\(\) and not r\.skipped/);
   assert.match(
     s,
     / {6}run_retained_rollback:\n {8}description: '[^\n]+'\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
@@ -26,6 +28,11 @@ function gate(value) {
 test('four-stage Windows campaign is exact default-off opt-in under LF and CRLF', () => {
   for (const s of [raw, raw.replaceAll('\n', '\r\n')]) {
     gate(s);
+    for (const replacement of ['s.countTestCases()==263', 's.countTestCases()>=274']) {
+      const changed = s.replace('s.countTestCases()==274', replacement);
+      assert.notEqual(changed, s);
+      assert.throws(() => gate(changed));
+    }
     for (const replacement of [
       '    if: true',
       condition.replace('refs/heads/phase-02', 'refs/heads/main'),
