@@ -546,3 +546,21 @@ Frozen temporary-file diagnostic SHA256 values:
 - `desktop/verification/retained-host-contract.cjs`: `91438519d7527bf26f7ce6b8f8445f48ddc413ec7d2866d69d44ad6f079324b7`.
 - `desktop/verification/Invoke-RetainedHostCheck.ps1`: `6697c1cb36bd7e76fb03b6562a2db81c9de0ab4c31ec4a223f00d14e178f74be`.
 - `desktop/verification/retained-pipe-startup.cjs`: `fcf02ec6d05aec0a921352a5f0b393a3361930dbd98156c77388e87aa6dada43`.
+
+
+## Empty compiler temporary filename and complete ordinary-code lookup — 13:05 UTC
+
+Public `06bd613da56ad483eaebf658990c1b81f6919dee` (local `a1cb4e11b0f3c6b8059da95c3e54044bcf187fb8`, tree `32f53394194f6efb711463e621259c65155d0f48`) / CI41308694076 passes **1058/109/233**. Managed artifact13084561583 remains414-byte strict PASS/SHA41e93f3c…; native artifact13084192474 remains392-byte NONZERO/FAIL/SHAd87a7375…. Actual CS1619 resource parsing yields reason OTHER, filename relation EMPTY and length EMPTY. The empty compiler filename is observed; insufficient buffer, permissions or a specific Windows call is not established.
+
+The old reason table required a final period and omitted ERROR_BUFFER_OVERFLOW111's distinct text. [Microsoft's ordinary error-code table](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-) distinguishes that wording from206. [ReferenceSource Win32Exception](https://raw.githubusercontent.com/microsoft/referencesource/main/System/compmod/system/componentmodel/Win32Exception.cs) trims final whitespace/periods from FormatMessage descriptions. These primary sources justify diagnostic formatting coverage, not an inference about the private hosted reason.
+
+The next delta normalizes only ASCII edge spaces and at most one terminal period, then retains named categories (including111's phrase). For an otherwise OTHER trusted CS1619 resource only, it inspects the bounded ordinary codes1..499 through newly constructed native Win32Exception objects, with no formatting arguments. Each returned OS Message is at most1024 units and excludes NUL/CR/LF; only exactly one normalized match emits WIN32_0001..0499. Unknown/ambiguous remains OTHER; any lookup/normalization exception marks the scan incomplete and prevents code emission. This is an ordinary-code subset, not all Win32 errors. Factory, projection and outer forwarding enforce that exact numeric range, never arbitrary numeric/raw text. No caught exception Message or private path is emitted. This lookup performs no filesystem, process, permission or path modification, and no compiler option/reference/deadline change.
+
+Author affected12 tests PASS plus3 integration checks PASS (one overlapping normalization check), including real factory pending-error handling, numeric boundary/duplicate refusals, actual observer forwarding and actual build-bound prepare. The sole graph89/strict TypeScript/BUILD_VERIFIED pipeline passes; six changed JS/TS files pass warning-level quality (infos only). Historical derived startup fixture remains3857 bytes under8192; only its exact source pin changes. No full aggregate or C#/Python/native rerun locally. Expected hosted **1060/109/233** remains NOT_RUN. Current task acceptance and native VERSION/EOF remain unchanged/unmet.
+
+Frozen ordinary-code diagnostic SHA256 values:
+- `desktop/launch/Invoke-RetainedHost.ps1`: `f40d2e454d1c98ab8a5d1bd1d48dbdcf6b9f8b3678f9beeb4996e5817bd7f751`.
+- `desktop/src/main/adb-host-factory.ts`: `da335fa732d955fde4b1949d3ac900f08f354c93c839fe5bd2a7d85d072ec926`.
+- `desktop/verification/retained-host-contract.cjs`: `8d976628e9939a41dec321bf30ae809cacb445c6694c2592e07edb9c4be51e93`.
+- `desktop/verification/Invoke-RetainedHostCheck.ps1`: `0338fd5b34e8a9326dfb965add5f063807e00481800fa0aeea2441d46fa36c5e`.
+- `desktop/verification/retained-pipe-startup.cjs`: `e627db9f46c022e01bcd327c4bb63739c940ac1e70618c81e6ec2eb546815897`.

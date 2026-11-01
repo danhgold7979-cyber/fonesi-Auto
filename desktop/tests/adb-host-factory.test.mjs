@@ -724,7 +724,10 @@ test('bootstrap compile classification is bounded exact runtime types and preced
   assert.match(classifier, /Microsoft.PowerShell.Commands.AddTypeCompilerError/);
   assert.match(classifier, /System.CodeDom.Compiler.CompilerError/);
   assert.equal((classifier.match(/InnerException/g) || []).length, 1);
-  assert.doesNotMatch(classifier, /\.Message|\.StackTrace|\.ToString\(/);
+  assert.doesNotMatch(
+    classifier,
+    /\$exception\.Message|\$target\.Message|\.StackTrace|\.ToString\(/,
+  );
   assert.equal((classifier.match(/Console\]::Error.WriteLine/g) || []).length, 1);
 });
 
@@ -756,6 +759,10 @@ test('CS1619 fixed temporary-file tuple is diagnostic only and rejects incoheren
   const prefix = 'HOST_BOOTSTRAP_COMPILE_ERROR|SOURCE_CODE_ERROR|OTHER|NONE|';
   for (const [suffix, valid] of [
     ['CS1619|ACCESS|PROFILE|LE247', true],
+    ['CS1619|WIN32_0001|PROFILE|LE247', true],
+    ['CS1619|WIN32_0499|EMPTY|EMPTY', true],
+    ['CS1619|WIN32_0000|EMPTY|EMPTY', false],
+    ['CS1619|WIN32_0500|EMPTY|EMPTY', false],
     ['CS1619|BUFFER_TOO_SMALL|EMPTY|EMPTY', true],
     ['CS1619|INVALID_NAME|OTHER|GE260', true],
     ['CS1619|OTHER|RUN|FROM248_TO259', true],
@@ -790,4 +797,61 @@ test('temporary compiler text classifier has bounded exact framing and never emi
   assert.ok(section.includes('OrdinalIgnoreCase'));
   assert.equal((section.match(/Console\]::Error.WriteLine/g) || []).length, 1);
   assert.doesNotMatch(section, /Write-Output|Write-Host/);
+});
+
+test('compiler reason normalization models only edge ASCII spaces and one period; lookup is uniquely bounded', () => {
+  const normalize = (value) =>
+    value
+      .replace(/^ +| +$/g, '')
+      .replace(/\.$/, '')
+      .replace(/ +$/, '');
+  const lookup = (reason, messages) => {
+    const found = [];
+    let complete = true;
+    for (const message of messages) {
+      try {
+        const [code, text] = message;
+        if (
+          code >= 1 &&
+          code <= 499 &&
+          text.length <= 1024 &&
+          normalize(text) === normalize(reason)
+        )
+          found.push([code, text]);
+      } catch {
+        complete = false;
+      }
+    }
+    return complete && found.length === 1
+      ? 'WIN32_' + String(found[0][0]).padStart(4, '0')
+      : 'OTHER';
+  };
+  for (const value of ['Access is denied', 'Access is denied.', '  Access is denied.  '])
+    assert.equal(normalize(value), 'Access is denied');
+  assert.equal(normalize('Access is denied..'), 'Access is denied.');
+  assert.equal(lookup('Unknown bounded text.', [[123, 'Unknown bounded text']]), 'WIN32_0123');
+  assert.equal(
+    lookup('Unknown bounded text', [
+      [123, 'Unknown bounded text'],
+      [124, 'Unknown bounded text.'],
+    ]),
+    'OTHER',
+  );
+  assert.equal(lookup('private-path', [[123, 'Unknown bounded text']]), 'OTHER');
+  const failed = [124];
+  Object.defineProperty(failed, 1, {
+    get() {
+      throw Error('synthetic lookup failure');
+    },
+  });
+  assert.equal(lookup('Unknown bounded text', [[123, 'Unknown bounded text'], failed]), 'OTHER');
+  const ps = readFileSync(new URL('../launch/Invoke-RetainedHost.ps1', import.meta.url), 'utf8');
+  assert.ok(ps.includes('for($code=1;$code -le 499;$code++)'));
+  assert.ok(ps.includes('$nativeText.Length -le 1024'));
+  assert.ok(
+    ps.includes('New-Object -TypeName System.ComponentModel.Win32Exception -ArgumentList $code'),
+  );
+  assert.ok(ps.includes('if($lookupComplete -and $matchCount -eq 1)'));
+  assert.ok(ps.includes('catch {$lookupComplete=$false}'));
+  assert.ok(ps.includes("'The file name is too long' {$tempReason='PATH_TOO_LONG'}"));
 });

@@ -28,6 +28,11 @@ function Compile-Type($Value) {
         default {return 'OTHER'}
     }
 }
+function Compile-ReasonText([string]$Text) {
+    $value=$Text.Trim([char]32)
+    if($value.EndsWith('.',[StringComparison]::Ordinal)){$value=$value.Substring(0,$value.Length-1).TrimEnd([char]32)}
+    return $value
+}
 function Compile-Frame([System.Management.Automation.ErrorRecord]$Record) {
     $id='OTHER';$type='OTHER';$inner='NONE';$cs='NONE'
     $tempReason='UNAVAILABLE';$tempRelation='UNAVAILABLE';$tempLength='UNAVAILABLE'
@@ -60,17 +65,29 @@ function Compile-Frame([System.Management.Automation.ErrorRecord]$Record) {
                     $match=[Text.RegularExpressions.Regex]::Match($text,'\ACannot create temporary file ''([^'']*)'' -- (.+)\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
                     if($match.Success){
                         $tempPath=$match.Groups[1].Value
-                        $reason=$match.Groups[2].Value
+                        $reason=Compile-ReasonText $match.Groups[2].Value
                         $tempReason='OTHER'
                         switch -CaseSensitive ($reason) {
-                            'Access is denied.' {$tempReason='ACCESS'}
-                            'The filename or extension is too long.' {$tempReason='PATH_TOO_LONG'}
-                            'The system cannot find the file specified.' {$tempReason='NOT_FOUND'}
-                            'The system cannot find the path specified.' {$tempReason='NOT_FOUND'}
-                            'There is not enough space on the disk.' {$tempReason='DISK_FULL'}
-                            'The disk is full.' {$tempReason='DISK_FULL'}
-                            'The data area passed to a system call is too small.' {$tempReason='BUFFER_TOO_SMALL'}
-                            'The filename, directory name, or volume label syntax is incorrect.' {$tempReason='INVALID_NAME'}
+                            'Access is denied' {$tempReason='ACCESS'}
+                            'The filename or extension is too long' {$tempReason='PATH_TOO_LONG'}
+                            'The file name is too long' {$tempReason='PATH_TOO_LONG'}
+                            'The system cannot find the file specified' {$tempReason='NOT_FOUND'}
+                            'The system cannot find the path specified' {$tempReason='NOT_FOUND'}
+                            'There is not enough space on the disk' {$tempReason='DISK_FULL'}
+                            'The disk is full' {$tempReason='DISK_FULL'}
+                            'The data area passed to a system call is too small' {$tempReason='BUFFER_TOO_SMALL'}
+                            'The filename, directory name, or volume label syntax is incorrect' {$tempReason='INVALID_NAME'}
+                        }
+                        if($tempReason -ceq 'OTHER'){
+                            $matchedCode=0;$matchCount=0;$lookupComplete=$true
+                            for($code=1;$code -le 499;$code++){
+                                try {
+                                    $nativeError=New-Object -TypeName System.ComponentModel.Win32Exception -ArgumentList $code
+                                    $nativeText=$nativeError.Message
+                                    if($nativeText -is [string] -and $nativeText.Length -le 1024 -and $nativeText.IndexOf([char]0) -lt 0 -and $nativeText.IndexOf([char]10) -lt 0 -and $nativeText.IndexOf([char]13) -lt 0 -and (Compile-ReasonText $nativeText) -ceq $reason){$matchCount++;$matchedCode=$code}
+                                } catch {$lookupComplete=$false}
+                            }
+                            if($lookupComplete -and $matchCount -eq 1){$tempReason='WIN32_'+[string]::Format('{0:D4}',$matchedCode)}
                         }
                         if($tempPath.Length -eq 0){$tempRelation='EMPTY';$tempLength='EMPTY'}
                         else {

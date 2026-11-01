@@ -798,7 +798,7 @@ test('actual observer forwards atomic compile failure without promoting native o
         type: 'CMDLET',
         inner: 'IO',
         cs: 'CS1619',
-        tempReason: 'BUFFER_TOO_SMALL',
+        tempReason: 'WIN32_0123',
         tempRelation: 'EMPTY',
         tempLength: 'EMPTY',
       }),
@@ -812,7 +812,7 @@ test('actual observer forwards atomic compile failure without promoting native o
     'COMPILETYPE_CMDLET',
     'COMPILEINNER_IO',
     'COMPILECS_CS1619',
-    'COMPILETEMPREASON_BUFFER_TOO_SMALL',
+    'COMPILETEMPREASON_WIN32_0123',
     'COMPILETEMPRELATION_EMPTY',
     'COMPILETEMPLENGTH_EMPTY',
   ])

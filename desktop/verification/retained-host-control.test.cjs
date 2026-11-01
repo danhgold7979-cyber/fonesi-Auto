@@ -715,3 +715,17 @@ test('compiler identifier forwarding remains exact unique and bounded without ra
     ),
   );
 });
+
+test('ordinary Win32 code forwarding is exact 1 through 499 and rejects duplicates', () => {
+  const { observerMarkers } = require('./retained-host-control.cjs');
+  const base = 'RETAINED_HOST_PHASE_VERSION\nRETAINED_HOST_FAILED\n';
+  const prefix = 'RETAINED_HOST_DIAGNOSTIC_COMPILETEMPREASON_';
+  for (const value of ['WIN32_0001', 'WIN32_0499'])
+    assert.ok(observerMarkers(base + prefix + value + '\n').includes(prefix + value));
+  for (const value of ['WIN32_0000', 'WIN32_0500', 'WIN32_9999', 'WIN32_0123/private', 'WIN32_123'])
+    assert.equal(observerMarkers(base + prefix + value + '\n').length, 2);
+  assert.equal(observerMarkers(base + prefix + 'WIN32_0123\n' + prefix + 'OTHER\n').length, 2);
+  const ps = fs.readFileSync(path.join(__dirname, 'Invoke-RetainedHostCheck.ps1'), 'utf8');
+  assert.ok(ps.includes('COMPILETEMPREASON_WIN32_0[0-4][0-9]{2}\\z'));
+  assert.ok(ps.includes("$line -cne 'RETAINED_HOST_DIAGNOSTIC_COMPILETEMPREASON_WIN32_0000'"));
+});

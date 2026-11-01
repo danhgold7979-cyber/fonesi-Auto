@@ -250,7 +250,11 @@ function diagnosticValue(slot, value) {
     typeof value === 'string' &&
     value.length <= 64 &&
     (DIAGNOSTICS[slot]?.includes(value) ||
-      (slot === 'COMPILECS' && value.length === 6 && /^CS[0-9]{4}$/.test(value)))
+      (slot === 'COMPILECS' && value.length === 6 && /^CS[0-9]{4}$/.test(value)) ||
+      (slot === 'COMPILETEMPREASON' &&
+        value.length === 10 &&
+        /^WIN32_0[0-4][0-9]{2}$/.test(value) &&
+        value !== 'WIN32_0000'))
   );
 }
 function compileDiagnostic(evidence) {

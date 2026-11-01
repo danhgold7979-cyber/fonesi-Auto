@@ -122,7 +122,7 @@ type CompileFailure = Readonly<{
   type: (typeof COMPILE_TYPES)[number];
   inner: (typeof COMPILE_TYPES)[number];
   cs: string;
-  tempReason: (typeof TEMP_REASONS)[number];
+  tempReason: string;
   tempRelation: (typeof TEMP_RELATIONS)[number];
   tempLength: (typeof TEMP_LENGTHS)[number];
 }>;
@@ -141,7 +141,13 @@ function compileFrame(line: string): CompileFailure | null {
   )
     return null;
   if (
-    !TEMP_REASONS.some((v) => v === tempReason) ||
+    !(
+      TEMP_REASONS.some((v) => v === tempReason) ||
+      (typeof tempReason === 'string' &&
+        /^WIN32_0[0-4][0-9]{2}$/.test(tempReason) &&
+        tempReason.length === 10 &&
+        tempReason !== 'WIN32_0000')
+    ) ||
     !TEMP_RELATIONS.some((v) => v === tempRelation) ||
     !TEMP_LENGTHS.some((v) => v === tempLength)
   )
