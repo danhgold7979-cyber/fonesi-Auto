@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as contract from '../src/settings-contract.ts';
+import * as fleetContract from '../src/fleet-contract.ts';
 const code = transformSync(readFileSync(new URL('../src/renderer.tsx', import.meta.url), 'utf8'), {
   loader: 'tsx',
   format: 'cjs',
@@ -18,7 +19,7 @@ const settings = (extra = {}) => ({
   persistence: 'PERSISTED',
   ...extra,
 });
-function mount(api, width = 1600) {
+function mount(api, width = 1600, fleetApi = null) {
   let component,
     cursor = 0;
   const slots = [];
@@ -28,6 +29,22 @@ function mount(api, width = 1600) {
   const hostWindow = {
     innerWidth: width,
     preferences: api,
+    fleet: fleetApi ?? {
+      read: async () =>
+        fleetContract.fleetSuccess(
+          'f1',
+          'OBSERVED',
+          {
+            registryRevision: 0,
+            availability: 'UNAVAILABLE',
+            reason: 'BINARY_UNAVAILABLE',
+            devices: [],
+            selection: { revision: 0, selectedDeviceIds: [], activeDeviceId: null, groups: [] },
+          },
+          'DEGRADED',
+        ),
+      replaceSelection: async () => fleetContract.fleetError('FLEET_UNAVAILABLE', null, 'DEGRADED'),
+    },
     foundation: { health: async () => '{"ok":true}', settings: async () => '{"ok":true}' },
     addEventListener: (name, fn) => events.set(name, fn),
     removeEventListener: (name, fn) => {
@@ -79,6 +96,7 @@ function mount(api, width = 1600) {
           }),
         };
       if (name === './settings-contract.js') return contract;
+      if (name === './fleet-contract.js') return fleetContract;
       if (name === './ui/ui-shell.tsx') return { UiShell: 'UiShell' };
       throw Error('UNKNOWN_MODULE');
     },
@@ -331,4 +349,127 @@ test('actual shell dimension callback persists exact observed revision once with
   await flush();
   assert.equal(calls.length, 1);
   m.dispose();
+});
+const fleetId = '00000001-1234-4234-8234-123456789abc';
+const fleetState = (revision = 0, selected = []) => ({
+  registryRevision: 1,
+  availability: 'OBSERVED',
+  reason: null,
+  devices: [
+    {
+      deviceId: fleetId,
+      generation: 1,
+      label: 'Device 0001',
+      state: 'OFFLINE',
+      verification: 'VERIFIED',
+    },
+  ],
+  selection: { revision, selectedDeviceIds: selected, activeDeviceId: null, groups: [] },
+});
+test('fleet hydrates once independently of preferences and exposes only main-observed safe UI rows', async () => {
+  let reads = 0,
+    prefs = 0;
+  const m = mount(
+    {
+      read: async () => {
+        prefs++;
+        return contract.settingsSuccess('p1', 'OBSERVED', settings({ theme: 'DARK' }), 'AVAILABLE');
+      },
+    },
+    1600,
+    {
+      read: async () => {
+        reads++;
+        return fleetContract.fleetSuccess('f1', 'OBSERVED', fleetState(), 'DEGRADED');
+      },
+      replaceSelection: async () => {
+        throw Error('not requested');
+      },
+    },
+  );
+  assert.equal(m.render().props.snapshot.status, 'LOADING');
+  m.effects();
+  await flush();
+  m.effects();
+  await flush();
+  const shell = m.render().props;
+  assert.equal(reads, 1);
+  assert.equal(prefs, 1);
+  assert.equal(shell.theme, 'DARK');
+  assert.equal(shell.snapshot.provenance, 'MAIN_OBSERVED');
+  assert.equal(shell.snapshot.devices[0].serial, '—');
+  assert.equal(shell.snapshot.devices[0].name, 'Device 0001');
+  assert.equal(shell.selection.selectedDeviceIds.length, 0);
+});
+test('fleet selection remains confirmed-only, guards immediate double submit and requires explicit read after timeout', async () => {
+  let reads = 0,
+    resolve;
+  const mutations = [];
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    {
+      read: async () => {
+        reads++;
+        return fleetContract.fleetSuccess('f1', 'OBSERVED', fleetState(), 'AVAILABLE');
+      },
+      replaceSelection: (revision, selection) => {
+        mutations.push({ revision, selection });
+        return new Promise((r) => (resolve = r));
+      },
+    },
+  );
+  m.effects();
+  await flush();
+  const next = { selectedDeviceIds: [fleetId], activeDeviceId: null, groups: [] };
+  m.render().props.onSelection(next);
+  m.render().props.onSelection(next);
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0].revision, 0);
+  assert.equal(m.render().props.selection.selectedDeviceIds.length, 0);
+  resolve(fleetContract.fleetError('TIMEOUT', null, 'DEGRADED'));
+  await flush();
+  assert.equal(m.render().props.snapshot.status, 'ERROR');
+  assert.equal(m.render().props.selectionBlocked, true);
+  m.render().props.onSelection(next);
+  assert.equal(mutations.length, 1);
+  m.effects();
+  await flush();
+  assert.equal(reads, 1);
+  m.find('fleet-read').props.onClick();
+  await flush();
+  assert.equal(reads, 2);
+  assert.equal(m.render().props.selectionBlocked, false);
+  m.render().props.onSelection(next);
+  resolve(fleetContract.fleetSuccess('f2', 'APPLIED', fleetState(1, [fleetId]), 'DEGRADED'));
+  await flush();
+  assert.deepEqual(Array.from(m.render().props.selection.selectedDeviceIds), [fleetId]);
+  assert.match(m.find('fleet-status').props.children, /PROCESS-LOCAL SELECTION 1/);
+});
+test('failed fleet hydration never hides independently restored preferences or automatically retries', async () => {
+  let reads = 0;
+  const m = mount(
+    {
+      read: async () =>
+        contract.settingsSuccess('p1', 'OBSERVED', settings({ theme: 'DARK' }), 'AVAILABLE'),
+    },
+    1600,
+    {
+      read: async () => {
+        reads++;
+        return 'invalid';
+      },
+      replaceSelection: async () => {
+        throw Error('must not mutate');
+      },
+    },
+  );
+  m.effects();
+  await flush();
+  m.effects();
+  await flush();
+  assert.equal(reads, 1);
+  assert.equal(m.render().props.theme, 'DARK');
+  assert.equal(m.render().props.snapshot.status, 'ERROR');
+  assert.equal(m.render().props.selectionBlocked, true);
 });

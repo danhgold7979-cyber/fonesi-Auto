@@ -1,3 +1,4 @@
+import { createFleetClient } from './fleet-client.js';
 import { contextBridge, ipcRenderer } from 'electron';
 import { DIAGNOSTIC_CHANNEL } from './ipc-diagnostic-contract.js';
 import { createDiagnosticClient } from './preload-client.js';
@@ -18,6 +19,20 @@ const preferences = createSettingsClient(
   budget,
   undefined,
   readiness,
+);
+const fleet = createFleetClient(
+  (wire) => ipcRenderer.invoke('foundation:fleet:v1', wire),
+  budget,
+  undefined,
+  readiness,
+);
+contextBridge.exposeInMainWorld(
+  'fleet',
+  Object.freeze({
+    read: () => fleet.read(),
+    replaceSelection: (revision: unknown, selection: unknown) =>
+      fleet.replaceSelection(revision, selection),
+  }),
 );
 contextBridge.exposeInMainWorld(
   'foundation',
@@ -42,6 +57,7 @@ window.addEventListener(
     readiness.dispose();
     client.dispose();
     preferences.dispose();
+    fleet.dispose();
   },
   { once: true },
 );

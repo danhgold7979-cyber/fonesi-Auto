@@ -26,8 +26,40 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual sixty-two modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 62, runtimeInputs: 62 });
+test('actual sixty-six modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 66, runtimeInputs: 66 });
+});
+test('fleet stays in its exact role boundary and graph limit remains finite at sixty-six', async () => {
+  assert.equal(Object.keys(map.modules).length, 66);
+  await assert.rejects(
+    () =>
+      validateGraph(actual(), {
+        ...map,
+        modules: { ...map.modules, 'overflow.ts': { role: 'contract', imports: {} } },
+      }),
+    /MAP_INVALID/,
+  );
+  for (const name of ['renderer.tsx', 'preload.ts', 'fleet-client.ts', 'fleet-contract.ts']) {
+    await denied(
+      { ...actual(), [name]: "import { createFleetService } from './main/fleet-service.ts';" },
+      /EDGE_DENIED/,
+    );
+  }
+  const clientMap = structuredClone(map);
+  clientMap.modules['fleet-client.ts'].imports['./settings-client.ts'] = {
+    createSettingsReadiness: 'type',
+  };
+  await assert.rejects(
+    () =>
+      validateGraph(
+        {
+          ...actual(),
+          'fleet-client.ts': "import type { createSettingsReadiness } from './settings-client.ts';",
+        },
+        clientMap,
+      ),
+    /LAYER_DENIED/,
+  );
 });
 test('renderer cannot import native, Electron, or main-owned profile services', async () => {
   for (const statement of [
@@ -120,7 +152,14 @@ test('comments strings regex templates and actual JSX do not fabricate imports',
   );
   assert.deepEqual(
     (await sourceImports(actual()['renderer.tsx'], 'tsx')).map((edge) => edge.specifier),
-    ['react-dom/client', 'react', './settings-contract.js', './ui/ui-shell.tsx'],
+    [
+      'react-dom/client',
+      'react',
+      './settings-contract.js',
+      './fleet-contract.js',
+      './ui/ui-model.js',
+      './ui/ui-shell.tsx',
+    ],
   );
 });
 test('allowed-edge value and type cycles are independently rejected', async () => {

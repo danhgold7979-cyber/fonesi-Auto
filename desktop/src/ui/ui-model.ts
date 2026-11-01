@@ -55,7 +55,14 @@ export type UiDevice = Readonly<{
   id: string;
   name: string;
   serial: string;
-  status: 'UNAVAILABLE' | 'OFFLINE';
+  status:
+    | 'UNAVAILABLE'
+    | 'DEVICE'
+    | 'UNAUTHORIZED'
+    | 'OFFLINE'
+    | 'UNKNOWN'
+    | 'CONFLICT'
+    | 'DISCONNECTED';
   connection: string;
 }>;
 export type UiAccount = Readonly<{
@@ -92,10 +99,13 @@ export type UiRows = Readonly<{
 }>;
 export type UiSnapshot = UiRows &
   (
-    | Readonly<{ status: 'UNAVAILABLE'; reason: 'NOT_IMPLEMENTED' }>
+    | Readonly<{
+        status: 'UNAVAILABLE';
+        reason: 'NOT_IMPLEMENTED' | 'BINARY_UNAVAILABLE' | 'LIVE_DISCOVERY_UNAVAILABLE';
+      }>
     | Readonly<{ status: 'LOADING' }>
     | Readonly<{ status: 'ERROR'; code: 'UNAVAILABLE' | 'INVALID_RESPONSE' }>
-    | Readonly<{ status: 'READY'; provenance: 'SYNTHETIC_TEST' }>
+    | Readonly<{ status: 'READY'; provenance: 'SYNTHETIC_TEST' | 'MAIN_OBSERVED' }>
   );
 const empty = Object.freeze([]);
 export const unavailableSnapshot: UiSnapshot = Object.freeze({
@@ -124,3 +134,9 @@ export type PageProps = Readonly<{
 // Fixed UI command vocabulary is data, not executable module syntax.
 export const UI_IMPORT_ACTION: DomainAction = 'import';
 export const UI_EXPORT_ACTION: DomainAction = 'export';
+
+export type UiSelection = Readonly<{
+  selectedDeviceIds: readonly string[];
+  activeDeviceId: string | null;
+  groups: readonly Readonly<{ groupId: string; deviceIds: readonly string[] }>[];
+}>;

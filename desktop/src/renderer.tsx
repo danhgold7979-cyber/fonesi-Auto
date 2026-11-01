@@ -1,6 +1,8 @@
 import { createRoot } from 'react-dom/client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { parseSettingsResponse, type PublicSettings } from './settings-contract.js';
+import { parseFleetResponse, type FleetSnapshot, type FleetSelection } from './fleet-contract.js';
+import type { UiSnapshot } from './ui/ui-model.js';
 import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
@@ -11,6 +13,10 @@ declare global {
       reset: (revision: number) => Promise<string>;
       restorePrevious: (revision: number) => Promise<string>;
     }>;
+    fleet: Readonly<{
+      read: () => Promise<string>;
+      replaceSelection: (expectedRevision: number, selection: FleetSelection) => Promise<string>;
+    }>;
     foundation: Readonly<{ health: () => Promise<string>; settings: () => Promise<string> }>;
   }
 }
@@ -20,6 +26,80 @@ function Diagnostic() {
   const [preferenceStatus, setPreferenceStatus] = useState(
     'NOT_READY / READ PERSISTED PREFERENCES',
   );
+  const [fleet, setFleet] = useState<FleetSnapshot | null>(null);
+  const [fleetStatus, setFleetStatus] = useState('LOADING / FLEET NOT YET OBSERVED');
+  const [fleetFailed, setFleetFailed] = useState(false);
+  const [fleetPending, setFleetPending] = useState(false);
+  const [fleetReconcile, setFleetReconcile] = useState(false);
+  const fleetInFlight = useRef(false);
+  const fleetHydrationStarted = useRef(false);
+  const fleetAction = useCallback(
+    async (selection?: FleetSelection) => {
+      if (fleetInFlight.current || (selection !== undefined && (!fleet || fleetReconcile))) return;
+      fleetInFlight.current = true;
+      setFleetPending(true);
+      setFleetStatus(
+        selection === undefined ? 'READING / FLEET' : 'PENDING / SELECTION NOT YET APPLIED',
+      );
+      try {
+        const raw =
+          selection === undefined
+            ? await window.fleet.read()
+            : await window.fleet.replaceSelection(fleet?.selection.revision ?? 0, selection);
+        const response = parseFleetResponse(raw);
+        if (!response?.ok) {
+          setFleetFailed(true);
+          setFleetReconcile(true);
+          setFleetStatus(
+            `${response && !response.ok ? response.code : 'INTERNAL_FAILURE'} / EXPLICIT FLEET READ REQUIRED`,
+          );
+          return;
+        }
+        setFleet(response.fleet);
+        setFleetFailed(false);
+        setFleetReconcile(false);
+        setFleetStatus(
+          `${response.outcome} / PROCESS-LOCAL SELECTION ${response.fleet.selection.revision} / ${response.fleet.reason ?? 'OBSERVED'} / AUDIT ${response.auditHealth}`,
+        );
+      } catch {
+        setFleetFailed(true);
+        setFleetReconcile(true);
+        setFleetStatus('INTERNAL_FAILURE / EXPLICIT FLEET READ REQUIRED');
+      } finally {
+        fleetInFlight.current = false;
+        setFleetPending(false);
+      }
+    },
+    [fleet, fleetReconcile],
+  );
+  useEffect(() => {
+    if (fleetHydrationStarted.current) return;
+    fleetHydrationStarted.current = true;
+    void fleetAction();
+  }, [fleetAction]);
+  const emptyRows = { devices: [], accounts: [], media: [], jobs: [] };
+  const fleetUi: UiSnapshot = fleetFailed
+    ? { status: 'ERROR', code: 'UNAVAILABLE', ...emptyRows }
+    : !fleet
+      ? { status: 'LOADING', ...emptyRows }
+      : fleet.availability === 'UNAVAILABLE'
+        ? {
+            status: 'UNAVAILABLE',
+            reason: fleet.reason as 'BINARY_UNAVAILABLE' | 'LIVE_DISCOVERY_UNAVAILABLE',
+            ...emptyRows,
+          }
+        : {
+            status: 'READY',
+            provenance: 'MAIN_OBSERVED',
+            ...emptyRows,
+            devices: fleet.devices.map((device) => ({
+              id: device.deviceId,
+              name: device.label,
+              serial: '—',
+              status: device.state,
+              connection: 'UNKNOWN',
+            })),
+          };
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
   const [reconcile, setReconcile] = useState(false);
@@ -162,6 +242,17 @@ function Diagnostic() {
   }
   return (
     <UiShell
+      snapshot={fleetUi}
+      selection={
+        fleetFailed || !fleet
+          ? { selectedDeviceIds: [], activeDeviceId: null, groups: [] }
+          : fleet.selection
+      }
+      selectionPending={fleetPending}
+      selectionBlocked={!fleet || fleetReconcile}
+      onSelection={(selection) => {
+        void fleetAction(selection);
+      }}
       theme={dark ? 'DARK' : 'LIGHT'}
       ready={preferences !== null}
       pending={pending}
@@ -178,6 +269,21 @@ function Diagnostic() {
       }}
       settings={
         <>
+          <section aria-label="Fleet status" id="fleet-panel">
+            <button
+              type="button"
+              id="fleet-read"
+              disabled={fleetPending}
+              onClick={() => {
+                void fleetAction();
+              }}
+            >
+              Read fleet / reconcile selection
+            </button>
+            <p id="fleet-status" aria-live="polite">
+              {fleetStatus}
+            </p>
+          </section>
           <button
             type="button"
             id="health-read"

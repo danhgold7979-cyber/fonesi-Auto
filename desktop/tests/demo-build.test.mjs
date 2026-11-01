@@ -117,7 +117,18 @@ test('separate demo graph admits exact shared UI closure but rejects privileged 
   const sources = demoSources(root);
   const map = readMap(resolve(root, 'demo-module-map.json'));
   await validateGraph(sources, map);
+  assert.equal(map.modules['src/ui/ui-shell.tsx'].imports['./ui-model.js'].UiSelection, 'type');
+  const widened = structuredClone(map);
+  widened.modules['src/ui/ui-shell.tsx'].imports['./ui-model.js'].UiSelection = 'value';
+  await assert.rejects(validateGraph(sources, widened), /BINDING_DENIED/);
+  assert.equal(
+    Object.keys(map.modules).some((name) => name.includes('fleet-')),
+    false,
+  );
   for (const prefix of [
+    "import { createFleetService } from '../src/main/fleet-service.ts';\n",
+    "import { installFleetBridge } from '../src/fleet-bridge.ts';\n",
+    "import { createFleetClient } from '../src/fleet-client.ts';\n",
     "import { app } from 'electron';\n",
     "import type { DatabaseSync } from 'node:sqlite';\n",
     "import { FoundationDatabase } from '../src/main/foundation-database.js';\n",

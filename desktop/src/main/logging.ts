@@ -9,6 +9,7 @@ import type {
   LogRecord,
   VaultAuditFields,
   SettingsAuditFields,
+  FleetAuditFields,
 } from '../log-contract.ts';
 export type LogClock = () => string;
 export type LogNotice = (marker: 'LOGGING_DEGRADED') => void;
@@ -271,6 +272,77 @@ export class ApplicationLogger {
         component: 'MAIN',
         task: 'P1-07',
         event: 'SETTINGS_OPERATION',
+        diagnosticId: snapshot.diagnosticId,
+        code: snapshot.code,
+        operation: snapshot.operation,
+        phase: snapshot.phase,
+        expectedRevision: snapshot.expectedRevision,
+        resultingRevision: snapshot.resultingRevision,
+      };
+      const encoded = encodeLogRecord(record);
+      if (encoded === null) throw new Error('AUDIT_INVALID');
+      ++this.sequence;
+      this.lastUtc = utc;
+      if (
+        this.store.enqueue(JSON.parse(encoded) as LogRecord) !== 'QUEUED' ||
+        (await this.store.flush()) !== 'FLUSHED' ||
+        this.health !== 'AVAILABLE'
+      )
+        throw new Error('AUDIT_UNAVAILABLE');
+      return 'AVAILABLE';
+    } catch {
+      this.broken = true;
+      this.reportHealth();
+      return 'DEGRADED';
+    }
+  }
+  async fleetAudit(input: FleetAuditFields): Promise<LogHealth> {
+    try {
+      if (
+        this.closing ||
+        this.health !== 'AVAILABLE' ||
+        !this.store ||
+        this.runId === null ||
+        !Number.isSafeInteger(this.sequence + 1)
+      )
+        return 'DEGRADED';
+      const fields = [
+        'operation',
+        'phase',
+        'diagnosticId',
+        'expectedRevision',
+        'resultingRevision',
+        'code',
+      ];
+      if (
+        input === null ||
+        typeof input !== 'object' ||
+        Object.getPrototypeOf(input) !== Object.prototype ||
+        Object.getOwnPropertySymbols(input).length ||
+        Object.getOwnPropertyNames(input).length !== fields.length
+      )
+        throw new Error('AUDIT_INVALID');
+      const snapshot: Record<string, unknown> = {};
+      for (const field of fields) {
+        const descriptor = Object.getOwnPropertyDescriptor(input, field);
+        if (!descriptor || !Object.hasOwn(descriptor, 'value') || !descriptor.enumerable)
+          throw new Error('AUDIT_INVALID');
+        snapshot[field] = descriptor.value;
+      }
+      const utc = this.clock();
+      if (this.lastUtc !== null && utc < this.lastUtc && !this.regressionRecorded) {
+        this.regressionRecorded = true;
+        this.emit('LOGGING_DEGRADED', 'CLOCK_REGRESSION');
+      }
+      const record = {
+        schemaVersion: 4,
+        runId: this.runId,
+        sequence: this.sequence + 1,
+        utc,
+        severity: snapshot.code === 'OK' ? 'INFO' : 'WARN',
+        component: 'MAIN',
+        task: 'P2-10',
+        event: 'FLEET_OPERATION',
         diagnosticId: snapshot.diagnosticId,
         code: snapshot.code,
         operation: snapshot.operation,

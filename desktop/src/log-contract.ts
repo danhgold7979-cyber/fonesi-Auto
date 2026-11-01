@@ -1,3 +1,4 @@
+import { FLEET_ERRORS, type FleetErrorCode } from './fleet-contract.ts';
 import {
   SETTINGS_ERRORS,
   validSettingsRevision,
@@ -104,7 +105,43 @@ export type SettingsLogRecord = SettingsAuditFields &
     task: 'P1-07';
     event: 'SETTINGS_OPERATION';
   }>;
-export type LogRecord = LegacyLogRecord | VaultLogRecord | SettingsLogRecord;
+export type FleetAuditFields = Readonly<{
+  operation: 'READ' | 'SELECT';
+  phase: 'INTENT' | 'RESULT';
+  diagnosticId: string;
+  expectedRevision: number | null;
+  resultingRevision: number | null;
+  code: 'OK' | FleetErrorCode;
+}>;
+export type FleetLogRecord = FleetAuditFields &
+  Readonly<{
+    schemaVersion: 4;
+    runId: string;
+    sequence: number;
+    utc: string;
+    severity: 'INFO' | 'WARN';
+    component: 'MAIN';
+    task: 'P2-10';
+    event: 'FLEET_OPERATION';
+  }>;
+export type LogRecord = LegacyLogRecord | VaultLogRecord | SettingsLogRecord | FleetLogRecord;
+function fleetTuple(record: Record<string, unknown>): boolean {
+  return (
+    record.component === 'MAIN' &&
+    record.task === 'P2-10' &&
+    record.event === 'FLEET_OPERATION' &&
+    ['READ', 'SELECT'].includes(record.operation as string) &&
+    ['INTENT', 'RESULT'].includes(record.phase as string) &&
+    diagnosticId(record.diagnosticId) &&
+    (record.code === 'OK' || FLEET_ERRORS.includes(record.code as FleetErrorCode)) &&
+    record.severity === (record.code === 'OK' ? 'INFO' : 'WARN') &&
+    (record.expectedRevision === null || validSettingsRevision(record.expectedRevision)) &&
+    (record.resultingRevision === null || validSettingsRevision(record.resultingRevision)) &&
+    (record.phase !== 'INTENT' ||
+      (record.operation === 'SELECT' && record.code === 'OK' && record.resultingRevision === null))
+  );
+}
+
 function settingsTuple(record: Record<string, unknown>): boolean {
   return (
     record.component === 'MAIN' &&
@@ -270,7 +307,7 @@ export function encodeLogRecord(input: unknown): string | null {
     const version = Object.getOwnPropertyDescriptor(input, 'schemaVersion');
     if (!version || !Object.hasOwn(version, 'value')) return null;
     if (version.value === 2) fields.push('operation', 'phase', 'secretId', 'revision');
-    else if (version.value === 3)
+    else if (version.value === 3 || version.value === 4)
       fields.push('operation', 'phase', 'expectedRevision', 'resultingRevision');
     else if (version.value !== 1) return null;
     if (Object.getOwnPropertyNames(input).length !== fields.length) return null;
@@ -291,7 +328,9 @@ export function encodeLogRecord(input: unknown): string | null {
         ? record.task === 'P1-04' && tuple(record)
         : record.schemaVersion === 2
           ? vaultTuple(record)
-          : settingsTuple(record))
+          : record.schemaVersion === 3
+            ? settingsTuple(record)
+            : fleetTuple(record))
     )
       return null;
     const encoded = JSON.stringify(record) + '\n';

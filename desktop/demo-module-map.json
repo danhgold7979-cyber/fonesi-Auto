@@ -128,7 +128,8 @@
           "unavailableSnapshot": "value",
           "PageKey": "type",
           "DomainAction": "type",
-          "UiSnapshot": "type"
+          "UiSnapshot": "type",
+          "UiSelection": "type"
         },
         "./ui-shared.tsx": {
           "Icon": "value",

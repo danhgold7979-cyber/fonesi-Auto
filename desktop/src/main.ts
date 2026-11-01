@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { installFleetBridge } from './fleet-bridge.js';
+import { createFleetService, type FleetService } from './main/fleet-service.js';
+import { emptyRegistry } from './main/transport-registry.js';
 import {
   captureNativeWindow,
   restoreWindowOptions,
@@ -52,6 +56,8 @@ import {
 let bridge: ReturnType<typeof installFoundationBridge> | undefined;
 let preferencesBridge: ReturnType<typeof installPreferencesBridge> | undefined;
 let settingsStore: SettingsStore | undefined;
+let fleetService: FleetService | undefined;
+let fleetBridge: ReturnType<typeof installFleetBridge> | undefined;
 let settingsDrain: Promise<SettingsResult | null> | undefined;
 let resourcesDisposed = false;
 let disposeSession: (() => void) | undefined;
@@ -64,6 +70,7 @@ let loggingNotice = false;
 let persistence: FoundationPersistence | undefined;
 const persistenceLifecycle = createPersistenceLifecycle<FoundationPersistence>();
 const secretLifecycle = createPersistenceLifecycle<SecretStore>();
+const fleetLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
 const settingsLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
 let backupTimer: ReturnType<typeof setInterval> | undefined;
 function reportLoggingDegraded(): void {
@@ -78,6 +85,7 @@ function cleanup(): boolean {
   closing = true;
   if (backupTimer !== undefined) clearInterval(backupTimer);
   const disposed = disposeResources([
+    () => fleetBridge?.dispose(),
     () => preferencesBridge?.dispose(),
     () => bridge?.dispose(),
     () => lifecycle?.dispose(),
@@ -184,6 +192,9 @@ try {
         'secret-contract.cjs',
         'settings-contract.cjs',
         'preferences-bridge.cjs',
+        'fleet-contract.cjs',
+        'fleet-bridge.cjs',
+        'fleet-service.cjs',
         'settings-store.cjs',
         'settings-window.cjs',
         'preload.cjs',
@@ -294,6 +305,20 @@ try {
         stylesheet.toString('utf8'),
       );
       bridge = installFoundationBridge(ipcMain, logger);
+      const registry = emptyRegistry();
+      fleetService = createFleetService({
+        registry: () => registry,
+        assertOwnedSync: () => {
+          if (closing || !persistenceEntry) throw new Error('OWNER_REVOKED');
+          assertPreparedPersistenceLease(persistenceEntry);
+        },
+        newDiagnostic: () => randomUUID(),
+        audit: (fields) => logger?.fleetAudit(fields) ?? Promise.resolve('DEGRADED'),
+        availability: () => 'BINARY_UNAVAILABLE',
+      });
+      const ownedFleetService = fleetService;
+      await fleetLifecycle.open(async () => ({ shutdown: () => ownedFleetService.close() }));
+      fleetBridge = installFleetBridge(ipcMain, bridge.admitPreferences, () => fleetService);
       const settingsDb = persistence?.settingsAdapter();
       const initialSettings = settingsDb?.readSettings();
       lifecycle = createLifecycle(() => {
@@ -443,6 +468,7 @@ try {
     stop: () => {
       closing = true;
       if (backupTimer !== undefined) clearInterval(backupTimer);
+      fleetBridge?.dispose();
       preferencesBridge?.dispose();
       bridge?.dispose();
       // Capture native geometry before any window destruction; await the same
@@ -452,6 +478,7 @@ try {
     },
     flush: async () => {
       try {
+        await fleetLifecycle.stop();
         await settingsLifecycle.stop();
         cleanupComplete = cleanup() && cleanupComplete;
         await secretLifecycle.stop();

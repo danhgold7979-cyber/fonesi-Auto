@@ -27,6 +27,10 @@ import { runStages } from '../scripts/stages.mjs';
 const require = createRequire(import.meta.url);
 const admission = require('../launch/package-admission.cjs');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+test('package admission closed build outputs exactly match the current build manifest', () => {
+  assert.deepEqual(admission.BUILD_OUTPUTS, outputs);
+  assert.equal(new Set(admission.BUILD_OUTPUTS).size, outputs.length);
+});
 function owned(action) {
   const parent = resolve(root, '.test-output');
   assert.equal(lstatSync(parent).isSymbolicLink(), false);

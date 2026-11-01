@@ -1,7 +1,7 @@
 # PHASE-02 — ADB and device fleet
 
 **Revision/date:** 1.2-software-entry / 2026-11-01
-**Plan:** BOUNDED SOFTWARE ENTRY APPROVED · **Execution:** IN_PROGRESS · **Coding:** YES, internal P2-01–P2-07 batch only
+**Plan:** BOUNDED SOFTWARE ENTRY APPROVED · **Execution:** IN_PROGRESS · **Coding:** YES, reviewed bounded internal software slices
 **Development branch:** `phase-02`, created/verified 2026-11-01 02:37–02:38 UTC
 **Base:** reviewed Phase1 public `f8b155738e0ebbe404449579d4f4b60b911aed28`; no main merge
 **Owner/reviewer:** coordinator Coder Bin / independent source-and-safety reviewer
@@ -30,7 +30,15 @@ Contracts include device ID, explicit serial/transport ID, connection generation
 
 ## 4. Task packages
 
-P2-01–P2-07 internal source portions are **IN_PROGRESS**; no complete canonical task has new acceptance. P2-08–P2-13 remain **NOT_STARTED**. All actual ADB/Windows lifecycle/physical tests below remain **NOT_RUN**; pure source/fixture evidence is recorded separately in the checkpoint ledger. Each row names deliverable, direct dependencies, both positive and negative assertions, evidence and rollback. Common evidence/rollback rules in §§5–6 apply to every row.
+Internal P2-01–P2-12 software portions are **IN_PROGRESS** within their recorded finite
+contracts; P2-13 actual wireless pairing remains NOT_STARTED. No complete canonical
+task has new acceptance. The official candidate version-only development job has a
+bounded PASS; isolated-server development refused an existing profile before launch.
+Actual device/physical/AVD/input/capture/Unicode/wireless acceptance tests remain NOT_RUN.
+[Fleet integration](../evidence/P2-fleet-facade-integration-2026-11-01.md),
+[selection/fault fixtures](../evidence/P2-selection-diagnostics-faults-software-2026-11-01.md)
+and [durable source entry](P2-DURABLE-REGISTRY-CAPTURE-PROPOSAL.md) retain exact scopes,
+not wholesale task completion. Each row names deliverable, direct dependencies, both positive and negative assertions, evidence and rollback. Common evidence/rollback rules in §§5–6 apply to every row.
 
 | ID / deliverable and proposed module | Dependencies | Positive acceptance | Negative / failure acceptance | Required evidence / rollback |
 |---|---|---|---|---|

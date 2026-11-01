@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 03:33 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 03:54 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -28,6 +28,12 @@ Phase2 reviewed internal P2-01–P2-07 source batch is authorized under Amendmen
 The [official candidate version job](evidence/P2-01-platform-tools-development-2026-11-01.md) now has bounded DEVELOPMENT_VERSION_PASS (CI41267669556); production remains unavailable. [Pure input/capture contracts](evidence/P2-input-capture-software-2026-11-01.md) are the next in-progress source slice, with no actual device effect or full task acceptance.
 Input/capture source now has exact Windows678/109/185 PASS; native input/capture remain NOT_RUN. [Isolated server development source](evidence/P2-02-isolated-server-development-2026-11-01.md) has local688 and affected review PASS, but its first hosted attempt refused a preexisting native `.android` entry before any server launch. Native server criterion is UNMET; automatic retries are disabled and no existing profile is adopted.
 [Selection/diagnostics/fault composition](evidence/P2-selection-diagnostics-faults-software-2026-11-01.md) now passes its local711 source checkpoint, with no new IPC/V9/effect integration or canonical task acceptance.
+[Fleet facade/IPC and V9 selection integration](evidence/P2-fleet-facade-integration-2026-11-01.md)
+has local751 source PASS and independent source review, with changed native UI smoke
+NOT_RUN; production fleet remains
+empty/unavailable and selection is process-local. The prior selection checkpoint is
+Windows711/109/194 PASS after the exact CRLF assertion repair. Durable registry/capture
+source entry is approved separately and sequenced next; no live device authority follows.
 Historical Phase0 records below are preserved, not the current software work queue.
 
 | Item | Status | Evidence / boundary |

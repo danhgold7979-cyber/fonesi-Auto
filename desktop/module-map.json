@@ -17,6 +17,14 @@
           "parseSettingsResponse": "value",
           "PublicSettings": "type"
         },
+        "./fleet-contract.js": {
+          "parseFleetResponse": "value",
+          "FleetSnapshot": "type",
+          "FleetSelection": "type"
+        },
+        "./ui/ui-model.js": {
+          "UiSnapshot": "type"
+        },
         "./ui/ui-shell.tsx": {
           "UiShell": "value"
         }
@@ -25,6 +33,9 @@
     "preload.ts": {
       "role": "preload",
       "imports": {
+        "./fleet-client.js": {
+          "createFleetClient": "value"
+        },
         "electron": {
           "contextBridge": "value",
           "ipcRenderer": "value"
@@ -116,6 +127,20 @@
     "main.ts": {
       "role": "main",
       "imports": {
+        "node:crypto": {
+          "randomUUID": "value",
+          "createHash": "value"
+        },
+        "./fleet-bridge.js": {
+          "installFleetBridge": "value"
+        },
+        "./main/fleet-service.js": {
+          "createFleetService": "value",
+          "FleetService": "type"
+        },
+        "./main/transport-registry.js": {
+          "emptyRegistry": "value"
+        },
         "./main/settings-window.js": {
           "captureNativeWindow": "value",
           "restoreWindowOptions": "value",
@@ -183,9 +208,6 @@
         },
         "node:path": {
           "join": "value"
-        },
-        "node:crypto": {
-          "createHash": "value"
         },
         "./main/lifecycle.js": {
           "createLifecycle": "value",
@@ -256,6 +278,10 @@
     "log-contract.ts": {
       "role": "contract",
       "imports": {
+        "./fleet-contract.ts": {
+          "FLEET_ERRORS": "value",
+          "FleetErrorCode": "type"
+        },
         "./settings-contract.ts": {
           "SETTINGS_ERRORS": "value",
           "validSettingsRevision": "value",
@@ -419,7 +445,8 @@
           "LogHealth": "type",
           "LogRecord": "type",
           "VaultAuditFields": "type",
-          "SettingsAuditFields": "type"
+          "SettingsAuditFields": "type",
+          "FleetAuditFields": "type"
         }
       }
     },
@@ -1028,7 +1055,8 @@
           "unavailableSnapshot": "value",
           "PageKey": "type",
           "DomainAction": "type",
-          "UiSnapshot": "type"
+          "UiSnapshot": "type",
+          "UiSelection": "type"
         },
         "./ui-shared.tsx": {
           "Icon": "value",
@@ -1169,6 +1197,69 @@
           "isCurrentBinding": "value",
           "CurrentBinding": "type",
           "RegistrySnapshot": "type"
+        }
+      }
+    },
+    "fleet-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "fleet-client.ts": {
+      "role": "client",
+      "imports": {
+        "./invocation-budget.ts": {
+          "createInvocationBudget": "value",
+          "InvocationBudget": "type"
+        },
+        "./fleet-contract.ts": {
+          "parseFleetRequest": "value",
+          "parseFleetResponse": "value",
+          "fleetError": "value",
+          "snapshotFleetSelection": "value",
+          "validFleetRevision": "value",
+          "FleetRequest": "type",
+          "FleetErrorCode": "type"
+        }
+      }
+    },
+    "fleet-bridge.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "electron": {
+          "IpcMain": "type",
+          "IpcMainInvokeEvent": "type"
+        },
+        "./view-session.ts": {
+          "Admission": "type"
+        },
+        "./main/fleet-service.ts": {
+          "FleetService": "type"
+        },
+        "./fleet-contract.ts": {
+          "parseFleetRequest": "value",
+          "fleetError": "value",
+          "FleetErrorCode": "type"
+        }
+      }
+    },
+    "main/fleet-service.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./transport-registry.ts": {
+          "isRegistrySnapshot": "value",
+          "RegistrySnapshot": "type"
+        },
+        "./device-selection.ts": {
+          "createDeviceSelection": "value",
+          "DeviceSelectionSnapshot": "type"
+        },
+        "../fleet-contract.ts": {
+          "snapshotFleetRequest": "value",
+          "fleetSuccess": "value",
+          "fleetError": "value",
+          "FleetRequest": "type",
+          "FleetSnapshot": "type",
+          "FleetErrorCode": "type"
         }
       }
     }

@@ -147,7 +147,7 @@ export async function validateGraph(sources, map) {
   if (
     map.schemaVersion !== 1 ||
     !map.modules ||
-    Object.keys(map.modules).length > 64 ||
+    Object.keys(map.modules).length > 66 ||
     Object.keys(map.modules).length === 0
   )
     reject('MAP_INVALID');

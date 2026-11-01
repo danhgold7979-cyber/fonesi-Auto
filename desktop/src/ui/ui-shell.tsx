@@ -7,6 +7,7 @@ import {
   type PageKey,
   type DomainAction,
   type UiSnapshot,
+  type UiSelection,
 } from './ui-model.js';
 import { Icon, SocialIcon, UnavailableButton, EmptyPanel, UiModal } from './ui-shared.tsx';
 import { OverviewPage, AccountsPage, TrackingPage } from './primary-pages.tsx';
@@ -24,6 +25,10 @@ export type ShellProps = Readonly<{
   onDimensions: (dock: number | null, tile: number) => void;
   settings: ReactNode;
   snapshot?: UiSnapshot;
+  selection?: UiSelection;
+  selectionPending?: boolean;
+  selectionBlocked?: boolean;
+  onSelection?: (selection: UiSelection) => void;
 }>;
 function Performance({
   onUnavailable,
@@ -118,7 +123,7 @@ const QUICK = [
 export function UiShell(p: ShellProps) {
   const supplied = p.snapshot ?? unavailableSnapshot;
   const snapshot: UiSnapshot =
-    supplied.status === 'READY' && supplied.provenance === 'SYNTHETIC_TEST'
+    supplied.status === 'READY' && ['SYNTHETIC_TEST', 'MAIN_OBSERVED'].includes(supplied.provenance)
       ? supplied
       : { ...supplied, devices: [], accounts: [], media: [], jobs: [] };
   const [page, setPage] = useState<PageKey>('overview');
@@ -128,8 +133,37 @@ export function UiShell(p: ShellProps) {
   const [action, setAction] = useState<DomainAction>('scan');
   const [picker, setPicker] = useState(false),
     [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<readonly string[]>([]),
-    [active, setActive] = useState('');
+  const [localSelected, setLocalSelected] = useState<readonly string[]>([]),
+    [localActive, setLocalActive] = useState('');
+  const mainOwned =
+    p.selection !== undefined ||
+    (supplied.status === 'READY' && supplied.provenance === 'MAIN_OBSERVED');
+  const selected = mainOwned ? (p.selection?.selectedDeviceIds ?? []) : localSelected;
+  const active = mainOwned ? (p.selection?.activeDeviceId ?? '') : localActive;
+  const selectionBlocked =
+    mainOwned && (p.selectionBlocked || p.selectionPending || !p.onSelection || !p.selection);
+  const changeSelection = (next: UiSelection) => {
+    if (selectionBlocked) return;
+    p.onSelection?.(next);
+  };
+  const setSelected = (next: readonly string[]) => {
+    if (mainOwned)
+      changeSelection({
+        selectedDeviceIds: next,
+        activeDeviceId: active || null,
+        groups: p.selection?.groups ?? [],
+      });
+    else setLocalSelected(next);
+  };
+  const setActive = (next: string) => {
+    if (mainOwned)
+      changeSelection({
+        selectedDeviceIds: selected,
+        activeDeviceId: next || null,
+        groups: p.selection?.groups ?? [],
+      });
+    else setLocalActive(next);
+  };
   const [view, setView] = useState<'all' | 'one'>('all');
   const [draftDock, setDraftDock] = useState<number | null>(null),
     [draftTile, setDraftTile] = useState<number | null>(null);
@@ -190,7 +224,8 @@ export function UiShell(p: ShellProps) {
     }
     if (!snapshot.devices.some((d) => d.id === id)) return;
     setActive(id);
-    setSelected((current) => (current.includes(id) ? current : [...current, id]));
+    if (!mainOwned)
+      setLocalSelected((current) => (current.includes(id) ? current : [...current, id]));
     setView('one');
   };
   const navigate = (next: PageKey, deviceId?: string) => {
@@ -464,11 +499,16 @@ export function UiShell(p: ShellProps) {
                   <div className="mini-actions">
                     <button
                       type="button"
+                      disabled={selectionBlocked}
                       onClick={() => setSelected(snapshot.devices.map((d) => d.id))}
                     >
                       Chọn tất cả
                     </button>
-                    <button type="button" onClick={() => setSelected([])}>
+                    <button
+                      type="button"
+                      disabled={selectionBlocked}
+                      onClick={() => setSelected([])}
+                    >
                       Bỏ chọn
                     </button>
                     <span>{selected.length} đã chọn</span>
@@ -480,6 +520,7 @@ export function UiShell(p: ShellProps) {
                           <input
                             type="checkbox"
                             checked={selected.includes(d.id)}
+                            disabled={selectionBlocked}
                             onChange={() =>
                               setSelected(
                                 selected.includes(d.id)

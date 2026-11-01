@@ -518,3 +518,38 @@ test('production empty-state markup has its scoped spacing class and retains tru
     );
   }
 });
+test('main-observed selection and active focus await confirmed props without implicit broadcast or demo-state mutation', () => {
+  const requests = [];
+  const empty = { selectedDeviceIds: [], activeDeviceId: null, groups: [] };
+  const m = mount({
+    snapshot: { ...fixture, provenance: 'MAIN_OBSERVED' },
+    selection: empty,
+    onSelection: (selection) => requests.push(selection),
+    selectionPending: false,
+    selectionBlocked: false,
+  });
+  m.find('wall-device-picker').props.onClick();
+  const checkbox = m.all((n) => n.type === 'input' && n.props.type === 'checkbox')[0];
+  checkbox.props.onChange();
+  assert.equal(requests.length, 1);
+  assert.equal(
+    m.all((n) => n.type === 'input' && n.props.type === 'checkbox')[0].props.checked,
+    false,
+  );
+  m.props.selection = { ...empty, selectedDeviceIds: ['test-1'] };
+  assert.equal(
+    m.all((n) => n.type === 'input' && n.props.type === 'checkbox')[0].props.checked,
+    true,
+  );
+  m.find('workspace').props.children.props.onFocusDevice('test-1');
+  assert.equal(m.find('workspace').props.children.props.selectedDeviceId, '');
+  assert.deepEqual(Array.from(requests[1].selectedDeviceIds), ['test-1']);
+  assert.equal(requests[1].activeDeviceId, 'test-1');
+  m.props.selection = { ...empty, selectedDeviceIds: [], activeDeviceId: 'test-1' };
+  assert.equal(m.find('workspace').props.children.props.selectedDeviceId, 'test-1');
+  assert.equal(m.all((n) => n.props?.className?.startsWith('wall-screen')).length, 0);
+  m.props.selectionBlocked = true;
+  m.find('workspace').props.children.props.onFocusDevice('');
+  assert.equal(requests.length, 2);
+  assert.equal(m.find('workspace').props.children.props.selectedDeviceId, 'test-1');
+});
