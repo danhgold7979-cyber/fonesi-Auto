@@ -150,6 +150,8 @@ export function parseAdbMetadata(
       'voltage',
       'temperature',
       'technology',
+      'Charging state',
+      'Charging policy',
     ]);
     const values = new Map<string, string>();
     for (const line of lines) {
@@ -158,6 +160,12 @@ export function parseAdbMetadata(
         return bad('INVALID_METADATA');
       values.set(m[1], m[2]);
     }
+    // BATTERY_AOSP_0D30C78C_V1: the pinned no-argument BatteryService dump
+    // adds both opaque int32 fields. Their presence selects this complete profile;
+    // malformed/partial new dumps never fall back to the legacy subset grammar.
+    const pinnedProfile = values.has('Charging state') || values.has('Charging policy');
+    if (pinnedProfile && (values.size !== allowed.size || values.get('scale') !== '100'))
+      return bad('INVALID_METADATA');
     for (const [key, value] of values) {
       if (
         ['AC powered', 'USB powered', 'Wireless powered', 'Dock powered', 'present'].includes(key)
