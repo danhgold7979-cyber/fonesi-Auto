@@ -4,6 +4,10 @@
     "renderer.tsx": {
       "role": "renderer",
       "imports": {
+        "./platform-tools-setup-contract.js": {
+          "parseSetupResponse": "value",
+          "SetupSnapshot": "type"
+        },
         "react-dom/client": {
           "createRoot": "value"
         },
@@ -33,6 +37,9 @@
     "preload.ts": {
       "role": "preload",
       "imports": {
+        "./platform-tools-setup-client.js": {
+          "createPlatformToolsSetupClient": "value"
+        },
         "./fleet-client.js": {
           "createFleetClient": "value"
         },
@@ -127,6 +134,20 @@
     "main.ts": {
       "role": "main",
       "imports": {
+        "./platform-tools-setup-bridge.js": {
+          "installPlatformToolsSetupBridge": "value"
+        },
+        "./main/platform-tools-setup-service.js": {
+          "createPlatformToolsSetupService": "value",
+          "PlatformToolsSetupService": "type"
+        },
+        "./main/platform-tools-setup-native.js": {
+          "createPlatformToolsSetupNative": "value",
+          "PLATFORM_TOOLS_TERMS_URL": "value"
+        },
+        "./main/platform-tools-download.js": {
+          "createPlatformToolsDownload": "value"
+        },
         "node:crypto": {
           "randomUUID": "value",
           "createHash": "value"
@@ -183,7 +204,8 @@
           "configurePersistenceSession": "value",
           "openPreparedPersistence": "value",
           "openPreparedPersistenceRecovery": "value",
-          "assertPreparedPersistenceLease": "value"
+          "assertPreparedPersistenceLease": "value",
+          "persistenceDataGuard": "value"
         },
         "./main/foundation-persistence.js": {
           "FoundationPersistence": "type"
@@ -209,7 +231,8 @@
           "ipcMain": "value",
           "safeStorage": "value",
           "dialog": "value",
-          "screen": "value"
+          "screen": "value",
+          "shell": "value"
         },
         "node:fs": {
           "readFileSync": "value",
@@ -287,6 +310,10 @@
     "log-contract.ts": {
       "role": "contract",
       "imports": {
+        "./platform-tools-setup-audit-contract.ts": {
+          "validSetupAuditTuple": "value",
+          "SetupAudit": "type"
+        },
         "./durable-audit-contract.ts": {
           "DURABLE_CODES": "value",
           "DURABLE_OPERATIONS": "value",
@@ -462,7 +489,8 @@
           "VaultAuditFields": "type",
           "SettingsAuditFields": "type",
           "FleetAuditFields": "type",
-          "DurableAuditFields": "type"
+          "DurableAuditFields": "type",
+          "SetupAuditFields": "type"
         }
       }
     },
@@ -1478,6 +1506,102 @@
         },
         "./platform-tools-provision-files.ts": {
           "createPlatformToolsProvisionFiles": "value"
+        }
+      }
+    },
+    "platform-tools-setup-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "platform-tools-setup-audit-contract.ts": {
+      "role": "contract",
+      "imports": {
+        "./platform-tools-setup-contract.ts": {
+          "SETUP_CODES": "value",
+          "validSetupRevision": "value",
+          "validSetupUuid": "value",
+          "SetupCode": "type"
+        }
+      }
+    },
+    "platform-tools-setup-client.ts": {
+      "role": "client",
+      "imports": {
+        "./invocation-budget.ts": {
+          "createInvocationBudget": "value",
+          "InvocationBudget": "type"
+        },
+        "./platform-tools-setup-contract.ts": {
+          "parseSetupRequest": "value",
+          "parseSetupResponse": "value",
+          "setupError": "value",
+          "SetupRequest": "type",
+          "SetupCode": "type"
+        }
+      }
+    },
+    "platform-tools-setup-bridge.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "electron": {
+          "IpcMain": "type",
+          "IpcMainInvokeEvent": "type"
+        },
+        "./view-session.ts": {
+          "Admission": "type"
+        },
+        "./main/platform-tools-setup-service.ts": {
+          "PlatformToolsSetupService": "type"
+        },
+        "./platform-tools-setup-contract.ts": {
+          "parseSetupRequest": "value",
+          "setupError": "value",
+          "SetupCode": "type"
+        }
+      }
+    },
+    "main/platform-tools-setup-service.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./platform-tools-provisioner.ts": {
+          "createPlatformToolsProvisioner": "value",
+          "RecipientDecision": "type"
+        },
+        "./platform-tools-download.ts": {
+          "createPlatformToolsDownload": "value"
+        },
+        "./platform-tools-setup-native.ts": {
+          "SetupNativeResult": "type"
+        },
+        "../platform-tools-setup-contract.ts": {
+          "snapshotSetupRequest": "value",
+          "setupSuccess": "value",
+          "setupError": "value",
+          "SetupRequest": "type",
+          "SetupSnapshot": "type"
+        },
+        "../platform-tools-setup-audit-contract.ts": {
+          "SetupAudit": "type"
+        }
+      }
+    },
+    "main/platform-tools-setup-native.ts": {
+      "role": "main-adapter",
+      "imports": {}
+    },
+    "main/platform-tools-download.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:https": {
+          "request": "value",
+          "Agent": "value"
+        },
+        "node:http": {
+          "ClientRequest": "type",
+          "IncomingMessage": "type"
+        },
+        "./platform-tools-candidate.ts": {
+          "PLATFORM_TOOLS_CANDIDATE": "value"
         }
       }
     }

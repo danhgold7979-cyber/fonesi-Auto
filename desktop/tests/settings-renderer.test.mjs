@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as contract from '../src/settings-contract.ts';
 import * as fleetContract from '../src/fleet-contract.ts';
+import * as setupContract from '../src/platform-tools-setup-contract.ts';
 const code = transformSync(readFileSync(new URL('../src/renderer.tsx', import.meta.url), 'utf8'), {
   loader: 'tsx',
   format: 'cjs',
@@ -19,7 +20,7 @@ const settings = (extra = {}) => ({
   persistence: 'PERSISTED',
   ...extra,
 });
-function mount(api, width = 1600, fleetApi = null) {
+function mount(api, width = 1600, fleetApi = null, setupApi = null) {
   let component,
     cursor = 0;
   const slots = [];
@@ -29,6 +30,11 @@ function mount(api, width = 1600, fleetApi = null) {
   const hostWindow = {
     innerWidth: width,
     preferences: api,
+    platformTools: setupApi ?? {
+      read: async () => setupContract.setupError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
+      requestSetup: async () =>
+        setupContract.setupError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
+    },
     fleet: fleetApi ?? {
       read: async () =>
         fleetContract.fleetSuccess(
@@ -97,6 +103,7 @@ function mount(api, width = 1600, fleetApi = null) {
         };
       if (name === './settings-contract.js') return contract;
       if (name === './fleet-contract.js') return fleetContract;
+      if (name === './platform-tools-setup-contract.js') return setupContract;
       if (name === './ui/ui-shell.tsx') return { UiShell: 'UiShell' };
       throw Error('UNKNOWN_MODULE');
     },
@@ -472,4 +479,70 @@ test('failed fleet hydration never hides independently restored preferences or a
   assert.equal(m.render().props.theme, 'DARK');
   assert.equal(m.render().props.snapshot.status, 'ERROR');
   assert.equal(m.render().props.selectionBlocked, true);
+});
+
+test('actual Help setup hydrates once and requires explicit read after pending native acknowledgment', async () => {
+  let reads = 0,
+    requests = 0;
+  const snapshot = {
+    revision: 0,
+    installationRevision: 0,
+    state: 'UNAVAILABLE',
+    operationId: null,
+    code: null,
+    candidateVersion: '37.0.1',
+  };
+  const api = {
+    read: async () => {
+      reads++;
+      return setupContract.setupSuccess(
+        'p1',
+        'OBSERVED',
+        snapshot,
+        '00000000-0000-4000-8000-000000000001',
+        'AVAILABLE',
+      );
+    },
+    requestSetup: async (revision) => {
+      requests++;
+      assert.equal(revision, 0);
+      return setupContract.setupSuccess(
+        'p2',
+        'PENDING',
+        {
+          ...snapshot,
+          revision: 1,
+          state: 'AWAITING_RECIPIENT',
+          operationId: '00000000-0000-4000-8000-000000000002',
+        },
+        '00000000-0000-4000-8000-000000000001',
+        'AVAILABLE',
+      );
+    },
+  };
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    null,
+    api,
+  );
+  assert.equal(m.find('platform-tools-setup').props.disabled, true);
+  m.effects();
+  await flush();
+  m.effects();
+  await flush();
+  assert.equal(reads, 1);
+  assert.equal(m.find('platform-tools-setup').props.disabled, false);
+  m.find('platform-tools-setup').props.onClick();
+  await flush();
+  m.effects();
+  await flush();
+  assert.equal(requests, 1);
+  assert.equal(reads, 1);
+  assert.equal(m.find('platform-tools-setup').props.disabled, true);
+  m.find('platform-tools-read').props.onClick();
+  await flush();
+  assert.equal(reads, 2);
+  assert.equal(m.find('platform-tools-setup').props.disabled, false);
+  m.dispose();
 });

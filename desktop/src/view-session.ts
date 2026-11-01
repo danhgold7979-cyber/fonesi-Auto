@@ -12,6 +12,7 @@ export type Admission =
   | {
       ok: true;
       current: () => boolean;
+      operationCurrent: () => boolean;
       release: () => void;
     };
 
@@ -78,6 +79,8 @@ export class ViewSession {
     return {
       ok: true,
       current: () => !released && this.state === 'ACTIVE' && this.generation === generation,
+      // Main-only liveness observer for an already-admitted bounded operation, not another RPC grant.
+      operationCurrent: () => this.state === 'ACTIVE' && this.generation === generation,
       release: () => {
         if (!released) {
           released = true;

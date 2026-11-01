@@ -1,10 +1,11 @@
 # Proposed bounded schema4 fleet native checkpoint
 
-Status: SOURCE IMPLEMENTED / independently reviewed / execution NOT_RUN. This changes
+Status: IMPLEMENTED / bounded native PASS accepted 2026-11-01 05:19 UTC. This changes
 only the historical schema3 verification envelope, not production persistence, renderer,
 IPC or device authority. The reviewed staged workflow restores only the exact existing
-manual/default-false or phase-02 `[fleet-ui]` opt-in. Coordinator execution disposition
-remains pending; an ordinary source push cannot invoke the job. Design review was against
+manual/default-false or phase-02 `[fleet-ui]` opt-in. Coordinator execution approval was granted at05:11 UTC for exact reviewed local6bd2e8b
+and public25811557fdd13d95fee0b25bd871f76467979795; CI41276065327 completed SUCCESS and its exact bounded evidence was independently validated.
+An ordinary source push cannot invoke the job. Design review was against
 pre-implementation SHA256 `623161f420f655b26a7f3d0563e95b80886e6df2b785a64a2e72d56c6d76d4b5`;
 final source/envelope review is recorded in the [checkpoint evidence](../evidence/P2-schema4-fleet-native-2026-11-01.md).
 

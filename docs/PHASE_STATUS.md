@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 04:58 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 05:30 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -20,6 +20,8 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 
 ## 2. Current repository and plan-review state
 
+[Recipient setup integration](evidence/P2-recipient-setup-integration-2026-11-01.md) is now implemented under source review: genuine native consent flow, private grant, bounded download/core and existing Help status. Actual setup execution remains NOT_RUN; verified bytes do not activate server/device capability.
+
 **Current execution: Phase2 bounded software foundation IN_PROGRESS on `phase-02`; formal acceptance pending.**
 Ten of eleven canonical task scopes have technical passes (10/11=90.9%;10/154=6.5% overall).
 P1-06 cross-user proof remains UNMET; formal accepted count is0. P1-10 internal packaging
@@ -37,14 +39,18 @@ native evidence. Production fleet remains unavailable and selection is process-l
 no actual phone rows/effects are invented.
 [Durable registry/capture](evidence/P2-durable-registry-capture-2026-11-01.md) now
 implements migration4, audited main-owned stores and normal-start retirement/recovery.
-Actual SQLite/owned-file source composition and the stitched closed-inventory checkpoint pass; current
-schema4 Windows/native migration/capture evidence is NOT_RUN. No Phase2 task count,
+Actual SQLite/owned-file source composition passes. The [current schema4 native smoke](evidence/P2-schema4-fleet-native-2026-11-01.md)
+now has accepted fresh-install authenticated3→4 migration, durable-empty startup and18 UI/two-image PASS
+at exact public25811557/CI41276065327, with Windows845/109/205 source PASS. Existing-user upgrade
+and capture process-crash proof remain NOT_RUN. No Phase2 task count,
 formal acceptance, P1-06 status or physical gate changes.
 [Adopted Amendment03](phases/PLATFORM-TOOLS-RECIPIENT-PROVISIONING-AMENDMENT-03.md)
 changes optional ADB delivery to a direct Google or recipient-held pinned archive, while
 foundation offline use remains. The [private provisioning core](evidence/P2-recipient-provisioning-core-2026-11-01.md)
-has owned-file source tests only; no production recipient issuer/download activation or
-binary/server authority is wired. First ADB setup is not an included offline binary bundle.
+had owned-file source tests only at its historical checkpoint. The current recipient
+issuer/download integration is now wired and source-tested, but actual setup execution
+is NOT_RUN and production binary/server capability remains unavailable. First ADB setup
+is not an included offline binary bundle.
 Historical Phase0 records below are preserved, not the current software work queue.
 
 | Item | Status | Evidence / boundary |

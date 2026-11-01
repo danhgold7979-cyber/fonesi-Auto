@@ -1,3 +1,4 @@
+import { validSetupAuditTuple, type SetupAudit } from './platform-tools-setup-audit-contract.ts';
 import {
   DURABLE_CODES,
   DURABLE_OPERATIONS,
@@ -164,12 +165,34 @@ function durableTuple(record: Record<string, unknown>): boolean {
         record.resultingRevision === null))
   );
 }
+export type SetupAuditFields = SetupAudit;
+export type SetupLogRecord = SetupAudit &
+  Readonly<{
+    schemaVersion: 6;
+    runId: string;
+    sequence: number;
+    utc: string;
+    severity: 'INFO' | 'WARN';
+    component: 'MAIN';
+    task: 'P2-01';
+    event: 'PLATFORM_TOOLS_SETUP';
+  }>;
+function setupTuple(record: Record<string, unknown>): boolean {
+  return (
+    record.component === 'MAIN' &&
+    record.task === 'P2-01' &&
+    record.event === 'PLATFORM_TOOLS_SETUP' &&
+    record.severity === (record.code === 'OK' ? 'INFO' : 'WARN') &&
+    validSetupAuditTuple(record)
+  );
+}
 export type LogRecord =
   | LegacyLogRecord
   | VaultLogRecord
   | SettingsLogRecord
   | FleetLogRecord
-  | DurableLogRecord;
+  | DurableLogRecord
+  | SetupLogRecord;
 function fleetTuple(record: Record<string, unknown>): boolean {
   return (
     record.component === 'MAIN' &&
@@ -351,7 +374,28 @@ export function encodeLogRecord(input: unknown): string | null {
     ];
     const version = Object.getOwnPropertyDescriptor(input, 'schemaVersion');
     if (!version || !Object.hasOwn(version, 'value')) return null;
-    if (version.value === 2) fields.push('operation', 'phase', 'secretId', 'revision');
+    if (version.value === 6)
+      fields.splice(
+        0,
+        fields.length,
+        'schemaVersion',
+        'runId',
+        'sequence',
+        'utc',
+        'severity',
+        'component',
+        'task',
+        'event',
+        'operation',
+        'phase',
+        'diagnosticId',
+        'operationId',
+        'expectedRevision',
+        'resultingRevision',
+        'outcome',
+        'code',
+      );
+    else if (version.value === 2) fields.push('operation', 'phase', 'secretId', 'revision');
     else if (version.value === 5)
       fields.push('operation', 'phase', 'operationId', 'expectedRevision', 'resultingRevision');
     else if (version.value === 3 || version.value === 4)
@@ -366,6 +410,7 @@ export function encodeLogRecord(input: unknown): string | null {
       record[key] = descriptor.value;
     }
     if (
+      record.schemaVersion !== version.value ||
       !diagnosticId(record.runId) ||
       typeof record.sequence !== 'number' ||
       !Number.isSafeInteger(record.sequence) ||
@@ -379,7 +424,9 @@ export function encodeLogRecord(input: unknown): string | null {
             ? settingsTuple(record)
             : record.schemaVersion === 4
               ? fleetTuple(record)
-              : durableTuple(record))
+              : record.schemaVersion === 5
+                ? durableTuple(record)
+                : setupTuple(record))
     )
       return null;
     const encoded = JSON.stringify(record) + '\n';

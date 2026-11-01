@@ -83,3 +83,12 @@ suspension. One affected workflow test (including LF/CRLF and removal-of-suspens
 negative) and YAML parsing PASS. ADB/version/server gates and all artifact publication
 predicates remain unchanged. The suspension is not a native PASS or an acceptance
 waiver; current schema4 native evidence remains required and NOT_RUN.
+
+
+### Later bounded native closure — 05:19 UTC
+
+The [versioned schema4 smoke](P2-schema4-fleet-native-2026-11-01.md) now establishes actual
+fresh-install authenticated3→4 migration and empty durable startup/current UI at exact
+public25811557/CI41276065327. It replaces the prior NOT_RUN for that bounded scope only.
+The old schema3 artifact remains distinct; existing-user upgrades, device acquisition and
+capture process-crash recovery remain unproved. No canonical task acceptance is added.

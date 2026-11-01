@@ -64,7 +64,7 @@ Google download or the recipient's already-held exact archive; Auto does not red
 these binaries. Recipient terms/use authority, exact component obligations and runtime
 admission remain separate. No reviewed-license flag is fabricated.
 
-Current schema4 native UI/migration/capture proof remains NOT_RUN. The accepted historical
+At this core source freeze schema4 native proof was NOT_RUN; the later [bounded schema4 smoke](P2-schema4-fleet-native-2026-11-01.md) now closes fresh-install migration/empty startup/UI only, not capture process-crash proof. The accepted historical
 schema3 fleet/UI smoke is separately linked in [fleet evidence](P2-fleet-facade-integration-2026-11-01.md).
 The existing-profile server refusal remains UNMET; no existing `.android` entry is adopted.
 P1-06 cross-user UNMET, hardware/AVD requirements, canonical task counts and formal0 are unchanged.

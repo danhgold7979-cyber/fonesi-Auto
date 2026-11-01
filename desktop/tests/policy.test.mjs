@@ -376,9 +376,17 @@ test('failed installed verification prevents build; successful stages run in ord
 });
 test('approved public bridge has no effect service or arbitrary renderer API', () => {
   const main = readFileSync(resolve(root, 'build/main.cjs'), 'utf8');
-  // P1-05 authorizes main-owned SQLite/key custody, not renderer capabilities.
-  for (const token of ['openExternal', 'node:child_process'])
-    assert.equal(main.includes(token), false);
+  // Recipient setup adds only a native-initiated, fixed terms page; no renderer URL.
+  assert.equal(main.includes('node:child_process'), false);
+  const source = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
+  assert.equal((source.match(/shell\.openExternal\(/g) ?? []).length, 1);
+  assert.match(source, /if \(url !== PLATFORM_TOOLS_TERMS_URL\) throw Error\('INVALID_REQUEST'\);/);
+  assert.match(source, /await shell\.openExternal\(PLATFORM_TOOLS_TERMS_URL\);/);
+  const native = readFileSync(resolve(root, 'src/main/platform-tools-setup-native.ts'), 'utf8');
+  assert.match(
+    native,
+    /PLATFORM_TOOLS_TERMS_URL = 'https:\/\/developer\.android\.com\/studio\/terms'/,
+  );
   const bridge = readFileSync(resolve(root, 'build/foundation-bridge.cjs'), 'utf8');
   const compiledPreload = readFileSync(resolve(root, 'build/preload.cjs'), 'utf8');
   for (const token of ['openExternal', 'node:child_process', 'node:sqlite', 'safeStorage']) {

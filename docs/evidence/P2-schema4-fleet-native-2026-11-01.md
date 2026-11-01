@@ -1,6 +1,6 @@
 # Phase2 schema4 fleet integration — bounded native checkpoint
 
-Status: SOURCE REVIEWED / native NOT_RUN. The [finite runner amendment](../phases/P2-SCHEMA4-FLEET-NATIVE-AMENDMENT.md)
+Status: BOUNDED CURRENT-SCHEMA4 NATIVE PASS — coordinator disposition 2026-11-01 05:19 UTC. The [finite runner amendment](../phases/P2-SCHEMA4-FLEET-NATIVE-AMENDMENT.md)
 updates only the historical SOURCE smoke to the current schema4 application. It preserves
 18 UI cases, two Light/Dark images, original process/ownership/cleanup predicates and
 exact capture framing. It adds original-key authentication of the actual schema3 migration
@@ -59,3 +59,44 @@ Actual hosted execution still requires the coordinator's exact frozen-runner dis
 - `phase-02-software.yml`: `f2c80dc12386f9d834d3f7b370a537d51ac2a822e7937a8d0b3f7872a08f7b2a`.
 
 Independent final source/envelope/docs review CLEAR at05:08 UTC: affected18 Node and11 Python passed, exact six hashes and links verified. No duplicate full application run. Coordinator execution disposition remains pending; no native outcome is asserted.
+
+## Authorized publication and run — 05:11–05:13 UTC
+
+Coordinator Coder Bin approved the exact frozen local6bd2e8b78ce702849e1e04bc0f7d89ff8e75f6a6
+checkpoint and delegated publication/monitoring to the Auto engineering worker. Remote
+phase-02 was first verified at05d0027450ecbef3a4e2df45d4c671543d50d6d1. The31 committed
+changed paths produced exact tree `ba71ac45e4ac453bde34ee9c37cfbcebe5475b35`, identical
+to local review; an expected-head non-force update published
+`25811557fdd13d95fee0b25bd871f76467979795`, independently read back. No local ancestry
+reset or untracked proposal was published. The combined private-core/source and reviewed
+runner checkpoint uses one CI run rather than redundant intermediate source runs.
+
+[CI41276065327](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41276065327)
+was observed IN_PROGRESS at05:13 UTC. Actual native outcome remains pending. Approval
+is only the fresh0→4/authenticated schema3 backup/migration4 binding/durable-empty and
+18-case/two-image SOURCE smoke; it grants no recipient activation, ADB, server, phone,
+existing-user upgrade or capture-crash evidence.
+
+## Accepted bounded result — 05:19 UTC
+
+Exact public25811557fdd13d95fee0b25bd871f76467979795 / treeba71ac45e4ac453bde34ee9c37cfbcebe5475b35
+completed CI41276065327 SUCCESS at05:16:09 UTC. Source job124758367898 records845/845
+desktop,109/109 foundation with zero skips, and205 Python OK. Fleet job124758735139
+succeeded; ADB job was correctly SKIPPED, not rerun or inferred passed.
+
+The [exact retained report](samples/P2-fleet-ui-schema4-pass.json) is1413 UTF-8 bytes with
+no trailing newline, SHA256 `7dad3c94ae9e3ff676124e89cffa667c25561f493b1a2731c1dc3dd860f63301`.
+Report artifact13070374217 and images artifact13070932834 were downloaded once. Independent
+committed-validator reconstruction confirms v2/bootstrap-v2/UI-v1, all11 bootstrap and18
+UI cases true, processSUCCESS0 retired/untruncated, directoryCleanuptrue and no failure.
+
+PNG validation confirms exact names,1024×768 geometry, bounds, CRC/decompression, metadata
+hashes and privacy. Light93376 bytes SHA256 `4f207f0d9774824173e712b6b64e81c95713e62277785d878d657a7882e49cfa`;
+Dark94709 bytes SHA256 `7b98a6e04423bc2ef6c0c87cfcbf3c44dafa34701ea05a0cc8656198443832b3`.
+Both are byte-identical to the already visually cleared schema3 images, so exact visual
+evidence was reused without another campaign or CSS change. Inherited contrast limits remain.
+
+Coordinator Coder Bin accepts only fresh-install authenticated3→4 migration, durable-empty
+startup and current UI/IPC smoke. Existing-user upgrade, capture process-crash recovery,
+recipient activation, real device/server/ADB behavior, P1-06 and formal/canonical task
+counts remain unchanged. No additional native rerun is needed for this completed scope.

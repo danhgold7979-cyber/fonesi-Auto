@@ -1,3 +1,4 @@
+import { createPlatformToolsSetupClient } from './platform-tools-setup-client.js';
 import { createFleetClient } from './fleet-client.js';
 import { contextBridge, ipcRenderer } from 'electron';
 import { DIAGNOSTIC_CHANNEL } from './ipc-diagnostic-contract.js';
@@ -25,6 +26,19 @@ const fleet = createFleetClient(
   budget,
   undefined,
   readiness,
+);
+const platformTools = createPlatformToolsSetupClient(
+  (wire) => ipcRenderer.invoke('foundation:platform-tools:v1', wire),
+  budget,
+  undefined,
+  readiness,
+);
+contextBridge.exposeInMainWorld(
+  'platformTools',
+  Object.freeze({
+    read: () => platformTools.read(),
+    requestSetup: (revision: unknown) => platformTools.requestSetup(revision),
+  }),
 );
 contextBridge.exposeInMainWorld(
   'fleet',
@@ -58,6 +72,7 @@ window.addEventListener(
     client.dispose();
     preferences.dispose();
     fleet.dispose();
+    platformTools.dispose();
   },
   { once: true },
 );

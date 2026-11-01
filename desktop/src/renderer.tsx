@@ -1,3 +1,4 @@
+import { parseSetupResponse, type SetupSnapshot } from './platform-tools-setup-contract.js';
 import { createRoot } from 'react-dom/client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { parseSettingsResponse, type PublicSettings } from './settings-contract.js';
@@ -13,6 +14,10 @@ declare global {
       reset: (revision: number) => Promise<string>;
       restorePrevious: (revision: number) => Promise<string>;
     }>;
+    platformTools: Readonly<{
+      read: () => Promise<string>;
+      requestSetup: (revision: unknown) => Promise<string>;
+    }>;
     fleet: Readonly<{
       read: () => Promise<string>;
       replaceSelection: (expectedRevision: number, selection: FleetSelection) => Promise<string>;
@@ -26,6 +31,55 @@ function Diagnostic() {
   const [preferenceStatus, setPreferenceStatus] = useState(
     'NOT_READY / READ PERSISTED PREFERENCES',
   );
+  const [setup, setSetup] = useState<SetupSnapshot | null>(null);
+  const [setupStatus, setSetupStatus] = useState(
+    'Chưa đọc trạng thái bộ công cụ. Tính năng thiết bị chưa khả dụng.',
+  );
+  const [setupPending, setSetupPending] = useState(false);
+  const [setupReconcile, setSetupReconcile] = useState(true);
+  const setupInFlight = useRef(false);
+  const setupHydrated = useRef(false);
+  const setupAction = useCallback(
+    async (request = false) => {
+      if (setupInFlight.current || (request && (!setup || setupReconcile))) return;
+      setupInFlight.current = true;
+      setSetupPending(true);
+      if (request) setSetupReconcile(true);
+      try {
+        const raw = request
+          ? await window.platformTools.requestSetup(setup?.revision ?? 0)
+          : await window.platformTools.read();
+        const response = parseSetupResponse(raw);
+        if (!response) throw Error('INVALID_RESPONSE');
+        if (!response.ok) {
+          setSetupReconcile(true);
+          setSetupStatus(
+            `${response.outcome} / ${response.code}. Nhấn Đọc trạng thái để đối chiếu; không tự thử lại.`,
+          );
+          return;
+        }
+        setSetup(response.snapshot);
+        setSetupReconcile(response.outcome !== 'OBSERVED');
+        setSetupStatus(
+          `${response.outcome} / ${response.snapshot.state} / ${response.snapshot.code ?? 'OK'} / LOG ${response.loggingHealth}. Chỉ xác minh tệp; chưa khởi động ADB hoặc kết nối thiết bị.`,
+        );
+      } catch {
+        setSetupReconcile(true);
+        setSetupStatus(
+          'OUTCOME_UNKNOWN / INTERNAL_FAILURE. Nhấn Đọc trạng thái để đối chiếu; không tự thử lại.',
+        );
+      } finally {
+        setupInFlight.current = false;
+        setSetupPending(false);
+      }
+    },
+    [setup, setupReconcile],
+  );
+  useEffect(() => {
+    if (setupHydrated.current) return;
+    setupHydrated.current = true;
+    void setupAction();
+  }, [setupAction]);
   const [fleet, setFleet] = useState<FleetSnapshot | null>(null);
   const [fleetStatus, setFleetStatus] = useState('LOADING / FLEET NOT YET OBSERVED');
   const [fleetFailed, setFleetFailed] = useState(false);
@@ -269,6 +323,50 @@ function Diagnostic() {
       }}
       settings={
         <>
+          <section aria-label="Android Platform Tools setup" id="platform-tools-panel">
+            <h2>Android Platform Tools</h2>
+            <p>
+              Thiết lập tùy chọn bản 37.0.1 từ Google hoặc tệp ZIP đã có. Lần đầu cần mạng nếu chưa
+              có đúng tệp; Auto không phân phối bộ công cụ này.
+            </p>
+            <button
+              type="button"
+              id="platform-tools-read"
+              disabled={setupPending}
+              onClick={() => {
+                void setupAction();
+              }}
+            >
+              Đọc trạng thái / đối chiếu
+            </button>
+            <button
+              type="button"
+              id="platform-tools-setup"
+              disabled={
+                setupPending ||
+                !setup ||
+                setupReconcile ||
+                [
+                  'AWAITING_RECIPIENT',
+                  'PROVISIONING',
+                  'OUTCOME_UNKNOWN',
+                  'VERIFIED_LOCAL',
+                ].includes(setup.state)
+              }
+              onClick={() => {
+                void setupAction(true);
+              }}
+            >
+              Thiết lập bộ công cụ
+            </button>
+            <p id="platform-tools-status" aria-live="polite">
+              {setupStatus}
+            </p>
+            <p>
+              Sau khi hoàn tất hộp thoại, nhấn Đọc trạng thái. Mọi xác nhận điều khoản và chọn tệp
+              diễn ra trong hộp thoại gốc; không có quyền thiết bị được cấp.
+            </p>
+          </section>
           <section aria-label="Fleet status" id="fleet-panel">
             <button
               type="button"

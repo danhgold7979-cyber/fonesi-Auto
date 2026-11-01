@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as clients from '../src/preload-client.ts';
 import * as fleet from '../src/fleet-client.ts';
+import * as platformTools from '../src/platform-tools-setup-client.ts';
 import * as preferences from '../src/settings-client.ts';
 import * as budget from '../src/invocation-budget.ts';
 import * as diagnostic from '../src/ipc-diagnostic-contract.ts';
@@ -40,13 +41,19 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
       if (name === './preload-client.js') return clients;
       if (name === './settings-client.js') return preferences;
       if (name === './fleet-client.js') return fleet;
+      if (name === './platform-tools-setup-client.js') return platformTools;
       if (name === './invocation-budget.js') return budget;
       if (name === './ipc-diagnostic-contract.js') return diagnostic;
       throw Error('UNKNOWN_MODULE');
     },
     window: { addEventListener: (...args) => listeners.push(args) },
   });
-  assert.deepEqual(Object.keys(exposed).sort(), ['fleet', 'foundation', 'preferences']);
+  assert.deepEqual(Object.keys(exposed).sort(), [
+    'fleet',
+    'foundation',
+    'platformTools',
+    'preferences',
+  ]);
   assert.deepEqual(Object.keys(exposed.foundation).sort(), ['health', 'settings']);
   assert.deepEqual(Object.keys(exposed.preferences).sort(), [
     'read',
@@ -55,6 +62,10 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'update',
   ]);
   assert.deepEqual(Object.keys(exposed.fleet).sort(), ['read', 'replaceSelection']);
+  assert.deepEqual(Object.keys(exposed.platformTools).sort(), ['read', 'requestSetup']);
+  assert.ok(Object.isFrozen(exposed.platformTools));
+  assert.equal(JSON.parse(await exposed.platformTools.requestSetup(0)).code, 'SESSION_UNAVAILABLE');
+  assert.equal(invocations.length, 0);
   assert.ok(Object.isFrozen(exposed.fleet));
   assert.ok(Object.isFrozen(exposed.foundation));
   assert.ok(Object.isFrozen(exposed.preferences));
@@ -63,15 +74,18 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   const pending = [
     exposed.foundation.health(),
     exposed.foundation.settings(),
-    ...Array.from({ length: 3 }, () => exposed.preferences.read()),
-    ...Array.from({ length: 3 }, () => exposed.fleet.read()),
+    ...Array.from({ length: 2 }, () => exposed.preferences.read()),
+    ...Array.from({ length: 2 }, () => exposed.fleet.read()),
+    ...Array.from({ length: 2 }, () => exposed.platformTools.read()),
   ];
   assert.equal(JSON.parse(await exposed.preferences.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.fleet.read()).code, 'BUSY');
+  assert.equal(JSON.parse(await exposed.platformTools.read()).code, 'BUSY');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(invocations.length, 8);
   assert.deepEqual([...new Set(invocations.map((x) => x.channel))].sort(), [
     'foundation:fleet:v1',
+    'foundation:platform-tools:v1',
     'foundation:preferences:v1',
     'foundation:request:v2',
   ]);
@@ -82,4 +96,6 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   assert.equal(readyListeners.size, 0);
   for (const p of pending) assert.equal(JSON.parse(await p).code, 'SESSION_UNAVAILABLE');
   assert.equal(invocations.length, 8);
+  assert.equal(JSON.parse(await exposed.platformTools.read()).code, 'SESSION_UNAVAILABLE');
+  assert.equal(JSON.parse(await exposed.platformTools.requestSetup(0)).code, 'SESSION_UNAVAILABLE');
 });

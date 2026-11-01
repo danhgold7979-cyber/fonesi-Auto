@@ -1,3 +1,13 @@
+import { installPlatformToolsSetupBridge } from './platform-tools-setup-bridge.js';
+import {
+  createPlatformToolsSetupService,
+  type PlatformToolsSetupService,
+} from './main/platform-tools-setup-service.js';
+import {
+  createPlatformToolsSetupNative,
+  PLATFORM_TOOLS_TERMS_URL,
+} from './main/platform-tools-setup-native.js';
+import { createPlatformToolsDownload } from './main/platform-tools-download.js';
 import { randomUUID } from 'node:crypto';
 import { installFleetBridge } from './fleet-bridge.js';
 import { createFleetService, type FleetService } from './main/fleet-service.js';
@@ -26,6 +36,7 @@ import {
   openPreparedPersistence,
   openPreparedPersistenceRecovery,
   assertPreparedPersistenceLease,
+  persistenceDataGuard,
 } from './main/persistence-entry.js';
 import type { FoundationPersistence } from './main/foundation-persistence.js';
 import { maintenanceArgument } from './persistence-contract.js';
@@ -42,6 +53,7 @@ import {
   safeStorage,
   dialog,
   screen,
+  shell,
 } from 'electron';
 import { readFileSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
@@ -60,6 +72,9 @@ let bridge: ReturnType<typeof installFoundationBridge> | undefined;
 let preferencesBridge: ReturnType<typeof installPreferencesBridge> | undefined;
 let settingsStore: SettingsStore | undefined;
 let fleetService: FleetService | undefined;
+let platformToolsService: PlatformToolsSetupService | undefined;
+let platformToolsBridge: ReturnType<typeof installPlatformToolsSetupBridge> | undefined;
+let platformToolsWindow: BrowserWindow | undefined;
 let fleetBridge: ReturnType<typeof installFleetBridge> | undefined;
 let settingsDrain: Promise<SettingsResult | null> | undefined;
 let resourcesDisposed = false;
@@ -73,6 +88,7 @@ let loggingNotice = false;
 let persistence: FoundationPersistence | undefined;
 const persistenceLifecycle = createPersistenceLifecycle<FoundationPersistence>();
 const secretLifecycle = createPersistenceLifecycle<SecretStore>();
+const platformToolsLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
 const fleetLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
 const durableLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
 const settingsLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
@@ -89,6 +105,7 @@ function cleanup(): boolean {
   closing = true;
   if (backupTimer !== undefined) clearInterval(backupTimer);
   const disposed = disposeResources([
+    () => platformToolsBridge?.dispose(),
     () => fleetBridge?.dispose(),
     () => preferencesBridge?.dispose(),
     () => bridge?.dispose(),
@@ -360,6 +377,65 @@ try {
       const ownedFleetService = fleetService;
       await fleetLifecycle.open(async () => ({ shutdown: () => ownedFleetService.close() }));
       fleetBridge = installFleetBridge(ipcMain, bridge.admitPreferences, () => fleetService);
+      if (persistence && persistenceEntry && !persistence.restored) {
+        const ownedPersistence = persistence;
+        const ownedEntry = persistenceEntry;
+        const requireWindow = () => {
+          if (
+            closing ||
+            resourcesDisposed ||
+            !platformToolsWindow ||
+            platformToolsWindow.isDestroyed()
+          )
+            throw Error('OWNER_REVOKED');
+          assertPreparedPersistenceLease(ownedEntry);
+          return platformToolsWindow;
+        };
+        const native = createPlatformToolsSetupNative(
+          {
+            showMessageBox: (options) => dialog.showMessageBox(requireWindow(), options),
+            showOpenDialog: (options) => dialog.showOpenDialog(requireWindow(), options),
+          },
+          async (url) => {
+            requireWindow();
+            if (url !== PLATFORM_TOOLS_TERMS_URL) throw Error('INVALID_REQUEST');
+            await shell.openExternal(PLATFORM_TOOLS_TERMS_URL);
+            requireWindow();
+          },
+        );
+        platformToolsService = createPlatformToolsSetupService({
+          dataRoot: ownedPersistence.root,
+          storeId: ownedPersistence.storeId,
+          assertOwnedSync: () => {
+            if (closing || resourcesDisposed) throw Error('OWNER_REVOKED');
+            assertPreparedPersistenceLease(ownedEntry);
+          },
+          // No production server/host dispatcher exists in this slice. Nothing can acquire server custody.
+          assertIdleSync: () => {
+            if (closing) throw Error('OWNER_REVOKED');
+          },
+          assertDataLocation: persistenceDataGuard(ownedEntry.packageRoot),
+          clock: () => Date.now(),
+          newId: () => randomUUID(),
+          native,
+          audit: (fields) => logger?.platformToolsAudit(fields) ?? Promise.resolve('DEGRADED'),
+          readOfficialArchive: createPlatformToolsDownload(),
+        });
+        const setup = platformToolsService;
+        await platformToolsLifecycle.open(async () => {
+          await setup.initialize();
+          return {
+            shutdown: async () => {
+              if ((await setup.shutdown()) !== 'RETIRED') throw Error('PLATFORM_TOOLS_UNRETIRED');
+            },
+          };
+        });
+        platformToolsBridge = installPlatformToolsSetupBridge(
+          ipcMain,
+          bridge.admitPreferences,
+          () => platformToolsService,
+        );
+      }
       const settingsDb = persistence?.settingsAdapter();
       const initialSettings = settingsDb?.readSettings();
       lifecycle = createLifecycle(() => {
@@ -382,6 +458,7 @@ try {
             preload: join(__dirname, 'preload.cjs'),
           },
         });
+        platformToolsWindow = window;
         installWindowPolicy(window);
         if (settingsDb && persistenceEntry) {
           let windowTracking = false;
@@ -509,6 +586,7 @@ try {
     stop: () => {
       closing = true;
       if (backupTimer !== undefined) clearInterval(backupTimer);
+      platformToolsBridge?.dispose();
       fleetBridge?.dispose();
       preferencesBridge?.dispose();
       bridge?.dispose();
@@ -519,6 +597,7 @@ try {
     },
     flush: async () => {
       try {
+        await platformToolsLifecycle.stop();
         await fleetLifecycle.stop();
         await settingsLifecycle.stop();
         await durableLifecycle.stop();
