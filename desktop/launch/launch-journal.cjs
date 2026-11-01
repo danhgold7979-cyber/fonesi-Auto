@@ -454,10 +454,12 @@ function hostSession(root, header, receipt) {
     'candidateArchiveSha256',
     'candidateManifestSha256',
     'installationRevision',
+    'expectedRelease',
+    'expectedBuildGrammar',
     'assets',
   ]);
   if (
-    b.version !== 1 ||
+    b.version !== 2 ||
     b.operationSet !== 'VERSION_ONLY' ||
     !uuid(b.sessionId) ||
     b.launchId !== header.launchId ||
@@ -473,6 +475,11 @@ function hostSession(root, header, receipt) {
     !hash(b.candidateManifestSha256) ||
     !Number.isSafeInteger(b.installationRevision) ||
     b.installationRevision < 1 ||
+    typeof b.expectedRelease !== 'string' ||
+    b.expectedRelease.length > 32 ||
+    !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(b.expectedRelease) ||
+    /[^0-9.]/.test(b.expectedRelease) ||
+    b.expectedBuildGrammar !== 'DECIMAL_1_20' ||
     !b.assets ||
     typeof b.assets !== 'object'
   )

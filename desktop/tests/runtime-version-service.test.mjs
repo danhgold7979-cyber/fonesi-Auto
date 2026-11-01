@@ -32,7 +32,11 @@ function fixture(hooks = {}) {
       if (hooks.acquire) return hooks.acquire();
       const token = Object.freeze({});
       tokens.add(token);
-      return { ok: true, token, observation: { installationRevision: revision } };
+      return {
+        ok: true,
+        token,
+        observation: { installationRevision: revision, release: hooks.releaseVersion ?? '37.0.1' },
+      };
     },
     assertRead(token) {
       assert.ok(tokens.has(token));
@@ -94,7 +98,7 @@ function fixture(hooks = {}) {
   ) => {
     const raw = await service.execute(
       {
-        version: 1,
+        version: 2,
         requestId: 'p1',
         method,
         ...(method === 'runtimeVersion.get'
@@ -264,7 +268,7 @@ test('actual owned absent-runtime custody composes NOT_PROVISIONED without creat
     });
     const r = JSON.parse(
       await service.execute(
-        { version: 1, requestId: 'p1', method: 'runtimeVersion.get' },
+        { version: 2, requestId: 'p1', method: 'runtimeVersion.get' },
         () => true,
       ),
     );
@@ -416,5 +420,22 @@ test('native builder receives admitted installation revision even if setup chang
   f.native.resolve({ outcome: 'OBSERVED', code: 'OK' });
   await flush();
   assert.equal(f.logs.at(-1).code, 'STALE_INSTALLATION');
+  assert.equal(await f.service.shutdown(), 'RETIRED');
+});
+
+test('selected prior release remains distinct from build install target through captured VERSION', async () => {
+  const f = fixture({ releaseVersion: '36.0.0' });
+  const read = await f.call();
+  assert.equal(read.snapshot.installTargetVersion, '37.0.1');
+  assert.equal(read.snapshot.activeVersion, '36.0.0');
+  const pending = await f.call('runtimeVersion.request', read.snapshot.revision);
+  assert.equal(pending.snapshot.activeVersion, '36.0.0');
+  await flush();
+  f.native.resolve({ outcome: 'OBSERVED', code: 'OK' });
+  await flush();
+  const done = await f.call();
+  assert.equal(done.snapshot.state, 'VERIFIED');
+  assert.equal(done.snapshot.activeVersion, '36.0.0');
+  assert.equal(done.snapshot.installTargetVersion, '37.0.1');
   assert.equal(await f.service.shutdown(), 'RETIRED');
 });

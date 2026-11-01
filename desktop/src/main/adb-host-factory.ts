@@ -10,7 +10,7 @@ import type {
   RuntimeReadObservation,
 } from './platform-tools-runtime-custody.ts';
 import type { PersistenceEntry } from './persistence-entry.ts';
-import { PLATFORM_TOOLS_CANDIDATE } from './platform-tools-candidate.ts';
+import { resolvePlatformToolsCandidate } from './platform-tools-catalog.ts';
 import {
   HOST_ASSETS,
   hostHash,
@@ -209,8 +209,7 @@ export function createHostFactory(
     sessionId = randomUUID();
   if (hostNames(launchRoot).some((n) => n === '.host-session' || n.startsWith('host-session')))
     fail();
-  const exePin = PLATFORM_TOOLS_CANDIDATE.files.find((f) => f.path === 'adb.exe')?.sha256;
-  if (!exePin || !hostUuid(sessionId)) fail();
+  if (!hostUuid(sessionId)) fail();
   const nativePaths = Object.freeze([
     ...HOST_ASSETS.map((name) => join(desktopRoot, name)),
     context.receipt.parentImagePath,
@@ -266,10 +265,11 @@ export function createHostFactory(
       keys.some((k) => !descriptors[k] || !('value' in descriptors[k]))
     )
       fail();
+    const selected = resolvePlatformToolsCandidate(o.archiveSha256);
     if (
-      o.release !== '37.0.1' ||
-      o.archiveSha256 !== PLATFORM_TOOLS_CANDIDATE.archive.sha256 ||
-      o.manifestSha256 !== hostHash(JSON.stringify(PLATFORM_TOOLS_CANDIDATE)) ||
+      !selected?.launchAllowed ||
+      o.release !== selected.candidate.release ||
+      o.manifestSha256 !== selected.manifestSha256 ||
       !Number.isSafeInteger(o.installationRevision) ||
       o.installationRevision < 1 ||
       (expectedInstallationRevision !== undefined &&
@@ -279,7 +279,7 @@ export function createHostFactory(
           entry.root,
           'platform-tools-runtime',
           'runtimes',
-          'runtime-' + PLATFORM_TOOLS_CANDIDATE.archive.sha256,
+          'runtime-' + o.archiveSha256,
           'adb.exe',
         )
     )
@@ -321,10 +321,13 @@ export function createHostFactory(
     const o = liveObservation;
     if (!o) fail();
     currentRuntime(o);
+    const selected = resolvePlatformToolsCandidate(o.archiveSha256);
+    const exePin = selected?.candidate.files.find((f) => f.path === 'adb.exe')?.sha256;
+    if (!selected?.launchAllowed || !exePin) fail();
     pinned = observationKey(o);
     root = createHostRoot(launchRoot, sessionId, entry.ownerToken, () => currentRuntime(o));
     bootstrap = JSON.stringify({
-      version: 1,
+      version: 2,
       operationSet: 'VERSION_ONLY',
       sessionId,
       launchId: context.receipt.launchId,
@@ -338,6 +341,8 @@ export function createHostFactory(
       candidateArchiveSha256: o.archiveSha256,
       candidateManifestSha256: o.manifestSha256,
       installationRevision: o.installationRevision,
+      expectedRelease: selected.versionObservation.release,
+      expectedBuildGrammar: selected.versionObservation.buildGrammar,
       assets: context.assets,
     });
     hostWrite(join(root.root, 'bootstrap.json'), bootstrap, 8192, () => currentRuntime(o));

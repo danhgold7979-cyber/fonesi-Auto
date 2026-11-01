@@ -37,7 +37,7 @@ export function createPlatformToolsSetupClient(
     if (!Number.isSafeInteger(nextId + 1)) return Promise.resolve(initial('INTERNAL_FAILURE'));
     const requestId = `p${nextId + 1}`;
     const wire = JSON.stringify({
-      version: 1,
+      version: 2,
       requestId,
       method,
       ...(method === 'platformTools.get' ? {} : { expectedRevision: revision }),

@@ -11,7 +11,9 @@ const state = {
   state: 'UNAVAILABLE',
   operationId: null,
   code: null,
-  candidateVersion: '37.0.1',
+  installTargetVersion: '37.0.1',
+  activeVersion: null,
+  rollbackAvailable: false,
 };
 const flush = () => new Promise((r) => setImmediate(r));
 function timer() {

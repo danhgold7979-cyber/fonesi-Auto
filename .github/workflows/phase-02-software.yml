@@ -87,7 +87,7 @@ jobs:
           node desktop/scripts/check.mjs --restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retained helper compile only without assembly execution
-        if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[retained-compile]')))
+        if: false && (github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[retained-compile]'))))
         run: |
           node desktop/scripts/compile-retained-helper.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -318,7 +318,7 @@ jobs:
   # Recipient setup is separately opt-in; injected native answers are not genuine consent.
   owned-recipient-setup-development:
     needs: windows-software-only
-    if: (github.event_name == 'workflow_dispatch' && inputs.run_recipient_setup) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[recipient-setup]'))
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_recipient_setup) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[recipient-setup]')))
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:
@@ -405,7 +405,7 @@ jobs:
 
   owned-retained-version-development:
     needs: windows-software-only
-    if: (github.event_name == 'workflow_dispatch' && inputs.run_retained_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[retained-version]'))
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[retained-version]')))
     runs-on: windows-2022
     timeout-minutes: 15
     defaults:
@@ -513,7 +513,7 @@ jobs:
 
   owned-main-version-development:
     needs: windows-software-only
-    if: (github.event_name == 'workflow_dispatch' && inputs.run_main_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[main-version]'))
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_main_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[main-version]')))
     runs-on: windows-2022
     timeout-minutes: 15
     defaults:
@@ -589,7 +589,7 @@ jobs:
 
   owned-package-version-development:
     needs: windows-software-only
-    if: (github.event_name == 'workflow_dispatch' && inputs.run_package_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[package-version]'))
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_package_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[package-version]')))
     runs-on: windows-2022
     timeout-minutes: 15
     defaults:

@@ -45,12 +45,19 @@ function Diagnostic() {
   const [setupReconcile, setSetupReconcile] = useState(true);
   const setupInFlight = useRef(false);
   const setupHydrated = useRef(false);
+  const runtimeGeneration = useRef<object>(Object.freeze({}));
+  const setupObservation = useRef<string | null>(null);
   const setupAction = useCallback(
     async (request = false) => {
       if (setupInFlight.current || (request && (!setup || setupReconcile))) return;
       setupInFlight.current = true;
       setSetupPending(true);
-      if (request) setSetupReconcile(true);
+      if (request) {
+        setSetupReconcile(true);
+        runtimeGeneration.current = Object.freeze({});
+        setRuntimeReconcile(true);
+        setRuntimeVersion(null);
+      }
       try {
         const raw = request
           ? await window.platformTools.requestSetup(setup?.revision ?? 0)
@@ -63,6 +70,13 @@ function Diagnostic() {
             `${response.outcome} / ${response.code}. Nhấn Đọc trạng thái để đối chiếu; không tự thử lại.`,
           );
           return;
+        }
+        const observed = JSON.stringify(response.snapshot);
+        if (setupObservation.current !== observed) {
+          setupObservation.current = observed;
+          runtimeGeneration.current = Object.freeze({});
+          setRuntimeReconcile(true);
+          setRuntimeVersion(null);
         }
         setSetup(response.snapshot);
         setSetupReconcile(response.outcome !== 'OBSERVED');
@@ -96,6 +110,7 @@ function Diagnostic() {
   async function runtimeAction(verify = false) {
     if (runtimeInFlight.current || (verify && (!runtimeVersion || runtimeReconcile))) return;
     runtimeInFlight.current = true;
+    const generation = runtimeGeneration.current;
     setRuntimePending(true);
     if (verify) setRuntimeReconcile(true);
     try {
@@ -105,6 +120,7 @@ function Diagnostic() {
             runtimeVersion?.installationRevision,
           )
         : await window.platformTools.readVersion();
+      if (generation !== runtimeGeneration.current) return;
       const response = parseRuntimeVersionResponse(raw);
       if (!response) throw Error('INVALID_RESPONSE');
       if (!response.ok) {
@@ -124,6 +140,7 @@ function Diagnostic() {
         );
       }
     } catch {
+      if (generation !== runtimeGeneration.current) return;
       setRuntimeReconcile(true);
       setRuntimeStatus('OUTCOME_UNKNOWN / INTERNAL_FAILURE. Đọc lại để đối chiếu.');
     } finally {
@@ -377,8 +394,9 @@ function Diagnostic() {
           <section aria-label="Android Platform Tools setup" id="platform-tools-panel">
             <h2>Android Platform Tools</h2>
             <p>
-              Thiết lập tùy chọn bản 37.0.1 từ Google hoặc tệp ZIP đã có. Lần đầu cần mạng nếu chưa
-              có đúng tệp; Auto không phân phối bộ công cụ này.
+              Thiết lập tùy chọn bản {setup?.installTargetVersion ?? 'chưa quan sát'} từ Google hoặc
+              tệp ZIP đã có. Lần đầu cần mạng nếu chưa có đúng tệp; Auto không phân phối bộ công cụ
+              này.
             </p>
             <button
               type="button"
@@ -397,12 +415,7 @@ function Diagnostic() {
                 setupPending ||
                 !setup ||
                 setupReconcile ||
-                [
-                  'AWAITING_RECIPIENT',
-                  'PROVISIONING',
-                  'OUTCOME_UNKNOWN',
-                  'VERIFIED_LOCAL',
-                ].includes(setup.state)
+                ['AWAITING_RECIPIENT', 'PROVISIONING', 'OUTCOME_UNKNOWN'].includes(setup.state)
               }
               onClick={() => {
                 void setupAction(true);
@@ -410,6 +423,17 @@ function Diagnostic() {
             >
               Thiết lập bộ công cụ
             </button>
+            <p id="platform-tools-release">
+              Bản mục tiêu: {setup?.installTargetVersion ?? 'chưa quan sát'}; bản byte được xác
+              minh: {setup?.activeVersion ?? 'không có'}.
+              {setup?.state === 'AWAITING_RECIPIENT' ||
+              setup?.state === 'PROVISIONING' ||
+              setup?.state === 'OUTCOME_UNKNOWN'
+                ? ' Bản hiển thị trước đó không phải quyền sử dụng hiện tại.'
+                : ''}{' '}
+              Khôi phục bản trước:{' '}
+              {setup?.rollbackAvailable ? 'có thể yêu cầu xác nhận gốc' : 'không khả dụng'}.
+            </p>
             <p id="platform-tools-status" aria-live="polite">
               {setupStatus}
             </p>
@@ -420,6 +444,10 @@ function Diagnostic() {
           </section>
           <section aria-label="Local runtime version" id="runtime-version-panel">
             <h3>Kiểm tra phiên bản bộ công cụ</h3>
+            <p>
+              Bản mục tiêu: {runtimeVersion?.installTargetVersion ?? 'chưa quan sát'}; bản đang được
+              xác minh byte: {runtimeVersion?.activeVersion ?? 'không có'}.
+            </p>
             <p>
               Chỉ chạy lệnh version khi bạn chọn. Không khởi động máy chủ hoặc kết nối thiết bị. Cần
               phiên launcher bật chế độ kiểm tra được quản lý; đường dẫn quá dài bị từ chối.

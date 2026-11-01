@@ -63,17 +63,24 @@ async function fixture(run, { installed = false } = {}) {
         assert.doesNotMatch(s, /from ['"]\.\//);
         return url(transformSync(s, { loader: 'ts', format: 'esm', target: 'es2022' }).code);
       }
-      const archiveUrl = compile('platform-tools-archive', {
+      const catalogUrl = compile('platform-tools-catalog', {
         './platform-tools-candidate.ts': candidateUrl,
       });
+      const archiveUrl = compile('platform-tools-archive', {
+        './platform-tools-catalog.ts': catalogUrl,
+      });
       const filesUrl = compile('platform-tools-provision-files', {
-        './platform-tools-candidate.ts': candidateUrl,
+        './platform-tools-provision-ledger.ts': new URL(
+          '../src/main/platform-tools-provision-ledger.ts',
+          import.meta.url,
+        ).href,
+        './platform-tools-catalog.ts': catalogUrl,
         './platform-tools-archive.ts': archiveUrl,
         './platform-tools-files.ts': new URL('../src/main/platform-tools-files.ts', import.meta.url)
           .href,
       });
       const custodyUrl = compile('platform-tools-runtime-custody', {
-        './platform-tools-candidate.ts': candidateUrl,
+        './platform-tools-catalog.ts': catalogUrl,
         './platform-tools-provision-ledger.ts': new URL(
           '../src/main/platform-tools-provision-ledger.ts',
           import.meta.url,

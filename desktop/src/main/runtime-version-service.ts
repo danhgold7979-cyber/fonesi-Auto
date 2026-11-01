@@ -1,4 +1,5 @@
 /** Explicit VERSION-only service. Reads never construct a helper. */
+import { PLATFORM_TOOLS_INSTALL_TARGET } from './platform-tools-catalog.ts';
 import type { PlatformToolsRuntimeCustody } from './platform-tools-runtime-custody.ts';
 import type { createHostFactory } from './adb-host-factory.ts';
 import type { RuntimeVersionAudit } from '../runtime-version-audit-contract.ts';
@@ -53,7 +54,8 @@ export function createRuntimeVersionService(
     state: 'UNAVAILABLE',
     operationId: null,
     code: 'NOT_PROVISIONED',
-    candidateVersion: '37.0.1',
+    installTargetVersion: PLATFORM_TOOLS_INSTALL_TARGET.candidate.release,
+    activeVersion: null,
     verifiedAtUtc: null,
   });
   function fail(code: RuntimeVersionCode): never {
@@ -113,11 +115,16 @@ export function createRuntimeVersionService(
     }
     if (stopped || (uncertain && !allowUncertain)) fail(stopped ? 'CLOSED' : 'RECOVERY_REQUIRED');
   }
-  function change(fields: Omit<RuntimeVersionSnapshot, 'revision' | 'candidateVersion'>) {
-    const nextState = { ...fields, candidateVersion: '37.0.1' as const, revision: state.revision };
+  function change(fields: Omit<RuntimeVersionSnapshot, 'revision' | 'installTargetVersion'>) {
+    const nextState = {
+      ...fields,
+      installTargetVersion: PLATFORM_TOOLS_INSTALL_TARGET.candidate.release,
+      revision: state.revision,
+    };
     if (
       state.state === fields.state &&
       state.installationRevision === fields.installationRevision &&
+      state.activeVersion === fields.activeVersion &&
       state.operationId === fields.operationId &&
       state.code === fields.code &&
       state.verifiedAtUtc === fields.verifiedAtUtc
@@ -171,6 +178,7 @@ export function createRuntimeVersionService(
     uncertain = true;
     change({
       state: 'OUTCOME_UNKNOWN',
+      activeVersion: null,
       installationRevision,
       operationId,
       code: 'OUTCOME_UNKNOWN',
@@ -253,7 +261,8 @@ export function createRuntimeVersionService(
       fence(current, held());
       const captured: RuntimeVersionSnapshot = Object.freeze({
         revision: state.revision + 1,
-        candidateVersion: '37.0.1',
+        installTargetVersion: PLATFORM_TOOLS_INSTALL_TARGET.candidate.release,
+        activeVersion: observation.release,
         state: 'VERIFIED',
         installationRevision,
         operationId: null,
@@ -288,6 +297,7 @@ export function createRuntimeVersionService(
       } else
         change({
           state: 'FAILED',
+          activeVersion: state.activeVersion,
           installationRevision,
           operationId: null,
           code: [
@@ -358,6 +368,7 @@ export function createRuntimeVersionService(
               if (contextCode)
                 change({
                   state: 'UNAVAILABLE',
+                  activeVersion: observation.release,
                   installationRevision: observation.installationRevision,
                   operationId: null,
                   code: contextCode,
@@ -369,6 +380,7 @@ export function createRuntimeVersionService(
               )
                 change({
                   state: 'IDLE',
+                  activeVersion: observation.release,
                   installationRevision: observation.installationRevision,
                   operationId: null,
                   code: null,
@@ -383,6 +395,7 @@ export function createRuntimeVersionService(
                 return runtimeVersionError(request.requestId, c, diagnosticId, 'AVAILABLE');
               change({
                 state: 'UNAVAILABLE',
+                activeVersion: null,
                 installationRevision: null,
                 operationId: null,
                 code: [
@@ -465,6 +478,7 @@ export function createRuntimeVersionService(
         if (state.revision !== originalRevision) fail('STALE_REVISION');
         const captured = change({
           state: 'PENDING',
+          activeVersion: observation.release,
           installationRevision,
           operationId,
           code: null,

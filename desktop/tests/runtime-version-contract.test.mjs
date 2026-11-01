@@ -15,29 +15,30 @@ const initial = {
   state: 'UNAVAILABLE',
   operationId: null,
   code: 'NOT_PROVISIONED',
-  candidateVersion: '37.0.1',
+  installTargetVersion: '37.0.1',
+  activeVersion: null,
   verifiedAtUtc: null,
 };
 test('bounded duplicate-aware request accepts equivalent whitespace/order/escaped keys, preserves known ID on shape failure', () => {
   assert.equal(
-    parse(' { "method":"runtimeVersion.get", "requestId":"p1", "version":1 } ').ok,
+    parse(' { "method":"runtimeVersion.get", "requestId":"p1", "version":2 } ').ok,
     true,
   );
   assert.equal(
-    parse('{"version":1,"request\\u0049d":"p1","method":"runtimeVersion.get"}').ok,
+    parse('{"version":2,"request\\u0049d":"p1","method":"runtimeVersion.get"}').ok,
     true,
   );
   for (const raw of [
-    '{"version":1,"requestId":"p1","request\\u0049d":"p2","method":"runtimeVersion.get"}',
-    '{"version":1,"requestId":"p1","method":"runtimeVersion.request","expectedRevision":-0,"expectedInstallationRevision":1}',
+    '{"version":2,"requestId":"p1","request\\u0049d":"p2","method":"runtimeVersion.get"}',
+    '{"version":2,"requestId":"p1","method":"runtimeVersion.request","expectedRevision":-0,"expectedInstallationRevision":1}',
     '\ufeff{}',
-    '{"version":1,"requestId":"p1","method":"runtimeVersion.get","extra":{"x":1,"x":2}}',
+    '{"version":2,"requestId":"p1","method":"runtimeVersion.get","extra":{"x":1,"x":2}}',
   ])
     assert.equal(parse(raw).ok, false);
   assert.equal(
     parse(
       JSON.stringify({
-        version: 1,
+        version: 2,
         requestId: 'p1',
         method: 'runtimeVersion.request',
         expectedRevision: 0,
@@ -52,7 +53,7 @@ test('bounded duplicate-aware request accepts equivalent whitespace/order/escape
 test('descriptor-only snapshots reject getters and unstable discriminators without coercion', () => {
   let calls = 0;
   const r = {
-    version: 1,
+    version: 2,
     requestId: 'p1',
     get method() {
       calls++;
@@ -63,7 +64,7 @@ test('descriptor-only snapshots reject getters and unstable discriminators witho
   assert.equal(calls, 0);
   let n = 0;
   const p = new Proxy(
-    { version: 1, requestId: 'p1', method: 'runtimeVersion.get' },
+    { version: 2, requestId: 'p1', method: 'runtimeVersion.get' },
     {
       getOwnPropertyDescriptor(t, k) {
         const d = Reflect.getOwnPropertyDescriptor(t, k);
@@ -89,10 +90,30 @@ test('descriptor-only snapshots reject getters and unstable discriminators witho
 test('exact state tuples and immutable canonical response bind pending without inventing verification', () => {
   const states = [
     initial,
-    { ...initial, installationRevision: 1, state: 'IDLE', code: null },
-    { ...initial, installationRevision: 1, state: 'PENDING', operationId: id, code: null },
-    { ...initial, installationRevision: 1, state: 'VERIFIED', code: null, verifiedAtUtc: 0 },
-    { ...initial, installationRevision: 1, state: 'FAILED', code: 'TIMEOUT' },
+    { ...initial, installationRevision: 1, state: 'IDLE', activeVersion: '37.0.1', code: null },
+    {
+      ...initial,
+      installationRevision: 1,
+      state: 'PENDING',
+      activeVersion: '37.0.1',
+      operationId: id,
+      code: null,
+    },
+    {
+      ...initial,
+      installationRevision: 1,
+      state: 'VERIFIED',
+      activeVersion: '37.0.1',
+      code: null,
+      verifiedAtUtc: 0,
+    },
+    {
+      ...initial,
+      installationRevision: 1,
+      state: 'FAILED',
+      activeVersion: '37.0.1',
+      code: 'TIMEOUT',
+    },
     {
       ...initial,
       installationRevision: 1,
@@ -122,4 +143,33 @@ test('exact state tuples and immutable canonical response bind pending without i
   assert.equal(error.requestId, null);
   assert.equal(error.code, 'INTERNAL_FAILURE');
   assert.equal(error.loggingHealth, 'DEGRADED');
+});
+
+test('v2 selected release is independent of target; loss preserves unknown operation tuple', () => {
+  const selected = {
+    ...initial,
+    state: 'VERIFIED',
+    installationRevision: 3,
+    activeVersion: '36.0.0',
+    code: null,
+    verifiedAtUtc: 10,
+  };
+  assert.deepEqual(snapshot(selected), selected);
+  assert.equal(snapshot({ ...selected, activeVersion: null }), null);
+  const unknown = {
+    ...selected,
+    state: 'OUTCOME_UNKNOWN',
+    operationId: id,
+    activeVersion: null,
+    code: 'RECOVERY_REQUIRED',
+    verifiedAtUtc: null,
+  };
+  assert.deepEqual(snapshot(unknown), unknown);
+  assert.equal(snapshot({ ...unknown, operationId: null }), null);
+  for (const release of ['36.0.0\n', '36.0.0\r\n', 'private/path'])
+    assert.equal(snapshot({ ...selected, activeVersion: release }), null);
+  assert.equal(
+    parse(JSON.stringify({ version: 1, requestId: 'p1', method: 'runtimeVersion.get' })).code,
+    'UNSUPPORTED_VERSION',
+  );
 });

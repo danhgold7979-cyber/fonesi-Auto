@@ -40,19 +40,21 @@ export type SetupSnapshot = Readonly<{
     | 'OUTCOME_UNKNOWN';
   operationId: string | null;
   code: SetupCode | null;
-  candidateVersion: '37.0.1';
+  installTargetVersion: string;
+  activeVersion: string | null;
+  rollbackAvailable: boolean;
 }>;
 export type SetupRequest =
-  | Readonly<{ version: 1; requestId: string; method: 'platformTools.get' }>
+  | Readonly<{ version: 2; requestId: string; method: 'platformTools.get' }>
   | Readonly<{
-      version: 1;
+      version: 2;
       requestId: string;
       method: 'platformTools.setup.request';
       expectedRevision: number;
     }>;
 export type SetupResponse =
   | Readonly<{
-      version: 1;
+      version: 2;
       requestId: string;
       ok: true;
       outcome: 'OBSERVED' | 'PENDING';
@@ -61,7 +63,7 @@ export type SetupResponse =
       loggingHealth: SetupHealth;
     }>
   | Readonly<{
-      version: 1;
+      version: 2;
       requestId: string | null;
       ok: false;
       outcome: 'NOT_STARTED' | 'OUTCOME_UNKNOWN';
@@ -69,6 +71,12 @@ export type SetupResponse =
       diagnosticId: string | null;
       loggingHealth: SetupHealth;
     }>;
+export const validSetupRelease = (v: unknown): v is string =>
+  typeof v === 'string' &&
+  v.length >= 1 &&
+  v.length <= 32 &&
+  !/[^0-9.]/.test(v) &&
+  /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v);
 export const validSetupRevision = (v: unknown): v is number =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && !Object.is(v, -0);
 export const validSetupId = (v: unknown): v is string =>
@@ -102,21 +110,32 @@ export function snapshotSetupSnapshot(input: unknown): SetupSnapshot | null {
       'state',
       'operationId',
       'code',
-      'candidateVersion',
+      'installTargetVersion',
+      'activeVersion',
+      'rollbackAvailable',
     ]);
     if (
       !validSetupRevision(v.revision) ||
       (v.installationRevision !== null && !validSetupRevision(v.installationRevision)) ||
       (v.operationId !== null && !validSetupUuid(v.operationId)) ||
-      v.candidateVersion !== '37.0.1'
+      !validSetupRelease(v.installTargetVersion) ||
+      (v.activeVersion !== null && !validSetupRelease(v.activeVersion)) ||
+      typeof v.rollbackAvailable !== 'boolean' ||
+      (v.rollbackAvailable && (v.state !== 'VERIFIED_LOCAL' || v.activeVersion === null))
     )
       return null;
-    if (
-      ['UNAVAILABLE', 'AWAITING_RECIPIENT', 'PROVISIONING', 'VERIFIED_LOCAL'].includes(
-        v.state as string,
-      )
-    ) {
+    if (['AWAITING_RECIPIENT', 'PROVISIONING', 'VERIFIED_LOCAL'].includes(v.state as string)) {
       if (v.code !== null) return null;
+    } else if (v.state === 'UNAVAILABLE') {
+      if (v.code !== null && v.code !== 'RECOVERY_REQUIRED') return null;
+      if (v.rollbackAvailable || (v.code === null && v.activeVersion !== null)) return null;
+      if (
+        v.code === 'RECOVERY_REQUIRED' &&
+        (v.activeVersion === null ||
+          !validSetupRevision(v.installationRevision) ||
+          v.installationRevision === 0)
+      )
+        return null;
     } else if (v.state === 'DECLINED') {
       if (!['TERMS_DECLINED', 'TERMS_REQUIRED', 'SETUP_CANCELLED'].includes(v.code as string))
         return null;
@@ -127,7 +146,9 @@ export function snapshotSetupSnapshot(input: unknown): SetupSnapshot | null {
     } else return null;
     if (
       v.state === 'VERIFIED_LOCAL' &&
-      (!validSetupRevision(v.installationRevision) || v.installationRevision === 0)
+      (!validSetupRevision(v.installationRevision) ||
+        v.installationRevision === 0 ||
+        v.activeVersion === null)
     )
       return null;
     if (
@@ -151,7 +172,7 @@ export function snapshotSetupRequest(input: unknown): SetupRequest | null {
         ? ['version', 'requestId', 'method']
         : ['version', 'requestId', 'method', 'expectedRevision'],
     );
-    if (v.version !== 1 || v.method !== d.value || !validSetupId(v.requestId)) return null;
+    if (v.version !== 2 || v.method !== d.value || !validSetupId(v.requestId)) return null;
     if (v.method === 'platformTools.get') return Object.freeze({ ...v }) as SetupRequest;
     if (v.method !== 'platformTools.setup.request' || !validSetupRevision(v.expectedRevision))
       return null;
@@ -183,7 +204,7 @@ export function parseSetupRequest(
   // Canonical serialization also rejects decoded duplicate keys and alternate encodings.
   if (JSON.stringify(parsed) !== raw) return denied('INVALID_SHAPE', requestId);
   if (!Number.isSafeInteger(value.version)) return denied('INVALID_SHAPE', requestId);
-  if (value.version !== 1) return denied('UNSUPPORTED_VERSION', requestId);
+  if (value.version !== 2) return denied('UNSUPPORTED_VERSION', requestId);
   if (!['platformTools.get', 'platformTools.setup.request'].includes(value.method as string))
     return denied('UNKNOWN_METHOD', requestId);
   const request = snapshotSetupRequest(parsed);
@@ -203,7 +224,7 @@ function response(input: unknown): SetupResponse | null {
         : ['version', 'requestId', 'ok', 'outcome', 'code', 'diagnosticId', 'loggingHealth'],
     );
     if (
-      v.version !== 1 ||
+      v.version !== 2 ||
       v.ok !== d.value ||
       !['AVAILABLE', 'DEGRADED'].includes(v.loggingHealth as string) ||
       (v.diagnosticId !== null && !validSetupUuid(v.diagnosticId)) ||
@@ -252,7 +273,7 @@ export function setupSuccess(
   loggingHealth: SetupHealth,
 ): string | null {
   const value = response({
-    version: 1,
+    version: 2,
     requestId,
     ok: true,
     outcome,
@@ -270,7 +291,7 @@ export function setupError(
   outcome: 'NOT_STARTED' | 'OUTCOME_UNKNOWN' = 'NOT_STARTED',
 ): string {
   const value = response({
-    version: 1,
+    version: 2,
     requestId,
     ok: false,
     outcome,
@@ -280,7 +301,7 @@ export function setupError(
   });
   return JSON.stringify(
     value ?? {
-      version: 1,
+      version: 2,
       requestId: validSetupId(requestId) ? requestId : null,
       ok: false,
       outcome: 'NOT_STARTED',

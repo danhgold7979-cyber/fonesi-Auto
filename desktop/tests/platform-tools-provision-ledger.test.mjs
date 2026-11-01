@@ -79,6 +79,18 @@ test('canonical genesis/hash chain, activation, failed install and retained roll
     const rolled = await f.ledger.settle(token, 'ACTIVATED', () => {});
     assert.equal(rolled.activeSha256, a.archiveSha256);
     assert.equal(rolled.previousActiveSha256, b.archiveSha256);
+    assert.equal(rolled.operations.length, 4);
+    assert.ok(Object.isFrozen(rolled.operations));
+    assert.ok(rolled.operations.every(Object.isFrozen));
+    assert.deepEqual(
+      rolled.operations.map((x) => x.archiveSha256),
+      [a.archiveSha256, b.archiveSha256, a.archiveSha256, a.archiveSha256],
+    );
+    assert.equal(rolled.operations[3].kind, 'ROLLBACK');
+    assert.deepEqual(
+      rolled.operations.map((x) => x.operationId),
+      rolled.operationIds,
+    );
     assert.deepEqual(await createPlatformToolsProvisionLedger(f.options).readState(), rolled);
     assert.equal((await readdir(f.operations)).length, 8);
   }));

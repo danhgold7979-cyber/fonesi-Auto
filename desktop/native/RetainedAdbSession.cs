@@ -28,7 +28,7 @@ namespace Fonesi.Development.Server
                 try { Console.Error.WriteLine("HOST_NATIVE_PROGRESS_" + slot.ToString()); } catch { }
             }
             readonly object gate = new object(), cleanupGate = new object();
-            readonly string root, owner, executable, executableHash;
+            readonly string root, owner, executable, executableHash, expectedRelease, expectedBuildGrammar;
             long generation;
             State current;
             public sealed class Attempt
@@ -80,11 +80,15 @@ namespace Fonesi.Development.Server
             public RetainedProvider(string ownedRunRoot, string ownerToken, string verifiedExecutable, string expectedExeSha256)
                 : this(ownedRunRoot, ownerToken, verifiedExecutable, expectedExeSha256, false) { }
             public RetainedProvider(string ownedRunRoot, string ownerToken, string verifiedExecutable, string expectedExeSha256, bool diagnostics)
+                : this(ownedRunRoot, ownerToken, verifiedExecutable, expectedExeSha256, "37.0.1", "DECIMAL_1_20", diagnostics) { }
+            public RetainedProvider(string ownedRunRoot, string ownerToken, string verifiedExecutable, string expectedExeSha256, string expectedRelease, string expectedBuildGrammar, bool diagnostics)
             {
                 Guid parsed;
                 if (!Guid.TryParseExact(ownerToken, "D", out parsed) || parsed.ToString() != ownerToken ||
                     String.IsNullOrEmpty(ownedRunRoot) || String.IsNullOrEmpty(verifiedExecutable) ||
+                    !VersionExpectationValid(expectedRelease, expectedBuildGrammar) ||
                     expectedExeSha256 == null || !System.Text.RegularExpressions.Regex.IsMatch(expectedExeSha256, "\\A[0-9a-f]{64}\\z")) throw new ArgumentException("ADMISSION_REJECTED");
+                this.expectedRelease = expectedRelease; this.expectedBuildGrammar = expectedBuildGrammar;
                 this.diagnostics = diagnostics; root = ownedRunRoot; owner = ownerToken; executable = verifiedExecutable; executableHash = expectedExeSha256;
             }
             bool Exact(State a) { return a != null && Object.ReferenceEquals(a.provider, this) && Object.ReferenceEquals(current, a) && a.generation == generation; }
@@ -195,14 +199,27 @@ namespace Fonesi.Development.Server
                 lock (gate) {
                     if (!a.terminal) return retired;
                     if (!observed || a.exit != 0 || a.stdout == null || a.stderr == null || a.stdout.Truncated || a.stderr.Truncated || a.stdout.Failed || a.stderr.Failed || a.stderr.Snapshot() != "") return Failure("NATIVE_FAILED");
-                    string text = a.stdout.Snapshot().Replace("\r\n", "\n"); if (text.EndsWith("\n", StringComparison.Ordinal)) text = text.Substring(0, text.Length - 1);
-                    string[] lines = text.Split('\n');
-                    if (lines.Length != 4 || !System.Text.RegularExpressions.Regex.IsMatch(lines[0], "\\AAndroid Debug Bridge version [0-9]{1,4}\\.[0-9]{1,4}\\.[0-9]{1,4}\\z") ||
-                        !System.Text.RegularExpressions.Regex.IsMatch(lines[1], "\\AVersion 37\\.0\\.1-[0-9]{1,20}\\z") ||
-                        !String.Equals(lines[2], "Installed as " + executable, StringComparison.OrdinalIgnoreCase) ||
-                        !System.Text.RegularExpressions.Regex.IsMatch(lines[3], "\\ARunning on Windows [0-9]{1,8}(?:\\.[0-9]{1,8}){1,3}\\z")) return Failure("NATIVE_FAILED");
+                    if (!VersionOutputMatches(a.stdout.Snapshot(), executable, expectedRelease, expectedBuildGrammar)) return Failure("NATIVE_FAILED");
                     return Facts(a, "VERSION");
                 }
+            }
+            // Pure fixed output grammar; callable by same-assembly managed fixtures, never a launcher.
+            internal static bool VersionExpectationValid(string release, string buildGrammar)
+            {
+                return release != null && release.Length >= 1 && release.Length <= 32 &&
+                    System.Text.RegularExpressions.Regex.IsMatch(release, "\\A[0-9]+\\.[0-9]+\\.[0-9]+\\z") &&
+                    buildGrammar == "DECIMAL_1_20";
+            }
+            internal static bool VersionOutputMatches(string output, string executable, string release, string buildGrammar)
+            {
+                if (!VersionExpectationValid(release, buildGrammar) || output == null || output.Length > 32768 || String.IsNullOrEmpty(executable)) return false;
+                string text = output.Replace("\r\n", "\n");
+                if (text.EndsWith("\n", StringComparison.Ordinal)) text = text.Substring(0, text.Length - 1);
+                string[] lines = text.Split('\n');
+                return lines.Length == 4 && lines[0] == "Android Debug Bridge version 1.0.41" &&
+                    System.Text.RegularExpressions.Regex.IsMatch(lines[1], "\\AVersion " + System.Text.RegularExpressions.Regex.Escape(release) + "-[0-9]{1,20}\\z") &&
+                    String.Equals(lines[2], "Installed as " + executable, StringComparison.OrdinalIgnoreCase) &&
+                    System.Text.RegularExpressions.Regex.IsMatch(lines[3], "\\ARunning on Windows [0-9]{1,8}(?:\\.[0-9]{1,8}){1,3}\\z");
             }
             public Reply StartForeground(Attempt attempt)
             {

@@ -58,7 +58,7 @@ function serviceSuccessTransition() {
     path.join(__dirname, '../src/main/platform-tools-setup-service.ts'),
     'utf8',
   );
-  const matches = [...source.matchAll(/if \(result\.ok\) (publish\('VERIFIED_LOCAL', [^;]+\));/g)];
+  const matches = [...source.matchAll(/else (publish\('VERIFIED_LOCAL', [^;]+\));/g)];
   assert.equal(matches.length, 1);
   let snapshot;
   vm.runInNewContext(matches[0][1], {
@@ -504,7 +504,7 @@ test('campaign is default-off, source-dependent and keeps managed success before
     assert.match(job, /needs: windows-software-only/);
     assert.match(
       job,
-      /if: \(github.event_name == 'workflow_dispatch' && inputs.run_retained_version\) \|\| \(github.event_name == 'push' && github.ref == 'refs\/heads\/phase-02' && contains\(github.event.head_commit.message, '\[retained-version\]'\)\)/,
+      /if: false && \(\(github.event_name == 'workflow_dispatch' && inputs.run_retained_version\) \|\| \(github.event_name == 'push' && github.ref == 'refs\/heads\/phase-02' && contains\(github.event.head_commit.message, '\[retained-version\]'\)\)\)/,
     );
     assert.match(text, /run_retained_version:\n[\s\S]*?default: false/);
     assert.ok(

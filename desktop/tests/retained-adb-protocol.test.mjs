@@ -39,10 +39,10 @@ function before(text, left, right) {
     `${left} before ${right}`,
   );
 }
-test('unchanged native custody helpers and new fixed provider adapter have no new interop or server handoff', () => {
+test('reviewed native custody helpers and fixed provider adapter have no new interop or server handoff', () => {
   for (const [name, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
-    ['RetainedAdbSession.cs', 'ee8081174a680e8ff43283ed8b43ffc789a47c46596bb2c13ae0ec7555274655'],
+    ['RetainedAdbSession.cs', 'c22e40441fb6bc9bd7d1b1b1aaced656572c3ded8c2666d006449dd8b2f45470'],
   ])
     assert.equal(
       createHash('sha256')

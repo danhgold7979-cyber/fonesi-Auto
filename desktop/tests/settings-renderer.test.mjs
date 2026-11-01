@@ -492,7 +492,9 @@ test('actual Help setup hydrates once and requires explicit read after pending n
     state: 'UNAVAILABLE',
     operationId: null,
     code: null,
-    candidateVersion: '37.0.1',
+    installTargetVersion: '37.0.1',
+    activeVersion: null,
+    rollbackAvailable: false,
   };
   const api = {
     read: async () => {
@@ -547,4 +549,133 @@ test('actual Help setup hydrates once and requires explicit read after pending n
   assert.equal(reads, 2);
   assert.equal(m.find('platform-tools-setup').props.disabled, false);
   m.dispose();
+});
+
+test('Help exposes target versus prior active release and setup invalidates cached VERSION', async () => {
+  const diagnostic = '00000000-0000-4000-8000-000000000001';
+  const setup = {
+    revision: 2,
+    installationRevision: 3,
+    state: 'VERIFIED_LOCAL',
+    operationId: null,
+    code: null,
+    installTargetVersion: '37.0.1',
+    activeVersion: '36.0.0',
+    rollbackAvailable: true,
+  };
+  const runtime = {
+    revision: 1,
+    installationRevision: 3,
+    state: 'VERIFIED',
+    operationId: null,
+    code: null,
+    installTargetVersion: '37.0.1',
+    activeVersion: '36.0.0',
+    verifiedAtUtc: 1,
+  };
+  let requests = 0;
+  const api = {
+    read: async () => setupContract.setupSuccess('p1', 'OBSERVED', setup, diagnostic, 'AVAILABLE'),
+    readVersion: async () =>
+      runtimeVersionContract.runtimeVersionSuccess(
+        'p2',
+        'OBSERVED',
+        runtime,
+        diagnostic,
+        'AVAILABLE',
+      ),
+    requestSetup: async () => {
+      requests++;
+      return setupContract.setupError('p3', 'SETUP_CANCELLED', diagnostic, 'AVAILABLE');
+    },
+  };
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    null,
+    api,
+  );
+  m.effects();
+  await flush();
+  m.effects();
+  await flush();
+  assert.equal(m.find('platform-tools-setup').props.disabled, false);
+  const text = JSON.stringify(m.find('platform-tools-release').props.children);
+  assert.ok(text.includes('37.0.1') && text.includes('36.0.0'));
+  m.find('runtime-version-read').props.onClick();
+  await flush();
+  assert.equal(m.find('runtime-version-verify').props.disabled, false);
+  m.find('platform-tools-setup').props.onClick();
+  await flush();
+  assert.equal(requests, 1);
+  assert.equal(m.find('runtime-version-verify').props.disabled, true);
+  m.dispose();
+});
+
+test('late VERSION read cannot rearm Help after setup begins or observed installation changes', async () => {
+  for (const trigger of ['request', 'read-change']) {
+    const diagnostic = '00000000-0000-4000-8000-000000000001';
+    let setup = {
+      revision: 2,
+      installationRevision: 3,
+      state: 'VERIFIED_LOCAL',
+      operationId: null,
+      code: null,
+      installTargetVersion: '37.0.1',
+      activeVersion: '36.0.0',
+      rollbackAvailable: true,
+    };
+    const runtime = {
+      revision: 1,
+      installationRevision: 3,
+      state: 'VERIFIED',
+      operationId: null,
+      code: null,
+      installTargetVersion: '37.0.1',
+      activeVersion: '36.0.0',
+      verifiedAtUtc: 1,
+    };
+    let release;
+    const api = {
+      read: async () =>
+        setupContract.setupSuccess('p1', 'OBSERVED', setup, diagnostic, 'AVAILABLE'),
+      readVersion: () =>
+        new Promise((r) => {
+          release = () =>
+            r(
+              runtimeVersionContract.runtimeVersionSuccess(
+                'p2',
+                'OBSERVED',
+                runtime,
+                diagnostic,
+                'AVAILABLE',
+              ),
+            );
+        }),
+      requestSetup: async () =>
+        setupContract.setupError('p3', 'SETUP_CANCELLED', diagnostic, 'AVAILABLE'),
+    };
+    const m = mount(
+      { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+      1600,
+      null,
+      api,
+    );
+    m.effects();
+    await flush();
+    m.effects();
+    await flush();
+    m.find('runtime-version-read').props.onClick();
+    await flush();
+    if (trigger === 'request') m.find('platform-tools-setup').props.onClick();
+    else {
+      setup = { ...setup, revision: 3, installationRevision: 4, activeVersion: '37.0.1' };
+      m.find('platform-tools-read').props.onClick();
+    }
+    await flush();
+    release();
+    await flush();
+    assert.equal(m.find('runtime-version-verify').props.disabled, true, trigger);
+    m.dispose();
+  }
 });

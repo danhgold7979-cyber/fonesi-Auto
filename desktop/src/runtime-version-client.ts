@@ -53,7 +53,7 @@ export function createRuntimeVersionClient(
       return Promise.resolve(initial('INVALID_SHAPE'));
     const requestId = `p${nextId + 1}`;
     const wire = JSON.stringify({
-      version: 1,
+      version: 2,
       requestId,
       method,
       ...(method === 'runtimeVersion.get'
@@ -153,6 +153,7 @@ export function createRuntimeVersionClient(
     });
   }
   return Object.freeze({
+    invalidateObservation: invalidate,
     readVersion: () => call('runtimeVersion.get'),
     verifyVersion: (expectedRevision: unknown, expectedInstallationRevision: unknown) =>
       call('runtimeVersion.request', expectedRevision, expectedInstallationRevision),

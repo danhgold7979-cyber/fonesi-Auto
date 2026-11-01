@@ -120,10 +120,13 @@ test('duplicate effect, unknown private file and altered owner cannot masquerade
     f.close();
   }
 });
-test('ten exact historical hashes reuse old proof without executing compiler or helper', () => {
-  const h = evidence.historical(desktop, control.binary);
-  assert.equal(Object.keys(h.sourceHashes).length, 10);
-  assert.equal(h.reportSha256, evidence.REPORT_SHA);
+test('ten historical hashes remain fixed and changed catalog-aware helper refuses old proof reuse', () => {
+  assert.throws(() => evidence.historical(desktop, control.binary), /MAIN_VERSION_HISTORY/);
+  assert.equal(Object.keys(evidence.HASHES).length, 10);
+  assert.equal(
+    evidence.REPORT_SHA,
+    '41e93f3cef944512e6d48d2ebebe526f7c56615c7d66a3aab1e542d177b82a0d',
+  );
   assert.equal(evidence.LABEL, 'REUSED_C955D1CA_NOT_RERUN');
   assert.throws(() => evidence.historical(desktop, () => Buffer.from('changed')));
 });
@@ -168,7 +171,7 @@ test('main workflow gate is exact under LF/CRLF and refuses missing, wrong or al
     .readFileSync(path.resolve(desktop, '../.github/workflows/phase-02-software.yml'), 'utf8')
     .replaceAll('\r\n', '\n');
   const expected =
-    "    if: (github.event_name == 'workflow_dispatch' && inputs.run_main_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[main-version]'))";
+    "    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_main_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[main-version]')))";
   function accepted(text) {
     const lines = text.replace(/\r\n/g, '\n').split('\n'),
       start = lines.indexOf('  owned-main-version-development:');
@@ -187,6 +190,7 @@ test('main workflow gate is exact under LF/CRLF and refuses missing, wrong or al
   for (const replacement of [
     '',
     '    if: always()',
+    expected.replace('false && (', '').slice(0, -1),
     expected.replace('[main-version]', '[retained-version]'),
     expected.replace('refs/heads/phase-02', 'refs/heads/main'),
     expected.replace('inputs.run_main_version', 'true'),

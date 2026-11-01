@@ -1,8 +1,12 @@
 // Private core only. No production recipient issuer, downloader, IPC or executable activation.
 import { open, lstat, realpath } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { createHash } from 'node:crypto';
-import { PLATFORM_TOOLS_CANDIDATE } from './platform-tools-candidate.ts';
+import {
+  PLATFORM_TOOLS_INSTALL_TARGET,
+  PLATFORM_TOOLS_KNOWN_CANDIDATES,
+  resolvePlatformToolsCandidate,
+  type PlatformToolsCatalogEntry,
+} from './platform-tools-catalog.ts';
 import { snapshotPlatformToolsArchive } from './platform-tools-archive.ts';
 import { createPlatformToolsProvisionLedger } from './platform-tools-provision-ledger.ts';
 import { createPlatformToolsProvisionFiles } from './platform-tools-provision-files.ts';
@@ -40,9 +44,6 @@ const uuid = (v: unknown): v is string =>
   typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
 const integer = (v: unknown): v is number =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && !Object.is(v, -0);
-const manifestSha256 = createHash('sha256')
-  .update(JSON.stringify(PLATFORM_TOOLS_CANDIDATE))
-  .digest('hex');
 function decision(value: unknown): RecipientDecision | null {
   try {
     if (
@@ -88,7 +89,7 @@ function known(error: unknown): ProvisionCode {
     return 'STORAGE_FAILED';
   }
 }
-async function selectedArchive(file: string, admit: () => void) {
+async function selectedArchive(file: string, admit: () => void, entry: PlatformToolsCatalogEntry) {
   admit();
   const before = await lstat(file);
   admit();
@@ -96,7 +97,7 @@ async function selectedArchive(file: string, admit: () => void) {
     !before.isFile() ||
     before.isSymbolicLink() ||
     before.nlink !== 1 ||
-    before.size !== PLATFORM_TOOLS_CANDIDATE.archive.bytes ||
+    before.size !== entry.candidate.archive.bytes ||
     (await realpath(file)) !== file
   )
     throw Error('ARCHIVE_REJECTED');
@@ -113,7 +114,7 @@ async function selectedArchive(file: string, admit: () => void) {
       s.size !== before.size
     )
       throw Error('ARCHIVE_REJECTED');
-    const raw = Buffer.alloc(PLATFORM_TOOLS_CANDIDATE.archive.bytes + 1);
+    const raw = Buffer.alloc(entry.candidate.archive.bytes + 1);
     let used = 0;
     while (used < raw.length) {
       const r = await h.read(raw, used, raw.length - used, used);
@@ -121,7 +122,7 @@ async function selectedArchive(file: string, admit: () => void) {
       if (!r.bytesRead) break;
       used += r.bytesRead;
     }
-    if (used !== PLATFORM_TOOLS_CANDIDATE.archive.bytes) throw Error('ARCHIVE_REJECTED');
+    if (used !== entry.candidate.archive.bytes) throw Error('ARCHIVE_REJECTED');
     admit();
     const after = await h.stat();
     if (
@@ -131,7 +132,7 @@ async function selectedArchive(file: string, admit: () => void) {
       after.nlink !== 1
     )
       throw Error('ARCHIVE_REJECTED');
-    return snapshotPlatformToolsArchive(raw.subarray(0, used));
+    return snapshotPlatformToolsArchive(raw.subarray(0, used), entry);
   } finally {
     await h.close();
   }
@@ -179,9 +180,10 @@ export function createPlatformToolsProvisioner(
         owned();
         if (closed || uncertain) throw Error('OWNER_REVOKED');
       },
-      acceptedCandidates: [
-        { manifestSha256, archiveSha256: PLATFORM_TOOLS_CANDIDATE.archive.sha256 },
-      ],
+      acceptedCandidates: PLATFORM_TOOLS_KNOWN_CANDIDATES.map((entry) => ({
+        manifestSha256: entry.manifestSha256,
+        archiveSha256: entry.candidate.archive.sha256,
+      })),
     }),
     files = createPlatformToolsProvisionFiles({ dataRoot: dataRoot, assertOwnedSync: owned });
   const ids = new Set<string>();
@@ -198,14 +200,26 @@ export function createPlatformToolsProvisioner(
   return Object.freeze({
     status(): Promise<
       Readonly<{
-        status: 'NOT_PROVISIONED' | 'VERIFIED_LOCAL' | 'RECOVERY_REQUIRED';
+        status: 'NOT_PROVISIONED' | 'VERIFIED_LOCAL' | 'POLICY_DENIED' | 'RECOVERY_REQUIRED';
         revision: number | null;
         archiveSha256: string | null;
+        activeVersion: string | null;
+        previousVersion: string | null;
+        previousArchiveSha256: string | null;
+        rollbackAvailable: boolean;
       }>
     > {
       if (laneTaken || active)
         return Promise.resolve(
-          Object.freeze({ status: 'RECOVERY_REQUIRED', revision: null, archiveSha256: null }),
+          Object.freeze({
+            status: 'RECOVERY_REQUIRED',
+            revision: null,
+            archiveSha256: null,
+            activeVersion: null,
+            previousVersion: null,
+            previousArchiveSha256: null,
+            rollbackAvailable: false,
+          }),
         );
       laneTaken = true;
       const pending = (async () => {
@@ -216,31 +230,63 @@ export function createPlatformToolsProvisioner(
           } catch (e) {
             if ((e as { code?: string }).code === 'ENOENT') {
               owner();
-              return Object.freeze({ status: 'NOT_PROVISIONED', revision: 0, archiveSha256: null });
+              return Object.freeze({
+                status: 'NOT_PROVISIONED',
+                revision: 0,
+                archiveSha256: null,
+                activeVersion: null,
+                previousVersion: null,
+                previousArchiveSha256: null,
+                rollbackAvailable: false,
+              });
             }
             throw e;
           }
           const state = await ledger.readState();
           owner();
-          await files.scan(state.operationIds, owner);
+          await files.scan(state.operations, owner);
           if (state.activeSha256 === null)
             return Object.freeze({
               status: 'NOT_PROVISIONED',
               revision: state.revision,
               archiveSha256: null,
+              activeVersion: null,
+              previousVersion: null,
+              previousArchiveSha256: null,
+              rollbackAvailable: false,
             });
-          await files.verifyRuntime(owner);
+          const entry = resolvePlatformToolsCandidate(state.activeSha256);
+          if (!entry) throw Error('RECOVERY_REQUIRED');
+          await files.verifyRuntime(owner, entry);
+          const previous = state.previousActiveSha256
+            ? resolvePlatformToolsCandidate(state.previousActiveSha256)
+            : null;
+          if (previous) await files.verifyRuntime(owner, previous);
           owner();
           return Object.freeze({
-            status: 'VERIFIED_LOCAL',
+            status: entry.launchAllowed ? 'VERIFIED_LOCAL' : 'POLICY_DENIED',
             revision: state.revision,
             archiveSha256: state.activeSha256,
+            activeVersion: entry.candidate.release,
+            previousVersion: previous?.candidate.release ?? null,
+            previousArchiveSha256: state.previousActiveSha256,
+            rollbackAvailable: !!(
+              entry.launchAllowed &&
+              previous &&
+              previous !== entry &&
+              previous.activationAllowed &&
+              previous.launchAllowed
+            ),
           });
         } catch {
           return Object.freeze({
             status: 'RECOVERY_REQUIRED',
             revision: null,
             archiveSha256: null,
+            activeVersion: null,
+            previousVersion: null,
+            previousArchiveSha256: null,
+            rollbackAvailable: false,
           });
         } finally {
           laneTaken = false;
@@ -322,13 +368,30 @@ export function createPlatformToolsProvisioner(
           admit();
           let state = await ledger.readState();
           admit();
-          await files.scan(state.operationIds, admit);
+          const used = await files.scan(state.operations, admit);
           if (state.revision !== expectedRevision) throw Error('STALE_REVISION');
+          const current = state.activeSha256
+            ? resolvePlatformToolsCandidate(state.activeSha256)
+            : null;
+          if (state.activeSha256 && !current) throw Error('RECOVERY_REQUIRED');
+          if (current) await files.verifyRuntime(admit, current);
+          const entry =
+            kind === 'INSTALL'
+              ? PLATFORM_TOOLS_INSTALL_TARGET
+              : state.previousActiveSha256
+                ? resolvePlatformToolsCandidate(state.previousActiveSha256)
+                : null;
           if (
-            kind === 'INSTALL' &&
-            state.activeSha256 === PLATFORM_TOOLS_CANDIDATE.archive.sha256
-          ) {
-            await files.verifyRuntime(admit);
+            !entry?.activationAllowed ||
+            !entry.launchAllowed ||
+            (kind === 'ROLLBACK' && (!current?.launchAllowed || current === entry))
+          )
+            throw Error('RECOVERY_REQUIRED');
+          if (kind === 'ROLLBACK') await files.verifyRuntime(admit, entry);
+          admit();
+          const manifestSha256 = entry.manifestSha256;
+          if (kind === 'INSTALL' && state.activeSha256 === entry.candidate.archive.sha256) {
+            await files.verifyRuntime(admit, entry);
             admit();
             return Object.freeze({
               ok: true,
@@ -339,6 +402,8 @@ export function createPlatformToolsProvisioner(
             });
           }
           if (state.revision >= 128 || ids.size >= 128) throw Error('LIMIT_EXCEEDED');
+          await files.preflight(used, kind, admit, entry);
+          admit();
           const operationId = newId();
           admit();
           if (
@@ -349,18 +414,12 @@ export function createPlatformToolsProvisioner(
           )
             throw Error('INVALID_REQUEST');
           ids.add(operationId);
-          if (
-            kind === 'ROLLBACK' &&
-            (state.previousActiveSha256 === null ||
-              state.previousActiveSha256 !== PLATFORM_TOOLS_CANDIDATE.archive.sha256)
-          )
-            throw Error('RECOVERY_REQUIRED');
           operation = await ledger.begin(expectedRevision, {
             operationId,
             kind,
             route: d.route,
             manifestSha256,
-            archiveSha256: PLATFORM_TOOLS_CANDIDATE.archive.sha256,
+            archiveSha256: entry.candidate.archive.sha256,
             recipientDecisionId: d.decisionId,
           });
           intended = true;
@@ -372,7 +431,7 @@ export function createPlatformToolsProvisioner(
             try {
               archive =
                 d.route === 'LOCAL_ARCHIVE'
-                  ? await selectedArchive(d.archivePath as string, admit)
+                  ? await selectedArchive(d.archivePath as string, admit, entry)
                   : fetch
                     ? await fetch(abort.signal)
                     : (() => {
@@ -383,13 +442,22 @@ export function createPlatformToolsProvisioner(
               throw e;
             }
             admit();
-            await files.stageAndPublish(operationId, archive, state.operationIds, admit, () => {
-              mutated = true;
-            });
+            await files.stageAndPublish(
+              operationId,
+              archive,
+              state.operations,
+              admit,
+              () => {
+                mutated = true;
+              },
+              entry,
+            );
             admit();
-          } else await files.verifyRuntime(admit);
-          await files.scan(state.operationIds, admit);
-          await files.verifyRuntime(admit);
+          } else await files.verifyRuntime(admit, entry);
+          await files.scan(state.operations, admit);
+          await files.verifyRuntime(admit, entry);
+          admit();
+          if (current) await files.verifyRuntime(admit, current);
           admit();
           const settled = await ledger.settle(operation, 'ACTIVATED', admit);
           admit();
@@ -397,7 +465,7 @@ export function createPlatformToolsProvisioner(
             ok: true,
             status: 'VERIFIED_LOCAL',
             revision: settled.revision,
-            archiveSha256: PLATFORM_TOOLS_CANDIDATE.archive.sha256,
+            archiveSha256: entry.candidate.archive.sha256,
             manifestSha256,
           });
         } catch (e) {

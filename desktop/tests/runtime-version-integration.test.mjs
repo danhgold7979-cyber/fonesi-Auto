@@ -212,7 +212,7 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
   assert.equal(JSON.parse(await exposed.platformTools.readVersion()).code, 'BUSY');
   await new Promise((r) => setImmediate(r));
   assert.equal(invocations.length, 8);
-  assert.equal(invocations.filter((r) => r.channel === 'foundation:runtime-version:v1').length, 3);
+  assert.equal(invocations.filter((r) => r.channel === 'foundation:runtime-version:v2').length, 3);
   events.find((e) => e[0] === 'pagehide')[1]();
   for (const p of pending) assert.equal(JSON.parse(await p).code, 'SESSION_UNAVAILABLE');
   assert.equal(JSON.parse(await exposed.platformTools.readVersion()).code, 'SESSION_UNAVAILABLE');
@@ -353,7 +353,8 @@ test('actual transformed Help renderer never auto-verifies; only explicit click 
     state: 'IDLE',
     operationId: null,
     code: null,
-    candidateVersion: '37.0.1',
+    installTargetVersion: '37.0.1',
+    activeVersion: '37.0.1',
     verifiedAtUtc: null,
   };
   const api = { read: async () => contract.settingsError('SESSION_UNAVAILABLE', null, 'DEGRADED') };

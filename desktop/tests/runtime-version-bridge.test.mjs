@@ -20,12 +20,13 @@ const pending = {
   state: 'PENDING',
   operationId: id,
   code: null,
-  candidateVersion: '37.0.1',
+  installTargetVersion: '37.0.1',
+  activeVersion: '37.0.1',
   verifiedAtUtc: null,
 };
 const wire = (request = false) =>
   JSON.stringify({
-    version: 1,
+    version: 2,
     requestId: 'p1',
     method: request ? 'runtimeVersion.request' : 'runtimeVersion.get',
     ...(request ? { expectedRevision: 0, expectedInstallationRevision: 1 } : {}),

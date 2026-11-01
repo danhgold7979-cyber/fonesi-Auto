@@ -86,6 +86,7 @@ export const inputs = [
   'src/main/platform-tools-download.ts',
   'src/main/platform-tools-archive.ts',
   'src/main/platform-tools-candidate.ts',
+  'src/main/platform-tools-catalog.ts',
   'src/main/platform-tools-provision-files.ts',
   'src/main/platform-tools-provision-ledger.ts',
   'src/main/platform-tools-provisioner.ts',

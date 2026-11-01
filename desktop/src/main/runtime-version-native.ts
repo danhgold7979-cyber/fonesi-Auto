@@ -13,7 +13,7 @@ import {
   assertHostPathBudget,
   HOST_ASSETS,
 } from './adb-host-context.ts';
-import { PLATFORM_TOOLS_CANDIDATE } from './platform-tools-candidate.ts';
+import { PLATFORM_TOOLS_INSTALL_TARGET } from './platform-tools-catalog.ts';
 export function inspectRuntimeVersionContext(
   entry: PersistenceEntry,
   desktopRoot: string,
@@ -50,6 +50,8 @@ export function inspectRuntimeVersionContext(
     }
     const context = readHostContext(entry, launchRoot, desktopRoot, parentPid);
     try {
+      // Every catalog digest is 64 characters; this is only a path-budget projection.
+      // The factory subsequently checks the actual admitted active candidate/path.
       assertHostPathBudget(
         launchRoot,
         pointer.launchId,
@@ -57,7 +59,7 @@ export function inspectRuntimeVersionContext(
           entry.root,
           'platform-tools-runtime',
           'runtimes',
-          'runtime-' + PLATFORM_TOOLS_CANDIDATE.archive.sha256,
+          'runtime-' + PLATFORM_TOOLS_INSTALL_TARGET.candidate.archive.sha256,
           'adb.exe',
         ),
         [...HOST_ASSETS.map((name) => join(desktopRoot, name)), context.receipt.parentImagePath],

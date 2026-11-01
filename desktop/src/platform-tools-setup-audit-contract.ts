@@ -11,6 +11,7 @@ export type SetupAudit = Readonly<{
   operationId: string | null;
   expectedRevision: number | null;
   resultingRevision: number | null;
+  action: null | 'INSTALL' | 'ROLLBACK';
   outcome:
     | 'INTENT'
     | 'OBSERVED'
@@ -63,4 +64,17 @@ export function validSetupAuditTuple(v: Record<string, unknown>): boolean {
   if (v.outcome === 'OUTCOME_UNKNOWN')
     return ['OUTCOME_UNKNOWN', 'RECOVERY_REQUIRED'].includes(v.code as string);
   return v.outcome === 'FAILED' && v.code !== 'OK';
+}
+
+// Schema 6 retains the original tuple validator above; schema 8 adds selected action.
+export function validSetupAuditV2Tuple(v: Record<string, unknown>): boolean {
+  if (!validSetupAuditTuple(v)) return false;
+  if (v.operation === 'READ' || v.operation === 'REQUEST') return v.action === null;
+  if (v.action === 'INSTALL' || v.action === 'ROLLBACK') return true;
+  if (v.action !== null || v.phase !== 'RESULT') return false;
+  return (
+    (v.outcome === 'DECLINED' &&
+      ['TERMS_REQUIRED', 'TERMS_DECLINED', 'SETUP_CANCELLED'].includes(v.code as string)) ||
+    (v.outcome === 'FAILED' && ['INTERNAL_FAILURE', 'OWNER_REVOKED'].includes(v.code as string))
+  );
 }

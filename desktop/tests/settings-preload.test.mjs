@@ -92,7 +92,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   assert.equal(invocations.length, 8);
   assert.deepEqual([...new Set(invocations.map((x) => x.channel))].sort(), [
     'foundation:fleet:v1',
-    'foundation:platform-tools:v1',
+    'foundation:platform-tools:v2',
     'foundation:preferences:v1',
     'foundation:request:v2',
   ]);

@@ -20,7 +20,9 @@ const state = {
   state: 'AWAITING_RECIPIENT',
   operationId: '00000000-0000-4000-8000-000000000001',
   code: null,
-  candidateVersion: '37.0.1',
+  installTargetVersion: '37.0.1',
+  activeVersion: null,
+  rollbackAvailable: false,
 };
 function session() {
   const v = new ViewSession(sender, caller.origin, caller.url);
@@ -66,7 +68,7 @@ test('bridge pending acknowledgment releases RPC slot but operation liveness rem
     await handlers.get(PLATFORM_TOOLS_SETUP_CHANNEL)(
       caller,
       JSON.stringify({
-        version: 1,
+        version: 2,
         requestId: 'p1',
         method: 'platformTools.setup.request',
         expectedRevision: 0,
@@ -95,7 +97,7 @@ test('wrong sender/subframe, malformed/extra argument and revoked session never 
     }),
   );
   const run = handlers.get(PLATFORM_TOOLS_SETUP_CHANNEL),
-    wire = JSON.stringify({ version: 1, requestId: 'p1', method: 'platformTools.get' });
+    wire = JSON.stringify({ version: 2, requestId: 'p1', method: 'platformTools.get' });
   for (const event of [
     { ...caller, sender: {} },
     { ...caller, isMainFrame: false },
@@ -128,7 +130,7 @@ test('lost session or rejected reply after setup dispatch never claims NOT_START
       await handlers.get(PLATFORM_TOOLS_SETUP_CHANNEL)(
         caller,
         JSON.stringify({
-          version: 1,
+          version: 2,
           requestId: 'p1',
           method: 'platformTools.setup.request',
           expectedRevision: 0,
@@ -195,13 +197,17 @@ test('actual reserved REQUEST with delayed audit result remains unknown after se
   const reply = handlers.get(PLATFORM_TOOLS_SETUP_CHANNEL)(
     caller,
     JSON.stringify({
-      version: 1,
+      version: 2,
       requestId: 'p1',
       method: 'platformTools.setup.request',
       expectedRevision: 0,
     }),
   );
-  await new Promise((r) => setImmediate(r));
+  const until = Date.now() + 2000;
+  while (typeof finishNative !== 'function') {
+    assert.ok(Date.now() < until);
+    await new Promise((r) => setImmediate(r));
+  }
   assert.equal(typeof finishNative, 'function');
   assert.equal(typeof finishAudit, 'function');
   assert.equal(v.outstanding, 1);
@@ -211,7 +217,7 @@ test('actual reserved REQUEST with delayed audit result remains unknown after se
   assert.equal(result.outcome, 'OUTCOME_UNKNOWN');
   assert.equal(result.code, 'SESSION_REVOKED');
   assert.equal(v.outstanding, 0);
-  finishNative({ ok: false, code: 'TERMS_DECLINED' });
+  finishNative({ ok: false, code: 'TERMS_DECLINED', action: null });
   assert.equal(await service.shutdown(), 'RETIRED');
   assert.deepEqual(readdirSync(root), []);
   rmdirSync(root);

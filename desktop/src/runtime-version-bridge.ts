@@ -6,7 +6,7 @@ import {
   runtimeVersionError,
   type RuntimeVersionCode,
 } from './runtime-version-contract.ts';
-export const RUNTIME_VERSION_CHANNEL = 'foundation:runtime-version:v1';
+export const RUNTIME_VERSION_CHANNEL = 'foundation:runtime-version:v2';
 const denied = (code: RuntimeVersionCode, requestId: string | null = null, uncertain = false) =>
   runtimeVersionError(
     requestId,

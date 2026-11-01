@@ -42,6 +42,25 @@ namespace Fonesi.Tests
             internal static IDictionary<string,object> Facts(string observation){return new Dictionary<string,object>{{"version",2},{"kind","INVOCATION"},{"dispatched",true},{"processRetired",true},{"exitCode",0},{"observation",observation}};}
         }
         static void Wait(Func<bool> predicate){for(int i=0;i<1000;i++){if(predicate())return;Thread.Sleep(5);}Check(false);}
+        // New pure parser groups: separate from the eight historical protocol groups.
+        // No provider instance, reserve, process, native API, profile or socket is used here.
+        public static int RunVersionExpectations()
+        {
+            string executable = @"C:\owned\runtime\adb.exe";
+            foreach(string release in new string[]{"37.0.1","36.0.0"}) {
+                string output = "Android Debug Bridge version 1.0.41\nVersion " + release + "-12345678901234567890\nInstalled as " + executable + "\nRunning on Windows 10.0.20348\n";
+                Check(IsolatedAdbServer.RetainedProvider.VersionOutputMatches(output, executable, release, "DECIMAL_1_20"));
+                Check(IsolatedAdbServer.RetainedProvider.VersionOutputMatches(output.Replace("\n","\r\n"), executable, release, "DECIMAL_1_20"));
+                Check(!IsolatedAdbServer.RetainedProvider.VersionOutputMatches(output, executable, release=="37.0.1"?"36.0.0":"37.0.1", "DECIMAL_1_20"));
+                foreach(string changed in new string[]{output.Replace("1.0.41","1.0.42"),output.Replace("-12345678901234567890","-123456789012345678901"),output.Replace("-12345678901234567890","-"),output.Replace("-12345678901234567890","-x"),output.Replace("Installed as " + executable,"Installed as C:\\other\\adb.exe"),output.Replace("Running on Windows","Running on Linux"),output+"\n",output+"private",new string('x',32769)})
+                    Check(!IsolatedAdbServer.RetainedProvider.VersionOutputMatches(changed, executable, release, "DECIMAL_1_20"));
+            }
+            foreach(string release in new string[]{null,"","37.0","37.0.1\n","37.0.1.*","37.0.1|36.0.0","٣٧.0.1",new string('1',33)+".0.1"})
+                Check(!IsolatedAdbServer.RetainedProvider.VersionExpectationValid(release,"DECIMAL_1_20"));
+            foreach(string grammar in new string[]{null,"","DECIMAL_1_20\n","[0-9]+","ANY"})
+                Check(!IsolatedAdbServer.RetainedProvider.VersionExpectationValid("37.0.1",grammar));
+            return 2;
+        }
         public static int RunAll()
         {
             int passed=0;

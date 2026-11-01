@@ -27,9 +27,9 @@ function crc(data) {
   }
   return (n ^ 0xffffffff) >>> 0;
 }
-function syntheticArchive() {
+function syntheticArchive(release = '37.0.1', fill = 0) {
   const rows = PLATFORM_TOOLS_CANDIDATE.files.map((row) => {
-    const bytes = Buffer.alloc(row.peMachine === null ? 32 : 128);
+    const bytes = Buffer.alloc(row.peMachine === null ? 32 : 128, fill);
     if (row.peMachine !== null) {
       bytes.writeUInt16LE(0x5a4d);
       bytes.writeUInt32LE(64, 60);
@@ -84,15 +84,20 @@ function syntheticArchive() {
     total: rows.reduce((n, r) => n + r.bytes, 0),
     candidate: {
       schema: 1,
-      release: '37.0.1',
-      archive: { ...PLATFORM_TOOLS_CANDIDATE.archive, bytes: bytes.length, sha256: sha(bytes) },
+      release,
+      archive: {
+        ...PLATFORM_TOOLS_CANDIDATE.archive,
+        url: `https://dl.google.com/android/repository/platform-tools_r${release}-win.zip`,
+        bytes: bytes.length,
+        sha256: sha(bytes),
+      },
       files: rows.map(({ data, ...row }) => row),
     },
   };
 }
 const dataUrl = (source) => 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
-async function fixtureModules(f, archive = f.bytes, timerModule = null) {
-  // Exact synthetic metadata/expanded-bound substitutions only. Production pin/source is unchanged.
+async function fixtureModules(f, archive = f.bytes, timerModule = null, known = null) {
+  // Exact synthetic build-owned catalog substitutions only. Production pin/source is unchanged.
   const candidate = dataUrl(
     'export const PLATFORM_TOOLS_CANDIDATE=' +
       JSON.stringify({
@@ -115,10 +120,20 @@ async function fixtureModules(f, archive = f.bytes, timerModule = null) {
         ';\n' +
         s;
     }
-    if (name === 'platform-tools-archive' || name === 'platform-tools-provision-files') {
-      const count = s.split('17529398').length - 1;
-      assert.equal(count, name === 'platform-tools-archive' ? 2 : 1);
-      s = s.replaceAll('17529398', String(f.total));
+    if (name === 'platform-tools-catalog' && known) {
+      const marker =
+        /\[\s*\{\s*candidate: PLATFORM_TOOLS_CANDIDATE,\s*activationAllowed: true,\s*launchAllowed: true,?\s*\},?\s*\]/;
+      assert.match(s, marker);
+      s = s.replace(
+        marker,
+        JSON.stringify(
+          known.map((x) => ({
+            candidate: x.candidate,
+            activationAllowed: x.activationAllowed ?? true,
+            launchAllowed: x.launchAllowed ?? true,
+          })),
+        ),
+      );
     }
     for (const [from, to] of Object.entries(mocks)) {
       assert.ok(s.includes("'" + from + "'"));
@@ -127,17 +142,24 @@ async function fixtureModules(f, archive = f.bytes, timerModule = null) {
     assert.doesNotMatch(s, /from ['"]\.\//);
     return dataUrl(transformSync(s, { loader: 'ts', format: 'esm', target: 'es2022' }).code);
   };
-  const archiveUrl = compile('platform-tools-archive', {
+  const catalogUrl = compile('platform-tools-catalog', {
     './platform-tools-candidate.ts': candidate,
   });
+  const archiveUrl = compile('platform-tools-archive', {
+    './platform-tools-catalog.ts': catalogUrl,
+  });
   const filesUrl = compile('platform-tools-provision-files', {
-    './platform-tools-candidate.ts': candidate,
+    './platform-tools-provision-ledger.ts': new URL(
+      '../src/main/platform-tools-provision-ledger.ts',
+      import.meta.url,
+    ).href,
+    './platform-tools-catalog.ts': catalogUrl,
     './platform-tools-archive.ts': archiveUrl,
     './platform-tools-files.ts': new URL('../src/main/platform-tools-files.ts', import.meta.url)
       .href,
   });
   const coreUrl = compile('platform-tools-provisioner', {
-    './platform-tools-candidate.ts': candidate,
+    './platform-tools-catalog.ts': catalogUrl,
     './platform-tools-archive.ts': archiveUrl,
     './platform-tools-provision-ledger.ts': new URL(
       '../src/main/platform-tools-provision-ledger.ts',
@@ -145,7 +167,17 @@ async function fixtureModules(f, archive = f.bytes, timerModule = null) {
     ).href,
     './platform-tools-provision-files.ts': filesUrl,
   });
+  const custodyUrl = compile('platform-tools-runtime-custody', {
+    './platform-tools-catalog.ts': catalogUrl,
+    './platform-tools-provision-ledger.ts': new URL(
+      '../src/main/platform-tools-provision-ledger.ts',
+      import.meta.url,
+    ).href,
+    './platform-tools-provision-files.ts': filesUrl,
+  });
   return {
+    custody: await import(custodyUrl),
+    catalog: await import(catalogUrl),
     archive: await import(archiveUrl),
     files: await import(filesUrl),
     core: await import(coreUrl),
@@ -173,7 +205,7 @@ function owned() {
           else {
             assert.equal(s.isFile(), true);
             assert.equal(s.nlink, 1);
-            assert.ok(++n <= 80);
+            assert.ok(++n <= 128);
           }
         }
       }
@@ -648,6 +680,319 @@ test('bounded close returns UNRETIRED without abandoning active work; late compl
     assert.equal(await core.close(), 'UNRETIRED');
   } finally {
     release?.(fixture.bytes);
+    await core.close();
+    f.cleanup();
+  }
+});
+
+// Two synthetic builds exercise the actual owned-file coordinator, not a ledger-only rollback.
+async function retainedPair() {
+  const a = syntheticArchive('36.0.0', 1),
+    b = syntheticArchive('37.0.1', 2);
+  const ma = await fixtureModules(a),
+    mb = await fixtureModules(b, b.bytes, null, [a, b]);
+  const f = owned(),
+    storeId = randomUUID();
+  function create(module, bytes, kind = 'INSTALL', patch = {}) {
+    const setup = options(f, bytes, { storeId, ...patch });
+    if (kind === 'ROLLBACK') {
+      const original = setup.o.recipient.read;
+      setup.o.recipient.read = (g) => {
+        const d = original(g);
+        return d && { ...d, route: 'RETAINED_RUNTIME' };
+      };
+    }
+    return { ...setup, core: module.core.createPlatformToolsProvisioner(setup.o) };
+  }
+  const first = create(ma, a.bytes);
+  assert.equal((await first.core.run(first.grant, 0)).ok, true);
+  await first.core.close();
+  const second = create(mb, b.bytes);
+  assert.equal((await second.core.run(second.grant, 1)).ok, true);
+  await second.core.close();
+  return { a, b, ma, mb, f, create };
+}
+function treeHashes(root) {
+  const out = {};
+  function walk(dir, prefix = '') {
+    for (const name of readdirSync(dir).sort()) {
+      const rel = prefix + name,
+        p = join(dir, name),
+        s = lstatSync(p);
+      if (s.isDirectory()) {
+        out[rel + '/'] = 'DIR';
+        walk(p, rel + '/');
+      } else out[rel] = sha(readFileSync(p));
+    }
+  }
+  walk(root);
+  return out;
+}
+test('actual owned two-synthetic-build A→B→A rollback and reopen retain both inventories and immutable history', async () => {
+  const p = await retainedPair(),
+    runtimeRoot = join(p.f.root, 'platform-tools-runtime', 'runtimes');
+  const before = treeHashes(runtimeRoot),
+    rollback = p.create(p.mb, null, 'ROLLBACK', {
+      readOfficialArchive: () => {
+        throw Error('rollback must never download');
+      },
+    });
+  try {
+    const status = await rollback.core.status();
+    assert.equal(status.activeVersion, '37.0.1');
+    assert.equal(status.previousVersion, '36.0.0');
+    assert.equal(status.rollbackAvailable, true);
+    const result = await rollback.core.run(rollback.grant, 2, 'ROLLBACK');
+    assert.equal(result.ok, true);
+    assert.equal(result.revision, 3);
+    assert.equal(result.archiveSha256, p.a.candidate.archive.sha256);
+    assert.deepEqual(treeHashes(runtimeRoot), before);
+    await rollback.core.close();
+    const reopened = p.create(p.mb, null);
+    const observed = await reopened.core.status();
+    assert.equal(observed.activeVersion, '36.0.0');
+    assert.equal(observed.previousVersion, '37.0.1');
+    assert.equal(observed.revision, 3);
+    assert.equal(observed.rollbackAvailable, true);
+    await reopened.core.close();
+    const custody = p.mb.custody.createPlatformToolsRuntimeCustody(reopened.o);
+    const read = await custody.acquireRead();
+    assert.equal(read.ok, true);
+    assert.equal(read.observation.release, '36.0.0');
+    assert.equal(read.observation.installationRevision, 3);
+    assert.equal(read.observation.archiveSha256, p.a.candidate.archive.sha256);
+    assert.equal(read.observation.manifestSha256, sha(JSON.stringify(p.a.candidate)));
+    assert.equal(
+      read.observation.adbPath,
+      join(runtimeRoot, 'runtime-' + p.a.candidate.archive.sha256, 'adb.exe'),
+    );
+    assert.equal((await custody.releaseRead(read.token)).status, 'RETIRED');
+    assert.equal(await custody.close(), 'RETIRED');
+    const records = readdirSync(join(p.f.root, 'platform-tools-runtime', 'operations'));
+    assert.equal(records.length, 6);
+    const rollbackIntent = records
+      .filter((x) => x.endsWith('.intent.json'))
+      .map((x) =>
+        JSON.parse(readFileSync(join(p.f.root, 'platform-tools-runtime', 'operations', x), 'utf8')),
+      )
+      .find((x) => x.kind === 'ROLLBACK');
+    assert.equal(rollbackIntent.archiveSha256, p.a.candidate.archive.sha256);
+  } finally {
+    await rollback.core.close();
+    p.f.cleanup();
+  }
+});
+test('actual prior missing/tampered, stale CAS, BUSY and revoked grant refuse rollback without new records', async () => {
+  for (const mode of ['missing', 'tampered', 'stale', 'busy', 'revoked']) {
+    const p = await retainedPair(),
+      root = join(p.f.root, 'platform-tools-runtime');
+    const rollback = p.create(
+      p.mb,
+      null,
+      'ROLLBACK',
+      mode === 'busy'
+        ? {
+            assertIdleSync() {
+              throw Error('held read');
+            },
+          }
+        : {},
+    );
+    try {
+      const file = join(root, 'runtimes', 'runtime-' + p.a.candidate.archive.sha256, 'NOTICE.txt');
+      if (mode === 'missing') rmSync(file);
+      if (mode === 'tampered') writeFileSync(file, Buffer.alloc(32, 9));
+      if (mode === 'revoked') rollback.revoke();
+      const before = treeHashes(root);
+      const result = await rollback.core.run(rollback.grant, mode === 'stale' ? 1 : 2, 'ROLLBACK');
+      assert.equal(result.ok, false);
+      assert.equal(result.outcome, 'NOT_ACTIVATED');
+      assert.deepEqual(treeHashes(root), before);
+    } finally {
+      await rollback.core.close();
+      p.f.cleanup();
+    }
+  }
+});
+test('historical known metadata survives policy revocation; active launch and new activation eligibility are independent', async () => {
+  const p = await retainedPair();
+  try {
+    const revokedPrior = await fixtureModules(p.b, p.b.bytes, null, [
+      { ...p.a, activationAllowed: false, launchAllowed: false },
+      p.b,
+    ]);
+    const refused = p.create(revokedPrior, null, 'ROLLBACK');
+    assert.equal((await refused.core.status()).status, 'VERIFIED_LOCAL');
+    assert.equal((await refused.core.status()).rollbackAvailable, false);
+    assert.equal((await refused.core.run(refused.grant, 2, 'ROLLBACK')).code, 'RECOVERY_REQUIRED');
+    await refused.core.close();
+    const launchOnly = await fixtureModules(p.a, p.a.bytes, null, [
+      p.a,
+      { ...p.b, activationAllowed: false, launchAllowed: true },
+    ]);
+    const usable = p.create(launchOnly, null);
+    assert.equal((await usable.core.status()).status, 'VERIFIED_LOCAL');
+    await usable.core.close();
+    const denied = await fixtureModules(p.a, p.a.bytes, null, [
+      p.a,
+      { ...p.b, activationAllowed: false, launchAllowed: false },
+    ]);
+    const repair = p.create(denied, p.a.bytes);
+    assert.equal((await repair.core.status()).status, 'POLICY_DENIED');
+    assert.equal((await repair.core.status()).rollbackAvailable, false);
+    const repaired = await repair.core.run(repair.grant, 2);
+    assert.equal(repaired.ok, true);
+    assert.equal(repaired.archiveSha256, p.a.candidate.archive.sha256);
+    assert.equal((await repair.core.status()).status, 'VERIFIED_LOCAL');
+    await repair.core.close();
+  } finally {
+    p.f.cleanup();
+  }
+});
+
+test('actual rollback settlement open/sync uncertainty retains evidence, forbids retry, and reopens only the actual written chain', async () => {
+  for (const fault of ['open', 'sync']) {
+    const p = await retainedPair(),
+      root = join(p.f.root, 'platform-tools-runtime');
+    const rollback = p.create(p.mb, null, 'ROLLBACK'),
+      original = fsPromises.open;
+    const before = treeHashes(join(root, 'runtimes'));
+    let injected = false;
+    try {
+      fsPromises.open = async (file, flags, ...rest) => {
+        if (String(file).endsWith('.settled.json') && flags === 'wx' && !injected) {
+          injected = true;
+          if (fault === 'open') throw Error('private failure');
+          const handle = await original(file, flags, ...rest);
+          return new Proxy(handle, {
+            get(target, key) {
+              if (key === 'sync')
+                return async () => {
+                  throw Error('private sync failure');
+                };
+              const value = Reflect.get(target, key);
+              return typeof value === 'function' ? value.bind(target) : value;
+            },
+          });
+        }
+        return original(file, flags, ...rest);
+      };
+      syncBuiltinESMExports();
+      const result = await rollback.core.run(rollback.grant, 2, 'ROLLBACK');
+      assert.equal(injected, true);
+      assert.equal(result.outcome, 'OUTCOME_UNKNOWN');
+      assert.equal(result.code, 'OUTCOME_UNKNOWN');
+      const frozen = treeHashes(root);
+      assert.equal(
+        (await rollback.core.run(rollback.grant, 2, 'ROLLBACK')).code,
+        'RECOVERY_REQUIRED',
+      );
+      assert.deepEqual(treeHashes(root), frozen);
+      assert.deepEqual(treeHashes(join(root, 'runtimes')), before);
+      fsPromises.open = original;
+      syncBuiltinESMExports();
+      await rollback.core.close();
+      const reopened = p.create(p.mb, null),
+        status = await reopened.core.status();
+      assert.equal(status.status, fault === 'open' ? 'RECOVERY_REQUIRED' : 'VERIFIED_LOCAL');
+      if (fault === 'sync') assert.equal(status.activeVersion, '36.0.0');
+      await reopened.core.close();
+    } finally {
+      fsPromises.open = original;
+      syncBuiltinESMExports();
+      await rollback.core.close();
+      p.f.cleanup();
+    }
+  }
+});
+
+test('catalog handles cannot be forged and a final operation-id callback revocation creates no rollback intent', async () => {
+  const p = await retainedPair();
+  try {
+    assert.throws(
+      () =>
+        p.mb.archive.snapshotPlatformToolsArchive(p.b.bytes, {
+          ...p.mb.catalog.PLATFORM_TOOLS_INSTALL_TARGET,
+        }),
+      /ARCHIVE_REJECTED/,
+    );
+    const rollback = p.create(p.mb, null, 'ROLLBACK', {
+      newId() {
+        rollback.revoke();
+        return randomUUID();
+      },
+    });
+    const before = treeHashes(join(p.f.root, 'platform-tools-runtime'));
+    assert.equal((await rollback.core.run(rollback.grant, 2, 'ROLLBACK')).code, 'TERMS_REQUIRED');
+    assert.deepEqual(treeHashes(join(p.f.root, 'platform-tools-runtime')), before);
+    await rollback.core.close();
+  } finally {
+    p.f.cleanup();
+  }
+});
+
+test('known five-stage capacity refuses INSTALL before intent; record-only rollback still succeeds', async () => {
+  const p = await retainedPair();
+  try {
+    const targetA = await fixtureModules(p.a, p.a.bytes, null, [p.a, p.b]);
+    for (const [module, bytes, revision] of [
+      [targetA, p.a.bytes, 2],
+      [p.mb, p.b.bytes, 3],
+      [targetA, p.a.bytes, 4],
+    ]) {
+      const next = p.create(module, bytes);
+      assert.equal((await next.core.run(next.grant, revision)).ok, true);
+      await next.core.close();
+    }
+    const root = join(p.f.root, 'platform-tools-runtime'),
+      before = treeHashes(root);
+    assert.equal(readdirSync(join(root, 'staging')).length, 5);
+    const blocked = p.create(p.mb, p.b.bytes, 'INSTALL', {
+      readOfficialArchive: () => {
+        throw Error('must not fetch');
+      },
+    });
+    const result = await blocked.core.run(blocked.grant, 5);
+    assert.equal(result.code, 'LIMIT_EXCEEDED');
+    assert.equal(result.outcome, 'NOT_ACTIVATED');
+    assert.deepEqual(treeHashes(root), before);
+    await blocked.core.close();
+    const rollback = p.create(p.mb, null, 'ROLLBACK');
+    assert.equal((await rollback.core.run(rollback.grant, 5, 'ROLLBACK')).ok, true);
+    assert.equal(readdirSync(join(root, 'staging')).length, 5);
+    await rollback.core.close();
+  } finally {
+    p.f.cleanup();
+  }
+});
+
+test('known aggregate archive/extraction capacity refuses before intent or download', async () => {
+  const a = syntheticArchive('36.0.0', 1),
+    b = syntheticArchive('37.0.1', 2),
+    f = owned();
+  const target = {
+    ...b,
+    candidate: { ...b.candidate, archive: { ...b.candidate.archive, bytes: 128 * 1024 * 1024 } },
+  };
+  const module = await fixtureModules(target, target.bytes, null, [a, target]);
+  let downloads = 0;
+  const setup = options(f, null, {
+    readOfficialArchive: () => {
+      downloads++;
+      throw Error('must not fetch');
+    },
+  });
+  const core = module.core.createPlatformToolsProvisioner(setup.o);
+  try {
+    const result = await core.run(setup.grant, 0);
+    assert.equal(result.code, 'LIMIT_EXCEEDED');
+    assert.equal(result.outcome, 'NOT_ACTIVATED');
+    assert.equal(downloads, 0);
+    const root = join(f.root, 'platform-tools-runtime');
+    assert.deepEqual(readdirSync(join(root, 'operations')), []);
+    assert.deepEqual(readdirSync(join(root, 'staging')), []);
+    assert.deepEqual(readdirSync(join(root, 'runtimes')), []);
+  } finally {
     await core.close();
     f.cleanup();
   }

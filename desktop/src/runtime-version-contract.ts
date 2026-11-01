@@ -43,13 +43,14 @@ export type RuntimeVersionSnapshot = Readonly<{
   state: 'UNAVAILABLE' | 'IDLE' | 'PENDING' | 'VERIFIED' | 'FAILED' | 'OUTCOME_UNKNOWN';
   operationId: string | null;
   code: RuntimeVersionCode | null;
-  candidateVersion: '37.0.1';
+  installTargetVersion: string;
+  activeVersion: string | null;
   verifiedAtUtc: number | null;
 }>;
 export type RuntimeVersionRequest =
-  | Readonly<{ version: 1; requestId: string; method: 'runtimeVersion.get' }>
+  | Readonly<{ version: 2; requestId: string; method: 'runtimeVersion.get' }>
   | Readonly<{
-      version: 1;
+      version: 2;
       requestId: string;
       method: 'runtimeVersion.request';
       expectedRevision: number;
@@ -57,7 +58,7 @@ export type RuntimeVersionRequest =
     }>;
 export type RuntimeVersionResponse =
   | Readonly<{
-      version: 1;
+      version: 2;
       requestId: string;
       ok: true;
       outcome: 'OBSERVED' | 'PENDING';
@@ -66,7 +67,7 @@ export type RuntimeVersionResponse =
       loggingHealth: RuntimeVersionHealth;
     }>
   | Readonly<{
-      version: 1;
+      version: 2;
       requestId: string | null;
       ok: false;
       outcome: 'NOT_STARTED' | 'OUTCOME_UNKNOWN';
@@ -74,6 +75,12 @@ export type RuntimeVersionResponse =
       diagnosticId: string | null;
       loggingHealth: RuntimeVersionHealth;
     }>;
+export const validRuntimeVersionRelease = (v: unknown): v is string =>
+  typeof v === 'string' &&
+  v.length >= 1 &&
+  v.length <= 32 &&
+  !/[^0-9.]/.test(v) &&
+  /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v);
 export const validRuntimeVersionRevision = (v: unknown): v is number =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && !Object.is(v, -0);
 export const validRuntimeVersionId = (v: unknown): v is string =>
@@ -107,7 +114,8 @@ export function snapshotRuntimeVersionSnapshot(input: unknown): RuntimeVersionSn
       'state',
       'operationId',
       'code',
-      'candidateVersion',
+      'installTargetVersion',
+      'activeVersion',
       'verifiedAtUtc',
     ]);
     const positive = (n: unknown) => validRuntimeVersionRevision(n) && n > 0;
@@ -115,7 +123,10 @@ export function snapshotRuntimeVersionSnapshot(input: unknown): RuntimeVersionSn
       !validRuntimeVersionRevision(v.revision) ||
       (v.installationRevision !== null && !positive(v.installationRevision)) ||
       (v.operationId !== null && !validRuntimeVersionUuid(v.operationId)) ||
-      v.candidateVersion !== '37.0.1'
+      !validRuntimeVersionRelease(v.installTargetVersion) ||
+      (v.activeVersion !== null && !validRuntimeVersionRelease(v.activeVersion)) ||
+      (['IDLE', 'PENDING', 'VERIFIED', 'FAILED'].includes(v.state as string) &&
+        v.activeVersion === null)
     )
       return null;
     if (v.state === 'VERIFIED') {
@@ -180,7 +191,7 @@ export function snapshotRuntimeVersionRequest(input: unknown): RuntimeVersionReq
         ? ['version', 'requestId', 'method']
         : ['version', 'requestId', 'method', 'expectedRevision', 'expectedInstallationRevision'],
     );
-    if (v.version !== 1 || v.method !== d.value || !validRuntimeVersionId(v.requestId)) return null;
+    if (v.version !== 2 || v.method !== d.value || !validRuntimeVersionId(v.requestId)) return null;
     if (v.method === 'runtimeVersion.get') return Object.freeze({ ...v }) as RuntimeVersionRequest;
     if (
       v.method !== 'runtimeVersion.request' ||
@@ -268,7 +279,7 @@ export function parseRuntimeVersionRequest(
     requestId = validRuntimeVersionId(value.requestId) ? value.requestId : null;
   if (!Number.isSafeInteger(value.version) || Object.is(value.version, -0))
     return denied('INVALID_SHAPE', requestId);
-  if (value.version !== 1) return denied('UNSUPPORTED_VERSION', requestId);
+  if (value.version !== 2) return denied('UNSUPPORTED_VERSION', requestId);
   if (!['runtimeVersion.get', 'runtimeVersion.request'].includes(value.method as string))
     return denied('UNKNOWN_METHOD', requestId);
   const request = snapshotRuntimeVersionRequest(parsed);
@@ -286,7 +297,7 @@ function response(input: unknown): RuntimeVersionResponse | null {
         : ['version', 'requestId', 'ok', 'outcome', 'code', 'diagnosticId', 'loggingHealth'],
     );
     if (
-      v.version !== 1 ||
+      v.version !== 2 ||
       v.ok !== d.value ||
       !['AVAILABLE', 'DEGRADED'].includes(v.loggingHealth as string) ||
       (v.diagnosticId !== null && !validRuntimeVersionUuid(v.diagnosticId)) ||
@@ -335,7 +346,7 @@ export function runtimeVersionSuccess(
   loggingHealth: RuntimeVersionHealth,
 ): string | null {
   const value = response({
-    version: 1,
+    version: 2,
     requestId,
     ok: true,
     outcome,
@@ -353,7 +364,7 @@ export function runtimeVersionError(
   outcome: 'NOT_STARTED' | 'OUTCOME_UNKNOWN' = 'NOT_STARTED',
 ): string {
   const value = response({
-    version: 1,
+    version: 2,
     requestId,
     ok: false,
     outcome,
@@ -363,7 +374,7 @@ export function runtimeVersionError(
   });
   return JSON.stringify(
     value ?? {
-      version: 1,
+      version: 2,
       requestId: validRuntimeVersionId(requestId) ? requestId : null,
       ok: false,
       outcome: 'NOT_STARTED',

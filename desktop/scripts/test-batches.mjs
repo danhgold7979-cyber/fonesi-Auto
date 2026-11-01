@@ -57,6 +57,7 @@ export const TEST_FILES = Object.freeze([
   'tests/persistence-process.test.mjs',
   'tests/persistence-proof.test.mjs',
   'tests/persistence-recovery.test.mjs',
+  'tests/platform-tools-catalog.test.mjs',
   'tests/platform-tools-contract.test.mjs',
   'tests/platform-tools-download.test.mjs',
   'tests/platform-tools-files.test.mjs',

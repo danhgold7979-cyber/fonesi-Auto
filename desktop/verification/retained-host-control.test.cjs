@@ -59,6 +59,17 @@ function capture(stdout = 'PERSISTENCE_DESKTOP_CLOSED\n') {
     stderr: '',
   };
 }
+// Materialization tests inject historical evidence only. Actual current-source reuse
+// is separately required to refuse in main-runtime-version-evidence.test.cjs.
+function syntheticHistoricalEvidence() {
+  const original = require('./main-runtime-version-evidence.cjs');
+  return {
+    ...original,
+    historical() {
+      return { version: 1, reportSha256: original.REPORT_SHA, sourceHashes: original.HASHES };
+    },
+  };
+}
 function localApi(pin, overrides = {}) {
   const filename = path.join(__dirname, 'retained-host-control.cjs'),
     module = { exports: {} };
@@ -263,12 +274,15 @@ test('outer source has one retained launch and unchanged pinned containment, no 
   for (const x of api.REASONS) assert.ok(ps.includes("'" + x + "'"));
 });
 
-test('actual prepare verifies current build and materializes complete bound scripts/main derivation (synthetic archive pin only)', async () => {
+test('actual prepare materializes bound scripts/main derivation with explicitly synthetic archive and historical admission', async () => {
   for (const mainMode of [false, true]) {
     const f = fixture();
     try {
       const bytes = Buffer.alloc(8044989, 19),
-        local = localApi(hash(bytes));
+        local = localApi(
+          hash(bytes),
+          mainMode ? { './main-runtime-version-evidence.cjs': syntheticHistoricalEvidence() } : {},
+        );
       const input = path.join(f.root, 'synthetic-input.zip');
       fs.writeFileSync(input, bytes, { flag: 'wx' });
       await local.prepare(f.root, input, mainMode);
@@ -754,7 +768,7 @@ test('ordinary Win32 code forwarding is exact 1 through 499 and rejects duplicat
   assert.ok(ps.includes("$line -cne 'RETAINED_HOST_DIAGNOSTIC_COMPILETEMPREASON_WIN32_0000'"));
 });
 
-test('PACKAGE prepare materializes exact raw packaged wrapper with explicit mode and no source fallback (synthetic package admission only)', async () => {
+test('PACKAGE prepare materializes exact raw packaged wrapper with explicit mode and no source fallback (synthetic package and historical admission only)', async () => {
   const f = fixture();
   try {
     const bytes = Buffer.alloc(8044989, 21),
@@ -790,7 +804,10 @@ test('PACKAGE prepare materializes exact raw packaged wrapper with explicit mode
         return descriptor;
       },
     };
-    const local = localApi(hash(bytes), { './main-runtime-version-package.cjs': helper });
+    const local = localApi(hash(bytes), {
+      './main-runtime-version-package.cjs': helper,
+      './main-runtime-version-evidence.cjs': syntheticHistoricalEvidence(),
+    });
     await local.prepare(
       f.root,
       input,
@@ -827,7 +844,7 @@ test('PACKAGE campaign is separately default-off, exact-gated, local-runtime and
     .readFileSync(path.resolve(desktop, '../.github/workflows/phase-02-software.yml'), 'utf8')
     .replaceAll('\r\n', '\n');
   const gate =
-    "    if: (github.event_name == 'workflow_dispatch' && inputs.run_package_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[package-version]'))";
+    "    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_package_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[package-version]')))";
   function check(text) {
     const normalized = text.replaceAll('\r\n', '\n'),
       job = normalized
@@ -851,6 +868,7 @@ test('PACKAGE campaign is separately default-off, exact-gated, local-runtime and
     for (const changed of [
       '',
       '    if: always()',
+      gate.replace('false && (', '').slice(0, -1),
       gate.replace('[package-version]', '[main-version]'),
       gate.replace('inputs.run_package_version', 'true'),
       gate.replace('refs/heads/phase-02', 'refs/heads/main'),

@@ -10,7 +10,8 @@ const id = '00000000-0000-4000-8000-000000000001',
     state: 'IDLE',
     operationId: null,
     code: null,
-    candidateVersion: '37.0.1',
+    installTargetVersion: '37.0.1',
+    activeVersion: '37.0.1',
     verifiedAtUtc: null,
   };
 const flush = () => new Promise((r) => setImmediate(r));
@@ -34,7 +35,9 @@ const answer = (wire, outcome = 'OBSERVED') =>
   runtimeVersionSuccess(
     JSON.parse(wire).requestId,
     outcome,
-    outcome === 'PENDING' ? { ...state, revision: 1, state: 'PENDING', operationId: id } : state,
+    outcome === 'PENDING'
+      ? { ...state, revision: 1, state: 'PENDING', activeVersion: '37.0.1', operationId: id }
+      : state,
     id,
     'AVAILABLE',
   );
@@ -49,7 +52,7 @@ test('explicit fresh read precedes each fixed verification request; no automatic
   await c.readVersion();
   assert.equal(JSON.parse(await c.verifyVersion(0, 1)).outcome, 'PENDING');
   assert.deepEqual(wires[1], {
-    version: 1,
+    version: 2,
     requestId: 'p2',
     method: 'runtimeVersion.request',
     expectedRevision: 0,
@@ -148,4 +151,29 @@ test('untrusted revision values never invoke coercion or toJSON before request s
   assert.equal(coerced, 0);
   assert.equal(calls, 1);
   c.dispose();
+});
+
+test('setup invalidation discards old read readiness and requires a fresh explicit read', async () => {
+  let release;
+  let calls = 0;
+  const client = createRuntimeVersionClient((wire) => {
+    calls++;
+    if (calls === 1)
+      return new Promise((r) => {
+        release = () => r(answer(wire));
+      });
+    return Promise.resolve(answer(wire));
+  });
+  const old = client.readVersion();
+  await flush();
+  client.invalidateObservation();
+  release();
+  await old;
+  await flush();
+  assert.equal(JSON.parse(await client.verifyVersion(0, 1)).code, 'SESSION_UNAVAILABLE');
+  assert.equal(calls, 1);
+  await client.readVersion();
+  assert.equal(JSON.parse(await client.verifyVersion(0, 1)).ok, false); // Transport returns OBSERVED for a mutation and remains fail-closed.
+  assert.equal(calls, 3);
+  client.dispose();
 });

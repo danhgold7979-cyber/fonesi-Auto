@@ -2,7 +2,7 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { Admission } from './view-session.ts';
 import type { PlatformToolsSetupService } from './main/platform-tools-setup-service.ts';
 import { parseSetupRequest, setupError, type SetupCode } from './platform-tools-setup-contract.ts';
-export const PLATFORM_TOOLS_SETUP_CHANNEL = 'foundation:platform-tools:v1';
+export const PLATFORM_TOOLS_SETUP_CHANNEL = 'foundation:platform-tools:v2';
 const denied = (code: SetupCode, requestId: string | null = null, uncertain = false) =>
   setupError(requestId, code, null, 'DEGRADED', uncertain ? 'OUTCOME_UNKNOWN' : 'NOT_STARTED');
 export function installPlatformToolsSetupBridge(

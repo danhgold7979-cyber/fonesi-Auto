@@ -14,12 +14,16 @@ export type ProvisionIntentInput = Readonly<{
   archiveSha256: string;
   recipientDecisionId: string;
 }>;
+export type ProvisionOperationProvenance = Readonly<
+  Pick<ProvisionIntentInput, 'operationId' | 'kind' | 'manifestSha256' | 'archiveSha256'>
+>;
 export type ProvisionLedgerState = Readonly<{
   revision: number;
   activeSha256: string | null;
   previousActiveSha256: string | null;
   lastSettlementSha256: string;
   operationIds: readonly string[];
+  operations: readonly ProvisionOperationProvenance[];
 }>;
 export type ProvisionOperation = Readonly<{ operationId: string; revision: number }>;
 type Intent = ProvisionIntentInput &
@@ -327,6 +331,7 @@ export function createPlatformToolsProvisionLedger(
       previousActiveSha256: null,
       lastSettlementSha256: genesis,
       operationIds: Object.freeze([]),
+      operations: Object.freeze([]),
     });
     let pending: Intent | null = null,
       pendingRaw: string | null = null;
@@ -347,6 +352,15 @@ export function createPlatformToolsProvisionLedger(
         state = Object.freeze({
           ...state,
           operationIds: Object.freeze([...state.operationIds, i.operationId]),
+          operations: Object.freeze([
+            ...state.operations,
+            Object.freeze({
+              operationId: i.operationId,
+              kind: i.kind,
+              manifestSha256: i.manifestSha256,
+              archiveSha256: i.archiveSha256,
+            }),
+          ]),
         });
         continue;
       }
@@ -361,6 +375,15 @@ export function createPlatformToolsProvisionLedger(
         previousActiveSha256: previous,
         lastSettlementSha256: digest(s.raw),
         operationIds: Object.freeze([...state.operationIds, i.operationId]),
+        operations: Object.freeze([
+          ...state.operations,
+          Object.freeze({
+            operationId: i.operationId,
+            kind: i.kind,
+            manifestSha256: i.manifestSha256,
+            archiveSha256: i.archiveSha256,
+          }),
+        ]),
       });
       settled.delete(i.operationId);
     }

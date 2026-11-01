@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
+import { transformSync } from 'esbuild';
 import { PLATFORM_TOOLS_CANDIDATE } from '../src/main/platform-tools-candidate.ts';
 import { createHostFactory } from '../src/main/adb-host-factory.ts';
 import {
@@ -128,16 +129,17 @@ function fixture(extra = {}) {
     n = 20,
     child;
   const token = Object.freeze({});
+  const selectedCandidate = extra.candidate ?? PLATFORM_TOOLS_CANDIDATE;
   let runtime = Object.freeze({
-    release: '37.0.1',
-    archiveSha256: PLATFORM_TOOLS_CANDIDATE.archive.sha256,
-    manifestSha256: hostHash(JSON.stringify(PLATFORM_TOOLS_CANDIDATE)),
+    release: selectedCandidate.release,
+    archiveSha256: selectedCandidate.archive.sha256,
+    manifestSha256: hostHash(JSON.stringify(selectedCandidate)),
     installationRevision: 1,
     adbPath: join(
       data,
       'platform-tools-runtime',
       'runtimes',
-      'runtime-' + PLATFORM_TOOLS_CANDIDATE.archive.sha256,
+      'runtime-' + selectedCandidate.archive.sha256,
       'adb.exe',
     ),
   });
@@ -223,7 +225,7 @@ function fixture(extra = {}) {
     },
   };
   const buildFactory = (override = {}) =>
-    createHostFactory(
+    (extra.createFactory ?? createHostFactory)(
       {
         entry,
         launchRoot: launch,
@@ -903,5 +905,79 @@ test('main captured installation revision refuses a replacement before any actua
     assert.equal(await f.factory.close(), 'RETIRED');
   } finally {
     f.cleanup();
+  }
+});
+
+test('actual transformed catalog/factory binds selected prior release in bootstrap and refuses launch revocation', async () => {
+  const prior = {
+    ...PLATFORM_TOOLS_CANDIDATE,
+    release: '36.0.0',
+    archive: {
+      ...PLATFORM_TOOLS_CANDIDATE.archive,
+      url: 'https://dl.google.com/android/repository/platform-tools_r36.0.0-win.zip',
+      sha256: 'a'.repeat(64),
+    },
+  };
+  const encode = (source) =>
+    'data:text/javascript;base64,' +
+    Buffer.from(
+      transformSync(source, { loader: 'ts', format: 'esm', target: 'es2022' }).code,
+    ).toString('base64');
+  for (const launchAllowed of [true, false]) {
+    let catalog = readFileSync(
+      new URL('../src/main/platform-tools-catalog.ts', import.meta.url),
+      'utf8',
+    );
+    const start = catalog.indexOf('const KNOWN:'),
+      end = catalog.indexOf('const MAX =');
+    assert.ok(start > 0 && end > start);
+    catalog =
+      catalog.slice(0, start) +
+      `const KNOWN = [{candidate: PLATFORM_TOOLS_CANDIDATE, activationAllowed:true,launchAllowed:true},{candidate:${JSON.stringify(prior)},activationAllowed:true,launchAllowed:${launchAllowed}}];\nconst INSTALL_TARGET_SHA256 = PLATFORM_TOOLS_CANDIDATE.archive.sha256;\n` +
+      catalog.slice(end);
+    catalog = catalog.replace(
+      "'./platform-tools-candidate.ts'",
+      JSON.stringify(new URL('../src/main/platform-tools-candidate.ts', import.meta.url).href),
+    );
+    const catalogUrl = encode(catalog);
+    let factorySource = readFileSync(
+      new URL('../src/main/adb-host-factory.ts', import.meta.url),
+      'utf8',
+    );
+    factorySource = factorySource.replace(
+      /from '(\.\/[^']+)'/g,
+      (_all, specifier) =>
+        'from ' +
+        JSON.stringify(
+          specifier === './platform-tools-catalog.ts'
+            ? catalogUrl
+            : new URL('../src/main/' + specifier.slice(2), import.meta.url).href,
+        ),
+    );
+    const transformed = (await import(encode(factorySource))).createHostFactory;
+    const f = fixture({ candidate: prior, createFactory: transformed });
+    try {
+      const result = await f.factory.execute(f.cap, f.request());
+      if (launchAllowed) {
+        assert.equal(result.outcome, 'OBSERVED');
+        const bootstrap = JSON.parse(
+          readFileSync(join(f.launch, '.host-session', 'bootstrap.json'), 'utf8'),
+        );
+        assert.equal(bootstrap.version, 2);
+        assert.equal(bootstrap.expectedRelease, '36.0.0');
+        assert.equal(bootstrap.expectedBuildGrammar, 'DECIMAL_1_20');
+        assert.equal(bootstrap.candidateArchiveSha256, prior.archive.sha256);
+        assert.equal(bootstrap.candidateManifestSha256, hostHash(JSON.stringify(prior)));
+        assert.equal(f.spawns, 1);
+      } else {
+        assert.notEqual(result.outcome, 'OBSERVED');
+        assert.equal(f.spawns, 0);
+        assert.equal(existsSync(join(f.launch, '.host-session')), false);
+      }
+      assert.equal(await f.factory.close(), 'RETIRED');
+      assert.equal(f.releases, 1);
+    } finally {
+      f.cleanup();
+    }
   }
 });

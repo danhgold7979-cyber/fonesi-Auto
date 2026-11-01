@@ -2,7 +2,15 @@ import { createPlatformToolsProvisioner } from './platform-tools-provisioner.ts'
 import type { PlatformToolsRuntimeCustody } from './platform-tools-runtime-custody.ts';
 import type { RecipientDecision } from './platform-tools-provisioner.ts';
 import { createPlatformToolsDownload } from './platform-tools-download.ts';
-import type { SetupNativeResult } from './platform-tools-setup-native.ts';
+import {
+  PLATFORM_TOOLS_INSTALL_TARGET,
+  resolvePlatformToolsCandidate,
+} from './platform-tools-catalog.ts';
+import type {
+  SetupAction,
+  SetupNativeSelection,
+  SetupNativeResult,
+} from './platform-tools-setup-native.ts';
 import {
   snapshotSetupRequest,
   setupSuccess,
@@ -21,7 +29,13 @@ export function createPlatformToolsSetupService(
     assertDataLocation: (path: string) => void;
     clock: () => number;
     newId: () => string;
-    native: Readonly<{ interact: (current: () => void) => Promise<SetupNativeResult> }>;
+    native: Readonly<{
+      interact: (
+        current: () => void,
+        selection: SetupNativeSelection,
+        selected: (action: SetupAction) => void,
+      ) => Promise<SetupNativeResult>;
+    }>;
     audit: (record: SetupAudit) => Promise<Health>;
     readOfficialArchive?: (signal: AbortSignal) => Promise<unknown>;
   }>,
@@ -62,16 +76,39 @@ export function createPlatformToolsSetupService(
     state: 'UNAVAILABLE',
     operationId: null,
     code: null,
-    candidateVersion: '37.0.1',
+    installTargetVersion: PLATFORM_TOOLS_INSTALL_TARGET.candidate.release,
+    activeVersion: null,
+    rollbackAvailable: false,
   });
-  const grants = new WeakMap<object, { decision: RecipientDecision; current: () => boolean }>();
+  const grants = new WeakMap<
+    object,
+    {
+      decision: RecipientDecision;
+      current: () => boolean;
+      kind: SetupAction;
+      expectedRevision: number;
+      active: string | null;
+      previous: string | null;
+      candidate: object;
+    }
+  >();
   function validGrant(grant: unknown) {
     if (stopped || !grant || typeof grant !== 'object') return null;
     const g = grants.get(grant);
     try {
       owned();
       idle();
-      return g?.current() === true ? g : null;
+      if (g?.current() !== true || snapshot.installationRevision !== g.expectedRevision)
+        return null;
+      const selected =
+        g.kind === 'INSTALL'
+          ? PLATFORM_TOOLS_INSTALL_TARGET
+          : resolvePlatformToolsCandidate(g.previous ?? '');
+      if (selected !== g.candidate || !selected.activationAllowed || !selected.launchAllowed)
+        return null;
+      owned();
+      idle();
+      return stopped ? null : g;
     } catch {
       return null;
     }
@@ -85,6 +122,13 @@ export function createPlatformToolsSetupService(
     },
     readOfficialArchive: options.readOfficialArchive ?? createPlatformToolsDownload(),
   });
+  function metadata(status: Awaited<ReturnType<typeof core.status>>) {
+    snapshot = Object.freeze({
+      ...snapshot,
+      activeVersion: status.activeVersion,
+      rollbackAvailable: status.rollbackAvailable,
+    });
+  }
   function id() {
     if (ids.size >= 65536) throw Error('INTERNAL_FAILURE');
     const value = next();
@@ -118,6 +162,7 @@ export function createPlatformToolsSetupService(
       state,
       code,
       installationRevision,
+      rollbackAvailable: state === 'VERIFIED_LOCAL' ? snapshot.rollbackAvailable : false,
     });
   }
   async function log(record: SetupAudit): Promise<Health> {
@@ -127,8 +172,14 @@ export function createPlatformToolsSetupService(
       return 'DEGRADED';
     }
   }
-  async function operate(operationId: string, current: () => boolean, expectedRevision: number) {
+  async function operate(
+    operationId: string,
+    current: () => boolean,
+    expectedRevision: number,
+    captured: Awaited<ReturnType<typeof core.status>> & { revision: number },
+  ) {
     let grant: object | null = null;
+    let action: SetupAction | null = null;
     let diagnosticId: string;
     try {
       diagnosticId = id();
@@ -138,12 +189,26 @@ export function createPlatformToolsSetupService(
     }
     try {
       admit(current);
-      const answer = await interact(() => admit(current));
+      const answer = await interact(
+        () => admit(current),
+        Object.freeze({
+          installTargetVersion: snapshot.installTargetVersion,
+          activeVersion: captured.activeVersion,
+          previousVersion: captured.previousVersion,
+          rollbackAvailable: captured.rollbackAvailable,
+        }),
+        (selected) => {
+          if (action !== null && action !== selected) throw Error('OWNER_REVOKED');
+          action = selected;
+        },
+      );
       admit(current);
       if (!answer.ok) {
+        if (answer.action !== action) throw Error('OWNER_REVOKED');
         publish('DECLINED', answer.code);
         await log({
           operation: 'PROVISION',
+          action,
           phase: 'RESULT',
           diagnosticId,
           operationId,
@@ -154,6 +219,18 @@ export function createPlatformToolsSetupService(
         });
         return;
       }
+      action = action as SetupAction | null;
+      if (action !== answer.kind) throw Error('OWNER_REVOKED');
+      const selected =
+        action === 'INSTALL'
+          ? PLATFORM_TOOLS_INSTALL_TARGET
+          : resolvePlatformToolsCandidate(captured.previousArchiveSha256 ?? '');
+      if (
+        !selected?.activationAllowed ||
+        !selected.launchAllowed ||
+        (action === 'ROLLBACK' && !captured.rollbackAvailable)
+      )
+        throw Error('OWNER_REVOKED');
       const decisionId = id();
       grant = Object.freeze({});
       grants.set(grant, {
@@ -164,10 +241,16 @@ export function createPlatformToolsSetupService(
           archivePath: answer.archivePath,
         }),
         current,
+        kind: action,
+        expectedRevision: captured.revision,
+        active: captured.archiveSha256,
+        previous: captured.previousArchiveSha256,
+        candidate: selected,
       });
       if (
         (await log({
           operation: 'PROVISION',
+          action,
           phase: 'INTENT',
           diagnosticId,
           operationId,
@@ -186,9 +269,14 @@ export function createPlatformToolsSetupService(
         return;
       }
       publish('PROVISIONING', null);
-      const result = await core.run(grant, snapshot.installationRevision);
-      if (result.ok) publish('VERIFIED_LOCAL', null, result.revision);
-      else if (result.outcome === 'OUTCOME_UNKNOWN' || result.code === 'RECOVERY_REQUIRED')
+      const result = await core.run(grant, captured.revision, action);
+      if (result.ok) {
+        const verified = await core.status();
+        metadata(verified);
+        if (verified.status !== 'VERIFIED_LOCAL')
+          publish('OUTCOME_UNKNOWN', 'RECOVERY_REQUIRED', result.revision);
+        else publish('VERIFIED_LOCAL', null, result.revision);
+      } else if (result.outcome === 'OUTCOME_UNKNOWN' || result.code === 'RECOVERY_REQUIRED')
         publish(
           'OUTCOME_UNKNOWN',
           result.code === 'RECOVERY_REQUIRED' ? 'RECOVERY_REQUIRED' : 'OUTCOME_UNKNOWN',
@@ -197,35 +285,45 @@ export function createPlatformToolsSetupService(
         // A settled NOT_ACTIVATED intent still advances the durable core CAS revision.
         // Reconcile bytes/status only; never replay installation after failure.
         const status = await core.status();
+        metadata(status);
         if (status.status === 'RECOVERY_REQUIRED')
           publish('OUTCOME_UNKNOWN', 'RECOVERY_REQUIRED', status.revision);
         else publish('FAILED', result.code, status.revision);
       }
       await log({
         operation: 'PROVISION',
+        action,
         phase: 'RESULT',
         diagnosticId,
         operationId,
         expectedRevision,
         resultingRevision: snapshot.revision,
-        outcome: result.ok
-          ? 'VERIFIED_LOCAL'
-          : snapshot.state === 'OUTCOME_UNKNOWN'
-            ? 'OUTCOME_UNKNOWN'
-            : 'FAILED',
-        code: result.ok ? 'OK' : (snapshot.code ?? 'INTERNAL_FAILURE'),
+        outcome:
+          result.ok && snapshot.state === 'VERIFIED_LOCAL'
+            ? 'VERIFIED_LOCAL'
+            : snapshot.state === 'OUTCOME_UNKNOWN'
+              ? 'OUTCOME_UNKNOWN'
+              : 'FAILED',
+        code: snapshot.state === 'VERIFIED_LOCAL' ? 'OK' : (snapshot.code ?? 'INTERNAL_FAILURE'),
       });
     } catch {
-      publish('FAILED', 'OWNER_REVOKED');
+      let refusal: 'OWNER_REVOKED' | 'INTERNAL_FAILURE' = 'INTERNAL_FAILURE';
+      try {
+        admit(current);
+      } catch {
+        refusal = 'OWNER_REVOKED';
+      }
+      publish('FAILED', refusal);
       await log({
         operation: 'PROVISION',
+        action,
         phase: 'RESULT',
         diagnosticId,
         operationId,
         expectedRevision,
         resultingRevision: snapshot.revision,
         outcome: 'FAILED',
-        code: 'OWNER_REVOKED',
+        code: refusal,
       });
     } finally {
       if (grant) grants.delete(grant);
@@ -250,13 +348,18 @@ export function createPlatformToolsSetupService(
         snapshot = Object.freeze({
           ...snapshot,
           installationRevision: s.revision,
+          activeVersion: s.activeVersion,
+          rollbackAvailable: s.rollbackAvailable,
           state:
             s.status === 'VERIFIED_LOCAL'
               ? 'VERIFIED_LOCAL'
               : s.status === 'RECOVERY_REQUIRED'
                 ? 'OUTCOME_UNKNOWN'
                 : 'UNAVAILABLE',
-          code: s.status === 'RECOVERY_REQUIRED' ? 'RECOVERY_REQUIRED' : null,
+          code:
+            s.status === 'RECOVERY_REQUIRED' || s.status === 'POLICY_DENIED'
+              ? 'RECOVERY_REQUIRED'
+              : null,
         });
         initialized = true;
       } finally {
@@ -282,9 +385,56 @@ export function createPlatformToolsSetupService(
         return setupError(request.requestId, 'INTERNAL_FAILURE', null, 'DEGRADED');
       }
       if (request.method === 'platformTools.get') {
+        if (!pending && !reserving && snapshot.state !== 'OUTCOME_UNKNOWN') {
+          const refusal = reserve();
+          if (refusal !== null)
+            return setupError(
+              request.requestId,
+              refusal === 'BUSY' ? 'BUSY' : 'OWNER_REVOKED',
+              diagnosticId,
+              'DEGRADED',
+            );
+          reserving = true;
+          reservationDone = new Promise<void>((resolve) => {
+            releaseReservation = resolve;
+          });
+          try {
+            const status = await core.status();
+            admit(current);
+            metadata(status);
+            const state =
+              status.status === 'RECOVERY_REQUIRED'
+                ? 'OUTCOME_UNKNOWN'
+                : status.status === 'POLICY_DENIED'
+                  ? 'UNAVAILABLE'
+                  : snapshot.state === 'FAILED' || snapshot.state === 'DECLINED'
+                    ? snapshot.state
+                    : status.status === 'VERIFIED_LOCAL'
+                      ? 'VERIFIED_LOCAL'
+                      : 'UNAVAILABLE';
+            snapshot = Object.freeze({
+              ...snapshot,
+              installationRevision: status.revision,
+              state,
+              rollbackAvailable: state === 'VERIFIED_LOCAL' && status.rollbackAvailable,
+              code:
+                status.status === 'RECOVERY_REQUIRED' || status.status === 'POLICY_DENIED'
+                  ? 'RECOVERY_REQUIRED'
+                  : state === 'FAILED' || state === 'DECLINED'
+                    ? snapshot.code
+                    : null,
+            });
+          } finally {
+            reserving = false;
+            releaseReservation?.();
+            releaseReservation = null;
+            releaseIfRetired();
+          }
+        }
         const observed = snapshot;
         const health = await log({
           operation: 'READ',
+          action: null,
           phase: 'RESULT',
           diagnosticId,
           operationId: observed.operationId,
@@ -322,6 +472,19 @@ export function createPlatformToolsSetupService(
         releaseReservation = resolve;
       });
       try {
+        // Inspect the complete chain before acknowledging or presenting an interaction.
+        const captured = await core.status();
+        admit(current);
+        metadata(captured);
+        if (
+          captured.status === 'RECOVERY_REQUIRED' ||
+          captured.revision === null ||
+          captured.revision !== snapshot.installationRevision
+        ) {
+          publish('OUTCOME_UNKNOWN', 'RECOVERY_REQUIRED');
+          return setupError(request.requestId, 'RECOVERY_REQUIRED', diagnosticId, 'DEGRADED');
+        }
+        const expectedInstallationRevision = captured.revision;
         let operationId: string;
         try {
           operationId = id();
@@ -330,6 +493,7 @@ export function createPlatformToolsSetupService(
         }
         const health = await log({
           operation: 'REQUEST',
+          action: null,
           phase: 'INTENT',
           diagnosticId,
           operationId,
@@ -347,7 +511,12 @@ export function createPlatformToolsSetupService(
         publish('AWAITING_RECIPIENT', null);
         const ack = snapshot;
         // Reserve independently of the released RPC slot. Actual current() is session/owner observation.
-        const task = Promise.resolve().then(() => operate(operationId, current, ack.revision));
+        const task = Promise.resolve().then(() =>
+          operate(operationId, current, ack.revision, {
+            ...captured,
+            revision: expectedInstallationRevision,
+          }),
+        );
         pending = task;
         void task.then(
           () => {
@@ -361,6 +530,7 @@ export function createPlatformToolsSetupService(
         );
         const resultHealth = await log({
           operation: 'REQUEST',
+          action: null,
           phase: 'RESULT',
           diagnosticId,
           operationId,

@@ -503,7 +503,7 @@ function hostMain(f) {
     ].map((k) => [k, 'b'.repeat(64)]),
   );
   const bootstrap = {
-    version: 1,
+    version: 2,
     operationSet: 'VERSION_ONLY',
     sessionId,
     launchId: f.header.launchId,
@@ -523,6 +523,8 @@ function hostMain(f) {
     candidateArchiveSha256: 'b'.repeat(64),
     candidateManifestSha256: 'b'.repeat(64),
     installationRevision: 1,
+    expectedRelease: '37.0.1',
+    expectedBuildGrammar: 'DECIMAL_1_20',
     assets,
   };
   write(path.join(root, 'bootstrap.json'), bootstrap);
@@ -544,9 +546,19 @@ test('bound retained helper partitions inspect but never authorize RELEASE or RE
   j.appendIntent(f.parent, f.launch, 7, 'RELEASE');
 });
 test('unknown, partial, changed-owner and aliased helper partitions reject unchanged', (t) => {
-  for (const kind of ['extra', 'partial', 'owner', 'alias']) {
+  for (const kind of ['extra', 'partial', 'owner', 'alias', 'legacy-version', 'release-newline']) {
     const f = fixture(t),
       h = hostMain(f);
+    if (kind === 'legacy-version')
+      fs.writeFileSync(
+        path.join(h.root, 'bootstrap.json'),
+        JSON.stringify({ ...h.bootstrap, version: 1 }),
+      );
+    if (kind === 'release-newline')
+      fs.writeFileSync(
+        path.join(h.root, 'bootstrap.json'),
+        JSON.stringify({ ...h.bootstrap, expectedRelease: '37.0.1\n' }),
+      );
     if (kind === 'extra') write(path.join(h.root, 'unknown'), 'private');
     if (kind === 'partial') fs.unlinkSync(path.join(h.root, 'bootstrap.json'));
     if (kind === 'owner') fs.writeFileSync(path.join(h.root, '.owner'), randomUUID());

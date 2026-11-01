@@ -462,6 +462,7 @@ export class ApplicationLogger {
         'operationId',
         'expectedRevision',
         'resultingRevision',
+        'action',
         'outcome',
         'code',
       ];
@@ -486,7 +487,7 @@ export class ApplicationLogger {
         this.emit('LOGGING_DEGRADED', 'CLOCK_REGRESSION');
       }
       const record = {
-        schemaVersion: 6,
+        schemaVersion: 8,
         runId: this.runId,
         sequence: this.sequence + 1,
         utc,
@@ -502,6 +503,7 @@ export class ApplicationLogger {
         phase: snapshot.phase,
         expectedRevision: snapshot.expectedRevision,
         resultingRevision: snapshot.resultingRevision,
+        action: snapshot.action,
       };
       const encoded = encodeLogRecord(record);
       if (encoded === null) throw new Error('AUDIT_INVALID');

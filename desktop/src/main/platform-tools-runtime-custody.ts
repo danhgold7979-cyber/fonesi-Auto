@@ -1,8 +1,10 @@
 // Private byte-observation custody only: never an executable, server or recipient grant.
 import { lstat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { createHash } from 'node:crypto';
-import { PLATFORM_TOOLS_CANDIDATE } from './platform-tools-candidate.ts';
+import {
+  PLATFORM_TOOLS_KNOWN_CANDIDATES,
+  resolvePlatformToolsCandidate,
+} from './platform-tools-catalog.ts';
 import { createPlatformToolsProvisionLedger } from './platform-tools-provision-ledger.ts';
 import { createPlatformToolsProvisionFiles } from './platform-tools-provision-files.ts';
 export type RuntimeCustodyCode =
@@ -15,7 +17,7 @@ export type RuntimeCustodyCode =
   | 'UNRETIRED';
 export type RuntimeCustodyToken = Readonly<Record<never, never>>;
 export type RuntimeReadObservation = Readonly<{
-  release: '37.0.1';
+  release: string;
   archiveSha256: string;
   manifestSha256: string;
   installationRevision: number;
@@ -42,7 +44,6 @@ type Holder = {
 const refused = (code: RuntimeCustodyCode): Refusal => Object.freeze({ ok: false, code });
 const retired = (status: 'RETIRED' | 'UNRETIRED'): Retirement =>
   Object.freeze({ ok: true, status });
-const digest = createHash('sha256').update(JSON.stringify(PLATFORM_TOOLS_CANDIDATE)).digest('hex');
 export function createPlatformToolsRuntimeCustody(
   options: Readonly<{
     dataRoot: string;
@@ -149,9 +150,10 @@ export function createPlatformToolsRuntimeCustody(
         dataRoot,
         storeId,
         assertOwnedSync: () => check(h),
-        acceptedCandidates: [
-          { manifestSha256: digest, archiveSha256: PLATFORM_TOOLS_CANDIDATE.archive.sha256 },
-        ],
+        acceptedCandidates: PLATFORM_TOOLS_KNOWN_CANDIDATES.map((entry) => ({
+          manifestSha256: entry.manifestSha256,
+          archiveSha256: entry.candidate.archive.sha256,
+        })),
       });
       const before = await ledger.readState();
       check(h);
@@ -159,7 +161,7 @@ export function createPlatformToolsRuntimeCustody(
         dataRoot,
         assertOwnedSync: () => check(h),
       });
-      await files.scan(before.operationIds, () => check(h));
+      await files.scan(before.operations, () => check(h));
       check(h);
       if (before.activeSha256 === null) {
         const unchanged = await ledger.readState();
@@ -167,8 +169,9 @@ export function createPlatformToolsRuntimeCustody(
         if (JSON.stringify(unchanged) !== JSON.stringify(before)) fail('RECOVERY_REQUIRED');
         fail('BINARY_UNAVAILABLE');
       }
+      const selected = resolvePlatformToolsCandidate(before.activeSha256);
       if (
-        before.activeSha256 !== PLATFORM_TOOLS_CANDIDATE.archive.sha256 ||
+        !selected?.launchAllowed ||
         !Number.isSafeInteger(before.revision) ||
         before.revision <= 0 ||
         Object.is(before.revision, -0)
@@ -176,7 +179,7 @@ export function createPlatformToolsRuntimeCustody(
         fail('RECOVERY_REQUIRED');
       const pinned = JSON.stringify(before);
       if (h.pinned !== null && h.pinned !== pinned) fail('RECOVERY_REQUIRED');
-      await files.verifyRuntime(() => check(h));
+      await files.verifyRuntime(() => check(h), selected);
       check(h);
       const after = await ledger.readState();
       check(h);
@@ -187,9 +190,9 @@ export function createPlatformToolsRuntimeCustody(
         status: 'READ_VERIFIED_ONLY',
         token: h.token,
         observation: Object.freeze({
-          release: '37.0.1',
-          archiveSha256: PLATFORM_TOOLS_CANDIDATE.archive.sha256,
-          manifestSha256: digest,
+          release: selected.candidate.release,
+          archiveSha256: selected.candidate.archive.sha256,
+          manifestSha256: selected.manifestSha256,
           installationRevision: before.revision,
           adbPath: join(
             dataRoot,

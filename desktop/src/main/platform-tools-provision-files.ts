@@ -1,7 +1,13 @@
 // Private owned-file preparation. No download, executable invocation or license grant.
 import { lstat, realpath, opendir, open, mkdir } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
-import { PLATFORM_TOOLS_CANDIDATE } from './platform-tools-candidate.ts';
+import {
+  PLATFORM_TOOLS_INSTALL_TARGET,
+  assertPlatformToolsCandidate,
+  resolvePlatformToolsCandidate,
+  type PlatformToolsCatalogEntry,
+} from './platform-tools-catalog.ts';
+import type { ProvisionOperationProvenance } from './platform-tools-provision-ledger.ts';
 import {
   decodePlatformToolsArchive,
   snapshotPlatformToolsArchive,
@@ -63,7 +69,6 @@ export function createPlatformToolsProvisionFiles(
   const root = join(options.dataRoot, 'platform-tools-runtime'),
     owned = options.assertOwnedSync.bind(options);
   if (options.dataRoot !== resolve(options.dataRoot)) fail();
-  const candidate = PLATFORM_TOOLS_CANDIDATE;
   function fence(admit: () => void) {
     owned();
     admit();
@@ -112,15 +117,43 @@ export function createPlatformToolsProvisionFiles(
     }
     fence(admit);
   }
-  async function scan(operationIds: readonly string[], admit: () => void) {
-    if (
-      !Array.isArray(operationIds) ||
-      operationIds.length > 128 ||
-      operationIds.some((x) => !uuid(x)) ||
-      new Set(operationIds).size !== operationIds.length
-    )
-      fail();
-    const allowed = new Set(operationIds);
+  function provenance(input: readonly ProvisionOperationProvenance[]) {
+    if (!Array.isArray(input)) fail();
+    const length = Object.getOwnPropertyDescriptor(input, 'length');
+    if (!length || !('value' in length) || length.value > 128) fail();
+    const out = new Map<string, PlatformToolsCatalogEntry>();
+    for (let i = 0; i < length.value; i++) {
+      const slot = Object.getOwnPropertyDescriptor(input, String(i));
+      if (
+        !slot ||
+        !('value' in slot) ||
+        !slot.value ||
+        Object.getPrototypeOf(slot.value) !== Object.prototype
+      )
+        fail();
+      const descriptors = Object.getOwnPropertyDescriptors(slot.value);
+      if (Reflect.ownKeys(descriptors).length !== 4) fail();
+      const row: Record<string, unknown> = {};
+      for (const key of ['operationId', 'kind', 'manifestSha256', 'archiveSha256']) {
+        const d = descriptors[key];
+        if (!d || !('value' in d) || !d.enumerable) fail();
+        row[key] = d.value;
+      }
+      if (
+        !uuid(row.operationId) ||
+        out.has(row.operationId) ||
+        !['INSTALL', 'ROLLBACK'].includes(row.kind as string) ||
+        typeof row.archiveSha256 !== 'string'
+      )
+        fail();
+      const entry = resolvePlatformToolsCandidate(row.archiveSha256);
+      if (!entry || entry.manifestSha256 !== row.manifestSha256) fail();
+      out.set(row.operationId, entry);
+    }
+    return out;
+  }
+  async function scan(operationsInput: readonly ProvisionOperationProvenance[], admit: () => void) {
+    const allowed = provenance(operationsInput);
     fence(admit);
     await plain(root);
     let bytes = 0;
@@ -148,7 +181,10 @@ export function createPlatformToolsProvisionFiles(
     }
     const runtimeRoot = join(root, 'runtimes');
     for (const name of await entries(runtimeRoot, 4)) {
-      if (name !== 'runtime-' + candidate.archive.sha256) fail();
+      if (!/^runtime-[0-9a-f]{64}$/.test(name)) fail();
+      const entry = resolvePlatformToolsCandidate(name.slice(8));
+      if (!entry || ![...allowed.values()].includes(entry)) fail();
+      const candidate = entry.candidate;
       const directory = join(runtimeRoot, name);
       for (const filename of await entries(directory, 14)) {
         const row = candidate.files.find((r) => r.path === filename);
@@ -162,6 +198,9 @@ export function createPlatformToolsProvisionFiles(
     for (const name of await entries(staging, 5)) {
       if (!name.startsWith('staging-') || !uuid(name.slice(8)) || !allowed.has(name.slice(8)))
         fail();
+      const entry = allowed.get(name.slice(8));
+      if (!entry) fail();
+      const candidate = entry.candidate;
       const directory = join(staging, name);
       for (const filename of await entries(directory, 2)) {
         if (filename === 'archive.zip')
@@ -179,29 +218,75 @@ export function createPlatformToolsProvisionFiles(
     fence(admit);
     return bytes;
   }
-  async function verifyRuntime(admit: () => void) {
+  async function verifyRuntime(
+    admit: () => void,
+    entry: PlatformToolsCatalogEntry = PLATFORM_TOOLS_INSTALL_TARGET,
+  ) {
+    assertPlatformToolsCandidate(entry);
+    const candidate = entry.candidate;
     fence(admit);
     const directory = join(root, 'runtimes', 'runtime-' + candidate.archive.sha256);
     await verifyPlatformToolsFiles(directory, candidate.files);
     fence(admit);
     return directory;
   }
+  async function capacity(
+    used: number,
+    kind: 'INSTALL' | 'ROLLBACK',
+    admit: () => void,
+    entry: PlatformToolsCatalogEntry,
+    recordBytes: number,
+  ) {
+    assertPlatformToolsCandidate(entry);
+    if (
+      !Number.isSafeInteger(used) ||
+      used < 0 ||
+      used > MAX ||
+      !['INSTALL', 'ROLLBACK'].includes(kind)
+    )
+      fail();
+    fence(admit);
+    let required = recordBytes;
+    if (kind === 'INSTALL') {
+      const stages = await entries(join(root, 'staging'), 5);
+      fence(admit);
+      if (stages.length >= 5) throw Error('LIMIT_EXCEEDED');
+      const runtimes = await entries(join(root, 'runtimes'), 4);
+      fence(admit);
+      const exists = runtimes.includes('runtime-' + entry.candidate.archive.sha256);
+      if (!exists && runtimes.length >= 4) throw Error('LIMIT_EXCEEDED');
+      const expanded = entry.candidate.files.reduce((n, row) => n + row.bytes, 0);
+      required += entry.candidate.archive.bytes + expanded * (exists ? 1 : 2);
+    }
+    if (!Number.isSafeInteger(required) || used + required > MAX) throw Error('LIMIT_EXCEEDED');
+    fence(admit);
+  }
   return Object.freeze({
     scan,
     verifyRuntime,
+    preflight(
+      used: number,
+      kind: 'INSTALL' | 'ROLLBACK',
+      admit: () => void,
+      entry: PlatformToolsCatalogEntry = PLATFORM_TOOLS_INSTALL_TARGET,
+    ) {
+      return capacity(used, kind, admit, entry, 2 * 4096);
+    },
     async stageAndPublish(
       operationId: string,
       input: unknown,
-      operationIds: readonly string[],
+      operations: readonly ProvisionOperationProvenance[],
       admit: () => void,
       issued: () => void,
+      entry: PlatformToolsCatalogEntry = PLATFORM_TOOLS_INSTALL_TARGET,
     ) {
-      if (!uuid(operationId) || !operationIds.includes(operationId)) fail();
-      const archive = snapshotPlatformToolsArchive(input),
-        files = decodePlatformToolsArchive(archive);
-      const used = await scan(operationIds, admit);
-      if (used + archive.length + 2 * 17529398 + 4096 > MAX) throw Error('LIMIT_EXCEEDED');
-      if ((await entries(join(root, 'staging'), 5)).length >= 5) throw Error('LIMIT_EXCEEDED');
+      assertPlatformToolsCandidate(entry);
+      const candidate = entry.candidate;
+      if (!uuid(operationId) || provenance(operations).get(operationId) !== entry) fail();
+      const archive = snapshotPlatformToolsArchive(input, entry),
+        files = decodePlatformToolsArchive(archive, entry);
+      const used = await scan(operations, admit);
+      await capacity(used, 'INSTALL', admit, entry, 4096);
       const stage = join(root, 'staging', 'staging-' + operationId),
         extracted = join(stage, 'extracted');
       fence(admit);
@@ -232,8 +317,8 @@ export function createPlatformToolsProvisionFiles(
         for (const file of files)
           await write(join(destination, file.name), file.bytes, admit, issued);
       }
-      await verifyRuntime(admit);
-      await scan(operationIds, admit);
+      await verifyRuntime(admit, entry);
+      await scan(operations, admit);
       fence(admit);
       return Object.freeze({ archiveSha256: candidate.archive.sha256 });
     },

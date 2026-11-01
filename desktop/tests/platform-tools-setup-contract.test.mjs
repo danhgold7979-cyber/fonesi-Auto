@@ -16,13 +16,15 @@ const snapshot = () => ({
   state: 'UNAVAILABLE',
   operationId: null,
   code: null,
-  candidateVersion: '37.0.1',
+  installTargetVersion: '37.0.1',
+  activeVersion: null,
+  rollbackAvailable: false,
 });
 test('exact canonical request IDs, versions and independent safe revision bounds', () => {
   for (const request of [
-    { version: 1, requestId: 'p1', method: 'platformTools.get' },
+    { version: 2, requestId: 'p1', method: 'platformTools.get' },
     {
-      version: 1,
+      version: 2,
       requestId: 'p9007199254740991',
       method: 'platformTools.setup.request',
       expectedRevision: 0,
@@ -31,13 +33,13 @@ test('exact canonical request IDs, versions and independent safe revision bounds
     assert.deepEqual(parseSetupRequest(JSON.stringify(request)), { ok: true, value: request });
   for (const requestId of ['p0', 'p01', 'p9007199254740992', 'p1\n', 1])
     assert.equal(
-      parseSetupRequest(JSON.stringify({ version: 1, requestId, method: 'platformTools.get' })).ok,
+      parseSetupRequest(JSON.stringify({ version: 2, requestId, method: 'platformTools.get' })).ok,
       false,
     );
   for (const expectedRevision of [-0, -1, Infinity, 1.5])
     assert.equal(
       snapshotSetupRequest({
-        version: 1,
+        version: 2,
         requestId: 'p1',
         method: 'platformTools.setup.request',
         expectedRevision,
@@ -48,13 +50,13 @@ test('exact canonical request IDs, versions and independent safe revision bounds
   assert.equal(parseSetupRequest(null).code, 'INVALID_TRANSPORT');
   assert.equal(parseSetupRequest('{').code, 'INVALID_JSON');
   assert.equal(
-    parseSetupRequest('{"version":2,"requestId":"p1","method":"platformTools.get"}').code,
+    parseSetupRequest('{"version":1,"requestId":"p1","method":"platformTools.get"}').code,
     'UNSUPPORTED_VERSION',
   );
   for (const raw of [
-    '{"version":1,"requestId":"p1","requestId":"p2","method":"platformTools.get"}',
-    ' {"version":1,"requestId":"p1","method":"platformTools.get"}',
-    '{"method":"platformTools.get","version":1,"requestId":"p1"}',
+    '{"version":2,"requestId":"p1","requestId":"p2","method":"platformTools.get"}',
+    ' {"version":2,"requestId":"p1","method":"platformTools.get"}',
+    '{"method":"platformTools.get","version":2,"requestId":"p1"}',
   ])
     assert.equal(parseSetupRequest(raw).ok, false);
 });
@@ -120,7 +122,7 @@ test('response exact outcome/state and null diagnostic health invariants, all25 
 test('changing descriptor discriminators and false verified/pending snapshots are rejected', () => {
   let reads = 0;
   const proxy = new Proxy(
-    { version: 1, requestId: 'p1', method: 'platformTools.setup.request', expectedRevision: 0 },
+    { version: 2, requestId: 'p1', method: 'platformTools.setup.request', expectedRevision: 0 },
     {
       getOwnPropertyDescriptor(target, key) {
         const d = Reflect.getOwnPropertyDescriptor(target, key);
@@ -140,9 +142,48 @@ test('changing descriptor discriminators and false verified/pending snapshots ar
       null,
     );
   assert.notEqual(
-    snapshotSetupSnapshot({ ...snapshot(), state: 'VERIFIED_LOCAL', installationRevision: 1 }),
+    snapshotSetupSnapshot({
+      ...snapshot(),
+      state: 'VERIFIED_LOCAL',
+      installationRevision: 1,
+      activeVersion: '37.0.1',
+    }),
     null,
   );
   for (const state of ['AWAITING_RECIPIENT', 'PROVISIONING'])
     assert.equal(snapshotSetupSnapshot({ ...snapshot(), state }), null);
+});
+
+test('v2 release observations distinguish policy denial, verified prior and unknown history', () => {
+  const verified = {
+    ...snapshot(),
+    state: 'VERIFIED_LOCAL',
+    installationRevision: 3,
+    activeVersion: '36.0.0',
+    rollbackAvailable: true,
+  };
+  assert.deepEqual(snapshotSetupSnapshot(verified), verified);
+  const denied = {
+    ...verified,
+    state: 'UNAVAILABLE',
+    code: 'RECOVERY_REQUIRED',
+    rollbackAvailable: false,
+  };
+  assert.deepEqual(snapshotSetupSnapshot(denied), denied);
+  for (const patch of [
+    { activeVersion: null },
+    { installationRevision: 0 },
+    { rollbackAvailable: true },
+  ])
+    assert.equal(snapshotSetupSnapshot({ ...denied, ...patch }), null);
+  for (const value of ['37.0.1\n', '37.0.1\r\n', 'latest', '1.2.3/path', '1'.repeat(33)]) {
+    assert.equal(snapshotSetupSnapshot({ ...verified, activeVersion: value }), null);
+    assert.equal(snapshotSetupSnapshot({ ...verified, installTargetVersion: value }), null);
+  }
+  assert.equal(
+    parseSetupRequest(JSON.stringify({ version: 1, requestId: 'p1', method: 'platformTools.get' }))
+      .code,
+    'UNSUPPORTED_VERSION',
+  );
+  assert.equal(snapshotSetupSnapshot({ ...verified, candidateVersion: '37.0.1' }), null);
 });

@@ -1,7 +1,11 @@
 // Pure pinned ZIP decoding; no filesystem, network, license or executable authority.
 import { createHash } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
-import { PLATFORM_TOOLS_CANDIDATE } from './platform-tools-candidate.ts';
+import {
+  PLATFORM_TOOLS_INSTALL_TARGET,
+  assertPlatformToolsCandidate,
+  type PlatformToolsCatalogEntry,
+} from './platform-tools-catalog.ts';
 export type PlatformToolsArchiveFile = Readonly<{ name: string; bytes: Uint8Array }>;
 const sha = (raw: Uint8Array) => createHash('sha256').update(raw).digest('hex');
 function reject(): never {
@@ -15,8 +19,12 @@ function crc(raw: Uint8Array): number {
   }
   return (n ^ 0xffffffff) >>> 0;
 }
-export function snapshotPlatformToolsArchive(raw: unknown): Buffer {
+export function snapshotPlatformToolsArchive(
+  raw: unknown,
+  entry: PlatformToolsCatalogEntry = PLATFORM_TOOLS_INSTALL_TARGET,
+): Buffer {
   try {
+    assertPlatformToolsCandidate(entry);
     const prototype = Object.getPrototypeOf(Uint8Array.prototype);
     if (
       Object.getOwnPropertyDescriptor(prototype, Symbol.toStringTag)?.get?.call(raw) !==
@@ -28,22 +36,27 @@ export function snapshotPlatformToolsArchive(raw: unknown): Buffer {
     const length = Object.getOwnPropertyDescriptor(prototype, 'byteLength')?.get?.call(raw);
     if (
       !(buffer instanceof ArrayBuffer) ||
-      length !== PLATFORM_TOOLS_CANDIDATE.archive.bytes ||
+      length !== entry.candidate.archive.bytes ||
       !Number.isSafeInteger(offset) ||
       offset < 0
     )
       reject();
     const copy = Buffer.from(new Uint8Array(buffer, offset, length));
-    if (sha(copy) !== PLATFORM_TOOLS_CANDIDATE.archive.sha256) reject();
+    if (sha(copy) !== entry.candidate.archive.sha256) reject();
     return copy;
   } catch {
     reject();
   }
 }
-export function decodePlatformToolsArchive(input: unknown): readonly PlatformToolsArchiveFile[] {
+export function decodePlatformToolsArchive(
+  input: unknown,
+  entry: PlatformToolsCatalogEntry = PLATFORM_TOOLS_INSTALL_TARGET,
+): readonly PlatformToolsArchiveFile[] {
   try {
-    const raw = snapshotPlatformToolsArchive(input),
-      candidate = PLATFORM_TOOLS_CANDIDATE;
+    const raw = snapshotPlatformToolsArchive(input, entry),
+      candidate = entry.candidate,
+      expandedLimit = candidate.files.reduce((n, row) => n + row.bytes, 0);
+    if (!Number.isSafeInteger(expandedLimit) || expandedLimit > 128 * 1024 * 1024) reject();
     if (sha(raw) !== candidate.archive.sha256) reject();
     const end = raw.length - 22;
     if (
@@ -129,7 +142,7 @@ export function decodePlatformToolsArchive(input: unknown): readonly PlatformToo
         expanded += data.length;
         if (
           data.length !== length ||
-          expanded > 17529398 ||
+          expanded > expandedLimit ||
           crc(data) !== checksum ||
           sha(data) !== row.sha256
         )
@@ -155,7 +168,7 @@ export function decodePlatformToolsArchive(input: unknown): readonly PlatformToo
       at !== end ||
       localEnd !== start ||
       out.length !== 14 ||
-      expanded !== 17529398 ||
+      expanded !== expandedLimit ||
       !candidate.files.every((row) => seen.has('platform-tools/' + row.path))
     )
       reject();

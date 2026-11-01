@@ -339,6 +339,7 @@
         },
         "./platform-tools-setup-audit-contract.ts": {
           "validSetupAuditTuple": "value",
+          "validSetupAuditV2Tuple": "value",
           "SetupAudit": "type"
         },
         "./durable-audit-contract.ts": {
@@ -1453,8 +1454,10 @@
         "node:zlib": {
           "inflateRawSync": "value"
         },
-        "./platform-tools-candidate.ts": {
-          "PLATFORM_TOOLS_CANDIDATE": "value"
+        "./platform-tools-catalog.ts": {
+          "PLATFORM_TOOLS_INSTALL_TARGET": "value",
+          "assertPlatformToolsCandidate": "value",
+          "PlatformToolsCatalogEntry": "type"
         }
       }
     },
@@ -1477,8 +1480,14 @@
           "dirname": "value",
           "join": "value"
         },
-        "./platform-tools-candidate.ts": {
-          "PLATFORM_TOOLS_CANDIDATE": "value"
+        "./platform-tools-catalog.ts": {
+          "PLATFORM_TOOLS_INSTALL_TARGET": "value",
+          "assertPlatformToolsCandidate": "value",
+          "resolvePlatformToolsCandidate": "value",
+          "PlatformToolsCatalogEntry": "type"
+        },
+        "./platform-tools-provision-ledger.ts": {
+          "ProvisionOperationProvenance": "type"
         },
         "./platform-tools-archive.ts": {
           "decodePlatformToolsArchive": "value",
@@ -1520,11 +1529,11 @@
           "resolve": "value",
           "join": "value"
         },
-        "node:crypto": {
-          "createHash": "value"
-        },
-        "./platform-tools-candidate.ts": {
-          "PLATFORM_TOOLS_CANDIDATE": "value"
+        "./platform-tools-catalog.ts": {
+          "PLATFORM_TOOLS_INSTALL_TARGET": "value",
+          "PLATFORM_TOOLS_KNOWN_CANDIDATES": "value",
+          "resolvePlatformToolsCandidate": "value",
+          "PlatformToolsCatalogEntry": "type"
         },
         "./platform-tools-archive.ts": {
           "snapshotPlatformToolsArchive": "value"
@@ -1595,10 +1604,19 @@
           "createPlatformToolsProvisioner": "value",
           "RecipientDecision": "type"
         },
+        "./platform-tools-runtime-custody.ts": {
+          "PlatformToolsRuntimeCustody": "type"
+        },
         "./platform-tools-download.ts": {
           "createPlatformToolsDownload": "value"
         },
+        "./platform-tools-catalog.ts": {
+          "PLATFORM_TOOLS_INSTALL_TARGET": "value",
+          "resolvePlatformToolsCandidate": "value"
+        },
         "./platform-tools-setup-native.ts": {
+          "SetupAction": "type",
+          "SetupNativeSelection": "type",
           "SetupNativeResult": "type"
         },
         "../platform-tools-setup-contract.ts": {
@@ -1610,9 +1628,6 @@
         },
         "../platform-tools-setup-audit-contract.ts": {
           "SetupAudit": "type"
-        },
-        "./platform-tools-runtime-custody.ts": {
-          "PlatformToolsRuntimeCustody": "type"
         }
       }
     },
@@ -1631,8 +1646,8 @@
           "ClientRequest": "type",
           "IncomingMessage": "type"
         },
-        "./platform-tools-candidate.ts": {
-          "PLATFORM_TOOLS_CANDIDATE": "value"
+        "./platform-tools-catalog.ts": {
+          "PLATFORM_TOOLS_INSTALL_TARGET": "value"
         }
       }
     },
@@ -1646,11 +1661,9 @@
           "resolve": "value",
           "join": "value"
         },
-        "node:crypto": {
-          "createHash": "value"
-        },
-        "./platform-tools-candidate.ts": {
-          "PLATFORM_TOOLS_CANDIDATE": "value"
+        "./platform-tools-catalog.ts": {
+          "PLATFORM_TOOLS_KNOWN_CANDIDATES": "value",
+          "resolvePlatformToolsCandidate": "value"
         },
         "./platform-tools-provision-ledger.ts": {
           "createPlatformToolsProvisionLedger": "value"
@@ -1749,6 +1762,10 @@
         "node:crypto": {
           "randomUUID": "value"
         },
+        "node:fs": {
+          "lstatSync": "value",
+          "realpathSync": "value"
+        },
         "./adb-host-adapter.ts": {
           "createHostAdapter": "value"
         },
@@ -1762,23 +1779,19 @@
         "./persistence-entry.ts": {
           "PersistenceEntry": "type"
         },
-        "./platform-tools-candidate.ts": {
-          "PLATFORM_TOOLS_CANDIDATE": "value"
+        "./platform-tools-catalog.ts": {
+          "resolvePlatformToolsCandidate": "value"
         },
         "./adb-host-context.ts": {
           "HOST_ASSETS": "value",
           "hostHash": "value",
           "hostUuid": "value",
+          "hostNames": "value",
           "hostWrite": "value",
           "readHostContext": "value",
           "createHostRoot": "value",
           "assertHostPathBudget": "value",
-          "cleanupHostRoot": "value",
-          "hostNames": "value"
-        },
-        "node:fs": {
-          "lstatSync": "value",
-          "realpathSync": "value"
+          "cleanupHostRoot": "value"
         }
       }
     },
@@ -1838,6 +1851,9 @@
     "main/runtime-version-service.ts": {
       "role": "main-adapter",
       "imports": {
+        "./platform-tools-catalog.ts": {
+          "PLATFORM_TOOLS_INSTALL_TARGET": "value"
+        },
         "./platform-tools-runtime-custody.ts": {
           "PlatformToolsRuntimeCustody": "type"
         },
@@ -1883,6 +1899,17 @@
           "readHostContext": "value",
           "assertHostPathBudget": "value",
           "HOST_ASSETS": "value"
+        },
+        "./platform-tools-catalog.ts": {
+          "PLATFORM_TOOLS_INSTALL_TARGET": "value"
+        }
+      }
+    },
+    "main/platform-tools-catalog.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "createHash": "value"
         },
         "./platform-tools-candidate.ts": {
           "PLATFORM_TOOLS_CANDIDATE": "value"

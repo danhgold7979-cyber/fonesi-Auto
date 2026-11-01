@@ -29,13 +29,13 @@ const fleet = createFleetClient(
   readiness,
 );
 const platformTools = createPlatformToolsSetupClient(
-  (wire) => ipcRenderer.invoke('foundation:platform-tools:v1', wire),
+  (wire) => ipcRenderer.invoke('foundation:platform-tools:v2', wire),
   budget,
   undefined,
   readiness,
 );
 const runtimeVersion = createRuntimeVersionClient(
-  (wire) => ipcRenderer.invoke('foundation:runtime-version:v1', wire),
+  (wire) => ipcRenderer.invoke('foundation:runtime-version:v2', wire),
   budget,
   undefined,
   readiness,
@@ -47,7 +47,12 @@ contextBridge.exposeInMainWorld(
     readVersion: () => runtimeVersion.readVersion(),
     verifyVersion: (revision: unknown, installationRevision: unknown) =>
       runtimeVersion.verifyVersion(revision, installationRevision),
-    requestSetup: (revision: unknown) => platformTools.requestSetup(revision),
+    requestSetup: (revision: unknown) => {
+      runtimeVersion.invalidateObservation();
+      return platformTools
+        .requestSetup(revision)
+        .finally(() => runtimeVersion.invalidateObservation());
+    },
   }),
 );
 contextBridge.exposeInMainWorld(

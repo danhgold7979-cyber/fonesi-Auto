@@ -1,6 +1,7 @@
 import { request, Agent } from 'node:https';
 import type { ClientRequest, IncomingMessage } from 'node:http';
-import { PLATFORM_TOOLS_CANDIDATE } from './platform-tools-candidate.ts';
+import { PLATFORM_TOOLS_INSTALL_TARGET } from './platform-tools-catalog.ts';
+const candidate = PLATFORM_TOOLS_INSTALL_TARGET.candidate;
 // One fixed GET; no redirect, retry, global-agent mutation or caller URL.
 export function createPlatformToolsDownload(transport: typeof request = request) {
   return (signal: AbortSignal): Promise<Buffer> =>
@@ -17,15 +18,14 @@ export function createPlatformToolsDownload(transport: typeof request = request)
         failed = false,
         settled = false,
         used = 0;
-      const bytes = Buffer.alloc(PLATFORM_TOOLS_CANDIDATE.archive.bytes);
+      const bytes = Buffer.alloc(candidate.archive.bytes);
       const finish = () => {
         if (settled || !requestClosed || !responseClosed) return;
         settled = true;
         clearTimeout(timer);
         signal.removeEventListener('abort', abort);
         agent.destroy();
-        if (failed || !ended || used !== PLATFORM_TOOLS_CANDIDATE.archive.bytes)
-          reject(Error('DOWNLOAD_FAILED'));
+        if (failed || !ended || used !== candidate.archive.bytes) reject(Error('DOWNLOAD_FAILED'));
         else resolve(bytes);
       };
       const abort = () => {
@@ -42,7 +42,7 @@ export function createPlatformToolsDownload(transport: typeof request = request)
             protocol: 'https:',
             hostname: 'dl.google.com',
             port: 443,
-            path: '/android/repository/platform-tools_r37.0.1-win.zip',
+            path: candidate.archive.url.slice('https://dl.google.com'.length),
             method: 'GET',
             agent,
             rejectUnauthorized: true,
@@ -63,10 +63,7 @@ export function createPlatformToolsDownload(transport: typeof request = request)
             });
             response.on('data', (chunk: Buffer) => {
               if (failed) return;
-              if (
-                !Buffer.isBuffer(chunk) ||
-                used + chunk.length > PLATFORM_TOOLS_CANDIDATE.archive.bytes
-              ) {
+              if (!Buffer.isBuffer(chunk) || used + chunk.length > candidate.archive.bytes) {
                 abort();
                 return;
               }
@@ -75,8 +72,7 @@ export function createPlatformToolsDownload(transport: typeof request = request)
             });
             if (
               response.statusCode !== 200 ||
-              response.headers['content-length'] !==
-                String(PLATFORM_TOOLS_CANDIDATE.archive.bytes) ||
+              response.headers['content-length'] !== String(candidate.archive.bytes) ||
               (response.headers['content-encoding'] !== undefined &&
                 response.headers['content-encoding'] !== 'identity') ||
               failed

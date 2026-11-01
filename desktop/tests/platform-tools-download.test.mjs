@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { transformSync } from 'esbuild';
 import { createPlatformToolsDownload } from '../src/main/platform-tools-download.ts';
 import { PLATFORM_TOOLS_CANDIDATE } from '../src/main/platform-tools-candidate.ts';
 function fake() {
@@ -136,4 +138,45 @@ test('pre-aborted request performs zero transport calls', async () => {
     { message: 'DOWNLOAD_FAILED' },
   );
   assert.equal(calls, 0);
+});
+
+test('download uses only transformed build-owned install target URL and exact byte cap', async () => {
+  const target = {
+    ...PLATFORM_TOOLS_CANDIDATE,
+    release: '36.0.0',
+    archive: {
+      url: 'https://dl.google.com/android/repository/platform-tools_r36.0.0-win.zip',
+      bytes: 17,
+      sha256: 'b'.repeat(64),
+    },
+  };
+  const data = (source) =>
+    'data:text/javascript;base64,' +
+    Buffer.from(
+      transformSync(source, { loader: 'ts', format: 'esm', target: 'es2022' }).code,
+    ).toString('base64');
+  let catalog = readFileSync(
+    new URL('../src/main/platform-tools-catalog.ts', import.meta.url),
+    'utf8',
+  );
+  catalog = catalog.replace(
+    "'./platform-tools-candidate.ts'",
+    JSON.stringify(data('export const PLATFORM_TOOLS_CANDIDATE = ' + JSON.stringify(target) + ';')),
+  );
+  const source = readFileSync(
+    new URL('../src/main/platform-tools-download.ts', import.meta.url),
+    'utf8',
+  ).replace("'./platform-tools-catalog.ts'", JSON.stringify(data(catalog)));
+  const create = (await import(data(source))).createPlatformToolsDownload;
+  const f = fake();
+  f.res.headers['content-length'] = '17';
+  const pending = create(f.transport)(new AbortController().signal);
+  assert.equal(f.options.hostname, 'dl.google.com');
+  assert.equal(f.options.path, '/android/repository/platform-tools_r36.0.0-win.zip');
+  assert.equal(f.options.method, 'GET');
+  f.respond();
+  f.res.emit('data', Buffer.alloc(17));
+  f.res.emit('end');
+  f.close();
+  assert.equal((await pending).length, 17);
 });

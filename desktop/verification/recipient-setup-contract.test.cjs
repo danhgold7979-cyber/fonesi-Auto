@@ -101,7 +101,7 @@ test('recipient workflow uses separate default-off exact branch marker and dual 
     assert.ok(job);
     assert.match(
       job,
-      /if: \(github.event_name == 'workflow_dispatch' && inputs.run_recipient_setup\) \|\| \(github.event_name == 'push' && github.ref == 'refs\/heads\/phase-02' && contains\(github.event.head_commit.message, '\[recipient-setup\]'\)\)/,
+      /if: false && \(\(github.event_name == 'workflow_dispatch' && inputs.run_recipient_setup\) \|\| \(github.event_name == 'push' && github.ref == 'refs\/heads\/phase-02' && contains\(github.event.head_commit.message, '\[recipient-setup\]'\)\)\)/,
     );
     for (const fragment of [
       'setup-light.png',

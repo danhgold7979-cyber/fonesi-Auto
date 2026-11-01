@@ -115,7 +115,11 @@ test('version and live-session observations use distinct retained facts and boun
   assert.match(facts, /a.terminal \? "RETIRED" : "LIVE"/);
   assert.match(body('Reply VersionCore('), /Reply retired = RetireCore\(a\)/);
   assert.match(body('Reply VersionCore('), /a.exit != 0/);
-  assert.match(body('Reply VersionCore('), /"Installed as " \+ executable/);
+  assert.match(
+    body('Reply VersionCore('),
+    /VersionOutputMatches\(a.stdout.Snapshot\(\), executable, expectedRelease, expectedBuildGrammar\)/,
+  );
+  assert.match(body('internal static bool VersionOutputMatches('), /"Installed as " \+ executable/);
   assert.match(body('Reply StartForegroundCore('), /observed && !a.stopping/);
   assert.match(
     body('Reply HealthCore('),
@@ -183,4 +187,88 @@ test('native progress is bounded opt-in telemetry and preserves original retirem
   before(body('Reply VersionCore('), 'Progress(ProgressSlot.LAUNCH)', 'Launch(a)');
   before(body('Reply VersionCore('), 'Launch(a)', 'Progress(ProgressSlot.LAUNCH_END)');
   assert.match(body('Reply VersionCore('), /if \(observed\) Progress\(ProgressSlot.EXIT\)/);
+});
+
+test('selected release is immutable, absolutely bounded and literal escaped rather than caller regex', () => {
+  assert.match(
+    source,
+    /readonly string root, owner, executable, executableHash, expectedRelease, expectedBuildGrammar/,
+  );
+  assert.match(
+    source,
+    /: this\(ownedRunRoot, ownerToken, verifiedExecutable, expectedExeSha256, "37\.0\.1", "DECIMAL_1_20", diagnostics\)/,
+  );
+  const check = body('internal static bool VersionExpectationValid('),
+    parse = body('internal static bool VersionOutputMatches(');
+  assert.match(check, /release.Length <= 32/);
+  assert.ok(check.includes('"\\\\A[0-9]+\\\\.[0-9]+\\\\.[0-9]+\\\\z"'));
+  assert.match(check, /buildGrammar == "DECIMAL_1_20"/);
+  assert.match(parse, /lines\[0\] == "Android Debug Bridge version 1\.0\.41"/);
+  assert.match(parse, /Regex.Escape\(release\)/);
+  assert.ok(parse.includes('[0-9]{1,20}\\\\z'));
+  assert.match(parse, /output.Length > 32768/);
+  assert.doesNotMatch(
+    check + parse,
+    /Launch\(|Reserve\(|Process|File\.|Directory\.|Socket|Profile\(|NativeProfile|DllImport/,
+  );
+  before(body('Reply VersionCore('), 'Reply retired = RetireCore(a)', 'VersionOutputMatches(');
+});
+test('current bootstrap v2 supplies exact catalog expectations while old live v1 cannot enter provider', () => {
+  const ps = readFileSync(new URL('../launch/Invoke-RetainedHost.ps1', import.meta.url), 'utf8');
+  const keys = ps.match(/\$b=Parse \$raw @\(([^\n]+)\)/)?.[1];
+  assert.ok(keys);
+  assert.deepEqual(
+    [...keys.matchAll(/'([^']+)'/g)].map((v) => v[1]),
+    [
+      'version',
+      'operationSet',
+      'sessionId',
+      'launchId',
+      'storeId',
+      'ownerToken',
+      'parentReceiptSha256',
+      'readySha256',
+      'runRoot',
+      'adbPath',
+      'adbExeSha256',
+      'candidateArchiveSha256',
+      'candidateManifestSha256',
+      'installationRevision',
+      'expectedRelease',
+      'expectedBuildGrammar',
+      'assets',
+    ],
+  );
+  assert.match(ps, /if\(\$b.version -ne 2 -or \$b.operationSet -cne 'VERSION_ONLY'\)\{Reject\}/);
+  assert.ok(ps.includes("$b.expectedRelease -cnotmatch '\\A[0-9]+\\.[0-9]+\\.[0-9]+\\z'"));
+  assert.match(ps, /\$b.expectedRelease.Length -gt 32/);
+  assert.match(ps, /\$b.expectedBuildGrammar -cne 'DECIMAL_1_20'/);
+  assert.ok(
+    ps.includes(
+      'RetainedProvider($b.runRoot,$b.ownerToken,$b.adbPath,$b.adbExeSha256,$b.expectedRelease,$b.expectedBuildGrammar,$true)',
+    ),
+  );
+  before(ps, "$b.expectedBuildGrammar -cne 'DECIMAL_1_20'", '$provider=New-Object');
+});
+test('new managed A/B parser groups are source-only and separate from historical eight protocol groups', () => {
+  const fixture = readFileSync(
+    new URL('./fixtures/RetainedAdbProtocolFixture.cs', import.meta.url),
+    'utf8',
+  );
+  const pure = fixture.slice(
+    fixture.indexOf('public static int RunVersionExpectations()'),
+    fixture.indexOf('public static int RunAll()'),
+  );
+  assert.match(pure, /new string\[\]\{"37\.0\.1","36\.0\.0"\}/);
+  assert.match(pure, /return 2;/);
+  assert.match(pure, /VersionOutputMatches/);
+  assert.match(pure, /VersionExpectationValid/);
+  assert.doesNotMatch(
+    pure,
+    /new RetainedProvider|new IsolatedAdbServer|\.Reserve\(|\.Version\(|Process|NativeProfile|Socket|File\./,
+  );
+  assert.match(pure, /123456789012345678901/);
+  assert.match(pure, /1\.0\.42/);
+  assert.match(pure, /DECIMAL_1_20\\n/);
+  assert.equal((fixture.match(/passed\+\+;/g) || []).length, 8);
 });

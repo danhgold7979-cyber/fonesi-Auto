@@ -141,11 +141,12 @@ try {
     $phase='CONTEXT';Progress 'CONTEXT'
     $raw=Read-Bounded $BootstrapFile 8192
     if((Digest $raw) -cne $BootstrapSha256){Reject}
-    $b=Parse $raw @('version','operationSet','sessionId','launchId','storeId','ownerToken','parentReceiptSha256','readySha256','runRoot','adbPath','adbExeSha256','candidateArchiveSha256','candidateManifestSha256','installationRevision','assets')
-    if($b.version -ne 1 -or $b.operationSet -cne 'VERSION_ONLY'){Reject}
+    $b=Parse $raw @('version','operationSet','sessionId','launchId','storeId','ownerToken','parentReceiptSha256','readySha256','runRoot','adbPath','adbExeSha256','candidateArchiveSha256','candidateManifestSha256','installationRevision','expectedRelease','expectedBuildGrammar','assets')
+    if($b.version -ne 2 -or $b.operationSet -cne 'VERSION_ONLY'){Reject}
     foreach($key in @('sessionId','launchId','storeId','ownerToken')){if($b.$key -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'){Reject}}
     foreach($key in @('parentReceiptSha256','readySha256','adbExeSha256','candidateArchiveSha256','candidateManifestSha256')){if($b.$key -cnotmatch '^[0-9a-f]{64}$'){Reject}}
     if($b.installationRevision -lt 1 -or $b.installationRevision -gt 9007199254740991 -or [Math]::Truncate([double]$b.installationRevision) -ne $b.installationRevision){Reject}
+    if($b.expectedRelease -isnot [string] -or $b.expectedRelease.Length -lt 1 -or $b.expectedRelease.Length -gt 32 -or $b.expectedRelease -cnotmatch '\A[0-9]+\.[0-9]+\.[0-9]+\z' -or $b.expectedBuildGrammar -isnot [string] -or $b.expectedBuildGrammar -cne 'DECIMAL_1_20'){Reject}
     Plain $b.runRoot $true
     if($BootstrapFile -cne (Join-Path $b.runRoot 'bootstrap.json') -or [IO.Path]::GetFileName($b.runRoot) -cne '.host-session'){Reject}
     if([Text.Encoding]::ASCII.GetString((Read-Bounded (Join-Path $b.runRoot '.owner') 36)) -cne $b.ownerToken){Reject}
@@ -168,7 +169,7 @@ try {
     $phase='PARENT';Progress 'PARENT_BEGIN'
     $admission=[Fonesi.Development.Server.IsolatedAdbServer]::OpenParentAdmission([uint32]$p.parentPid,$p.parentCreationFileTime,$p.parentImagePath,$p.parentImageSha256,$p.jobName)
     Progress 'PARENT_END'
-    $provider=New-Object Fonesi.Development.Server.IsolatedAdbServer+RetainedProvider($b.runRoot,$b.ownerToken,$b.adbPath,$b.adbExeSha256,$true)
+    $provider=New-Object Fonesi.Development.Server.IsolatedAdbServer+RetainedProvider($b.runRoot,$b.ownerToken,$b.adbPath,$b.adbExeSha256,$b.expectedRelease,$b.expectedBuildGrammar,$true)
     $adapter=New-Object Fonesi.Development.Server.RetainedAdbProtocol+NativeProvider($provider)
     $phase='READER';Progress 'READER'
     $result=[Fonesi.Development.Server.RetainedAdbProtocol]::Run([Console]::OpenStandardInput(),[Console]::OpenStandardOutput(),$b.sessionId,$adapter,$admission.Liveness(),$true)

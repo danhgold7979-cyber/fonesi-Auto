@@ -8,13 +8,26 @@ import { createPlatformToolsSetupService } from '../src/main/platform-tools-setu
 import { createPlatformToolsSetupNative } from '../src/main/platform-tools-setup-native.ts';
 const uuid = (n) => `${String(n).padStart(8, '0')}-1234-4234-8234-123456789abc`;
 const request = (revision = 0) => ({
-  version: 1,
+  version: 2,
   requestId: 'p1',
   method: 'platformTools.setup.request',
   expectedRevision: revision,
 });
-const get = { version: 1, requestId: 'p2', method: 'platformTools.get' };
+const get = { version: 2, requestId: 'p2', method: 'platformTools.get' };
+const selection = Object.freeze({
+  installTargetVersion: '37.0.1',
+  activeVersion: null,
+  previousVersion: null,
+  rollbackAvailable: false,
+});
 const tick = () => new Promise((r) => setImmediate(r));
+async function until(fn) {
+  const stop = Date.now() + 2000;
+  while (!(await fn())) {
+    assert.ok(Date.now() < stop, 'bounded condition not observed');
+    await tick();
+  }
+}
 function fixture(extra = {}) {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'setup-service-')));
   let n = 1;
@@ -35,12 +48,24 @@ function fixture(extra = {}) {
     },
     clock: () => Date.now(),
     newId: () => uuid(n++),
-    native: { interact: async () => ({ ok: false, code: 'TERMS_DECLINED' }) },
     audit: async (e) => {
       events.push(e);
       return 'AVAILABLE';
     },
     ...extra,
+    native: {
+      async interact(current, selected, onAction) {
+        // Test adapter for existing synthetic result fixtures, not genuine consent.
+        const answer = await (
+          extra.native?.interact ?? (async () => ({ ok: false, code: 'TERMS_DECLINED' }))
+        )(current, selected, onAction);
+        if (answer.ok) {
+          onAction(answer.kind ?? 'INSTALL');
+          return { ...answer, kind: answer.kind ?? 'INSTALL' };
+        }
+        return { ...answer, action: answer.action ?? null };
+      },
+    },
   });
   return {
     root,
@@ -61,7 +86,9 @@ test('real core status plus native decline creates no core files; PENDING is not
   const ack = JSON.parse(await f.service.execute(request(), () => true));
   assert.equal(ack.outcome, 'PENDING');
   assert.equal(ack.snapshot.state, 'AWAITING_RECIPIENT');
-  await tick();
+  await until(
+    async () => JSON.parse(await f.service.execute(get, () => true)).snapshot?.state === 'DECLINED',
+  );
   const s = JSON.parse(await f.service.execute(get, () => true));
   assert.equal(s.snapshot.state, 'DECLINED');
   assert.equal(s.snapshot.installationRevision, 0);
@@ -101,6 +128,7 @@ test('one separate pending native interaction rejects duplicates and shutdown aw
   await f.service.initialize();
   await f.service.execute(request(), () => true);
   assert.equal(JSON.parse(await f.service.execute(request(), () => true)).code, 'BUSY');
+  await until(() => typeof resolve === 'function');
   let retired = false;
   const stop = f.service.shutdown().then((x) => {
     retired = true;
@@ -125,6 +153,7 @@ test('session loss during native await prevents grant/core files', async () => {
   });
   await f.service.initialize();
   await f.service.execute(request(), () => current);
+  await until(() => typeof resolve === 'function');
   current = false;
   resolve({ ok: true, route: 'OFFICIAL_DOWNLOAD', archivePath: null });
   await tick();
@@ -139,7 +168,10 @@ test('PROVISION audit barrier denies accepted injected answers without core file
   });
   await f.service.initialize();
   await f.service.execute(request(), () => true);
-  await tick();
+  await until(
+    async () =>
+      JSON.parse(await f.service.execute(get, () => true)).snapshot?.code === 'AUDIT_UNAVAILABLE',
+  );
   assert.equal(
     JSON.parse(await f.service.execute(get, () => true)).snapshot.code,
     'AUDIT_UNAVAILABLE',
@@ -159,8 +191,17 @@ test('native sequence requires terms and final confirmation; all dialogs default
     },
     async () => assert.fail(),
   );
-  const result = await native.interact(() => {});
-  assert.deepEqual(result, { ok: true, route: 'LOCAL_ARCHIVE', archivePath: '/synthetic.zip' });
+  const result = await native.interact(
+    () => {},
+    selection,
+    () => {},
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    kind: 'INSTALL',
+    route: 'LOCAL_ARCHIVE',
+    archivePath: '/synthetic.zip',
+  });
   assert.equal(seen.length, 3);
   assert.ok(seen.every((x) => x.defaultId === 0 && x.cancelId === 0));
   assert.match(seen[0].detail, /https:\/\/developer.android.com\/studio\/terms/);
@@ -172,12 +213,25 @@ test('opening terms is separate fixed action and does not proceed; await revocat
     { showMessageBox: async () => ({ response: 1 }), showOpenDialog: async () => assert.fail() },
     async (u) => urls.push(u),
   );
-  assert.equal((await native.interact(() => {})).code, 'TERMS_REQUIRED');
+  assert.equal(
+    (
+      await native.interact(
+        () => {},
+        selection,
+        () => {},
+      )
+    ).code,
+    'TERMS_REQUIRED',
+  );
   assert.deepEqual(urls, ['https://developer.android.com/studio/terms']);
   await assert.rejects(
-    native.interact(() => {
-      if (++calls === 2) throw Error('revoked');
-    }),
+    native.interact(
+      () => {
+        if (++calls === 2) throw Error('revoked');
+      },
+      selection,
+      () => {},
+    ),
   );
 });
 test('ID allocation failure is INTERNAL_FAILURE without audit/dialog effects', async () => {
@@ -211,6 +265,7 @@ test('shutdown during REQUEST audit waits its settlement and never schedules nat
   });
   await f.service.initialize();
   const rpc = f.service.execute(request(), () => true);
+  await until(() => typeof release === 'function');
   let done = false;
   const closing = f.service.shutdown().then((x) => {
     done = true;
@@ -324,7 +379,14 @@ test('route, picker and final confirmation cancellations never mint an accepted 
       },
       async () => assert.fail(),
     );
-    assert.deepEqual(await native.interact(() => {}), { ok: false, code: 'SETUP_CANCELLED' });
+    assert.deepEqual(
+      await native.interact(
+        () => {},
+        selection,
+        () => {},
+      ),
+      { ok: false, code: 'SETUP_CANCELLED', action: 'INSTALL' },
+    );
   }
 });
 test('stale request never opens native dialog and late REQUEST RESULT audit failure keeps PENDING', async () => {
@@ -348,6 +410,7 @@ test('stale request never opens native dialog and late REQUEST RESULT audit fail
   const ack = JSON.parse(await f.service.execute(request(), () => true));
   assert.equal(ack.outcome, 'PENDING');
   assert.equal(ack.loggingHealth, 'DEGRADED');
+  await until(() => typeof release === 'function');
   assert.equal(calls, 1);
   release({ ok: false, code: 'TERMS_DECLINED' });
   await tick();
@@ -383,6 +446,7 @@ test('native pending holds shared custody until real settlement during concurren
   await f.service.execute(request(), () => true);
   assert.deepEqual(await f.custody.acquireRead(), { ok: false, code: 'BUSY' });
   assert.deepEqual(f.custody.reserveSetup(), { ok: false, code: 'BUSY' });
+  await until(() => typeof finish === 'function');
   const serviceClosing = f.service.shutdown();
   let retired = false;
   const custodyClosing = f.custody.close().then((r) => {
@@ -411,15 +475,116 @@ test('completed native decline cannot release custody while REQUEST RESULT audit
   });
   await f.service.initialize();
   const requestResult = f.service.execute(request(), () => true);
-  await tick();
+  await until(() => typeof finish === 'function');
   assert.equal(f.service.retired, false);
   assert.deepEqual(f.custody.reserveSetup(), { ok: false, code: 'BUSY' });
   assert.deepEqual(await f.custody.acquireRead(), { ok: false, code: 'BUSY' });
   finish('AVAILABLE');
   assert.equal(JSON.parse(await requestResult).outcome, 'PENDING');
-  await tick();
+  await until(() => f.service.retired);
   const holder = f.custody.reserveSetup();
   assert.equal(holder.ok, true);
   assert.equal(f.custody.releaseSetup(holder.token, true).ok, true);
   await f.cleanup();
+});
+
+test('synthetic admitted prior uses native action choice, genuine terms and separate Cancel-default rollback confirmation', async () => {
+  for (const final of [0, 1]) {
+    const seen = [],
+      chosen = [],
+      answers = [2, 2, final];
+    const native = createPlatformToolsSetupNative(
+      {
+        showMessageBox: async (o) => {
+          seen.push(o);
+          return { response: answers.shift() };
+        },
+        showOpenDialog: async () => assert.fail('rollback must not select archive'),
+      },
+      async () => assert.fail('no implicit browser'),
+    );
+    const result = await native.interact(
+      () => {},
+      { ...selection, activeVersion: '37.0.1', previousVersion: '36.0.0', rollbackAvailable: true },
+      (a) => chosen.push(a),
+    );
+    assert.deepEqual(chosen, ['ROLLBACK']);
+    assert.equal(seen.length, 3);
+    assert.ok(seen.every((o) => o.defaultId === 0 && o.cancelId === 0));
+    assert.match(seen[2].detail, /37\.0\.1.*36\.0\.0/);
+    assert.match(seen[2].detail, /Không tải xuống/);
+    assert.deepEqual(
+      result,
+      final === 1
+        ? { ok: true, kind: 'ROLLBACK', route: 'RETAINED_RUNTIME', archivePath: null }
+        : { ok: false, code: 'SETUP_CANCELLED', action: 'ROLLBACK' },
+    );
+  }
+});
+test('native selected action survives subsequent revocation; unchosen cancel stays null', async () => {
+  let live = true;
+  const selected = [];
+  const native = createPlatformToolsSetupNative(
+    { showMessageBox: async () => ({ response: 2 }), showOpenDialog: async () => assert.fail() },
+    async () => assert.fail(),
+  );
+  await assert.rejects(
+    native.interact(
+      () => {
+        if (!live) throw Error('OWNER_REVOKED');
+      },
+      { ...selection, activeVersion: '37.0.1', previousVersion: '36.0.0', rollbackAvailable: true },
+      (a) => {
+        selected.push(a);
+        live = false;
+      },
+    ),
+  );
+  assert.deepEqual(selected, ['ROLLBACK']);
+  const cancel = createPlatformToolsSetupNative(
+    { showMessageBox: async () => ({ response: 0 }), showOpenDialog: async () => assert.fail() },
+    async () => assert.fail(),
+  );
+  assert.deepEqual(
+    await cancel.interact(
+      () => {},
+      { ...selection, activeVersion: '37.0.1', previousVersion: '36.0.0', rollbackAvailable: true },
+      () => assert.fail(),
+    ),
+    { ok: false, code: 'SETUP_CANCELLED', action: null },
+  );
+  await assert.rejects(
+    cancel.interact(
+      () => {},
+      { ...selection, installTargetVersion: '37.0.1\n' },
+      () => assert.fail(),
+    ),
+  );
+});
+
+test('pre-selection native throw and selected-action revocation retain exact schema8 action facts', async () => {
+  for (const selected of [false, true]) {
+    let current = true;
+    const f = fixture({
+      native: {
+        interact: async (_guard, _selection, onAction) => {
+          if (selected) {
+            onAction('INSTALL');
+            current = false;
+          }
+          throw Error('PRIVATE_NATIVE_FAILURE');
+        },
+      },
+    });
+    await f.service.initialize();
+    await f.service.execute(request(), () => current);
+    await until(() => f.events.some((e) => e.operation === 'PROVISION' && e.phase === 'RESULT'));
+    const result = f.events.find((e) => e.operation === 'PROVISION' && e.phase === 'RESULT');
+    assert.equal(result.action, selected ? 'INSTALL' : null);
+    assert.equal(result.code, selected ? 'OWNER_REVOKED' : 'INTERNAL_FAILURE');
+    assert.equal(result.outcome, 'FAILED');
+    assert.ok(!JSON.stringify(f.events).includes('PRIVATE_NATIVE_FAILURE'));
+    assert.deepEqual(readdirSync(f.root), []);
+    await f.cleanup();
+  }
 });

@@ -156,7 +156,7 @@ test('compile workflow is default-off exact opt-in after source checks, never an
     assert.ok(step);
     assert.match(
       step,
-      /if: github.ref == 'refs\/heads\/phase-02' && \(\(github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true\) \|\| \(github.event_name == 'push' && contains\(github.event.head_commit.message, '\[retained-compile\]'\)\)\)/,
+      /if: false && \(github.ref == 'refs\/heads\/phase-02' && \(\(github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true\) \|\| \(github.event_name == 'push' && contains\(github.event.head_commit.message, '\[retained-compile\]'\)\)\)\)/,
     );
     assert.match(step, /node desktop\/scripts\/compile-retained-helper.mjs/);
     assert.ok(
@@ -169,7 +169,7 @@ test('compile workflow is default-off exact opt-in after source checks, never an
   assert.throws(() =>
     check(
       raw.replace(
-        "if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true)",
+        "if: false && (github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true)",
         "if: true || ((github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true)",
       ),
     ),

@@ -20,6 +20,7 @@ import { LogStore } from '../src/main/log-store.ts';
 const id = 'abcdef00-0000-4000-8000-000000000001',
   utc = '2026-10-31T12:00:00.000Z';
 const fields = () => ({
+  action: null,
   operation: 'REQUEST',
   phase: 'INTENT',
   diagnosticId: id,
@@ -154,7 +155,7 @@ test('schema6 exact audit tuples and canonical field order reject private or mis
   assert.equal(encodeLogRecord(getter), null);
   assert.equal(touched, false);
 });
-test('actual owned logger flushes schema6 alongside historical records and reopens', async () => {
+test('actual owned logger flushes schema8 alongside historical records and reopens', async () => {
   const f = fixture();
   let store;
   try {
@@ -181,7 +182,7 @@ test('actual owned logger flushes schema6 alongside historical records and reope
       .filter((x) => x.endsWith('.jsonl'))
       .map((x) => readFileSync(join(f.location.root, x), 'utf8'))
       .join('');
-    assert.ok(raw.includes('"schemaVersion":6'));
+    assert.ok(raw.includes('"schemaVersion":8'));
     assert.ok(raw.includes('"schemaVersion":1'));
     assert.equal(raw.includes('PRIVATE_CANARY'), false);
     store = await LogStore.open(f.location, utc);
@@ -262,4 +263,67 @@ test('audit schema discriminator cannot change during descriptor admission', () 
     },
   });
   assert.equal(encodeLogRecord(proxy), null);
+});
+
+test('schema8 binds selected action while historical schema6 remains exact', () => {
+  const base = { ...record(), schemaVersion: 8, action: null };
+  assert.ok(encodeLogRecord(base));
+  assert.ok(encodeLogRecord(record()));
+  assert.equal(encodeLogRecord({ ...record(), action: null }), null);
+  assert.equal(encodeLogRecord({ ...base, action: 'ROLLBACK' }), null);
+  for (const action of ['INSTALL', 'ROLLBACK']) {
+    assert.ok(encodeLogRecord({ ...base, operation: 'PROVISION', action }));
+    assert.ok(
+      encodeLogRecord({
+        ...base,
+        operation: 'PROVISION',
+        phase: 'RESULT',
+        action,
+        outcome: 'VERIFIED_LOCAL',
+        resultingRevision: 2,
+      }),
+    );
+    assert.ok(
+      encodeLogRecord({
+        ...base,
+        operation: 'PROVISION',
+        phase: 'RESULT',
+        action,
+        outcome: 'DECLINED',
+        resultingRevision: 2,
+        code: 'SETUP_CANCELLED',
+        severity: 'WARN',
+      }),
+    );
+  }
+  for (const code of ['TERMS_REQUIRED', 'TERMS_DECLINED', 'SETUP_CANCELLED'])
+    assert.ok(
+      encodeLogRecord({
+        ...base,
+        operation: 'PROVISION',
+        phase: 'RESULT',
+        outcome: 'DECLINED',
+        resultingRevision: 2,
+        code,
+        severity: 'WARN',
+      }),
+    );
+  for (const code of ['INTERNAL_FAILURE', 'OWNER_REVOKED'])
+    assert.ok(
+      encodeLogRecord({
+        ...base,
+        operation: 'PROVISION',
+        phase: 'RESULT',
+        outcome: 'FAILED',
+        resultingRevision: 2,
+        code,
+        severity: 'WARN',
+      }),
+    );
+  for (const patch of [
+    { phase: 'INTENT', outcome: 'INTENT' },
+    { phase: 'RESULT', outcome: 'VERIFIED_LOCAL', resultingRevision: 2 },
+    { phase: 'RESULT', outcome: 'FAILED', code: 'AUDIT_UNAVAILABLE', severity: 'WARN' },
+  ])
+    assert.equal(encodeLogRecord({ ...base, operation: 'PROVISION', ...patch }), null);
 });
