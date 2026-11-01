@@ -333,3 +333,160 @@ test('literal local dependency closure is bound by campaign sources or verified 
   visit(path.join(__dirname, 'retained-rollback-control.cjs'));
   visit(path.join(__dirname, 'retained-rollback-main-probe.cjs'));
 });
+
+test('historical completed evidence survives actual journal pointer handoff but never grants current admission', () => {
+  const f = fixture(),
+    j = require('../launch/launch-journal.cjs');
+  const put = (file, value) =>
+    fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value), {
+      flag: 'wx',
+    });
+  try {
+    const managed = path.join(f.root, 'first-use', 'Fonesi-Auto-' + randomUUID());
+    fs.mkdirSync(managed, { recursive: true });
+    put(path.join(managed, '.owner'), randomUUID());
+    const dataRoot = path.join(managed, 'data-main');
+    const complete = (mode) => {
+      const launch = path.join(managed, 'launch-' + randomUUID());
+      fs.mkdirSync(launch);
+      put(path.join(launch, '.owner'), randomUUID());
+      const header = j.plan(managed, launch, dataRoot, mode, 'NORMAL', 'a'.repeat(64));
+      const stages = [
+        'SETUP',
+        'PREPARE_AUTH',
+        'AUTH',
+        'OBSERVE_AUTH',
+        'PREPARE_READY',
+        'MAIN',
+        'RELEASE',
+      ];
+      stages.forEach((stage, i) => {
+        j.appendIntent(managed, launch, i + 1, stage);
+        if (stage === 'SETUP') {
+          if (!fs.existsSync(dataRoot)) {
+            fs.mkdirSync(dataRoot);
+            put(path.join(dataRoot, '.persistence-owner.json'), {
+              version: 1,
+              storeId: header.storeId,
+              kind: 'FRESH',
+              restoreReceiptId: null,
+            });
+          }
+          fs.mkdirSync(path.join(dataRoot, '.writer-lock'));
+          put(path.join(dataRoot, '.writer-lock/owner.json'), {
+            version: 1,
+            storeId: header.storeId,
+            ownerToken: header.ownerToken,
+          });
+          j.recordAcquired(managed, launch);
+        }
+        if (stage === 'MAIN') {
+          const ready = {
+            version: mode === 'SOURCE' ? 2 : 3,
+            state: 'READY',
+            root: dataRoot,
+            parentToken: header.parentToken,
+            ownerToken: header.ownerToken,
+            storeId: header.storeId,
+            runtimeExeSha256: header.executableSha256,
+          };
+          fs.writeFileSync(path.join(dataRoot, '.ready-launch.json'), JSON.stringify(ready));
+          put(path.join(launch, 'host-parent.json'), {
+            version: 1,
+            launchId: header.launchId,
+            storeId: header.storeId,
+            ownerToken: header.ownerToken,
+            readySha256: j.sha(JSON.stringify(ready)),
+            jobName: 'Local\\Fonesi-Auto-host-' + randomUUID(),
+            parentPid: 123,
+            parentCreationFileTime: '0000000000000001',
+            parentImagePath: path.join(managed, 'electron.exe'),
+            parentImageSha256: header.executableSha256,
+          });
+        }
+        if (stage === 'RELEASE') {
+          fs.unlinkSync(path.join(dataRoot, '.writer-lock/owner.json'));
+          fs.rmdirSync(path.join(dataRoot, '.writer-lock'));
+          put(path.join(dataRoot, `.released-${header.ownerToken}.json`), {
+            version: 1,
+            storeId: header.storeId,
+            ownerToken: header.ownerToken,
+          });
+        }
+        put(path.join(launch, `capture-${String(i + 1).padStart(2, '0')}.json`), {
+          process: {
+            status: 'SUCCESS',
+            exitCode: 0,
+            cleanupComplete: true,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          },
+          stdout: 'SYNTHETIC_RETIRED\n',
+          stderr: '',
+        });
+        j.settle(managed, launch, i + 1);
+      });
+      return { managed, launch, header, chain: j.inspect(managed, launch) };
+    };
+    const first = complete('SOURCE');
+    const prior = {
+      version: 1,
+      stage: 'SEED',
+      managed,
+      header: first.header,
+      launchFiles: api.launchFiles(first.launch),
+      terminal: api.terminalEvidence(first),
+    };
+    const second = complete('PACKAGE');
+    assert.throws(() => j.inspect(managed, first.launch), /LAUNCH_JOURNAL_REJECTED/);
+    assert.equal(j.inspect(managed, second.launch).latest.stage, 'RELEASE');
+    assert.doesNotThrow(() => api.historical(f.root, 'SEED', prior));
+    const pointer = fs.readFileSync(path.join(managed, '.launcher-current.json'));
+    for (const name of [
+      'launch-journal.json',
+      'settled-07.json',
+      'capture-07.json',
+      'host-parent.json',
+    ]) {
+      const file = path.join(first.launch, name),
+        raw = fs.readFileSync(file),
+        stat = fs.statSync(file);
+      fs.appendFileSync(file, ' ');
+      assert.throws(() => api.historical(f.root, 'SEED', prior));
+      fs.writeFileSync(file, raw);
+      fs.utimesSync(file, stat.atime, stat.mtime);
+      // Refresh only the local synthetic baseline after restoration; never an application path.
+      prior.launchFiles = api.launchFiles(first.launch);
+    }
+    for (const name of ['unknown.json', '.host-session']) {
+      const file = path.join(first.launch, name);
+      if (name === '.host-session') fs.mkdirSync(file);
+      else put(file, '{}');
+      assert.throws(() => api.historical(f.root, 'SEED', prior));
+      if (name === '.host-session') fs.rmdirSync(file);
+      else fs.unlinkSync(file);
+    }
+    const metadata = path.join(first.launch, 'capture-07.json'),
+      heldMetadata = path.join(f.parent, 'held-capture');
+    fs.renameSync(metadata, heldMetadata);
+    assert.throws(() => api.historical(f.root, 'SEED', prior));
+    fs.copyFileSync(heldMetadata, metadata, fs.constants.COPYFILE_EXCL);
+    assert.throws(() => api.historical(f.root, 'SEED', prior));
+    fs.unlinkSync(metadata);
+    fs.renameSync(heldMetadata, metadata);
+    assert.doesNotThrow(() => api.historical(f.root, 'SEED', prior));
+    const receipt = path.join(dataRoot, `.released-${first.header.ownerToken}.json`),
+      receiptRaw = fs.readFileSync(receipt);
+    fs.unlinkSync(receipt);
+    assert.throws(() => api.historical(f.root, 'SEED', prior));
+    fs.writeFileSync(receipt, receiptRaw, { flag: 'wx' });
+    const held = path.join(f.parent, 'held-receipt');
+    fs.renameSync(receipt, held);
+    fs.writeFileSync(receipt, receiptRaw, { flag: 'wx' });
+    assert.throws(() => api.historical(f.root, 'SEED', prior));
+    assert.throws(() => api.historical(f.root, 'UPGRADE', prior));
+    assert.deepEqual(fs.readFileSync(path.join(managed, '.launcher-current.json')), pointer);
+  } finally {
+    f.close();
+  }
+});

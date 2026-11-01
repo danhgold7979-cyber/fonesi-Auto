@@ -1,8 +1,8 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 17:38 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 17:52 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
-Current four-launch CI41331857064 passes source and refreshed managed10, and the repaired SEED launcher reaches actual main. It stops at the verification observer SETUP/RESPONSE boundary: observer/audit mocks incorrectly assumed setup clears its terminal operation ID and shares runtime audit revisions. Verification-only expectations are being corrected against actual service-generated records; product runtime semantics remain unchanged. No rollback/campaign-cleanup PASS yet.
+Current four-launch CI41332883868 passed source1194/109/274 and managed10. Derived SOURCE36 SEED has strict16/16 stage +11 bootstrap PASS; UPGRADE process retired successfully, but controller incorrectly re-admitted old SEED through the current-only journal API after pointer advancement. Verification-only historical receipt checks are being corrected, preserving production current-owner admission. ROLLBACK/REOPEN and campaign cleanup remain unproved.
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 

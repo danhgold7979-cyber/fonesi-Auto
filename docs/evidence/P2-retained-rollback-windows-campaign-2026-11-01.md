@@ -1,6 +1,6 @@
 # P2-01 — four-launch retained rollback campaign preparation
 
-2026-11-01. Status: coherent runner source independently reviewed CLEAR; actual current Windows compilation and10 managed groups are **PASS**; the latest native SEED attempt reached main but failed verification at SETUP/RESPONSE, so four-launch rollback remains **UNPROVED**. Historical preparation and failed attempts are retained below.
+2026-11-01. Status: coherent runner source independently reviewed CLEAR; actual current Windows compilation and10 managed groups are **PASS**; the latest SEED stage is strictly verified and UPGRADE process retired successfully, but historical controller inspection failed, so four-launch rollback remains **UNPROVED**. Historical preparation and failed attempts are retained below.
 
 ## Requirement, authority and exact product boundary
 
@@ -91,3 +91,13 @@ a566eebcd4e126b51f741e9b5c0b6202aefc411f6c170451b2fc5716362c4d5b  desktop/verifi
 20df3f1d12b4c95dd5a8ed8364b723e7bea39a4cee09995ced1d2337cfbdb7ac  desktop/verification/retained-rollback-audit.test.cjs
 2afd5e09ff8f5595e67bfa1dadc03d51fd7259e7eb36347585df6cd8da0f2834  desktop/verification/retained-rollback-service-fixture.mjs
 ```
+
+## Verified SEED36 and current-pointer history correction —17:52 UTC
+
+Public `076d26d5c3d58e1c4eabf8a57645e015b5254fa7` /tree `4ac3e95732c38c8d5a48f40ed828f52816b2d0e1` /CI41332883868 passed actual1194/109/274. Current managed10 report remains byte-identical1202B/SHA `fe7e37eb9ca872fcdaa153bf2d02860128c36d26918c4f6788ba682e02c763f2`. Native SEED returned SUCCESS0, and strict post-close inspection accepted all16 stage predicates plus11 bootstrap predicates. UPGRADE also returned SUCCESS0/retired/untruncated, but its controller inspection failed before publishing a stage observation. ROLLBACK and REOPEN were not launched.
+
+The downloaded2943-byte failed report SHA256 `64209d94ce797b043dbe7471ea7b4ce218444d7f66dfc70a0be094f9d468c3da` (artifact13094595051) strictly reconstructs through the exact committed validators and imports, independently audited. It truthfully reports CONTROL_FAILED, original integrity/directoryCleanup false, accepted SEED observation, null UPGRADE observation and null later stages. This proves bounded derived SOURCE36 seed/VERSION, not accepted upgrade/rollback or whole P2-01.
+
+Two independent source reads found a deterministic historical-inspection mismatch: histories() called production journal.inspect on prior SEED after UPGRADE legitimately advanced the current pointer. Production inspect intentionally rejects stale launch admission. The repair must leave that API and current-stage admission unchanged, and instead check unchanged previously validated historical RELEASE evidence against its immutable file/identity snapshot, canonical header and retained receipts. No pointer rewriting, historical authority grant or cleanup relaxation is permitted. An actual two-launch journal transition regression is required; corrected Windows outcome remains pending.
+
+The verification-only history repair is frozen at controller SHA256 `1822ee9d10fb8b6b7cbc2f48437f3b9f82929fa2638ed31cd3c0d4de215f36bb` and test SHA256 `4d24e3a5642d694b865ba51bf50b7eced29402691c8f1bea6cba5a559ca579d9`. Its6/6 affected checks pass, including a real owned two-launch journal handoff with explicit synthetic retired process/capture and parent-receipt facts: current admission succeeds, old direct inspect still rejects after pointer advancement, unchanged historical evidence succeeds, and changed/added/missing/replaced receipts/metadata/helper residue fail. Scoped formatting/lint/diff checks are clean. One added case makes next expected desktop1195; foundation109/Python274 and managed/native source bytes are unchanged. No full aggregate or native run was duplicated locally.

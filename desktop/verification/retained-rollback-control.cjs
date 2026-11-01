@@ -371,30 +371,74 @@ function previous(root, stage) {
   const i = STAGES.indexOf(stage);
   return i ? json(path.join(root, `rollback-${STAGES[i - 1]}-state.json`)) : null;
 }
+function terminalEvidence(s) {
+  const latest = s.chain.latest;
+  if (
+    s.chain.pending ||
+    !latest ||
+    latest.stage !== 'RELEASE' ||
+    latest.status !== 'SUCCESS' ||
+    latest.exitCode !== 0 ||
+    !latest.cleanupComplete ||
+    latest.stdoutTruncated ||
+    latest.stderrTruncated ||
+    s.chain.nextSequence !== latest.sequence + 1
+  )
+    fail('HISTORY');
+  released(s);
+  return {
+    version: 1,
+    header: s.header,
+    release: latest,
+    nextSequence: s.chain.nextSequence,
+    releaseReceipt: identityProof(
+      path.join(s.header.dataRoot, `.released-${s.header.ownerToken}.json`),
+    ),
+  };
+}
+// Historical evidence only: never grants current ownership or rewrites the pointer.
+function historical(root, name, prior) {
+  const managed = prior.managed;
+  if (
+    prior.version !== 1 ||
+    prior.stage !== name ||
+    path.dirname(managed) !== path.join(root, 'first-use') ||
+    !/^Fonesi-Auto-[0-9a-f-]{36}$/.test(path.basename(managed)) ||
+    !uuid(path.basename(managed).slice(12)) ||
+    !uuid(prior.header?.launchId)
+  )
+    fail('HISTORY');
+  const launch = path.join(managed, 'launch-' + prior.header.launchId),
+    header = journal.readHeader(managed, launch);
+  if (
+    JSON.stringify(header) !== JSON.stringify(prior.header) ||
+    header.entryMode !== EXPECTED[name].entryMode ||
+    header.maintenance !== 'NORMAL' ||
+    header.dataRoot !== path.join(managed, 'data-main') ||
+    JSON.stringify(launchFiles(launch)) !== JSON.stringify(prior.launchFiles)
+  )
+    fail('HISTORY');
+  const saved = prior.terminal,
+    sequence = saved?.release?.sequence;
+  if (!Number.isSafeInteger(sequence) || sequence < 1 || sequence > 16) fail('HISTORY');
+  const latest = journal.parse(
+    'settlement',
+    read(path.join(launch, `settled-${String(sequence).padStart(2, '0')}.json`)),
+  );
+  const s = {
+    managed,
+    launch,
+    header,
+    chain: { latest, pending: null, nextSequence: sequence + 1 },
+  };
+  if (JSON.stringify(terminalEvidence(s)) !== JSON.stringify(saved)) fail('HISTORY');
+  if (latest.launchId !== header.launchId || latest.ownerToken !== header.ownerToken)
+    fail('HISTORY');
+  return s;
+}
 function histories(root, stage) {
   for (const name of STAGES.slice(0, STAGES.indexOf(stage))) {
-    const prior = json(path.join(root, `rollback-${name}-state.json`));
-    if (
-      JSON.stringify(launchFiles(path.join(prior.managed, 'launch-' + prior.header.launchId))) !==
-      JSON.stringify(prior.launchFiles)
-    )
-      fail('HISTORY');
-    const chain = journal.inspect(
-      prior.managed,
-      path.join(prior.managed, 'launch-' + prior.header.launchId),
-    );
-    if (
-      chain.pending ||
-      chain.latest?.stage !== 'RELEASE' ||
-      chain.header.storeId !== prior.header.storeId
-    )
-      fail('HISTORY');
-    released({
-      managed: prior.managed,
-      launch: path.join(prior.managed, 'launch-' + prior.header.launchId),
-      header: prior.header,
-      chain,
-    });
+    historical(root, name, json(path.join(root, `rollback-${name}-state.json`)));
   }
 }
 function prepareStage(root, stage) {
@@ -641,6 +685,7 @@ async function inspect(root, stage) {
     header: s.header,
     authWitness: auth.witness,
     launchFiles: launchFiles(s.launch),
+    terminal: terminalEvidence(s),
     runtimeWitnesses: runtime.witnesses,
     ledger: runtime.current,
     audit,
@@ -918,6 +963,8 @@ module.exports = {
   inspect,
   launchFiles,
   histories,
+  historical,
+  terminalEvidence,
   proof,
   pathBudget,
   diagnose,
