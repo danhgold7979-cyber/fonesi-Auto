@@ -823,10 +823,9 @@ test('PACKAGE prepare materializes exact raw packaged wrapper with explicit mode
 });
 
 test('PACKAGE campaign is separately default-off, exact-gated, local-runtime and JSON-only without old matrices', () => {
-  const raw = fs.readFileSync(
-    path.resolve(desktop, '../.github/workflows/phase-02-software.yml'),
-    'utf8',
-  );
+  const raw = fs
+    .readFileSync(path.resolve(desktop, '../.github/workflows/phase-02-software.yml'), 'utf8')
+    .replaceAll('\r\n', '\n');
   const gate =
     "    if: (github.event_name == 'workflow_dispatch' && inputs.run_package_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[package-version]'))";
   function check(text) {
@@ -855,8 +854,12 @@ test('PACKAGE campaign is separately default-off, exact-gated, local-runtime and
       gate.replace('[package-version]', '[main-version]'),
       gate.replace('inputs.run_package_version', 'true'),
       gate.replace('refs/heads/phase-02', 'refs/heads/main'),
-    ])
-      assert.throws(() => check(text.replaceAll('\r\n', '\n').replace(gate, changed)));
+    ]) {
+      const normalized = text.replaceAll('\r\n', '\n'),
+        mutated = normalized.replace(gate, changed);
+      assert.notEqual(mutated, normalized);
+      assert.throws(() => check(mutated));
+    }
   }
   const ps = fs.readFileSync(path.join(__dirname, 'Invoke-RetainedHostCheck.ps1'), 'utf8');
   assert.match(ps, /if\(\$MainVersion -and \$PackageVersion\)\{throw 'MODE_REJECTED'\}/);
