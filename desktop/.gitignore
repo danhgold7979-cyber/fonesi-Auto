@@ -20,3 +20,6 @@ build/
 /.platform-tools-runtime/
 
 /.platform-tools-server-runtime/
+
+# Private fleet/UI development run; only validated outputs are published.
+.fleet-ui-runtime/

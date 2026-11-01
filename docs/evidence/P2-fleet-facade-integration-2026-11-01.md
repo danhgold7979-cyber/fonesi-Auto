@@ -65,3 +65,68 @@ it did not duplicate the full suite. Unchanged foundation109/Python194 retain pr
 exact Windows evidence. The new actual Windows fleet/UI smoke is being implemented
 under coordinator-approved bounded source-only launcher design; it is **NOT_RUN**.
 Earlier P1-08 screenshots are historical references, not proof of the changed renderer.
+
+## Narrow Windows smoke design (execution pending exact review)
+
+Coordinator approved a single SOURCE-only production launcher smoke, not reruns of
+unrelated backup/vault/identity campaigns. It uses the real initializer, owned lease,
+orderly authentication and compiled main/preload/React. Four exact hash-bound launcher
+substitutions select the verification observer and injected native initialization
+answers; original/derived materialized bytes are rechecked. No production fixture
+provider or device transport is activated. Official pinned Electron development-runtime
+installation/attestation is prepared under the existing bounded owned Job, without
+running the old full foundation/native campaign.
+
+The observer checks startup's single fleet read and independent preference hydration,
+empty BINARY_UNAVAILABLE fleet, actual preload read and unchanged empty-selection CAS,
+then holds one completed selection reply to observe timeout and explicit reconciliation.
+The late reply check is a bounded150ms unchanged UI/no-extra-dispatch observation,
+composed with pure client late-settlement tests—not proof of direct preload receipt.
+Foreign owned webContents and a real child frame are passed to the captured actual
+handler; these are adapter-invoked native negatives, not genuine user IPC intent.
+A real reload revokes the document before final denial. Two actual1024×768 Light/Dark
+Overview screenshots cover the changed integration; six tabs are structurally checked,
+not another32-image full-reference parity certification.
+
+The separate native job depends on the exact source job. A default-false manual input
+or explicit `[fleet-ui]` marker on a `phase-02` push requests the developer smoke;
+ordinary pushes do not repeat it. The marker is testing opt-in, not production/device
+authority. Existing manual ADB version/server boundaries are unchanged and not invoked.
+Only reconstructed fixed JSON and two independently hash/PNG-bound screenshots may
+publish under separate markers. Raw profiles, initialization keys, paths and captures
+remain private. Native execution/results remain NOT_RUN until exact runner review and
+coordinator execution disposition.
+
+The application-only checkpoint was published as
+`a99175d45fb6efdb9a66eeaa7962a4d2b5216d65` (tree
+`6972b0d78fd7488176c9be93c97448e04a73597e`). Exact Windows source
+[CI41271299012](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41271299012)
+passed751 desktop/109 foundation/194 Python; independent log inspection confirmed
+those counts and runtime jobs correctly SKIPPED. This does not convert the new native
+fleet smoke into PASS.
+
+### Frozen smoke source checks
+
+Affected new Node cases12/12 PASS (observer6, actual materialized launcher/control5,
+workflow opt-in1); new Python validator/handoff9/9 PASS. Registered inventory now
+expects763 Node cases and203 Python cases in the next hosted source run; these are
+expected totals, not an unrun local full aggregate. The previously passed751/109/194
+Windows scope is reused unchanged. Quality inventory258 files and YAML/diff checks
+PASS. Initial smoke-only quality failures (block-scoped declarations and ambiguous
+literal regex spacing) were corrected without suppression; final checks are clean
+apart from pre-existing informational style diagnostics.
+
+Final source hashes:
+- Outer PS `540fb045aff7f97b531881aebd1f3c813f8bb940a309ecd2d522db23fbd3b436`.
+- Control `90ae7898320140217c6c22e2fa8e3ece1e7938e7f42a5322f433a77cebec2dd0`.
+- Observer `3185538bfb5532635bb0ec7d2b1652b0601fa24ae9c53e776b4ca31989da3364`.
+- Validator `0d7ffaa8de3285e2dd3941324d85707b1973ce9614bd42c50cff0fbfa9e92d89`.
+- Workflow `fdc79dbf6816384de8cb00715a0d88901b60784f7df5f0e0603684710190395e`.
+
+These hashes identify the reviewed development envelope, not an observed native PASS.
+
+Coordinator Coder Bin approved first bounded execution at04:10UTC after independent
+exact-source/owned-envelope review CLEAR. This authorizes the frozen SOURCE-only smoke
+and two bounded screenshots via the explicit developer opt-in, not native success,
+production/device activation or a canonical task acceptance. Native remains NOT_RUN
+at this source commit.
