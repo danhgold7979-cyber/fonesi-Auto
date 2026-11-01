@@ -436,7 +436,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Syntax check new fixed PowerShell campaign entries
         run: |
-          foreach($name in @('Invoke-RetainedManagedFixture.ps1','Invoke-RetainedHostCheck.ps1','../launch/Invoke-RetainedHost.ps1')) {
+          foreach($name in @('Invoke-RetainedManagedFixture.ps1','Invoke-RetainedHostCheck.ps1','RetainedPipeEntry.ps1','../launch/Invoke-RetainedHost.ps1')) {
             $tokens=$null; $errors=$null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
             if (@($errors).Count -ne 0) { Write-Output 'RETAINED_CAMPAIGN_SYNTAX_FAILED'; exit 1 }

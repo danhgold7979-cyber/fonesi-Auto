@@ -6,6 +6,8 @@ const fs = require('node:fs'),
 const { createHash, randomUUID } = require('node:crypto');
 const {
   DIAGNOSTICS,
+  PIPE_DIAGNOSTICS,
+  pipeDiagnostic,
   progressDiagnostic,
   contextDiagnostic,
   reason,
@@ -79,7 +81,16 @@ function runObserver() {
     dialogIndex = 0,
     request = 0;
   const cases = Object.fromEntries(CASES.map((k) => [k, false]));
-  let hostResult = null;
+  let hostResult = null,
+    pipeFacts = null,
+    pipeEmitted = false;
+  function emitPipeDiagnostics() {
+    if (pipeEmitted) return;
+    pipeEmitted = true;
+    const vector = pipeDiagnostic(pipeFacts);
+    for (const slot of Object.keys(PIPE_DIAGNOSTICS))
+      fs.writeSync(2, `RETAINED_HOST_DIAGNOSTIC_${slot}_${vector[slot]}\n`);
+  }
   const originalLog = console.log;
   const deadline = setTimeout(() => fail(), 210000);
   function fail(error) {
@@ -127,6 +138,7 @@ function runObserver() {
     const values = {
       ...contextFacts,
       ...progressDiagnostic(e),
+      ...pipeDiagnostic(pipeFacts),
       REASON: reason(error),
       OUTCOME: hostResult?.outcome,
       CODE: hostResult?.code,
@@ -135,9 +147,11 @@ function runObserver() {
       HELPEREXIT: e?.exit,
     };
     for (const [slot, allowed] of Object.entries(DIAGNOSTICS)) {
+      if (pipeEmitted && Object.hasOwn(PIPE_DIAGNOSTICS, slot)) continue;
       const value = allowed.includes(values[slot]) ? values[slot] : 'UNAVAILABLE';
       fs.writeSync(2, `RETAINED_HOST_DIAGNOSTIC_${slot}_${value}\n`);
     }
+    pipeEmitted = true;
     fs.writeSync(
       2,
       `RETAINED_HOST_PHASE_${PHASES.includes(phase) ? phase : 'PREPARE'}\nRETAINED_HOST_FAILED\n`,
@@ -271,6 +285,32 @@ function runObserver() {
     )
       throw Error('RETAINED_HOST_PARENT');
     cases.parentReceiptBound = true;
+    phase = 'PIPE_STARTUP';
+    const systemRoot = process.env.SystemRoot;
+    if (typeof systemRoot !== 'string' || systemRoot !== path.resolve(systemRoot))
+      throw Error('RETAINED_HOST_PIPE_STARTUP');
+    const { runPairedStartup } = require('./retained-pipe-startup.cjs');
+    pipeFacts = await runPairedStartup({
+      root,
+      owner: bounded(path.join(root, '.owner'), 64).toString('ascii'),
+      powershell: path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      environment: Object.freeze({
+        SystemRoot: systemRoot,
+        WINDIR: systemRoot,
+        TEMP: root,
+        TMP: root,
+      }),
+      assertOwned: context.assertOwnedSync,
+    });
+    emitPipeDiagnostics();
+    if (
+      pipeFacts?.baseline?.stdioRetired !== true ||
+      pipeFacts?.inputNone?.stdioRetired !== true ||
+      pipeFacts.baseline.outcome === 'UNRETIRED' ||
+      pipeFacts.inputNone.outcome === 'UNRETIRED'
+    )
+      throw Error('RETAINED_HOST_PIPE_STARTUP');
+    phase = 'ADMISSION';
     factory = require('../build/adb-host-factory.cjs').createHostFactory({
       entry: context.entry,
       launchRoot: launch,

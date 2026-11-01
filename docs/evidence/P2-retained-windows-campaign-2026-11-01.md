@@ -286,3 +286,60 @@ Frozen diagnostic source SHA256 values:
 - `desktop/verification/retained-host-main-probe.cjs`: `90d6cbf2628321c9c04f0eac72955b8f6dbd86ba15eacbcd900d97bd62209c10`.
 - `desktop/verification/Invoke-RetainedHostCheck.ps1`: `7e03ed632948e83b8283a1c1eaf20f7da682b4c0e1b9076c1f6a69cfb8618289`.
 - `desktop/verification/Invoke-RetainedManagedFixture.ps1`: `7446fdb1c47aaa077b65dc30abca658762844ce19fa851a573476540653433d2`.
+
+## Paired PowerShell startup experiment — 11:08 UTC
+
+Run41299561793/public `4cf942fbc2400931eeac8d43754c84faa976d6de` passes1021/109/232.
+The instrumented four-source compilation/eight managed groups pass; artifact13080673163
+is414 bytes/SHA41e93f3c… above. Native artifact13080628270 is392 bytes/SHAd87a7375…,
+truthful NONZERO/FAIL. Exact log: VERSION/OUTCOME_UNKNOWN/DEADLINE, helper RUNNING,
+request-write YES, all19 progress slots NO. This proves no observed progress, not that
+the script body never ran: best-effort Console diagnostics can fail independently.
+
+Microsoft's public Windows-derived ConsoleHost source only enables redirected pipeline
+input for -File when its AST uses `$input`; this bootstrap does not. The same source
+accepts the internal None input-format enum and its deserializer avoids input reads,
+but it is not the exact hosted Windows5.1 binary. Therefore missing `-InputFormat None`
+is a hypothesis, NOT an established cause or a production fix:
+[ConsoleHost](https://raw.githubusercontent.com/PowerShell/PowerShell/v6.0.0-alpha.9/src/Microsoft.PowerShell.ConsoleHost/host/msh/ConsoleHost.cs),
+[parser](https://raw.githubusercontent.com/PowerShell/PowerShell/v6.0.0-alpha.9/src/Microsoft.PowerShell.ConsoleHost/host/msh/CommandLineParameterParser.cs),
+[serialization](https://raw.githubusercontent.com/PowerShell/PowerShell/v6.0.0-alpha.9/src/Microsoft.PowerShell.ConsoleHost/host/msh/Serialization.cs).
+
+Coordinator Coder Bin approved one causal paired diagnostic within the existing Auto
+Windows scope at11:03 UTC. A fixed verification-only script, same absolute System32
+PowerShell/private pipes/owned outer Job and narrow environment compares baseline with
+only `-InputFormat None` inserted. Execution policy and product argv are unchanged.
+A fixed exclusive entry witness precedes Console access; one fixed byte is written,
+stdin remains open until response or10s, then own EOF is delivered and actual process/
+stdio closure is awaited for10s. Before-EOF and after-EOF observations remain separate;
+late progress never becomes a pre-EOF success. No kill, Add-Type, ADB, provider, server,
+device or existing-profile adoption occurs in these two fixtures. Unknown retirement
+retains owned files and aborts before product VERSION; outer containment is not positive
+fixture cleanup evidence.
+
+Two exact owned partitions contain only marker, fixed script, optional exact entry
+witness and empty private profile. Full closed inventory and outer released-journal/
+retirement checks precede cleanup; marker deletion is last. Fixed pair observations
+are forwarded from the bound retired MAIN capture on both success and failure, never
+raw streams/paths. Original VERSION result/EOF/cleanup acceptance and public JSON schema
+are unchanged. This diagnostic test adds no canonical task acceptance and does not
+change production stdin behavior without causal evidence.
+
+Final source-only affected checks: paired helper10 (nine-suite pass plus final causal case), observer/contract14, control14,
+test inventory5 PASS; final script/control integration2+2 and helper provenance2 are overlapping reruns, not
+additional whole-suite counts. Eight changed JS/TS files pass warning-level quality.
+Two initial harness invocations used nonexistent test filenames and loaded no tests;
+the actual test-batches suite then passed5/5. Exact test inventory adds one file
+(125→126), removes/reorders none. Product build and native files remain unchanged
+from the preceding reviewed diagnostic checkpoint; no redundant full build/aggregate.
+Actual paired Windows startup outcome is NOT_RUN. All privacy/cleanup/EOF distinctions
+remain diagnostic observations, not native VERSION or task completion.
+
+Frozen paired diagnostic SHA256 values:
+- `desktop/verification/RetainedPipeEntry.ps1`: `3872c43ca5fcf4f4de56ae0af94b2a905d5907581a512c0a5f56acb5ec98507f`.
+- `desktop/verification/retained-pipe-startup.cjs`: `1d279b0c110960b6c969e73e28c6e79130f17319d4f9e8e3ac3e4a208a987e86`.
+- `desktop/verification/retained-host-control.cjs`: `a58ae0db047e72502e50fce6b04f9d6d6b287135f547c75b9324703761a822f7`.
+- `desktop/verification/retained-host-contract.cjs`: `75a4dac643c796e2f0d711e9530ac1f7d20949669f7910e0baa06adbd3915d31`.
+- `desktop/verification/retained-host-main-probe.cjs`: `1bcfac4e274372de9ba984ffc41c64b35958e83d87a9e86f1374a40407c0ad9e`.
+- `desktop/verification/Invoke-RetainedHostCheck.ps1`: `51ea5ab988a179f069ef4141b600032305f68f4a2ec5cd993ceba6f60fd82110`.
+- `.github/workflows/phase-02-software.yml`: `21f8950cdd19790771751cb25771a9b82e3b0e8084bcea8c543f7618fa3bd2b6`.

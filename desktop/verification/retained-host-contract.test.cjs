@@ -10,6 +10,9 @@ const {
   CASES,
   SCOPE,
   DIAGNOSTICS,
+  PIPE_FIELDS,
+  PIPE_DIAGNOSTICS,
+  pipeDiagnostic,
   PROGRESS,
   progressDiagnostic,
   contextDiagnostic,
@@ -240,7 +243,7 @@ async function simulatedObserver(wrongParent = false, fault = null) {
     setTimeout,
     clearTimeout,
     setImmediate,
-    process: { pid: 200, env: { FONESI_BOOTSTRAP_ROOT: profile } },
+    process: { pid: 200, env: { FONESI_BOOTSTRAP_ROOT: profile, SystemRoot: root } },
     console: {
       log(...a) {
         messages.push(a);
@@ -250,6 +253,27 @@ async function simulatedObserver(wrongParent = false, fault = null) {
       if (name === 'electron') return electron;
       if (name === 'node:fs') return fsProxy;
       if (name === 'node:module') return FakeModule;
+      if (name === './retained-pipe-startup.cjs')
+        return {
+          async runPairedStartup(options) {
+            assert.equal(options.root, root);
+            assert.equal(options.owner, id(3));
+            assert.deepEqual(Object.keys(options.environment), [
+              'SystemRoot',
+              'WINDIR',
+              'TEMP',
+              'TMP',
+            ]);
+            options.assertOwned();
+            const row = () =>
+              Object.freeze({
+                ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, k !== 'directoryCleanup'])),
+                input: 'Q',
+                outcome: 'COMPLETE',
+              });
+            return fault?.pair ?? Object.freeze({ baseline: row(), inputNone: row() });
+          },
+        };
       if (name === './fleet-ui-schema4.cjs') return { observeSchema4: async () => true };
       if (name === '../build/adb-host-factory.cjs')
         return {
@@ -311,7 +335,8 @@ test('actual observer control flow uses captured same-main custody and one VERSI
   assert.equal(r.executed, 1);
   assert.equal(r.bound, true);
   assert.equal(validateResult(r.result).passed, true);
-  assert.deepEqual(r.stderr, []);
+  assert.equal(r.stderr.length, Object.keys(PIPE_DIAGNOSTICS).length);
+  assert.ok(r.stderr.every((line) => line.startsWith('RETAINED_HOST_DIAGNOSTIC_PIPE_')));
 });
 test('actual observer wrong parent refuses before factory VERSION and emits finite phase only', async () => {
   const r = await simulatedObserver(true);
@@ -609,4 +634,80 @@ test('progress array Proxy get trap never runs: length is bounded via own data d
   assert.equal(facts.PROGRESS_NATIVE_ADMISSION, 'YES');
   assert.equal(facts.PROGRESS_NATIVE_LAUNCH, 'NO');
   assert.equal(facts.REQUESTWRITE, 'NO');
+});
+
+test('paired startup diagnostic projection is exact, finite and getter-safe', () => {
+  const row = Object.freeze({
+    ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, false])),
+    input: 'EOF',
+    outcome: 'EOF_REQUIRED',
+  });
+  const vector = pipeDiagnostic({
+    baseline: row,
+    inputNone: { ...row, started: true, input: 'Q', outcome: 'COMPLETE' },
+  });
+  assert.equal(Object.keys(vector).length, 26);
+  assert.equal(vector.PIPE_BASELINE_STARTED, 'NO');
+  assert.equal(vector.PIPE_NONE_STARTED, 'YES');
+  assert.equal(vector.PIPE_BASELINE_OUTCOME, 'EOF_REQUIRED');
+  assert.equal(vector.PIPE_BASELINE_INPUT, 'EOF');
+  assert.equal(vector.PIPE_NONE_INPUT, 'Q');
+  assert.equal(
+    pipeDiagnostic({ baseline: { ...row, input: 'OTHER' } }).PIPE_BASELINE_INPUT,
+    'OTHER',
+  );
+  assert.ok(
+    Object.values(pipeDiagnostic({ baseline: { ...row, input: 'private bytes' } })).every(
+      (v) => v === 'UNAVAILABLE',
+    ),
+  );
+  let reads = 0;
+  const bad = { ...row };
+  Object.defineProperty(bad, 'started', {
+    get() {
+      reads++;
+      throw Error('PRIVATE');
+    },
+  });
+  assert.ok(
+    Object.entries(pipeDiagnostic({ baseline: bad, inputNone: { ...row, path: 'private' } })).every(
+      ([, v]) => v === 'UNAVAILABLE',
+    ),
+  );
+  assert.equal(reads, 0);
+  assert.ok(Object.values(pipeDiagnostic(null)).every((v) => v === 'UNAVAILABLE'));
+});
+test('unretired paired startup refuses before VERSION and emits each pipe slot exactly once', async () => {
+  const row = Object.freeze({
+    ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, false])),
+    input: 'UNAVAILABLE',
+    outcome: 'UNRETIRED',
+  });
+  const result = await simulatedObserver(false, {
+    pair: Object.freeze({ baseline: row, inputNone: null }),
+  });
+  assert.equal(result.code, 1);
+  assert.equal(result.executed, 0);
+  assert.equal(result.result, null);
+  for (const slot of Object.keys(PIPE_DIAGNOSTICS))
+    assert.equal(
+      result.stderr.filter((line) => line.startsWith(`RETAINED_HOST_DIAGNOSTIC_${slot}_`)).length,
+      1,
+    );
+  assert.ok(result.stderr.includes('RETAINED_HOST_DIAGNOSTIC_PIPE_BASELINE_OUTCOME_UNRETIRED\n'));
+  assert.equal(result.stderr.at(-1), 'RETAINED_HOST_PHASE_PIPE_STARTUP\nRETAINED_HOST_FAILED\n');
+});
+
+test('explicit UNRETIRED outcome refuses even inconsistent positive retirement bit', async () => {
+  const row = Object.freeze({
+    ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, true])),
+    input: 'Q',
+    outcome: 'UNRETIRED',
+  });
+  const result = await simulatedObserver(false, {
+    pair: Object.freeze({ baseline: row, inputNone: row }),
+  });
+  assert.equal(result.executed, 0);
+  assert.equal(result.code, 1);
+  assert.equal(result.stderr.at(-1), 'RETAINED_HOST_PHASE_PIPE_STARTUP\nRETAINED_HOST_FAILED\n');
 });

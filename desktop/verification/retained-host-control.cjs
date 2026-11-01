@@ -34,6 +34,8 @@ const SOURCES = Object.freeze([
   'verification/package-launch-observer.cjs',
   'verification/retained-host-control.cjs',
   'verification/retained-host-main-probe.cjs',
+  'verification/retained-pipe-startup.cjs',
+  'verification/RetainedPipeEntry.ps1',
   'verification/platform-tools-candidate.json',
   'verification/fleet-ui-schema4.cjs',
   'verification/fleet-ui-contract.cjs',
@@ -412,8 +414,22 @@ function observerMarkers(raw) {
     matched = lines.filter((line) =>
       PHASES.some((phase) => line === 'RETAINED_HOST_PHASE_' + phase),
     );
-  if (matched.length !== 1 || lines.filter((line) => line === 'RETAINED_HOST_FAILED').length !== 1)
-    return [];
+  const failed =
+    matched.length === 1 && lines.filter((line) => line === 'RETAINED_HOST_FAILED').length === 1;
+  if (!failed) {
+    if (matched.length !== 0 || lines.includes('RETAINED_HOST_FAILED')) return [];
+    const pairs = Object.entries(DIAGNOSTICS).filter(([slot]) => slot.startsWith('PIPE_'));
+    if (!pairs.length) return [];
+    const out = [];
+    for (const [slot, values] of pairs) {
+      const found = lines.filter((line) =>
+        values.some((value) => line === 'RETAINED_HOST_DIAGNOSTIC_' + slot + '_' + value),
+      );
+      if (found.length !== 1) return [];
+      out.push(found[0]);
+    }
+    return out;
+  }
   const out = [matched[0], 'RETAINED_HOST_FAILED'];
   for (const [slot, values] of Object.entries(DIAGNOSTICS)) {
     const observed = lines.filter((line) =>
@@ -555,6 +571,37 @@ async function inspect(root) {
   });
   return s;
 }
+function pipeStartupPlans(root, owner) {
+  const { SCRIPT_SHA256, ENTRY } = require('./retained-pipe-startup.cjs');
+  const script = read(path.join(__dirname, 'RetainedPipeEntry.ps1'));
+  if (hash(script) !== SCRIPT_SHA256) fail('RETAINED_HOST_SOURCE_CHANGED');
+  return ['retained-pipe-baseline', 'retained-pipe-input-none'].map((name) => {
+    const directory = path.join(root, name);
+    plain(directory);
+    const list = entries(directory, 4);
+    if (
+      list.some((e) => !['.owner', 'fixture.ps1', 'entry.txt', 'profile'].includes(e.name)) ||
+      !list.some((e) => e.name === '.owner') ||
+      !list.some((e) => e.name === 'fixture.ps1') ||
+      !list.some((e) => e.name === 'profile') ||
+      read(path.join(directory, '.owner')) !== owner ||
+      read(path.join(directory, 'fixture.ps1')) !== script
+    )
+      fail('RETAINED_HOST_OWNER');
+    for (const e of list) {
+      if (e.name === 'profile') {
+        if (!e.stat.isDirectory() || entries(e.file, 1).length !== 0)
+          fail('RETAINED_HOST_INVENTORY');
+      } else {
+        if (!e.stat.isFile() || e.stat.nlink !== 1 || e.stat.size > 8192)
+          fail('RETAINED_HOST_LIMIT');
+        if (e.name === 'entry.txt' && read(e.file) !== ENTRY) fail('RETAINED_HOST_OWNER');
+      }
+    }
+    // Marker-last within each exact owned partition; no unknown file is adopted.
+    return { directory, entries: list, markerLast: true };
+  });
+}
 async function cleanup(root) {
   await verifyCopy(root);
   verifyArchives(root);
@@ -592,7 +639,7 @@ async function cleanup(root) {
     fail('RETAINED_HOST_RESULT');
   hostReceipt(s);
   released(s);
-  const plans = [],
+  const plans = pipeStartupPlans(root, token),
     files = [];
   const add = (dir, limit) => plans.push(tree(dir, limit));
   const managedEntries = entries(s.managed, 9),
@@ -706,13 +753,18 @@ async function cleanup(root) {
     'schema4-observed.json',
     'public.json',
     'integrity.json',
+    'retained-pipe-baseline',
+    'retained-pipe-input-none',
     ...['provision', 'auth', 'ui'].map((k) => path.basename(witnessPath(s.launch, k))),
   ];
   const rootEntries = entries(root, expected.length);
   if (rootEntries.length !== expected.length || rootEntries.some((e) => !expected.includes(e.name)))
     fail('RETAINED_HOST_INVENTORY');
   for (const e of rootEntries) {
-    if (e.name === 'first-use' || e.name === '.owner') continue;
+    if (
+      ['first-use', '.owner', 'retained-pipe-baseline', 'retained-pipe-input-none'].includes(e.name)
+    )
+      continue;
     if (
       !e.stat.isFile() ||
       e.stat.nlink !== 1 ||
@@ -731,11 +783,15 @@ async function cleanup(root) {
   // Complete bounded inventory/identities before first deletion. Unknown partitions preserve all.
   if (read(path.join(root, '.owner')) !== token) fail('RETAINED_HOST_OWNER');
   for (const plan of plans) {
-    for (const e of plan.entries.filter((e) => e.stat.isFile())) fs.unlinkSync(e.file);
+    for (const e of plan.entries.filter(
+      (e) => e.stat.isFile() && !(plan.markerLast && e.name === '.owner'),
+    ))
+      fs.unlinkSync(e.file);
     for (const e of plan.entries
       .filter((e) => e.stat.isDirectory())
       .sort((a, b) => b.file.length - a.file.length))
       fs.rmdirSync(e.file);
+    if (plan.markerLast) fs.unlinkSync(path.join(plan.directory, '.owner'));
     fs.rmdirSync(plan.directory);
   }
   for (const e of files) fs.unlinkSync(e.file);
@@ -818,6 +874,7 @@ module.exports = {
   verifyCopy,
   inspect,
   cleanup,
+  pipeStartupPlans,
   transform,
   rawWrite,
   capture,

@@ -359,3 +359,42 @@ test('transitive literal verification require closure is completely source-bound
     }
   }
 });
+
+test('paired startup cleanup admits only exact owned scripts/witnesses and empty private profiles', () => {
+  const f = fixture();
+  try {
+    const owner = fs.readFileSync(path.join(f.root, '.owner'), 'utf8');
+    const { ENTRY } = require('./retained-pipe-startup.cjs');
+    const script = fs.readFileSync(path.join(__dirname, 'RetainedPipeEntry.ps1'));
+    for (const name of ['retained-pipe-baseline', 'retained-pipe-input-none']) {
+      const dir = path.join(f.root, name);
+      fs.mkdirSync(dir);
+      fs.mkdirSync(path.join(dir, 'profile'));
+      fs.writeFileSync(path.join(dir, '.owner'), owner);
+      fs.writeFileSync(path.join(dir, 'fixture.ps1'), script);
+      fs.writeFileSync(path.join(dir, 'entry.txt'), ENTRY);
+    }
+    assert.equal(api.pipeStartupPlans(f.root, owner).length, 2);
+    const unknown = path.join(f.root, 'retained-pipe-baseline', 'unknown');
+    fs.writeFileSync(unknown, 'preserve');
+    assert.throws(() => api.pipeStartupPlans(f.root, owner));
+    assert.equal(fs.readFileSync(unknown, 'utf8'), 'preserve');
+    fs.unlinkSync(unknown);
+    fs.writeFileSync(path.join(f.root, 'retained-pipe-baseline', '.owner'), crypto.randomUUID());
+    assert.throws(() => api.pipeStartupPlans(f.root, owner));
+    assert.ok(fs.existsSync(path.join(f.root, 'retained-pipe-input-none', 'fixture.ps1')));
+  } finally {
+    f.close();
+  }
+});
+test('bound successful MAIN exposes only complete unique paired diagnostic slots without a false failure', () => {
+  const { DIAGNOSTICS } = require('./retained-host-contract.cjs');
+  const lines = Object.entries(DIAGNOSTICS)
+    .filter(([slot]) => slot.startsWith('PIPE_'))
+    .map(([slot, values]) => 'RETAINED_HOST_DIAGNOSTIC_' + slot + '_' + values[0]);
+  assert.ok(lines.length > 0);
+  assert.deepEqual(api.observerMarkers(lines.join('\n') + '\n'), lines);
+  assert.deepEqual(api.observerMarkers(lines.slice(1).join('\n')), []);
+  assert.deepEqual(api.observerMarkers([...lines, lines[0]].join('\n')), []);
+  assert.deepEqual(api.observerMarkers([...lines, 'RETAINED_HOST_FAILED'].join('\n')), []);
+});

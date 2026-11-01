@@ -27,6 +27,7 @@ const PHASES = Object.freeze([
   'MIGRATION',
   'SETUP',
   'ADMISSION',
+  'PIPE_STARTUP',
   'VERSION',
   'RETIRE',
   'CLOSE',
@@ -53,6 +54,40 @@ const PROGRESS = Object.freeze([
   'NATIVE_RETIRE_BEGIN',
   'NATIVE_RETIRE_END',
 ]);
+const PIPE_FIELDS = Object.freeze([
+  'started',
+  'requestWriteSettled',
+  'entryBeforeEof',
+  'stderrEntryBeforeEof',
+  'responseBeforeEof',
+  'entryAfterEof',
+  'responseAfterEof',
+  'eofDelivered',
+  'exitZero',
+  'stdioRetired',
+  'directoryCleanup',
+]);
+const PIPE_INPUTS = Object.freeze(['Q', 'EOF', 'OTHER', 'UNAVAILABLE']);
+const PIPE_OUTCOMES = Object.freeze([
+  'COMPLETE',
+  'EOF_REQUIRED',
+  'OUTPUT_REJECTED',
+  'SPAWN_FAILED',
+  'UNRETIRED',
+  'UNAVAILABLE',
+]);
+const PIPE_DIAGNOSTICS = Object.freeze(
+  Object.fromEntries(
+    ['baseline', 'none'].flatMap((mode) => [
+      ...PIPE_FIELDS.map((field) => [
+        `PIPE_${mode.toUpperCase()}_${field.toUpperCase()}`,
+        Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
+      ]),
+      [`PIPE_${mode.toUpperCase()}_INPUT`, PIPE_INPUTS],
+      [`PIPE_${mode.toUpperCase()}_OUTCOME`, PIPE_OUTCOMES],
+    ]),
+  ),
+);
 const DIAGNOSTICS = Object.freeze({
   REASON: Object.freeze([
     'RETAINED_HOST_CONTEXT',
@@ -67,6 +102,7 @@ const DIAGNOSTICS = Object.freeze({
     'RETAINED_HOST_CUSTODY',
     'RETAINED_HOST_RUNTIME',
     'RETAINED_HOST_PARENT',
+    'RETAINED_HOST_PIPE_STARTUP',
     'RETAINED_HOST_VERSION',
     'RETAINED_HOST_RETIRE',
     'RETAINED_HOST_CASES',
@@ -133,11 +169,57 @@ const DIAGNOSTICS = Object.freeze({
   SYSTEMREPARSE: Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
   SYSTEMSINGLELINK: Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
   SYSTEMCANONICAL: Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
+  ...PIPE_DIAGNOSTICS,
   REQUESTWRITE: Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
   ...Object.fromEntries(
     PROGRESS.map((name) => [`PROGRESS_${name}`, Object.freeze(['YES', 'NO', 'UNAVAILABLE'])]),
   ),
 });
+function pipeDiagnostic(pair) {
+  const out = Object.fromEntries(Object.keys(PIPE_DIAGNOSTICS).map((k) => [k, 'UNAVAILABLE']));
+  for (const [mode, label] of [
+    ['baseline', 'BASELINE'],
+    ['inputNone', 'NONE'],
+  ]) {
+    try {
+      const d =
+        pair && typeof pair === 'object' ? Object.getOwnPropertyDescriptor(pair, mode) : null;
+      if (!d || !('value' in d) || !d.value || typeof d.value !== 'object') continue;
+      const keys = Reflect.ownKeys(d.value);
+      if (
+        keys.length !== PIPE_FIELDS.length + 2 ||
+        keys.some((k) => !PIPE_FIELDS.includes(k) && k !== 'outcome' && k !== 'input')
+      )
+        continue;
+      const values = {};
+      let valid = true;
+      for (const field of [...PIPE_FIELDS, 'input', 'outcome']) {
+        const item = Object.getOwnPropertyDescriptor(d.value, field);
+        if (
+          !item ||
+          !('value' in item) ||
+          (field === 'outcome'
+            ? !PIPE_OUTCOMES.slice(0, -1).includes(item.value)
+            : field === 'input'
+              ? !PIPE_INPUTS.includes(item.value)
+              : typeof item.value !== 'boolean')
+        ) {
+          valid = false;
+          break;
+        }
+        values[field] = item.value;
+      }
+      if (!valid) continue;
+      for (const field of PIPE_FIELDS)
+        out[`PIPE_${label}_${field.toUpperCase()}`] = values[field] ? 'YES' : 'NO';
+      out[`PIPE_${label}_INPUT`] = values.input;
+      out[`PIPE_${label}_OUTCOME`] = values.outcome;
+    } catch {
+      /* fixed unavailable diagnostic only */
+    }
+  }
+  return out;
+}
 // Diagnostic only. Exact observed progress never grants authority or changes acceptance.
 function progressDiagnostic(evidence) {
   const out = Object.fromEntries(
@@ -312,6 +394,9 @@ function deriveMain(raw, observerPath) {
   return derived;
 }
 module.exports = {
+  PIPE_FIELDS,
+  PIPE_DIAGNOSTICS,
+  pipeDiagnostic,
   PROGRESS,
   progressDiagnostic,
   DIAGNOSTICS,

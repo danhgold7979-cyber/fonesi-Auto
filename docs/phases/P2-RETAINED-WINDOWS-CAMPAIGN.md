@@ -83,3 +83,18 @@ old compile/version/server/fleet/recipient opt-ins remain off. Tests are impact-
 unchanged a194 source results are reused locally, Windows source suite is actual CI.
 No P2 full-task, existing-profile server eligibility, hardware, P106 or formal
 acceptance claim follows from this campaign.
+
+
+## Bounded causal startup fixture amendment — 2026-11-01 11:03 UTC
+
+Coordinator Coder Bin approved a diagnostic pair within this campaign: identical fixed
+System32 PowerShell executable, owned outer Job, private pipes, fixed script and narrow
+environment; only the second inserts `-InputFormat None`. No execution-policy change.
+Before Console access the script creates one fixed owned entry witness. The parent
+writes one fixed byte, keeps stdin open until exact response or10s, then delivers own
+EOF and awaits actual process/stdio close for10s. Record distinct before/after EOF facts,
+not guessed startup or retirement. Unknown retirement retains evidence and aborts;
+no child kill, Add-Type, ADB/server/device or profile adoption. Two exact owned test
+partitions are cleaned only after complete inventory and known released outer custody.
+Fixed diagnostics only, no new public pass fields; original VERSION acceptance remains.
+This does not authorize changing production stdin behavior on an unproved hypothesis.
