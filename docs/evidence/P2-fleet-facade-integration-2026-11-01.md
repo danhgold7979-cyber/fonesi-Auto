@@ -157,3 +157,22 @@ schema4 development build, whose manifest correctly refuses the old verified bui
 This narrow checkpoint contains no durable schema4 source; the retry remains bound
 to the committed schema3 application. Native cause and corrected outcome remain
 pending the next explicitly opted-in run. No canonical count changes.
+
+## Exact native framing correction — 04:32 UTC
+
+The diagnostic run41273051125 on exact public
+`5e17a532b29728aa612f96fb0d37b8397c3f6680` passed source765/109/203 but its
+native inspection failed again. Its fixed vector now proves the PROVISION capture
+has exactly ONE leading empty line and ONE final newline, with exact marker count
+and order, no interior empty/unknown/failure lines, SUCCESS0, complete retirement and
+untruncated streams. Artifact13069838964 reconstructs to the same306-byte failed
+report/SHA above; no UI result is implied.
+
+The narrow correction accepts exactly zero or one leading empty line before the
+otherwise byte-exact expected lines, matching the established package capture grammar.
+It does not trim whitespace, extra trailing/interior blanks, duplicate markers,
+reordered/missing lines or unknown text. Six affected tests PASS, including LF/CRLF
+zero/one-leading positives and multiple-leading/trailing/interior/space/reorder/missing
+negatives. This is an actual observed framing cause, unlike the earlier diagnosis-only
+checkpoint. Coordinator approved this bounded schema3 retry at04:32UTC. Current
+schema4 development remains excluded from this commit and native outcome is pending.

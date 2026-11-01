@@ -236,7 +236,7 @@ test('actual failed capture attaches only fixed target and framing diagnostics',
           stdoutTruncated: false,
           stderrTruncated: false,
         },
-        stdout: '\nPERSISTENCE_DESKTOP_CLOSED\n',
+        stdout: '\n\nPERSISTENCE_DESKTOP_CLOSED\n',
         stderr: 'PRIVATE_CANARY',
       }),
       { flag: 'wx' },
@@ -250,7 +250,7 @@ test('actual failed capture attaches only fixed target and framing diagnostics',
     assert.ok(caught);
     const lines = api.diagnostics('inspect', caught);
     assert.ok(lines.includes('FLEET_UI_CAPTURE_TARGET_OUTER'));
-    assert.ok(lines.includes('FLEET_UI_CAPTURE_LEADING_ONE'));
+    assert.ok(lines.includes('FLEET_UI_CAPTURE_LEADING_MULTIPLE'));
     assert.equal(lines.length, 16);
     assert.equal(lines.join('').includes('PRIVATE_CANARY'), false);
     for (const kind of [
@@ -273,6 +273,47 @@ test('actual failed capture attaches only fixed target and framing diagnostics',
         stderr: '',
       });
       assert.equal(api.captureVector(raw, ['PERSISTENCE_DESKTOP_CLOSED'], 'OUTER').FAILURE, 'ONE');
+    }
+  } finally {
+    f.close();
+  }
+});
+
+test('native captures admit exactly one optional leading empty line, never broad trimming', () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.root, 'capture.json');
+    const lines = ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED'];
+    const write = (stdout) =>
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          process: {
+            status: 'SUCCESS',
+            exitCode: 0,
+            cleanupComplete: true,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          },
+          stdout,
+          stderr: '',
+        }),
+      );
+    for (const prefix of ['', '\n'])
+      for (const newline of ['\n', '\r\n']) {
+        write((prefix + lines.join('\n') + '\n').replaceAll('\n', newline));
+        assert.equal(api.capture(file, lines, 'MAIN').process.status, 'SUCCESS');
+      }
+    for (const raw of [
+      '\n\n' + lines.join('\n') + '\n',
+      lines.join('\n\n') + '\n',
+      lines.join('\n') + '\n\n',
+      ' ' + lines.join('\n') + '\n',
+      lines.slice().reverse().join('\n') + '\n',
+      lines.join('\n'),
+    ]) {
+      write(raw);
+      assert.throws(() => api.capture(file, lines, 'MAIN'), /FLEET_UI_CAPTURE/);
     }
   } finally {
     f.close();

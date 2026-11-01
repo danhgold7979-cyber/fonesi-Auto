@@ -237,7 +237,9 @@ function captureChecked(raw, lines) {
   )
     fail('FLEET_UI_RETIREMENT');
   if (
-    v.stdout.replace(/\r\n/g, '\n') !== lines.join('\n') + '\n' ||
+    ![lines.join('\n') + '\n', '\n' + lines.join('\n') + '\n'].includes(
+      v.stdout.replace(/\r\n/g, '\n'),
+    ) ||
     v.stderr
       .split(/\r?\n/)
       .some((s) =>
