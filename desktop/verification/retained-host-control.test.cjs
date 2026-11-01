@@ -364,25 +364,39 @@ test('paired startup cleanup admits only exact owned scripts/witnesses and empty
   const f = fixture();
   try {
     const owner = fs.readFileSync(path.join(f.root, '.owner'), 'utf8');
-    const { ENTRY } = require('./retained-pipe-startup.cjs');
-    const script = fs.readFileSync(path.join(__dirname, 'RetainedPipeEntry.ps1'));
-    for (const name of ['retained-pipe-baseline', 'retained-pipe-input-none']) {
-      const dir = path.join(f.root, name);
+    const { ENTRY, CASES, BOOTSTRAP, materializeScript } = require('./retained-pipe-startup.cjs');
+    for (const c of CASES) {
+      const dir = path.join(f.root, c.directory);
       fs.mkdirSync(dir);
-      fs.mkdirSync(path.join(dir, 'profile'));
       fs.writeFileSync(path.join(dir, '.owner'), owner);
-      fs.writeFileSync(path.join(dir, 'fixture.ps1'), script);
+      fs.writeFileSync(path.join(dir, 'fixture.ps1'), materializeScript(c.parameters));
       fs.writeFileSync(path.join(dir, 'entry.txt'), ENTRY);
+      if (c.mode === 'plainShort') fs.writeFileSync(path.join(dir, 'bootstrap.json'), BOOTSTRAP);
+      if (!c.deep) fs.mkdirSync(path.join(dir, 'profile'));
+      else {
+        let parent = f.root;
+        for (const name of [
+          c.deep,
+          'Fonesi-Auto-' + owner,
+          'launch-' + owner,
+          'host-session-' + owner,
+        ]) {
+          parent = path.join(parent, name);
+          fs.mkdirSync(parent);
+          fs.writeFileSync(path.join(parent, '.owner'), owner);
+        }
+        fs.mkdirSync(path.join(parent, 'profile'));
+      }
     }
-    assert.equal(api.pipeStartupPlans(f.root, owner).length, 2);
-    const unknown = path.join(f.root, 'retained-pipe-baseline', 'unknown');
+    assert.equal(api.pipeStartupPlans(f.root, owner).length, 12);
+    const unknown = path.join(f.root, 'retained-pipe-plain001', 'unknown');
     fs.writeFileSync(unknown, 'preserve');
     assert.throws(() => api.pipeStartupPlans(f.root, owner));
     assert.equal(fs.readFileSync(unknown, 'utf8'), 'preserve');
     fs.unlinkSync(unknown);
-    fs.writeFileSync(path.join(f.root, 'retained-pipe-baseline', '.owner'), crypto.randomUUID());
+    fs.writeFileSync(path.join(f.root, 'retained-pipe-plain001', '.owner'), crypto.randomUUID());
     assert.throws(() => api.pipeStartupPlans(f.root, owner));
-    assert.ok(fs.existsSync(path.join(f.root, 'retained-pipe-input-none', 'fixture.ps1')));
+    assert.ok(fs.existsSync(path.join(f.root, 'retained-pipe-param001', 'fixture.ps1')));
   } finally {
     f.close();
   }

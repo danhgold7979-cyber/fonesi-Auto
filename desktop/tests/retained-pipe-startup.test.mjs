@@ -10,7 +10,11 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   runPairedStartup,
-  SCRIPT_SHA256,
+  materializeScript,
+  SOURCE_SHA256,
+  BODY_SHA256,
+  BOOTSTRAP,
+  CASES,
   ENTRY,
 } = require('../verification/retained-pipe-startup.cjs');
 function fixture(t) {
@@ -52,11 +56,11 @@ function dependencies(modes, calls) {
       const output = () => {
         if (entered) return;
         entered = true;
-        fs.writeFileSync(path.join(options.cwd, 'entry.txt'), ENTRY, { flag: 'wx' });
+        fs.writeFileSync(path.join(path.dirname(args[4]), 'entry.txt'), ENTRY, { flag: 'wx' });
         c.stderr.emit(
           'data',
           Buffer.from(
-            'RETAINED_PIPE_ENTRY\r\nRETAINED_PIPE_INPUT_' +
+            'RETAINED_PIPE_ENTRY\r\nHOST_BOOTSTRAP_PROGRESS_ENVIRONMENT\r\nRETAINED_PIPE_FUNCTION_RETURNED\r\nRETAINED_PIPE_INPUT_' +
               (mode === 'other' ? 'OTHER' : mode === 'consumed' ? 'EOF' : 'Q') +
               '\r\n',
           ),
@@ -89,71 +93,88 @@ function dependencies(modes, calls) {
     },
   };
 }
-test('paired materialization changes only InputFormat and uses identical exclusive fixed script bytes', async (t) => {
+test('four fixed cases isolate mandatory binding and cwd/TEMP depth while script/witness/arguments remain short', async (t) => {
   const f = fixture(t),
     calls = [];
-  const r = await runPairedStartup(f, dependencies(['normal', 'normal'], calls));
-  assert.equal(r.baseline.outcome, 'COMPLETE');
-  assert.equal(r.inputNone.outcome, 'COMPLETE');
-  assert.equal(r.baseline.directoryCleanup, false);
-  assert.equal(r.inputNone.directoryCleanup, false);
-  assert.deepEqual(calls[0].args.slice(0, -1), [
-    '-NoLogo',
-    '-NoProfile',
-    '-NonInteractive',
-    '-File',
-  ]);
-  assert.deepEqual(calls[1].args.slice(0, -1), [
-    '-NoLogo',
-    '-NoProfile',
-    '-NonInteractive',
-    '-InputFormat',
-    'None',
-    '-File',
-  ]);
-  const scripts = [];
-  for (const [n, c] of calls.entries()) {
+  const r = await runPairedStartup(f, dependencies([], calls));
+  assert.equal(calls.length, 4);
+  const sharedArguments = calls[0].args.slice(5);
+  for (const [n, spec] of CASES.entries()) {
+    const c = calls[n],
+      result = r[spec.mode],
+      scriptRoot = path.join(f.root, spec.directory);
+    assert.equal(result.outcome, 'COMPLETE');
+    assert.equal(result.directoryCleanup, false);
+    assert.deepEqual(c.args.slice(0, 4), ['-NoLogo', '-NoProfile', '-NonInteractive', '-File']);
+    assert.deepEqual(c.args.slice(5), sharedArguments);
+    assert.equal(c.args[4], path.join(scriptRoot, 'fixture.ps1'));
+    assert.deepEqual(fs.readFileSync(c.args[4]), materializeScript(spec.parameters));
+    const cwd = spec.deep
+      ? path.join(
+          f.root,
+          spec.deep,
+          'Fonesi-Auto-' + f.owner,
+          'launch-' + f.owner,
+          'host-session-' + f.owner,
+        )
+      : scriptRoot;
+    assert.equal(c.options.cwd, cwd);
+    assert.equal(c.options.env.TEMP, path.join(cwd, 'profile'));
+    assert.equal(c.options.env.TMP, c.options.env.TEMP);
     assert.equal(c.options.shell, false);
     assert.equal(c.options.detached, false);
     assert.deepEqual(c.options.stdio, ['pipe', 'pipe', 'pipe']);
-    assert.equal(c.options.env.TEMP, path.join(c.options.cwd, 'profile'));
-    assert.equal(c.options.env.TMP, c.options.env.TEMP);
     assert.deepEqual(fs.readdirSync(c.options.env.TEMP), []);
-    scripts.push(fs.readFileSync(c.args.at(-1)));
-    assert.equal(fs.readFileSync(path.join(c.options.cwd, '.owner'), 'utf8'), f.owner);
-    assert.equal(fs.readFileSync(path.join(c.options.cwd, 'entry.txt'), 'utf8'), ENTRY);
-    assert.equal(
-      path.basename(c.options.cwd),
-      n === 0 ? 'retained-pipe-baseline' : 'retained-pipe-input-none',
-    );
+    assert.equal(fs.readFileSync(path.join(scriptRoot, 'entry.txt'), 'utf8'), ENTRY);
+    assert.equal(result.progressBeforeEof, true);
+    assert.equal(result.progressAfterEof, true);
+    assert.equal(spec.directory.length, 22);
+    if (spec.deep) assert.equal(spec.deep.length, 9);
   }
-  assert.deepEqual(scripts[0], scripts[1]);
-  assert.equal(createHash('sha256').update(scripts[0]).digest('hex'), SCRIPT_SHA256);
+  assert.equal(fs.readFileSync(calls[0].args[5], 'utf8'), BOOTSTRAP);
+  assert.equal(calls[0].args[6], createHash('sha256').update(BOOTSTRAP).digest('hex'));
+  const source = fs.readFileSync(new URL('../launch/Invoke-RetainedHost.ps1', import.meta.url));
+  assert.equal(createHash('sha256').update(source).digest('hex'), SOURCE_SHA256);
+  const body = fs.readFileSync(new URL('../verification/RetainedPipeEntry.ps1', import.meta.url));
+  assert.equal(createHash('sha256').update(body).digest('hex'), BODY_SHA256);
+  const parameter =
+    'param([Parameter(Mandatory=$true)][string]$BootstrapFile,[Parameter(Mandatory=$true)][string]$BootstrapSha256)\n';
+  assert.equal(
+    materializeScript(true).toString().replace(parameter, ''),
+    materializeScript(false).toString(),
+  );
+  assert.ok(
+    materializeScript(true)
+      .toString()
+      .startsWith(source.toString().split("try {\n    Progress 'ENVIRONMENT'")[0]),
+  );
+  assert.doesNotMatch(materializeScript(true).toString(), /Add-Type|::Run\(/);
 });
 test('late startup after requested EOF stays EOF_REQUIRED and never becomes before-EOF success', async (t) => {
   const f = fixture(t),
     calls = [];
   const r = await runPairedStartup(f, dependencies(['eof', 'normal'], calls));
-  assert.equal(r.baseline.outcome, 'EOF_REQUIRED');
-  assert.equal(r.baseline.entryBeforeEof, false);
-  assert.equal(r.baseline.responseBeforeEof, false);
-  assert.equal(r.baseline.entryAfterEof, true);
-  assert.equal(r.baseline.responseAfterEof, true);
-  assert.equal(r.baseline.eofDelivered, true);
-  assert.equal(r.baseline.stdioRetired, true);
-  assert.equal(r.inputNone.outcome, 'COMPLETE');
+  assert.equal(r.plainShort.outcome, 'EOF_REQUIRED');
+  assert.equal(r.plainShort.entryBeforeEof, false);
+  assert.equal(r.plainShort.responseBeforeEof, false);
+  assert.equal(r.plainShort.entryAfterEof, true);
+  assert.equal(r.plainShort.responseAfterEof, true);
+  assert.equal(r.plainShort.eofDelivered, true);
+  assert.equal(r.plainShort.stdioRetired, true);
+  assert.equal(r.plainDepth.outcome, 'COMPLETE');
 });
 test('unretired first child preserves exact owned root, does not kill and prevents second spawn', async (t) => {
   const f = fixture(t),
     calls = [];
   const r = await runPairedStartup(f, dependencies(['stuck'], calls));
-  assert.equal(r.baseline.outcome, 'UNRETIRED');
-  assert.equal(r.baseline.stdioRetired, false);
-  assert.equal(r.baseline.directoryCleanup, false);
-  assert.equal(r.inputNone, null);
+  assert.equal(r.plainShort.outcome, 'UNRETIRED');
+  assert.equal(r.plainShort.stdioRetired, false);
+  assert.equal(r.plainShort.directoryCleanup, false);
+  assert.equal(r.plainDepth, null);
   assert.equal(calls.length, 1);
-  assert.deepEqual(fs.readdirSync(path.join(f.root, 'retained-pipe-baseline')).sort(), [
+  assert.deepEqual(fs.readdirSync(path.join(f.root, 'retained-pipe-plain001')).sort(), [
     '.owner',
+    'bootstrap.json',
     'fixture.ps1',
     'profile',
   ]);
@@ -162,12 +183,12 @@ test('unknown output is fixed OUTPUT_REJECTED without raw echo and existing root
   const f = fixture(t),
     calls = [];
   const r = await runPairedStartup(f, dependencies(['bad', 'normal'], calls));
-  assert.equal(r.baseline.outcome, 'OUTPUT_REJECTED');
+  assert.equal(r.plainShort.outcome, 'OUTPUT_REJECTED');
   assert.doesNotMatch(JSON.stringify(r), /private-canary|fixture.ps1|powershell/);
-  const before = fs.readFileSync(path.join(f.root, 'retained-pipe-baseline', 'fixture.ps1'));
+  const before = fs.readFileSync(path.join(f.root, 'retained-pipe-plain001', 'fixture.ps1'));
   await assert.rejects(runPairedStartup(f, dependencies([], [])));
   assert.deepEqual(
-    fs.readFileSync(path.join(f.root, 'retained-pipe-baseline', 'fixture.ps1')),
+    fs.readFileSync(path.join(f.root, 'retained-pipe-plain001', 'fixture.ps1')),
     before,
   );
 });
@@ -200,11 +221,11 @@ test('closed child streams do not retire an unsettled request-write callback', a
   const f = fixture(t),
     calls = [];
   const r = await runPairedStartup(f, dependencies(['callback-stuck'], calls));
-  assert.equal(r.baseline.exitZero, true);
-  assert.equal(r.baseline.requestWriteSettled, false);
-  assert.equal(r.baseline.stdioRetired, false);
-  assert.equal(r.baseline.outcome, 'UNRETIRED');
-  assert.equal(r.inputNone, null);
+  assert.equal(r.plainShort.exitZero, true);
+  assert.equal(r.plainShort.requestWriteSettled, false);
+  assert.equal(r.plainShort.stdioRetired, false);
+  assert.equal(r.plainShort.outcome, 'UNRETIRED');
+  assert.equal(r.plainDepth, null);
 });
 test('decoded input classification preserves EOF versus OTHER and never promotes them to COMPLETE', async (t) => {
   for (const [mode, input, outcome] of [
@@ -214,8 +235,8 @@ test('decoded input classification preserves EOF versus OTHER and never promotes
     const f = fixture(t),
       calls = [];
     const r = await runPairedStartup(f, dependencies([mode, 'normal'], calls));
-    assert.equal(r.baseline.input, input);
-    assert.equal(r.baseline.outcome, outcome);
+    assert.equal(r.plainShort.input, input);
+    assert.equal(r.plainShort.outcome, outcome);
   }
 });
 test('last ownership callback executable replacement refuses before spawn with fixed error', async (t) => {
@@ -267,7 +288,7 @@ test('final ownership callback cannot replace the fixed materialized script befo
     original();
     if (++checks === 4)
       fs.writeFileSync(
-        path.join(f.root, 'retained-pipe-baseline', 'fixture.ps1'),
+        path.join(f.root, 'retained-pipe-plain001', 'fixture.ps1'),
         'private replacement',
       );
   };
@@ -276,7 +297,7 @@ test('final ownership callback cannot replace the fixed materialized script befo
   });
   assert.equal(calls.length, 0);
   assert.equal(
-    fs.readFileSync(path.join(f.root, 'retained-pipe-baseline', 'fixture.ps1'), 'utf8'),
+    fs.readFileSync(path.join(f.root, 'retained-pipe-plain001', 'fixture.ps1'), 'utf8'),
     'private replacement',
   );
 });

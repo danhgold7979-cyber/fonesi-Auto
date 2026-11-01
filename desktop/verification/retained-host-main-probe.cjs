@@ -7,6 +7,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const {
   DIAGNOSTICS,
   PIPE_DIAGNOSTICS,
+  PIPE_MODES,
   pipeDiagnostic,
   progressDiagnostic,
   contextDiagnostic,
@@ -304,10 +305,10 @@ function runObserver() {
     });
     emitPipeDiagnostics();
     if (
-      pipeFacts?.baseline?.stdioRetired !== true ||
-      pipeFacts?.inputNone?.stdioRetired !== true ||
-      pipeFacts.baseline.outcome === 'UNRETIRED' ||
-      pipeFacts.inputNone.outcome === 'UNRETIRED'
+      PIPE_MODES.some(
+        (mode) =>
+          pipeFacts?.[mode]?.stdioRetired !== true || pipeFacts[mode].outcome === 'UNRETIRED',
+      )
     )
       throw Error('RETAINED_HOST_PIPE_STARTUP');
     phase = 'ADMISSION';

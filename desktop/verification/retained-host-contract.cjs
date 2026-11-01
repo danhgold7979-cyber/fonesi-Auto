@@ -54,14 +54,17 @@ const PROGRESS = Object.freeze([
   'NATIVE_RETIRE_BEGIN',
   'NATIVE_RETIRE_END',
 ]);
+const PIPE_MODES = Object.freeze(['plainShort', 'plainDepth', 'parameterShort', 'parameterDepth']);
 const PIPE_FIELDS = Object.freeze([
   'started',
   'requestWriteSettled',
   'entryBeforeEof',
   'stderrEntryBeforeEof',
   'responseBeforeEof',
+  'progressBeforeEof',
   'entryAfterEof',
   'responseAfterEof',
+  'progressAfterEof',
   'eofDelivered',
   'exitZero',
   'stdioRetired',
@@ -78,7 +81,7 @@ const PIPE_OUTCOMES = Object.freeze([
 ]);
 const PIPE_DIAGNOSTICS = Object.freeze(
   Object.fromEntries(
-    ['baseline', 'none'].flatMap((mode) => [
+    PIPE_MODES.flatMap((mode) => [
       ...PIPE_FIELDS.map((field) => [
         `PIPE_${mode.toUpperCase()}_${field.toUpperCase()}`,
         Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
@@ -177,10 +180,8 @@ const DIAGNOSTICS = Object.freeze({
 });
 function pipeDiagnostic(pair) {
   const out = Object.fromEntries(Object.keys(PIPE_DIAGNOSTICS).map((k) => [k, 'UNAVAILABLE']));
-  for (const [mode, label] of [
-    ['baseline', 'BASELINE'],
-    ['inputNone', 'NONE'],
-  ]) {
+  for (const mode of PIPE_MODES) {
+    const label = mode.toUpperCase();
     try {
       const d =
         pair && typeof pair === 'object' ? Object.getOwnPropertyDescriptor(pair, mode) : null;
@@ -394,6 +395,7 @@ function deriveMain(raw, observerPath) {
   return derived;
 }
 module.exports = {
+  PIPE_MODES,
   PIPE_FIELDS,
   PIPE_DIAGNOSTICS,
   pipeDiagnostic,

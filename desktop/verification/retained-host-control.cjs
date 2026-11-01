@@ -571,36 +571,73 @@ async function inspect(root) {
   });
   return s;
 }
+function pipeStartupRoots() {
+  const { CASES } = require('./retained-pipe-startup.cjs');
+  return [...CASES.map((c) => c.directory), 'pipe-deep', 'pipe-test'];
+}
 function pipeStartupPlans(root, owner) {
-  const { SCRIPT_SHA256, ENTRY } = require('./retained-pipe-startup.cjs');
-  const script = read(path.join(__dirname, 'RetainedPipeEntry.ps1'));
-  if (hash(script) !== SCRIPT_SHA256) fail('RETAINED_HOST_SOURCE_CHANGED');
-  return ['retained-pipe-baseline', 'retained-pipe-input-none'].map((name) => {
-    const directory = path.join(root, name);
+  const { CASES, ENTRY, BOOTSTRAP, materializeScript } = require('./retained-pipe-startup.cjs');
+  const plans = [];
+  function inspect(directory, allowed, required) {
     plain(directory);
-    const list = entries(directory, 4);
+    const list = entries(directory, allowed.length);
     if (
-      list.some((e) => !['.owner', 'fixture.ps1', 'entry.txt', 'profile'].includes(e.name)) ||
-      !list.some((e) => e.name === '.owner') ||
-      !list.some((e) => e.name === 'fixture.ps1') ||
-      !list.some((e) => e.name === 'profile') ||
-      read(path.join(directory, '.owner')) !== owner ||
-      read(path.join(directory, 'fixture.ps1')) !== script
+      list.some((e) => !allowed.includes(e.name)) ||
+      required.some((n) => !list.some((e) => e.name === n)) ||
+      read(path.join(directory, '.owner')) !== owner
     )
       fail('RETAINED_HOST_OWNER');
+    for (const e of list)
+      if (e.stat.isFile() && (e.stat.nlink !== 1 || e.stat.size > 16384))
+        fail('RETAINED_HOST_LIMIT');
+    return list;
+  }
+  for (const c of CASES) {
+    const directory = path.join(root, c.directory);
+    const expected = [
+      '.owner',
+      'fixture.ps1',
+      ...(!c.deep ? ['profile'] : []),
+      ...(c.mode === 'plainShort' ? ['bootstrap.json'] : []),
+    ];
+    const list = inspect(directory, [...expected, 'entry.txt'], expected);
     for (const e of list) {
       if (e.name === 'profile') {
-        if (!e.stat.isDirectory() || entries(e.file, 1).length !== 0)
-          fail('RETAINED_HOST_INVENTORY');
-      } else {
-        if (!e.stat.isFile() || e.stat.nlink !== 1 || e.stat.size > 8192)
-          fail('RETAINED_HOST_LIMIT');
-        if (e.name === 'entry.txt' && read(e.file) !== ENTRY) fail('RETAINED_HOST_OWNER');
-      }
+        if (!e.stat.isDirectory() || entries(e.file, 1).length) fail('RETAINED_HOST_INVENTORY');
+      } else if (!e.stat.isFile()) fail('RETAINED_HOST_OWNER');
     }
-    // Marker-last within each exact owned partition; no unknown file is adopted.
-    return { directory, entries: list, markerLast: true };
-  });
+    if (
+      !Buffer.from(read(path.join(directory, 'fixture.ps1'))).equals(
+        materializeScript(c.parameters),
+      ) ||
+      (c.mode === 'plainShort' && read(path.join(directory, 'bootstrap.json')) !== BOOTSTRAP) ||
+      (list.some((e) => e.name === 'entry.txt') &&
+        read(path.join(directory, 'entry.txt')) !== ENTRY)
+    )
+      fail('RETAINED_HOST_OWNER');
+    plans.push({ directory, entries: list, markerLast: true });
+    if (c.deep) {
+      const names = [c.deep, 'Fonesi-Auto-' + owner, 'launch-' + owner, 'host-session-' + owner];
+      const branch = [];
+      let parent = root;
+      for (let i = 0; i < names.length; i++) {
+        const dir = path.join(parent, names[i]);
+        const child = i === names.length - 1 ? 'profile' : names[i + 1];
+        const all = inspect(dir, ['.owner', child], ['.owner', child]);
+        const sub = all.find((e) => e.name === child);
+        if (!sub.stat.isDirectory() || (child === 'profile' && entries(sub.file, 1).length))
+          fail('RETAINED_HOST_INVENTORY');
+        branch.push({
+          directory: dir,
+          entries: all.filter((e) => e.name === '.owner' || child === 'profile'),
+          markerLast: true,
+        });
+        parent = dir;
+      }
+      plans.push(...branch.reverse());
+    }
+  }
+  return plans;
 }
 async function cleanup(root) {
   await verifyCopy(root);
@@ -753,18 +790,14 @@ async function cleanup(root) {
     'schema4-observed.json',
     'public.json',
     'integrity.json',
-    'retained-pipe-baseline',
-    'retained-pipe-input-none',
+    ...pipeStartupRoots(),
     ...['provision', 'auth', 'ui'].map((k) => path.basename(witnessPath(s.launch, k))),
   ];
   const rootEntries = entries(root, expected.length);
   if (rootEntries.length !== expected.length || rootEntries.some((e) => !expected.includes(e.name)))
     fail('RETAINED_HOST_INVENTORY');
   for (const e of rootEntries) {
-    if (
-      ['first-use', '.owner', 'retained-pipe-baseline', 'retained-pipe-input-none'].includes(e.name)
-    )
-      continue;
+    if (['first-use', '.owner', ...pipeStartupRoots()].includes(e.name)) continue;
     if (
       !e.stat.isFile() ||
       e.stat.nlink !== 1 ||

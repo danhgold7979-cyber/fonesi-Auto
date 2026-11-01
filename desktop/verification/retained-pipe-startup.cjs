@@ -4,7 +4,35 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const SCRIPT_SHA256 = '3872c43ca5fcf4f4de56ae0af94b2a905d5907581a512c0a5f56acb5ec98507f';
+const SOURCE_SHA256 = '55c98222fd03fb037a3693de3a10627400499df2f59a0538736e589f461edf26';
+const BODY_SHA256 = '29999102f3c35887d92fe77531b24973ac689d4dba81162215e075c33669b6cf';
+const BOOTSTRAP = '{"version":1,"purpose":"RETAINED_PIPE_STARTUP"}';
+const CASES = Object.freeze([
+  Object.freeze({
+    mode: 'plainShort',
+    directory: 'retained-pipe-plain001',
+    parameters: false,
+    deep: null,
+  }),
+  Object.freeze({
+    mode: 'plainDepth',
+    directory: 'retained-pipe-plain002',
+    parameters: false,
+    deep: 'pipe-deep',
+  }),
+  Object.freeze({
+    mode: 'parameterShort',
+    directory: 'retained-pipe-param001',
+    parameters: true,
+    deep: null,
+  }),
+  Object.freeze({
+    mode: 'parameterDepth',
+    directory: 'retained-pipe-param002',
+    parameters: true,
+    deep: 'pipe-test',
+  }),
+]);
 const ENTRY = 'RETAINED_PIPE_ENTRY_V1\n';
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const fail = () => {
@@ -59,6 +87,22 @@ function write(file, bytes) {
   }
   if (!read(file, 8192).equals(Buffer.from(bytes))) fail();
 }
+function materializeScript(parameters) {
+  if (typeof parameters !== 'boolean') fail();
+  const source = read(path.join(__dirname, '../launch/Invoke-RetainedHost.ps1'), 16384);
+  const body = read(path.join(__dirname, 'RetainedPipeEntry.ps1'), 8192);
+  if (sha(source) !== SOURCE_SHA256 || sha(body) !== BODY_SHA256) fail();
+  const boundary = "try {\n    Progress 'ENVIRONMENT'";
+  const text = source.toString('utf8'),
+    index = text.indexOf(boundary);
+  if (index < 0 || text.indexOf(boundary, index + 1) !== -1) fail();
+  let prefix = text.slice(0, index);
+  const parameter =
+    'param([Parameter(Mandatory=$true)][string]$BootstrapFile,[Parameter(Mandatory=$true)][string]$BootstrapSha256)\n';
+  if (prefix.split(parameter).length !== 2) fail();
+  if (!parameters) prefix = prefix.replace(parameter, '');
+  return Buffer.concat([Buffer.from(prefix), body]);
+}
 function validateExecutable(file) {
   if (
     process.platform !== 'win32' ||
@@ -81,7 +125,15 @@ function witness(root) {
 const response = (s) => s === 'RETAINED_PIPE_RESPONSE\n' || s === 'RETAINED_PIPE_RESPONSE\r\n';
 function inputClass(s) {
   return (
-    /^RETAINED_PIPE_ENTRY\r?\nRETAINED_PIPE_INPUT_(Q|EOF|OTHER)\r?\n$/.exec(s)?.[1] ?? 'UNAVAILABLE'
+    /^RETAINED_PIPE_ENTRY\r?\nHOST_BOOTSTRAP_PROGRESS_ENVIRONMENT\r?\nRETAINED_PIPE_FUNCTION_RETURNED\r?\nRETAINED_PIPE_INPUT_(Q|EOF|OTHER)\r?\n$/.exec(
+      s,
+    )?.[1] ?? 'UNAVAILABLE'
+  );
+}
+function progressObserved(s) {
+  return (
+    s.includes('HOST_BOOTSTRAP_PROGRESS_ENVIRONMENT\nRETAINED_PIPE_FUNCTION_RETURNED\n') ||
+    s.includes('HOST_BOOTSTRAP_PROGRESS_ENVIRONMENT\r\nRETAINED_PIPE_FUNCTION_RETURNED\r\n')
   );
 }
 async function runPairedStartupCore(options, testDependencies = {}) {
@@ -113,23 +165,47 @@ async function runPairedStartupCore(options, testDependencies = {}) {
   const cancel = testDependencies.clearTimeout ?? clearTimeout;
   (testDependencies.validateExecutable ?? validateExecutable)(powershell);
   const executableIdentity = plain(powershell, false, false);
-  const script = read(path.join(__dirname, 'RetainedPipeEntry.ps1'), 8192);
-  if (sha(script) !== SCRIPT_SHA256) fail();
+  const scripts = { plain: materializeScript(false), parameter: materializeScript(true) };
+  const bootstrapFile = path.join(root, CASES[0].directory, 'bootstrap.json');
+  const bootstrapHash = sha(BOOTSTRAP);
   const check = () => {
     assertOwned();
     plain(root, true);
     if (read(path.join(root, '.owner'), 36).toString('ascii') !== owner) fail();
   };
   check();
-  async function variant(name, inputNone) {
+  async function variant(spec) {
+    const script = scripts[spec.parameters ? 'parameter' : 'plain'];
+    const scriptHash = sha(script);
     check();
-    const childRoot = path.join(root, name);
+    const childRoot = path.join(root, spec.directory);
     fs.mkdirSync(childRoot); // Exclusive: existing directories are never adopted or overwritten.
     plain(childRoot, true);
     write(path.join(childRoot, '.owner'), owner);
-    const profile = path.join(childRoot, 'profile');
+    let cwd = childRoot;
+    const deepRoots = [];
+    if (spec.deep) {
+      for (const component of [
+        spec.deep,
+        'Fonesi-Auto-' + owner,
+        'launch-' + owner,
+        'host-session-' + owner,
+      ]) {
+        cwd = path.join(deepRoots.length ? cwd : root, component);
+        fs.mkdirSync(cwd);
+        plain(cwd, true);
+        write(path.join(cwd, '.owner'), owner);
+        deepRoots.push(cwd);
+      }
+    }
+    const profile = path.join(cwd, 'profile');
     fs.mkdirSync(profile);
     plain(profile, true);
+    if (spec.mode === 'plainShort') write(bootstrapFile, BOOTSTRAP);
+    const deepIdentities = deepRoots.map((directory) => ({
+      directory,
+      identity: plain(directory, true),
+    }));
     const childEnvironment = Object.freeze({ ...environment, TEMP: profile, TMP: profile });
     const scriptFile = path.join(childRoot, 'fixture.ps1');
     write(scriptFile, script);
@@ -140,9 +216,10 @@ async function runPairedStartupCore(options, testDependencies = {}) {
       '-NoLogo',
       '-NoProfile',
       '-NonInteractive',
-      ...(inputNone ? ['-InputFormat', 'None'] : []),
       '-File',
       scriptFile,
+      bootstrapFile,
+      bootstrapHash,
     ];
     const facts = {
       started: false,
@@ -150,8 +227,10 @@ async function runPairedStartupCore(options, testDependencies = {}) {
       entryBeforeEof: false,
       stderrEntryBeforeEof: false,
       responseBeforeEof: false,
+      progressBeforeEof: false,
       entryAfterEof: false,
       responseAfterEof: false,
+      progressAfterEof: false,
       eofDelivered: false,
       exitZero: false,
       stdioRetired: false,
@@ -187,6 +266,7 @@ async function runPairedStartupCore(options, testDependencies = {}) {
         invalid = true;
       }
       facts.responseAfterEof = response(out);
+      facts.progressAfterEof = progressObserved(err);
       facts.stdioRetired =
         closed &&
         writeCallbackSettled &&
@@ -235,6 +315,7 @@ async function runPairedStartupCore(options, testDependencies = {}) {
       facts.stderrEntryBeforeEof =
         err.startsWith('RETAINED_PIPE_ENTRY\n') || err.startsWith('RETAINED_PIPE_ENTRY\r\n');
       facts.responseBeforeEof = response(out);
+      facts.progressBeforeEof = progressObserved(err);
       cancel(timer);
       timer = later(finish, 10000);
       try {
@@ -256,9 +337,17 @@ async function runPairedStartupCore(options, testDependencies = {}) {
       !sameIdentity(childIdentity, plain(childRoot, true)) ||
       !sameIdentity(profileIdentity, plain(profile, true)) ||
       read(path.join(childRoot, '.owner'), 36).toString('ascii') !== owner ||
-      sha(read(scriptFile, 8192)) !== SCRIPT_SHA256
+      sha(read(scriptFile, 8192)) !== scriptHash ||
+      sha(read(bootstrapFile, 256)) !== bootstrapHash
     )
       fail();
+    for (const item of deepIdentities) {
+      if (
+        !sameIdentity(item.identity, plain(item.directory, true)) ||
+        read(path.join(item.directory, '.owner'), 36).toString('ascii') !== owner
+      )
+        fail();
+    }
     const profileEntries = fs.opendirSync(profile);
     try {
       if (profileEntries.readSync() !== null) fail();
@@ -267,7 +356,7 @@ async function runPairedStartupCore(options, testDependencies = {}) {
     }
     try {
       child = launch(powershell, args, {
-        cwd: childRoot,
+        cwd,
         env: childEnvironment,
         shell: false,
         detached: false,
@@ -329,9 +418,18 @@ async function runPairedStartupCore(options, testDependencies = {}) {
     }
     return done;
   }
-  const baseline = await variant('retained-pipe-baseline', false);
-  const inputNone = baseline.stdioRetired ? await variant('retained-pipe-input-none', true) : null;
-  return Object.freeze({ baseline, inputNone });
+  const results = {
+    plainShort: null,
+    plainDepth: null,
+    parameterShort: null,
+    parameterDepth: null,
+  };
+  for (const spec of CASES) {
+    const result = await variant(spec);
+    results[spec.mode] = result;
+    if (!result.stdioRetired) break;
+  }
+  return Object.freeze(results);
 }
 async function runPairedStartup(options, testDependencies) {
   try {
@@ -340,4 +438,12 @@ async function runPairedStartup(options, testDependencies) {
     fail();
   }
 }
-module.exports = Object.freeze({ runPairedStartup, SCRIPT_SHA256, ENTRY });
+module.exports = Object.freeze({
+  runPairedStartup,
+  materializeScript,
+  SOURCE_SHA256,
+  BODY_SHA256,
+  BOOTSTRAP,
+  CASES,
+  ENTRY,
+});

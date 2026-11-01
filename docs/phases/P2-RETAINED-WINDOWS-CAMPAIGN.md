@@ -98,3 +98,17 @@ no child kill, Add-Type, ADB/server/device or profile adoption. Two exact owned 
 partitions are cleaned only after complete inventory and known released outer custody.
 Fixed diagnostics only, no new public pass fields; original VERSION acceptance remains.
 This does not authorize changing production stdin behavior on an unproved hypothesis.
+
+
+### Subsequent finite discriminator (11:26 UTC)
+
+After both baseline/None fixtures passed, retain that exact evidence instead of rerunning
+it. Reuse the same owned diagnostic transport for four fixed cases: plain/parameterized
+production-prelude shape × short/product-equivalent cwd and TEMP. Script and independent
+entry witness stay short; no long script filename is introduced. The parameterized
+variant retains the exact two mandatory string declarations and fixed arguments; plain
+removes that declaration only. Hash-bound function definitions run only the fixed
+Progress boundary before the existing byte/EOF protocol, never context/admission/
+Add-Type/provider operations. Keep10s+10s per case, unchanged campaign deadline,
+unknown-retirement refusal, exact closed ownership/cleanup and fixed diagnostics.
+No product path/argv/policy changes or inferred long-path cause are authorized by this test.

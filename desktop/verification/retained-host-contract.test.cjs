@@ -11,6 +11,7 @@ const {
   SCOPE,
   DIAGNOSTICS,
   PIPE_FIELDS,
+  PIPE_MODES,
   PIPE_DIAGNOSTICS,
   pipeDiagnostic,
   PROGRESS,
@@ -271,7 +272,10 @@ async function simulatedObserver(wrongParent = false, fault = null) {
                 input: 'Q',
                 outcome: 'COMPLETE',
               });
-            return fault?.pair ?? Object.freeze({ baseline: row(), inputNone: row() });
+            return (
+              fault?.pair ??
+              Object.freeze(Object.fromEntries(PIPE_MODES.map((mode) => [mode, row()])))
+            );
           },
         };
       if (name === './fleet-ui-schema4.cjs') return { observeSchema4: async () => true };
@@ -643,21 +647,21 @@ test('paired startup diagnostic projection is exact, finite and getter-safe', ()
     outcome: 'EOF_REQUIRED',
   });
   const vector = pipeDiagnostic({
-    baseline: row,
-    inputNone: { ...row, started: true, input: 'Q', outcome: 'COMPLETE' },
+    plainShort: row,
+    plainDepth: { ...row, started: true, input: 'Q', outcome: 'COMPLETE' },
   });
-  assert.equal(Object.keys(vector).length, 26);
-  assert.equal(vector.PIPE_BASELINE_STARTED, 'NO');
-  assert.equal(vector.PIPE_NONE_STARTED, 'YES');
-  assert.equal(vector.PIPE_BASELINE_OUTCOME, 'EOF_REQUIRED');
-  assert.equal(vector.PIPE_BASELINE_INPUT, 'EOF');
-  assert.equal(vector.PIPE_NONE_INPUT, 'Q');
+  assert.equal(Object.keys(vector).length, 60);
+  assert.equal(vector.PIPE_PLAINSHORT_STARTED, 'NO');
+  assert.equal(vector.PIPE_PLAINDEPTH_STARTED, 'YES');
+  assert.equal(vector.PIPE_PLAINSHORT_OUTCOME, 'EOF_REQUIRED');
+  assert.equal(vector.PIPE_PLAINSHORT_INPUT, 'EOF');
+  assert.equal(vector.PIPE_PLAINDEPTH_INPUT, 'Q');
   assert.equal(
-    pipeDiagnostic({ baseline: { ...row, input: 'OTHER' } }).PIPE_BASELINE_INPUT,
+    pipeDiagnostic({ plainShort: { ...row, input: 'OTHER' } }).PIPE_PLAINSHORT_INPUT,
     'OTHER',
   );
   assert.ok(
-    Object.values(pipeDiagnostic({ baseline: { ...row, input: 'private bytes' } })).every(
+    Object.values(pipeDiagnostic({ plainShort: { ...row, input: 'private bytes' } })).every(
       (v) => v === 'UNAVAILABLE',
     ),
   );
@@ -670,9 +674,9 @@ test('paired startup diagnostic projection is exact, finite and getter-safe', ()
     },
   });
   assert.ok(
-    Object.entries(pipeDiagnostic({ baseline: bad, inputNone: { ...row, path: 'private' } })).every(
-      ([, v]) => v === 'UNAVAILABLE',
-    ),
+    Object.entries(
+      pipeDiagnostic({ plainShort: bad, plainDepth: { ...row, path: 'private' } }),
+    ).every(([, v]) => v === 'UNAVAILABLE'),
   );
   assert.equal(reads, 0);
   assert.ok(Object.values(pipeDiagnostic(null)).every((v) => v === 'UNAVAILABLE'));
@@ -684,7 +688,7 @@ test('unretired paired startup refuses before VERSION and emits each pipe slot e
     outcome: 'UNRETIRED',
   });
   const result = await simulatedObserver(false, {
-    pair: Object.freeze({ baseline: row, inputNone: null }),
+    pair: Object.freeze({ plainShort: row, plainDepth: null }),
   });
   assert.equal(result.code, 1);
   assert.equal(result.executed, 0);
@@ -694,7 +698,7 @@ test('unretired paired startup refuses before VERSION and emits each pipe slot e
       result.stderr.filter((line) => line.startsWith(`RETAINED_HOST_DIAGNOSTIC_${slot}_`)).length,
       1,
     );
-  assert.ok(result.stderr.includes('RETAINED_HOST_DIAGNOSTIC_PIPE_BASELINE_OUTCOME_UNRETIRED\n'));
+  assert.ok(result.stderr.includes('RETAINED_HOST_DIAGNOSTIC_PIPE_PLAINSHORT_OUTCOME_UNRETIRED\n'));
   assert.equal(result.stderr.at(-1), 'RETAINED_HOST_PHASE_PIPE_STARTUP\nRETAINED_HOST_FAILED\n');
 });
 
@@ -705,9 +709,42 @@ test('explicit UNRETIRED outcome refuses even inconsistent positive retirement b
     outcome: 'UNRETIRED',
   });
   const result = await simulatedObserver(false, {
-    pair: Object.freeze({ baseline: row, inputNone: row }),
+    pair: Object.freeze({ plainShort: row, plainDepth: row }),
   });
   assert.equal(result.executed, 0);
   assert.equal(result.code, 1);
   assert.equal(result.stderr.at(-1), 'RETAINED_HOST_PHASE_PIPE_STARTUP\nRETAINED_HOST_FAILED\n');
+});
+
+test('all four 2x2 cases must retire before VERSION; unrun cases remain unavailable', async () => {
+  const complete = Object.freeze({
+    ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, k !== 'directoryCleanup'])),
+    input: 'Q',
+    outcome: 'COMPLETE',
+  });
+  for (const mode of PIPE_MODES) {
+    const pair = Object.fromEntries(PIPE_MODES.map((key) => [key, complete]));
+    pair[mode] = Object.freeze({ ...complete, outcome: 'UNRETIRED' });
+    const result = await simulatedObserver(false, { pair: Object.freeze(pair) });
+    assert.equal(result.executed, 0, mode);
+    assert.equal(result.code, 1, mode);
+    assert.ok(
+      result.stderr.includes(
+        `RETAINED_HOST_DIAGNOSTIC_PIPE_${mode.toUpperCase()}_OUTCOME_UNRETIRED\n`,
+      ),
+    );
+  }
+  const vector = pipeDiagnostic({ plainShort: complete });
+  assert.equal(vector.PIPE_PLAINSHORT_PROGRESSBEFOREEOF, 'YES');
+  assert.equal(vector.PIPE_PLAINSHORT_PROGRESSAFTEREOF, 'YES');
+  for (const mode of PIPE_MODES.slice(1)) {
+    for (const [slot, value] of Object.entries(vector)) {
+      if (slot.startsWith(`PIPE_${mode.toUpperCase()}_`)) assert.equal(value, 'UNAVAILABLE');
+    }
+  }
+  assert.ok(
+    !Object.keys(vector).some(
+      (slot) => slot.startsWith('PIPE_BASELINE_') || slot.startsWith('PIPE_NONE_'),
+    ),
+  );
 });

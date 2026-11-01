@@ -343,3 +343,51 @@ Frozen paired diagnostic SHA256 values:
 - `desktop/verification/retained-host-main-probe.cjs`: `1bcfac4e274372de9ba984ffc41c64b35958e83d87a9e86f1374a40407c0ad9e`.
 - `desktop/verification/Invoke-RetainedHostCheck.ps1`: `51ea5ab988a179f069ef4141b600032305f68f4a2ec5cd993ceba6f60fd82110`.
 - `.github/workflows/phase-02-software.yml`: `21f8950cdd19790771751cb25771a9b82e3b0e8084bcea8c543f7618fa3bd2b6`.
+
+## Actual paired result and remaining startup discriminator — 11:26 UTC
+
+Run41301083935/public `45f08d6e16e34aaa441215b74b94d61e0e8e437c` passes1036/109/232.
+Managed artifact13081905816 remains the exact414-byte strict PASS; native artifact
+13082015304 remains392-byte NONZERO/FAIL (same hashes above). Both BASELINE and NONE
+fixtures actually recorded entry/witness/response before EOF, INPUT_Q, exit0 and settled
+stdio, outcome COMPLETE. Directory cleanup correctly remained NO at observation and
+no final campaign cleanup passed. Thus adding InputFormat None is NOT supported as a
+fix; the successful paired evidence does not close actual product VERSION/EOF.
+
+Product VERSION still reaches request-write completion then DEADLINE with no observed
+bootstrap progress. Exact source layout plus logged checkout yields product cwd253,
+TEMP/TMP261 and bootstrap argument268 characters; the successful fixture cwd123/TEMP131
+is materially shorter. This is a concrete difference, not a proved hang cause.
+Microsoft's Windows-derived startup implementation probes temporary policy files using
+GetTempPath/WriteAllText and handles IO failure, but it is not the exact hosted5.1 binary:
+[primary startup source](https://raw.githubusercontent.com/PowerShell/PowerShell/v6.0.0-alpha.9/src/System.Management.Automation/security/wldpNativeMethods.cs).
+No policy, registry, long-path override or deadline change is made, and ordinary host
+startup internals are not claimed to perform zero OS writes.
+
+The bounded fixture is reused for one finite2×2 comparison: plain versus the exact two
+mandatory string parameters, short versus product-equivalent cwd/TEMP depth. Both
+scripts share the exact hash-bound production prelude/function definitions (plain
+removes only the parameter declaration), but never execute product context/Add-Type/
+provider code. Script and entry witness remain at SHORT owned paths in every case;
+only cwd and private TEMP/profile take the product depth. Arguments are held fixed
+between variants. Independent file entry, Console entry, exact Progress-function
+observation, Q/EOF/OTHER, response and actual closure remain distinct. This avoids
+misdiagnosing a new long script filename as the original short-script startup problem.
+Four fixed cases reuse10s open+10s close and fit unchanged outer budgets. Unknown
+retirement stops subsequent cases and preserves evidence. No repeated unchanged None
+comparison, production behavior change, ADB/server/device or security-policy operation.
+
+Final 2×2 source-only checkpoint: helper10, observer/contract15 and control14 affected
+tests PASS; seven changed JS files pass warning-level quality (informational style
+notes only). These are affected suites, not a fresh full aggregate. No product/native
+source or test-inventory change; actual four-case Windows outcome remains NOT_RUN.
+The earlier paired and managed evidence remains tied to its exact published bytes.
+
+Frozen four-case diagnostic SHA256 values:
+- `desktop/verification/RetainedPipeEntry.ps1`: `29999102f3c35887d92fe77531b24973ac689d4dba81162215e075c33669b6cf`.
+- `desktop/verification/retained-pipe-startup.cjs`: `8f2cd476ff43ab1524cba0c4080f19ebe5f661b813a3749c0a16a375d5a8cc96`.
+- `desktop/verification/retained-host-control.cjs`: `e72bb14848c3825de2929a980805989dbe3b3db4429817f0ac257c1b776c8283`.
+- `desktop/verification/retained-host-contract.cjs`: `e52891e3a45238566a7e569ab3eb9f1d382349219da77879c320f322052c317e`.
+- `desktop/verification/retained-host-main-probe.cjs`: `55d90ba5eb2d4206bfbe87c6e6a119768f02450fe93a694ce3a5798c9eddb481`.
+- `desktop/verification/Invoke-RetainedHostCheck.ps1`: `112c0236b17d1bbfd6cab5b2e49434e8ada9917b4efec4a7c030af6b96b496a8`.
+- `.github/workflows/phase-02-software.yml`: `21f8950cdd19790771751cb25771a9b82e3b0e8084bcea8c543f7618fa3bd2b6`.
