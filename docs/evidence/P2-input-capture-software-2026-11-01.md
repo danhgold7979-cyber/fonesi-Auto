@@ -71,3 +71,14 @@ No entity or external resource is resolved.
 - Native input, Unicode and captures: NOT_RUN. Production binary adapter remains
   `BINARY_UNAVAILABLE`; actual version-only development evidence is tracked separately.
 - P1-06 cross-user UNMET, physical-device/AVD gates and formal accepted count0 unchanged.
+
+## Exact Windows software checkpoint — 03:20 UTC
+
+[CI41268527588](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41268527588),
+public `f4aa5950539484b44a9717109c2127044cdaa4e4`, tree
+`2c798fff556c4ba6111afb930455a175d70f8973`, completed both jobs SUCCESS.
+Independent source-job124736299800 log inspection confirms desktop678/678,
+foundation109/109 and Python185/185 with no skips and the explicit production-unavailable
+boundary. This closes the new source checkpoint's pending Windows check, not native
+input/capture or canonical-task acceptance. No duplicate version artifact audit was
+performed; the previously reviewed version sample remains the bounded version evidence.

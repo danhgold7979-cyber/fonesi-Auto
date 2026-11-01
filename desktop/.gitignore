@@ -18,3 +18,5 @@ build/
 
 /.platform-tools-input/
 /.platform-tools-runtime/
+
+/.platform-tools-server-runtime/

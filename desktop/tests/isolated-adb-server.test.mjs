@@ -1,0 +1,154 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const control = require('../verification/platform-tools-server-control.cjs');
+const read = (name) => readFileSync(new URL(name, import.meta.url), 'utf8');
+const source = read('../native/IsolatedAdbServer.cs');
+const original = read('../native/PersistenceProcess.cs');
+const outer = read('../verification/Invoke-PlatformToolsServer.ps1');
+const inner = read('../verification/Test-PlatformToolsServer.ps1');
+const section = (text, begin, end) =>
+  text.slice(text.indexOf(begin), text.indexOf(end, text.indexOf(begin)));
+
+test('server helper retains reviewed drains, explicit inheritance, suspended Job and bounded retirement', () => {
+  assert.equal(
+    section(source, '        sealed class Drain', '        public static void ReserveDirectory'),
+    section(original, '        sealed class Drain', '        public static void ReserveDirectory'),
+  );
+  assert.match(
+    source,
+    /CREATE_SUSPENDED \| CREATE_NO_WINDOW \| EXTENDED_STARTUPINFO_PRESENT \| 0x400/,
+  );
+  assert.ok(
+    source.indexOf('AssignProcessToJobObject(job, process.hProcess)') <
+      source.indexOf('ResumeThread(process.hThread)'),
+  );
+  assert.match(source, /new IntPtr\(0x00020002\)/);
+  assert.match(source, /const int cleanupMilliseconds = 10000, maxCharacters = 32768/);
+  assert.match(source, /if \(assigned\) TerminateJobObject\(job, 1460\)/);
+  assert.match(
+    source,
+    /WaitForSingleObject\(process.hProcess, 0\) == WAIT_OBJECT_0 && \(!assigned \|\| JobEmpty\(job\)\)/,
+  );
+  assert.doesNotMatch(source, /RunInteractive|RunCmd|commandTail|kill-server|start-server/);
+});
+
+test('occupied endpoint and existing profile negatives exercise actual shared admission, before launch', () => {
+  const core = section(
+    source,
+    'static ServerProcessResult RunCore',
+    '\nnamespace Fonesi.Development.Server',
+  );
+  assert.ok(
+    core.indexOf('if (ListenerOwner(port) != 0)') < core.indexOf('EnvironmentBlock(runRoot)'),
+  );
+  assert.ok(core.indexOf('if (ListenerOwner(port) != 0)') < core.indexOf('Require(CreateProcess('));
+  assert.match(
+    source,
+    /ServerProcessResult refused = RunCore\(executable, port, "occupied", runRoot\)/,
+  );
+  assert.match(
+    source,
+    /refused.Status == "ENDPOINT_REFUSED" && !refused.Launched && refused.CleanupComplete/,
+  );
+  assert.ok(
+    source.indexOf('ServerProcessResult refused') <
+      source.indexOf('android = Path.Combine(NativeProfile()'),
+  );
+  assert.match(source, /if \(!ReserveAbsentProfile\(android\)\)/);
+  assert.match(
+    source,
+    /ExistingProfileRefused = !ReserveAbsentProfile\(android\) && ProfileWitness\(android, token, false\) == token/,
+  );
+  assert.match(
+    source,
+    /CollisionEndpointReleased = collisionPort != 0 && ListenerOwner\(collisionPort\) == 0/,
+  );
+  assert.match(inner, /\$occupied.endpointReleased=\$native.CollisionEndpointReleased/);
+  assert.match(
+    source,
+    /CollisionOwnerUnchanged = result.CollisionRefused && ListenerOwner\(port\) == owner && collision.Server.IsBound/,
+  );
+});
+
+test('native home, exact suppression and health are fixed; no configurable device or server authority', () => {
+  assert.match(source, /SHGetKnownFolderPath\(ref profile, 0, IntPtr.Zero, out value\)/);
+  assert.match(source, /SHGetFolderPath\(IntPtr.Zero, 0x28, IntPtr.Zero, 0, legacy\)/);
+  assert.match(source, /new string\[\] \{ "-L", "tcp:127.0.0.1:" \+ port, "server", "nodaemon" \}/);
+  for (const name of ['ADB_USB', 'ADB_EMU', 'ADB_MDNS'])
+    assert.ok(source.includes(`env.Add("${name}", "0")`));
+  const environment = section(
+    source,
+    'static IntPtr EnvironmentBlock',
+    'static uint ListenerOwner',
+  );
+  assert.doesNotMatch(environment, /USERPROFILE|HOME|VENDOR_KEYS|GetEnvironmentVariables/);
+  assert.match(source, /Encoding.ASCII.GetBytes\("000chost:version"\)/);
+  assert.match(source, /if \(version == "0000"\)/);
+  const health = section(source, 'static bool Health', 'static int FreePort');
+  assert.equal((health.match(/ListenerOwner\(port\) != pid/g) || []).length, 2);
+  assert.ok(
+    health.indexOf('socket.EndConnect(pending)') < health.lastIndexOf('ListenerOwner(port) != pid'),
+  );
+  assert.ok(
+    health.lastIndexOf('ListenerOwner(port) != pid') < health.indexOf('socket.Send(request'),
+  );
+});
+
+test('health-first deadline/death and key cleanup preserve uncertainty without recursive deletion', () => {
+  assert.ok(
+    source.indexOf('if (!result.HealthObserved)') < source.indexOf('if (scenario == "timeout")'),
+  );
+  assert.match(source, /while \(elapsed.ElapsedMilliseconds < 30000\)/);
+  assert.match(
+    source,
+    /result.PrematureDeathObserved = WaitForSingleObject\(process.hProcess, 5000\) == WAIT_OBJECT_0/,
+  );
+  assert.match(source, /".fonesi-server-owner,adbkey,adbkey.pub"/);
+  assert.match(source, /info.Links != 1/);
+  assert.match(source, /CreateFile\(android, 0x80, 3, ref security, 3, 0x02000000/);
+  const cleanup = source.indexOf('File.Delete(Path.Combine(android, "adbkey"))');
+  assert.ok(source.indexOf('if (!Good(result.Timeout)') < cleanup);
+  assert.ok(source.indexOf('if (ProfileWitness(android, token, true) != witness)') < cleanup);
+  assert.doesNotMatch(source, /Directory.Delete\([^\n]*true\)/);
+  assert.match(source, /finally \{ if \(directoryGuard != null\) directoryGuard.Dispose\(\); \}/);
+  assert.ok(
+    source.indexOf('result.ProfileCleaned = true') >
+      source.indexOf('Directory.Delete(android, false)'),
+  );
+});
+
+test('checked-in fresh PS entry binds complete source closure and exact pins with bounded private transport', () => {
+  for (const name of control.SOURCES) assert.ok(inner.includes(`'${name}'`), name);
+  for (const value of [...control.CONTROL_PHASES, ...control.CONTROL_REASONS])
+    assert.ok(outer.includes(`'${value}'`), value);
+  const hash = createHash('sha256')
+    .update(read('../../tools/phase-00/HostProbeNative.cs'))
+    .digest('hex');
+  assert.ok(outer.includes(hash));
+  assert.match(outer, /'Test-PlatformToolsServer.ps1'\),\$root\),120000,10000,32768/);
+  assert.match(outer, /\$env:GITHUB_ACTIONS -cne 'true'/);
+  assert.match(outer, /Node-Control 'verify';Assert-OwnedRun \$owner/);
+  assert.match(inner, /\$_.path -ceq 'adb.exe'/);
+  assert.match(inner, /\$entryCount -gt 14/);
+  assert.match(inner, /\$report.cases.candidateUnchanged=\$true/);
+  assert.ok(
+    outer.indexOf("Require $native 'P202_SERVER_OBSERVED'") <
+      outer.indexOf("Node-Control 'cleanup'"),
+  );
+  assert.match(outer, /Remove-VerifiedOwnedRun \$owner \$allClean/);
+  const literals = section(source, 'static string FixedReason', 'static bool AssignedToJob').match(
+    /"[A-Z_]+"/g,
+  );
+  for (const literal of literals) {
+    const quoted = `'${literal.slice(1, -1)}'`;
+    assert.ok(inner.includes(quoted), quoted);
+    assert.ok(outer.includes(quoted), quoted);
+  }
+  assert.match(outer, /\$count -eq 1 -and \$shown -lt 6/);
+  assert.match(source, /privateKey.Length \+ publicKey.Length \+ 36 > 65536/);
+  assert.doesNotMatch(outer, /Invoke-Expression|process\.noAsar|Set-Acl|New-LocalUser/);
+});

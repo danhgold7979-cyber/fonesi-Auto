@@ -1,4 +1,4 @@
-name: Phase 02 software and pinned development version
+name: Phase 02 software and pinned development ADB boundaries
 on:
   workflow_dispatch:
   push:
@@ -63,7 +63,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==185; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==194; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Explicit unavailable runtime and deferred hardware boundary
         run: |
@@ -138,5 +138,44 @@ jobs:
         with:
           name: platform-tools-development-evidence
           path: artifacts/platform-tools/validated.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Syntax-check isolated foreground server development boundary
+        run: |
+          node --check desktop/verification/platform-tools-server-control.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach($name in @('Invoke-PlatformToolsServer.ps1','Test-PlatformToolsServer.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'P202_RUNNER_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Owned isolated foreground server and fixed host-version health only
+        run: |
+          try { & ./desktop/verification/Invoke-PlatformToolsServer.ps1 }
+          catch { Write-Output 'P202_RUNNER_FAILED'; exit 1 }
+      - name: Strict server evidence publication, never profile keys or raw captures
+        id: platform_tools_server_validation
+        if: always()
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $out=[IO.Path]::GetFullPath('artifacts/platform-tools-server')
+            [void](New-Item -ItemType Directory -Path $out -ErrorAction Stop)
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_platform_tools_server.py publish ([IO.Path]::GetFullPath('desktop/.platform-tools-server-runtime/unvalidated.json')) (Join-Path $out 'validated.json') 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines) {
+              if ([string]$line -cmatch '^(PLATFORM_TOOLS_SERVER_VALIDATION_WRITTEN|PLATFORM_TOOLS_SERVER_HOSTED_PASS|PLATFORM_TOOLS_SERVER_HOSTED_FAIL|PLATFORM_TOOLS_SERVER_VALIDATION_REJECTED)$') { Write-Output ([string]$line) }
+            }
+            if (@($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_SERVER_VALIDATION_WRITTEN'}).Count -eq 1) {
+              'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_SERVER_HOSTED_PASS'}).Count -ne 1) { exit 1 }
+          } catch { Write-Output 'P202_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only fresh validated fixed-field server evidence
+        if: always() && steps.platform_tools_server_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: platform-tools-server-development-evidence
+          path: artifacts/platform-tools-server/validated.json
           if-no-files-found: error
           retention-days: 14
