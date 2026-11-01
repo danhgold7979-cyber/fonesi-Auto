@@ -260,7 +260,7 @@ test('new managed A/B parser groups are source-only and separate from historical
   );
   const pure = fixture.slice(
     fixture.indexOf('public static int RunVersionExpectations()'),
-    fixture.indexOf('public static int RunAll()'),
+    fixture.indexOf('class ServerProvider :'),
   );
   assert.match(pure, /new string\[\]\{"37\.0\.1","36\.0\.0"\}/);
   assert.match(pure, /return 2;/);
@@ -274,4 +274,22 @@ test('new managed A/B parser groups are source-only and separate from historical
   assert.match(pure, /1\.0\.42/);
   assert.match(pure, /DECIMAL_1_20\\n/);
   assert.equal((fixture.match(/passed\+\+;/g) || []).length, 8);
+});
+
+test('discovery framing uses fixed service, absolute bounded I/O and retained connect accounting', () => {
+  const codec = body('internal static byte[] ReadDevicesList(');
+  assert.match(codec, /000ehost:devices-l/);
+  before(codec, 'if(length>32768)', 'new byte[length]');
+  assert.match(codec, /trailing!=0/);
+  assert.match(codec, /new UTF8Encoding\(false,true\)/);
+  const query = body('public AcquisitionReply Discover(');
+  before(query, 'a.acquisition=q;', 'Task.Factory.FromAsync');
+  assert.match(query, /q.socket.BeginConnect,q.socket.EndConnect,IPAddress.Loopback,a.port/);
+  assert.match(query, /q.connect.GetAwaiter\(\).GetResult\(\)/);
+  assert.match(query, /observed=budget.Observed\(\)/);
+  assert.match(source, /duration-elapsed.ElapsedMilliseconds/);
+  assert.match(source, /connect==null\|\|connect.IsCompleted/);
+  const retire = body('Reply RetireObserved(');
+  before(retire, 'CloseAcquisition(a,deadline,10000)', 'while (!workersSettled)');
+  assert.match(retire, /a.workers == 0 && AcquisitionSettled\(a,deadline,10000\)/);
 });

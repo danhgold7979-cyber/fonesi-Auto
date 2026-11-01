@@ -1709,7 +1709,9 @@
           "HostTransportFacts": "type"
         },
         "./adb-host-adapter.ts": {
-          "HostNativeProvider": "type"
+          "HostNativeProvider": "type",
+          "snapshotHostAcquisitionFacts": "value",
+          "HostAcquisitionFacts": "type"
         },
         "./platform-tools-runtime-custody.ts": {
           "RuntimeReadObservation": "type"
@@ -1792,6 +1794,9 @@
           "createHostRoot": "value",
           "assertHostPathBudget": "value",
           "cleanupHostRoot": "value"
+        },
+        "./adb-host-lifecycle.ts": {
+          "HostCapability": "type"
         }
       }
     },
@@ -1927,7 +1932,11 @@
           "HostState": "type"
         },
         "./adb-host-factory.ts": {
-          "createHostFactory": "type"
+          "createHostFactory": "type",
+          "isRealHostFactory": "value"
+        },
+        "./adb-discovery.ts": {
+          "parseAdbServerDiscovery": "value"
         }
       }
     },
@@ -1936,7 +1945,8 @@
       "imports": {
         "./adb-discovery.ts": {
           "parseAdbDiscovery": "value",
-          "AdbDiscoveryRow": "type"
+          "AdbDiscoveryRow": "type",
+          "parseAdbServerDiscovery": "value"
         },
         "./transport-registry.ts": {
           "isRegistrySnapshot": "value",
@@ -1948,6 +1958,10 @@
         },
         "./registry-store.ts": {
           "RegistryStore": "type"
+        },
+        "./adb-server-service.ts": {
+          "inspectOwnedDiscoveryProvider": "value",
+          "OwnedDiscoveryProvider": "type"
         }
       }
     }

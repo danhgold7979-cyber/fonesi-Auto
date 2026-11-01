@@ -766,3 +766,378 @@ test('nonordinary genuine promises cannot release an unretired acquisition', asy
     }
   }
 });
+test('explicit test-transformed native admission composes actual SQLite and fleet; no actual native provenance is claimed', async () => {
+  const { readFileSync } = await import('node:fs'),
+    { transformSync } = await import('esbuild');
+  const moduleUrl = (source, path) =>
+    'data:text/javascript;base64,' +
+    Buffer.from(
+      transformSync(
+        source.replace(
+          /from '(\.\/[^']+)'/g,
+          (_, relative) => `from '${new URL(relative, path).href}'`,
+        ),
+        { loader: 'ts', format: 'esm', target: 'es2022' },
+      ).code,
+    ).toString('base64');
+  const serverPath = new URL('../src/main/adb-server-service.ts', import.meta.url);
+  let serverSource = readFileSync(serverPath, 'utf8');
+  assert.equal(serverSource.split('!isRealHostFactory(factory)').length, 2);
+  serverSource = serverSource.replace(
+    '!isRealHostFactory(factory)',
+    'false /* SYNTHETIC_ADMISSION_TEST_ONLY */',
+  );
+  const serverUrl = moduleUrl(serverSource, serverPath),
+    serverModule = await import(serverUrl);
+  const ingestPath = new URL('../src/main/adb-discovery-service.ts', import.meta.url);
+  const ingestSource = readFileSync(ingestPath, 'utf8').replace(
+    "'./adb-server-service.ts'",
+    JSON.stringify(serverUrl),
+  );
+  const ingestModule = await import(moduleUrl(ingestSource, ingestPath));
+  const f = await fixture();
+  await f.store.startup();
+  let state = 'STOPPED',
+    closed = false,
+    n = 40000;
+  const server = serverModule.createAdbServerService({
+    ownerId: id(1),
+    expectedInstallationRevision: 1,
+    assertOwnedSync: () => {},
+    assertCurrentSync: () => {},
+    clock: () => 1000,
+    newId: () => id(n++),
+    audit: async () => 'AVAILABLE',
+    createFactory() {
+      return {
+        grant: () => Object.freeze({}),
+        snapshot: () => Object.freeze({ state, busy: false, closed }),
+        execute: async (_cap, request) => {
+          state = request.operation === 'SERVER_STOP' ? 'STOPPED' : 'READY';
+          return Object.freeze({ outcome: 'OBSERVED', code: 'OK', diagnosticId: null });
+        },
+        assertCurrentSession() {
+          assert.equal(state, 'READY');
+          assert.equal(closed, false);
+        },
+        assertDiscoveryEpochCurrent() {
+          assert.equal(state, 'READY');
+          assert.equal(closed, false);
+        },
+        discoveryEpochWitness() {
+          return Object.freeze({
+            get valid() {
+              return state === 'READY' && !closed;
+            },
+          });
+        },
+        assertRetiredSession() {
+          assert.equal(state, 'STOPPED');
+        },
+        get retired() {
+          return closed;
+        },
+        close: async () => {
+          closed = true;
+          state = 'STOPPED';
+          return 'RETIRED';
+        },
+        acquireDiscovery: () =>
+          Object.freeze({
+            result: Promise.resolve(
+              Object.freeze({
+                version: 1,
+                kind: 'ACQUISITION',
+                status: 'COMPLETE',
+                code: 'OK',
+                dispatched: true,
+                operationRetired: true,
+                payloadBase64: Buffer.from(
+                  'synthetic-private-device device transport_id:1\n',
+                ).toString('base64'),
+                observedAtUtc: 1000,
+              }),
+            ),
+            retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+          }),
+      };
+    },
+  });
+  let ingestion, fleet;
+  try {
+    await server.start();
+    ingestion = ingestModule.createAdbDiscoveryService({
+      provider: server.discoveryProvider(),
+      registry: f.store,
+      readDurableRevision: () => f.db.readDurable().meta.revision,
+      assertOwnedSync: () => {},
+      clock: () => 1000,
+      newId: () => id(n++),
+    });
+    const result = await ingestion.refresh(1);
+    assert.equal(result.outcome, 'COMMITTED');
+    assert.equal(result.source, 'ADB_DISCOVERY');
+    assert.equal(result.projectionCurrent, true);
+    assert.equal(ingestion.snapshot().devices[0].verification, 'PROVISIONAL');
+    fleet = createFleetService({
+      registry: () => ingestion.snapshot(),
+      availability: () => ingestion.availability(),
+      assertOwnedSync: () => {},
+      newDiagnostic: () => id(n++),
+      audit: async () => 'AVAILABLE',
+    });
+    const cap = fleet.grant(() => {});
+    const response = JSON.parse(
+      await fleet.execute(cap, { version: 1, requestId: 'f1', method: 'fleet.get' }),
+    );
+    assert.equal(response.ok, true);
+    assert.equal(response.fleet.availability, 'OBSERVED');
+    assert.equal(JSON.stringify(response).includes('synthetic-private-device'), false);
+    await server.close();
+    assert.equal(ingestion.snapshot(), null);
+    assert.equal(ingestion.availability(), 'LIVE_DISCOVERY_UNAVAILABLE');
+    assert.equal(
+      JSON.parse(await fleet.execute(cap, { version: 1, requestId: 'f2', method: 'fleet.get' }))
+        .code,
+      'FLEET_UNAVAILABLE',
+    );
+  } finally {
+    await fleet?.close();
+    await ingestion?.close();
+    await server.close();
+    await f.close();
+  }
+});
+test('full transformed ingestion respects pending actual HEALTH lane and callback-free final custody revocation', async () => {
+  const { readFileSync } = await import('node:fs'),
+    { transformSync } = await import('esbuild');
+  const { createHostAdapter } = await import('../src/main/adb-host-adapter.ts');
+  const moduleUrl = (source, path) =>
+    'data:text/javascript;base64,' +
+    Buffer.from(
+      transformSync(
+        source.replace(
+          /from '(\.\/[^']+)'/g,
+          (_, relative) => `from '${new URL(relative, path).href}'`,
+        ),
+        { loader: 'ts', format: 'esm', target: 'es2022' },
+      ).code,
+    ).toString('base64');
+  const serverPath = new URL('../src/main/adb-server-service.ts', import.meta.url);
+  const serverSource = readFileSync(serverPath, 'utf8').replace(
+    '!isRealHostFactory(factory)',
+    'false /* SYNTHETIC_ADMISSION_TEST_ONLY */',
+  );
+  const serverUrl = moduleUrl(serverSource, serverPath),
+    serverModule = await import(serverUrl);
+  const ingestPath = new URL('../src/main/adb-discovery-service.ts', import.meta.url);
+  const ingestModule = await import(
+    moduleUrl(
+      readFileSync(ingestPath, 'utf8').replace(
+        "'./adb-server-service.ts'",
+        JSON.stringify(serverUrl),
+      ),
+      ingestPath,
+    )
+  );
+  for (const mode of ['HEALTH', 'CUSTODY']) {
+    let inspection = false,
+      blockInspection = false;
+    const inspectionGate = deferred();
+    let within = false,
+      arm = false,
+      valid = true,
+      held = false,
+      discovered = 0,
+      closes = 0,
+      n = 50000;
+    const f = await fixture({
+      wrapDb(db) {
+        return {
+          readDurable: () => db.readDurable(),
+          commitDurable(revision, delta, admit) {
+            return db.commitDurable(revision, delta, () => {
+              within = true;
+              try {
+                admit();
+              } finally {
+                within = false;
+              }
+            });
+          },
+        };
+      },
+      assertOwnedSync() {
+        if (mode === 'CUSTODY' && within && arm) valid = false;
+      },
+    });
+    await f.store.startup();
+    const read = Object.freeze({}),
+      attempt = Object.freeze({}),
+      health = deferred();
+    const runtime = Object.freeze({
+      release: '37.0.1',
+      archiveSha256: 'a'.repeat(64),
+      manifestSha256: 'b'.repeat(64),
+      installationRevision: 1,
+      adbPath: '/synthetic/adb.exe',
+    });
+    const facts = (observation) =>
+      Object.freeze({
+        version: 2,
+        kind: 'SESSION',
+        dispatched: true,
+        jobState: observation === 'STOPPED' ? 'RETIRED' : 'LIVE',
+        exitCode: observation === 'STOPPED' ? 0 : null,
+        endpointState: observation === 'STOPPED' ? 'ABSENT' : 'OWNED',
+        observation,
+      });
+    const custody = {
+      acquireRead: async () => {
+        held = true;
+        return { ok: true, status: 'READ_VERIFIED_ONLY', token: read, observation: runtime };
+      },
+      assertRead(t) {
+        assert.equal(t, read);
+        assert.equal(held, true);
+        assert.equal(valid, true);
+        assert.equal(inspection, false);
+      },
+      revalidateRead: async (t) => {
+        custody.assertRead(t);
+        inspection = true;
+        if (blockInspection) await inspectionGate.promise;
+        inspection = false;
+        return { ok: true, status: 'READ_VERIFIED_ONLY', token: read, observation: runtime };
+      },
+      releaseRead: async () => {
+        held = false;
+        return { ok: true, status: 'RETIRED' };
+      },
+    };
+    const adapter = createHostAdapter({
+      runtimeCustody: custody,
+      nativeProvider: {
+        reserveAttempt: () => attempt,
+        version: async () => {
+          throw Error();
+        },
+        startForeground: async () => facts('STARTED'),
+        health: () => health.promise,
+        retire: async () => facts('STOPPED'),
+      },
+      assertOwnedSync: () => {},
+      now: () => 1000,
+      diagnosticId: () => id(n++),
+    });
+    const server = serverModule.createAdbServerService({
+      ownerId: id(1),
+      expectedInstallationRevision: 1,
+      assertOwnedSync: () => {},
+      assertCurrentSync: () => {},
+      clock: () => 1000,
+      newId: () => id(n++),
+      audit: async () => 'AVAILABLE',
+      createFactory: () => ({
+        grant: adapter.grant,
+        execute: adapter.execute,
+        snapshot: adapter.snapshot,
+        assertCurrentSession() {
+          assert.equal(adapter.snapshot().state, 'READY');
+          assert.equal(adapter.snapshot().busy, false);
+          custody.assertRead(read);
+        },
+        assertDiscoveryEpochCurrent() {
+          assert.equal(adapter.snapshot().state, 'READY');
+          custody.assertRead(read);
+          if (within) arm = true;
+        },
+        discoveryEpochWitness() {
+          return Object.freeze({
+            get valid() {
+              return (
+                !inspection &&
+                valid &&
+                held &&
+                adapter.snapshot().state === 'READY' &&
+                !adapter.snapshot().closed
+              );
+            },
+          });
+        },
+        assertRetiredSession() {
+          assert.equal(held, false);
+        },
+        get retired() {
+          return adapter.retired;
+        },
+        close() {
+          closes++;
+          return adapter.close();
+        },
+        acquireDiscovery() {
+          discovered++;
+          return Object.freeze({
+            result: Promise.resolve(
+              Object.freeze({
+                version: 1,
+                kind: 'ACQUISITION',
+                status: 'COMPLETE',
+                code: 'OK',
+                dispatched: true,
+                operationRetired: true,
+                payloadBase64: '',
+                observedAtUtc: 1000,
+              }),
+            ),
+            retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+          });
+        },
+      }),
+    });
+    let ingestion;
+    try {
+      await server.start();
+      const provider = server.discoveryProvider();
+      ingestion = ingestModule.createAdbDiscoveryService({
+        provider,
+        registry: f.store,
+        readDurableRevision: () => f.db.readDurable().meta.revision,
+        assertOwnedSync: () => {},
+        clock: () => 1000,
+        newId: () => id(n++),
+      });
+      if (mode === 'HEALTH') {
+        blockInspection = true;
+        const pending = server.health();
+        await new Promise((r) => setImmediate(r));
+        assert.equal(inspection, true);
+        assert.equal(adapter.snapshot().state, 'READY');
+        const refused = await ingestion.refresh(1);
+        assert.equal(refused.code, 'PROVIDER_FAILED');
+        assert.equal(discovered, 0);
+        assert.equal(closes, 0);
+        assert.equal(serverModule.inspectOwnedDiscoveryProvider(provider).revoked, false);
+        inspectionGate.resolve();
+        health.resolve(facts('HEALTHY'));
+        assert.equal((await pending).result.code, 'OK');
+        assert.equal((await ingestion.refresh(1)).outcome, 'COMMITTED');
+      } else {
+        const before = f.db.fingerprint();
+        const result = await ingestion.refresh(1);
+        assert.equal(arm, true);
+        assert.equal(valid, false);
+        assert.equal(result.outcome, 'NOT_COMMITTED');
+        assert.equal(result.code, 'OWNER_REVOKED');
+        assert.equal(f.db.fingerprint(), before);
+        assert.equal(ingestion.snapshot(), null);
+      }
+    } finally {
+      inspectionGate.resolve();
+      health.resolve(facts('HEALTHY'));
+      await ingestion?.close();
+      await server.close();
+      await f.close();
+    }
+  }
+});

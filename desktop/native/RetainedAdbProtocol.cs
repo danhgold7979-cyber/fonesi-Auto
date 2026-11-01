@@ -19,6 +19,7 @@ namespace Fonesi.Development.Server
         const long SafeInteger = 9007199254740991L;
         static readonly Regex Uuid = new Regex("\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z", RegexOptions.CultureInvariant);
         static readonly Regex RequestPattern = new Regex("\\A\\{\"version\":1,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"(VERSION|START|HEALTH|RETIRE)\"\\}\\n\\z", RegexOptions.CultureInvariant);
+        static readonly Regex DiscoveryPattern = new Regex("\\A\\{\"version\":2,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"DISCOVER\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
         static readonly string[] Errors = { "ADMISSION_REJECTED", "BINARY_CHANGED", "PROFILE_REJECTED", "ENDPOINT_REJECTED", "BUSY", "CLOSED", "NATIVE_FAILED", "UNRETIRED" };
         public interface IProvider
         {
@@ -26,6 +27,7 @@ namespace Fonesi.Development.Server
             IDictionary<string, object> Version(object attempt);
             IDictionary<string, object> StartForeground(object attempt);
             IDictionary<string, object> Health(object attempt);
+            IDictionary<string, object> Discover(object attempt, long deadlineUtc);
             IDictionary<string, object> Retire(object attempt);
         }
         public sealed class NativeProvider : IProvider
@@ -41,21 +43,37 @@ namespace Fonesi.Development.Server
             { return provider.StartForeground(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
             public IDictionary<string, object> Health(object attempt)
             { return provider.Health(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
+            public IDictionary<string, object> Discover(object attempt, long deadlineUtc)
+            { return provider.Discover(attempt as IsolatedAdbServer.RetainedProvider.Attempt, deadlineUtc).Snapshot(); }
             public IDictionary<string, object> Retire(object attempt)
             { return provider.Retire(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
         }
         public sealed class Request
         {
             public readonly string SessionId, AttemptId, Operation;
-            public readonly long RequestId;
+            public readonly long RequestId, DeadlineUtc;
+            public readonly int Version;
+            internal readonly long AdmittedUtc; readonly Stopwatch budget=Stopwatch.StartNew();
+            internal bool DiscoveryDeadline(out long effective)
+            {long now=(DateTime.UtcNow.Ticks-621355968000000000L)/10000;long remaining=Math.Min(DeadlineUtc-now,DeadlineUtc-AdmittedUtc-budget.ElapsedMilliseconds);effective=now+Math.Max(0,remaining);return now>=AdmittedUtc&&remaining>0;}
             internal Request(string session, long request, string attempt, string operation)
-            { SessionId = session; RequestId = request; AttemptId = attempt; Operation = operation; }
+            { SessionId = session; RequestId = request; AttemptId = attempt; Operation = operation; Version=1; DeadlineUtc=0; }
+            internal Request(string session,long request,string attempt,long deadline,long admitted)
+            { SessionId=session;RequestId=request;AttemptId=attempt;Operation="DISCOVER";Version=2;DeadlineUtc=deadline;AdmittedUtc=admitted; }
         }
         public static Request Parse(byte[] frame, string sessionId, long previousRequestId)
         {
             if (frame == null || frame.Length < 2 || frame.Length > FrameLimit || sessionId == null || !Uuid.IsMatch(sessionId)) return null;
             for (int n = 0; n < frame.Length; n++) if (frame[n] > 127 || frame[n] == 13 || (frame[n] == 10 && n != frame.Length - 1)) return null;
-            Match m = RequestPattern.Match(Encoding.ASCII.GetString(frame)); long request;
+            string text=Encoding.ASCII.GetString(frame);Match discovery=DiscoveryPattern.Match(text);long request,deadline;
+            if(discovery.Success){
+                long now=(DateTime.UtcNow.Ticks-621355968000000000L)/10000;
+                if(discovery.Groups[1].Value!=sessionId||!Uuid.IsMatch(discovery.Groups[3].Value)||
+                   !Int64.TryParse(discovery.Groups[2].Value,NumberStyles.None,CultureInfo.InvariantCulture,out request)||request<=previousRequestId||request>SafeInteger||
+                   !Int64.TryParse(discovery.Groups[4].Value,NumberStyles.None,CultureInfo.InvariantCulture,out deadline)||deadline>SafeInteger||deadline<=now||deadline-now>30000)return null;
+                return new Request(sessionId,request,discovery.Groups[3].Value,deadline,now);
+            }
+            Match m = RequestPattern.Match(text);
             if (!m.Success || m.Groups[1].Value != sessionId || !Uuid.IsMatch(m.Groups[3].Value) ||
                 !Int64.TryParse(m.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out request) || request <= previousRequestId || request > SafeInteger) return null;
             return new Request(sessionId, request, m.Groups[3].Value, m.Groups[4].Value);
@@ -71,7 +89,7 @@ namespace Fonesi.Development.Server
             internal readonly string id; internal readonly object token;
             internal Thread ordinary, cleanup;
             internal bool terminal, cleanupIssued, retiring, publicationStarted, live;
-            internal int healthCalls;
+            internal int healthCalls, discoveryCalls;
             internal int frames;
             internal long ordinaryStarted, cleanupStarted;
             internal Attempt(string id, object token) { this.id = id; this.token = token; }
@@ -136,6 +154,28 @@ namespace Fonesi.Development.Server
                 ",\"processRetired\":" + (retired ? "true" : "false") + ",\"exitCode\":" + exit + ",\"observation\":" +
                 (v["observation"] == null ? "null" : "\"VERSION\"") + "}", retired && (dispatched ? v["exitCode"] != null : v["exitCode"] == null && v["observation"] == null));
         }
+        static Facts AcquisitionSnapshot(IDictionary<string,object> input,Request request)
+        {
+            string[] keys={"version","kind","status","code","dispatched","operationRetired","payloadBase64","observedAtUtc"};
+            if(input==null||input.Count!=keys.Length)throw new InvalidDataException();foreach(string key in keys)if(!input.ContainsKey(key))throw new InvalidDataException();
+            if(!(input["version"] is int)||(int)input["version"]!=1||!(input["kind"] is string)||(string)input["kind"]!="ACQUISITION"||!(input["status"] is string)||!(input["code"] is string)||!(input["dispatched"] is bool)||!(input["operationRetired"] is bool))throw new InvalidDataException();
+            string status=(string)input["status"],code=(string)input["code"],payload=input["payloadBase64"] as string;bool dispatched=(bool)input["dispatched"],retired=(bool)input["operationRetired"];
+            string encoded="null",time="null";
+            if(status=="COMPLETE"){
+                if(code!="OK"||!dispatched||!retired||payload==null||payload.Length>43692||!(input["observedAtUtc"] is long))throw new InvalidDataException();
+                long observed=(long)input["observedAtUtc"];if(observed<request.AdmittedUtc||observed>request.DeadlineUtc)throw new InvalidDataException();
+                byte[] bytes=Convert.FromBase64String(payload);if(bytes.Length>32768||Convert.ToBase64String(bytes)!=payload)throw new InvalidDataException();
+                string text=new UTF8Encoding(false,true).GetString(bytes);if(text.IndexOf('\0')>=0||(text.Length>0&&text[0]=='\ufeff'))throw new InvalidDataException();
+                encoded="\""+payload+"\"";time=observed.ToString(CultureInfo.InvariantCulture);
+            }else{
+                if(input["payloadBase64"]!=null||input["observedAtUtc"]!=null)throw new InvalidDataException();
+                if(status=="UNRETIRED"){if(code!="UNRETIRED"||retired)throw new InvalidDataException();}
+                else if(status!="FAILED"||!retired||Array.IndexOf(new string[]{"ADMISSION_REJECTED","BUSY","CLOSED","DEADLINE","DISCOVERY_REJECTED","NATIVE_FAILED"},code)<0)throw new InvalidDataException();
+            }
+            return new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\""+status+"\",\"code\":\""+code+"\",\"dispatched\":"+(dispatched?"true":"false")+",\"operationRetired\":"+(retired?"true":"false")+",\"payloadBase64\":"+encoded+",\"observedAtUtc\":"+time+"}",false,status=="COMPLETE");
+        }
+        static Facts AcquisitionFailure(string code)
+        { return new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\"FAILED\",\"code\":\""+code+"\",\"dispatched\":false,\"operationRetired\":true,\"payloadBase64\":null,\"observedAtUtc\":null}",false); }
         sealed class Reader
         {
             readonly bool diagnostics, server;
@@ -177,7 +217,7 @@ namespace Fonesi.Development.Server
             bool Available(Attempt attempt) { return outstanding == 0 && (attempt == null || (attempt.terminal && Done(attempt.ordinary) && Done(attempt.cleanup) && attempt.frames == 0)); }
             void Enqueue(Request request, Attempt attempt, Facts facts)
             {
-                string raw = "{\"version\":1,\"sessionId\":\"" + session + "\",\"requestId\":" + request.RequestId.ToString(CultureInfo.InvariantCulture) +
+                string raw = "{\"version\":" + request.Version.ToString(CultureInfo.InvariantCulture) + ",\"sessionId\":\"" + session + "\",\"requestId\":" + request.RequestId.ToString(CultureInfo.InvariantCulture) +
                     ",\"attemptId\":\"" + request.AttemptId + "\",\"operation\":\"" + request.Operation + "\",\"result\":" + facts.json + "}\n";
                 byte[] bytes = Encoding.ASCII.GetBytes(raw);
                 lock (gate) {
@@ -187,12 +227,22 @@ namespace Fonesi.Development.Server
             }
             void Worker(Attempt attempt, Request request, bool cleanup)
             {
+                if(!cleanup&&request.Operation=="DISCOVER") { DiscoveryWorker(attempt,request);return; }
                 Facts facts;
                 try { Progress(ProgressSlot.PROVIDER_ENTERED); facts = Snapshot(cleanup ? provider.Retire(attempt.token) : !server ? provider.Version(attempt.token) : request.Operation == "START" ? provider.StartForeground(attempt.token) : provider.Health(attempt.token), server, cleanup ? "RETIRE" : request.Operation); }
                 catch { facts = new Facts("{\"code\":\"UNRETIRED\"}", false); lock (gate) { attempt.terminal = false; Stop("PROVIDER_FAILED"); } }
                 lock (gate) { attempt.terminal = facts.terminal; attempt.live = facts.live && !attempt.retiring; if (!facts.terminal && cleanup) Stop("UNRETIRED"); }
                 if (request != null) Enqueue(request, attempt, facts);
                 lock (gate) { Monitor.PulseAll(gate); }
+            }
+            void DiscoveryWorker(Attempt attempt,Request request)
+            {
+                Facts facts;bool good=false;
+                try{long effective;if(!request.DiscoveryDeadline(out effective))facts=AcquisitionFailure("DEADLINE");else{Progress(ProgressSlot.PROVIDER_ENTERED);facts=AcquisitionSnapshot(provider.Discover(attempt.token,effective),request);good=facts.live;}}
+                catch{facts=new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\"UNRETIRED\",\"code\":\"UNRETIRED\",\"dispatched\":true,\"operationRetired\":false,\"payloadBase64\":null,\"observedAtUtc\":null}",false);}
+                // Query completion is never assigned to attempt.terminal or session custody.
+                Enqueue(request,attempt,facts);
+                lock(gate){if(!good)Stop("PROVIDER_FAILED");Monitor.PulseAll(gate);}
             }
             void Cleanup(Attempt attempt, Request request)
             {
@@ -280,10 +330,11 @@ namespace Fonesi.Development.Server
                             Cleanup(attempt, request); return;
                         }
                         if (attempt.retiring || attempt.terminal) { Stop("PROTOCOL_FAILED"); return; }
-                        if (!attempt.live || !Done(attempt.ordinary) || !Done(attempt.cleanup) || outstanding != 0 || attempt.frames != 0 || attempt.healthCalls >= 128) {
-                            Enqueue(request, attempt, new Facts("{\"code\":\"BUSY\"}", false)); return;
+                        bool discovery=request.Operation=="DISCOVER";
+                        if (!attempt.live || !Done(attempt.ordinary) || !Done(attempt.cleanup) || outstanding != 0 || attempt.frames != 0 || (discovery ? attempt.discoveryCalls >= 128 : attempt.healthCalls >= 128)) {
+                            Enqueue(request, attempt, discovery ? AcquisitionFailure("BUSY") : new Facts("{\"code\":\"BUSY\"}", false)); if(discovery)Stop("PROVIDER_FAILED"); return;
                         }
-                        attempt.healthCalls++;
+                        if(discovery)attempt.discoveryCalls++;else attempt.healthCalls++;
                         attempt.ordinaryStarted = elapsed.ElapsedMilliseconds;
                         attempt.ordinary = new Thread(delegate() { Worker(attempt, request, false); });
                         attempt.ordinary.IsBackground = true; attempt.ordinary.Start(); return;

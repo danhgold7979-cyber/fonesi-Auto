@@ -77,3 +77,22 @@ test('descriptor snapshots refuse getters/coercion/prototype and enforce transpo
   for (const x of ['0', '01', '-1', 1, '1\n', '18446744073709551616'])
     assert.equal(validTransportId(x), false);
 });
+test('server payload parser consumes actual headerless rows, including empty, with strict 32KiB boundary', async () => {
+  const { parseAdbServerDiscovery, parseAdbDiscovery } = await import(
+    '../src/main/adb-discovery.ts'
+  );
+  const rows = 'one device transport_id:1\ntwo unauthorized transport_id:2\n';
+  assert.deepEqual(
+    parseAdbServerDiscovery(rows),
+    parseAdbDiscovery(`List of devices attached\n${rows}`),
+  );
+  assert.deepEqual(parseAdbServerDiscovery(''), { ok: true, rows: [] });
+  for (const raw of ['List of devices attached\n', '\ufeff', '\0', 'one device\r\n'])
+    assert.equal(parseAdbServerDiscovery(raw).ok, false);
+  assert.equal(parseAdbServerDiscovery('x'.repeat(32769)).code, 'DISCOVERY_LIMIT');
+  assert.equal(parseAdbServerDiscovery('é'.repeat(16385)).code, 'DISCOVERY_LIMIT');
+  assert.equal(parseAdbServerDiscovery('x'.repeat(32768)).code, 'DISCOVERY_LIMIT'); // bounded row limit still applies
+  const dup = parseAdbServerDiscovery('one device transport_id:1\none device transport_id:1\n');
+  assert.equal(dup.ok, true);
+  assert.equal(dup.rows.length, 2);
+});

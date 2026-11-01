@@ -40,6 +40,7 @@ namespace Fonesi.Tests
             public IDictionary<string,object> Version(object attempt){Check(Object.ReferenceEquals(token,attempt));Interlocked.Increment(ref versions);Entered.Set();Release.WaitOne();return versionResult ?? Facts("VERSION");}
             public IDictionary<string,object> StartForeground(object attempt){throw new InvalidOperationException();}
             public IDictionary<string,object> Health(object attempt){throw new InvalidOperationException();}
+            public IDictionary<string,object> Discover(object attempt,long deadlineUtc){throw new InvalidOperationException();}
             public IDictionary<string,object> Retire(object attempt){Check(Object.ReferenceEquals(token,attempt));Interlocked.Increment(ref retires);Retired.Set();if(releaseOnRetire)Release.Set();return Facts(null);}
             internal static IDictionary<string,object> Facts(string observation){return new Dictionary<string,object>{{"version",2},{"kind","INVOCATION"},{"dispatched",true},{"processRetired",true},{"exitCode",0},{"observation",observation}};}
         }
@@ -63,7 +64,7 @@ namespace Fonesi.Tests
                 Check(!IsolatedAdbServer.RetainedProvider.VersionExpectationValid("37.0.1",grammar));
             return 2;
         }
-        sealed class ServerProvider : RetainedAdbProtocol.IProvider
+        class ServerProvider : RetainedAdbProtocol.IProvider
         {
             internal readonly object token = new object(); internal int reserves, starts, healths, retires;
             internal readonly ManualResetEvent Entered = new ManualResetEvent(false), Release = new ManualResetEvent(true), Retired = new ManualResetEvent(false);
@@ -72,7 +73,8 @@ namespace Fonesi.Tests
             public IDictionary<string,object> Version(object attempt) { throw new InvalidOperationException(); }
             public IDictionary<string,object> StartForeground(object attempt) { Check(Object.ReferenceEquals(token,attempt)); Interlocked.Increment(ref starts); Entered.Set(); Release.WaitOne(); return startResult ?? (Retired.WaitOne(0) ? TerminalFacts() : SessionFacts("STARTED")); }
             public IDictionary<string,object> Health(object attempt) { Check(Object.ReferenceEquals(token,attempt)); Interlocked.Increment(ref healths); Entered.Set(); Release.WaitOne(); return Retired.WaitOne(0) ? TerminalFacts() : SessionFacts("HEALTHY"); }
-            public IDictionary<string,object> Retire(object attempt) { Check(Object.ReferenceEquals(token,attempt)); Interlocked.Increment(ref retires); Retired.Set(); Release.Set(); return SessionFacts("STOPPED"); }
+            public virtual IDictionary<string,object> Discover(object attempt,long deadlineUtc){throw new InvalidOperationException();}
+            public virtual IDictionary<string,object> Retire(object attempt) { Check(Object.ReferenceEquals(token,attempt)); Interlocked.Increment(ref retires); Retired.Set(); Release.Set(); return SessionFacts("STOPPED"); }
             internal static IDictionary<string,object> TerminalFacts() { IDictionary<string,object> facts=SessionFacts("STOPPED");facts["observation"]=null;return facts; }
             internal static IDictionary<string,object> SessionFacts(string observation) { bool stopped=observation=="STOPPED";return new Dictionary<string,object>{{"version",2},{"kind","SESSION"},{"dispatched",true},{"jobState",stopped?"RETIRED":"LIVE"},{"exitCode",stopped?(object)1460:null},{"endpointState",stopped?"ABSENT":"OWNED"},{"observation",observation}}; }
         }
@@ -125,6 +127,45 @@ namespace Fonesi.Tests
             {ServerProvider p=new ServerProvider();p.Release.Reset();Input i=new Input();Output o=new Output();int live=1;RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return Interlocked.CompareExchange(ref live,1,1)==1;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Check(p.Entered.WaitOne(5000));Interlocked.Exchange(ref live,0);Check(p.Retired.WaitOne(5000));i.End();Check(t.Join(5000)&&!r.Clean&&p.reserves==1&&p.retires==1);}groups++;
             // A second START cannot create another native attempt in this server session.
             {ServerProvider p=new ServerProvider();Input i=new Input();Output o=new Output();RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Wait(delegate{return o.count==1;});i.Feed(Frame(2,"START"));Check(p.Retired.WaitOne(5000));i.End();Check(t.Join(5000)&&!r.Clean&&p.reserves==1&&p.starts==1);}groups++;
+            return groups;
+        }
+        sealed class ByteChannel : IsolatedAdbServer.RetainedProvider.IDiscoveryChannel
+        {
+            readonly byte[] input;int offset;internal readonly MemoryStream sent=new MemoryStream();internal int step=1;internal long now=1000,advance;internal bool missingEof;
+            internal ByteChannel(byte[] bytes){input=bytes;}
+            public int Send(byte[] bytes,int start,int count,int timeout){now+=advance;int n=Math.Min(count,step);sent.Write(bytes,start,n);return n;}
+            public int Receive(byte[] bytes,int start,int count,int timeout){now+=advance;if(offset==input.Length){if(missingEof)throw new IOException();return 0;}int n=Math.Min(Math.Min(count,step),input.Length-offset);Array.Copy(input,offset,bytes,start,n);offset+=n;return n;}
+        }
+        static byte[] DiscoveryFrame(long request,long deadline){return Encoding.ASCII.GetBytes("{\"version\":2,\"sessionId\":\""+Session+"\",\"requestId\":"+request+",\"attemptId\":\""+Attempt+"\",\"operation\":\"DISCOVER\",\"deadlineUtc\":"+deadline+"}\n");}
+        static long DiscoveryNow(){return (DateTime.UtcNow.Ticks-621355968000000000L)/10000;}
+        static byte[] DecodeList(ByteChannel channel){return IsolatedAdbServer.RetainedProvider.ReadDevicesList(channel,new IsolatedAdbServer.RetainedProvider.DiscoveryBudget(31000,delegate{return channel.now;}));}
+        sealed class DiscoveryProvider : ServerProvider
+        {
+            internal int queries;internal readonly ManualResetEvent QueryEntered=new ManualResetEvent(false),QueryRelease=new ManualResetEvent(true),QueryDone=new ManualResetEvent(false);
+            public override IDictionary<string,object> Discover(object attempt,long deadlineUtc){Check(Object.ReferenceEquals(token,attempt));Interlocked.Increment(ref queries);QueryEntered.Set();QueryRelease.WaitOne();try{return new Dictionary<string,object>{{"version",1},{"kind","ACQUISITION"},{"status","COMPLETE"},{"code","OK"},{"dispatched",true},{"operationRetired",true},{"payloadBase64",""},{"observedAtUtc",DiscoveryNow()}};}finally{QueryDone.Set();}}
+            public override IDictionary<string,object> Retire(object attempt){QueryRelease.Set();if(queries>0)Check(QueryDone.WaitOne(5000));return base.Retire(attempt);}
+        }
+        // Read-only reflection of actual private settlement avoids a timing guess or product test hook.
+        sealed class ManagedReader
+        {
+            readonly object reader,gate;readonly Type type;internal readonly Thread thread;internal RetainedAdbProtocol.RunResult result;
+            const System.Reflection.BindingFlags Flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+            internal ManagedReader(Input input,Output output,RetainedAdbProtocol.IProvider provider){type=typeof(RetainedAdbProtocol).GetNestedType("Reader",System.Reflection.BindingFlags.NonPublic);reader=Activator.CreateInstance(type,Flags,null,new object[]{input,output,Session,provider,new Func<bool>(delegate{return true;}),false,"SERVER_ONLY"},null);gate=type.GetField("gate",Flags).GetValue(reader);thread=new Thread(delegate(){result=(RetainedAdbProtocol.RunResult)type.GetMethod("Run",Flags).Invoke(reader,null);});thread.IsBackground=true;thread.Start();}
+            internal void Settled(){Wait(delegate{lock(gate){if((int)type.GetField("outstanding",Flags).GetValue(reader)!=0)return false;object current=type.GetField("current",Flags).GetValue(reader);if(current==null)return false;Type t=current.GetType();Thread ordinary=(Thread)t.GetField("ordinary",Flags).GetValue(current);return ordinary!=null&&ordinary.Join(0);}});}
+        }
+        public static int RunDiscovery()
+        {
+            int groups=0;long deadline=DiscoveryNow()+30000;
+            {byte[] frame=DiscoveryFrame(2,deadline);RetainedAdbProtocol.Request r=RetainedAdbProtocol.Parse(frame,Session,1);Check(r!=null&&r.Version==2&&r.DeadlineUtc==deadline);Check(RetainedAdbProtocol.Parse(frame,Session,2)==null);Check(RetainedAdbProtocol.Parse(DiscoveryFrame(3,DiscoveryNow()-1),Session,2)==null);Check(RetainedAdbProtocol.Parse(DiscoveryFrame(3,DiscoveryNow()+60000),Session,2)==null);Check(RetainedAdbProtocol.Parse(Encoding.ASCII.GetBytes(Encoding.ASCII.GetString(frame).Replace("\"version\":2","\"version\":2,\"version\":2")),Session,1)==null);}groups++;
+            foreach(string payload in new string[]{"","serial\tdevice transport_id:1\n","same\toffline\nsame\tunauthorized\n"}){byte[] bytes=Encoding.UTF8.GetBytes(payload);ByteChannel channel=new ByteChannel(Encoding.UTF8.GetBytes("OKAY"+bytes.Length.ToString("x4")+payload));Check(Encoding.UTF8.GetString(DecodeList(channel))==payload);Check(Encoding.ASCII.GetString(channel.sent.ToArray())=="000ehost:devices-l");}groups++;
+            foreach(string wire in new string[]{"FAIL0000","NOPE0000","OKAYzzzz","OKAY8001","OKAY0001","OKAY0000x","OKAY"}){bool rejected=false;try{DecodeList(new ByteChannel(Encoding.ASCII.GetBytes(wire)));}catch{rejected=true;}Check(rejected);}groups++;
+            foreach(byte[] payload in new byte[][]{new byte[]{0},new byte[]{239,187,191},new byte[]{255},new byte[]{195}}){byte[] header=Encoding.ASCII.GetBytes("OKAY"+payload.Length.ToString("x4"));byte[] wire=new byte[header.Length+payload.Length];Array.Copy(header,wire,header.Length);Array.Copy(payload,0,wire,header.Length,payload.Length);bool rejected=false;try{DecodeList(new ByteChannel(wire));}catch{rejected=true;}Check(rejected);}
+            {ByteChannel channel=new ByteChannel(Encoding.ASCII.GetBytes("OKAY0000"));channel.advance=2000;bool rejected=false;try{DecodeList(channel);}catch{rejected=true;}Check(rejected);channel=new ByteChannel(Encoding.ASCII.GetBytes("OKAY0000"));channel.missingEof=true;rejected=false;try{DecodeList(channel);}catch{rejected=true;}Check(rejected);}groups++;
+            {DiscoveryProvider p=new DiscoveryProvider();Input i=new Input();Output o=new Output();i.Feed(DiscoveryFrame(1,DiscoveryNow()+30000));i.End();RetainedAdbProtocol.RunResult r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;});Check(!r.Clean&&p.reserves==0&&p.queries==0);}groups++;
+            {DiscoveryProvider p=new DiscoveryProvider();Input i=new Input();Output o=new Output();ManagedReader reader=new ManagedReader(i,o,p);i.Feed(Frame(1,"START"));Wait(delegate{return o.count==1;});reader.Settled();i.Feed(DiscoveryFrame(2,DiscoveryNow()+30000));Wait(delegate{return o.count==2;});reader.Settled();Check(p.queries==1&&p.retires==0&&p.reserves==1);Check(Encoding.ASCII.GetString(o.ToArray()).Contains("\"kind\":\"ACQUISITION\""));i.End();Check(reader.thread.Join(5000)&&reader.result.Clean&&p.retires==1);}groups++;
+            {DiscoveryProvider p=new DiscoveryProvider();p.QueryRelease.Reset();Input i=new Input();Output o=new Output();ManagedReader reader=new ManagedReader(i,o,p);i.Feed(Frame(1,"START"));Wait(delegate{return o.count==1;});reader.Settled();i.Feed(DiscoveryFrame(2,DiscoveryNow()+30000));Check(p.QueryEntered.WaitOne(5000));i.Feed(Frame(3,"RETIRE"));Check(p.Retired.WaitOne(5000));Wait(delegate{return o.count==3;});i.End();Check(reader.thread.Join(5000)&&reader.result.Clean&&p.queries==1&&p.retires==1);}groups++;
+            {System.Threading.Tasks.TaskCompletionSource<bool> connect=new System.Threading.Tasks.TaskCompletionSource<bool>();Check(!IsolatedAdbServer.RetainedProvider.DiscoveryWorkRetired(false,true,true,connect.Task));connect.SetException(new IOException());Check(IsolatedAdbServer.RetainedProvider.DiscoveryWorkRetired(false,true,true,connect.Task));Check(!IsolatedAdbServer.RetainedProvider.DiscoveryWorkRetired(true,true,true,connect.Task));Check(!IsolatedAdbServer.RetainedProvider.DiscoveryWorkRetired(false,true,false,connect.Task));
+             object held=new object();ManualResetEvent entered=new ManualResetEvent(false),release=new ManualResetEvent(false);Thread holder=new Thread(delegate(){lock(held){entered.Set();release.WaitOne();}});holder.IsBackground=true;holder.Start();Check(entered.WaitOne(5000));System.Diagnostics.Stopwatch budget=System.Diagnostics.Stopwatch.StartNew();try{Check(!IsolatedAdbServer.RetainedProvider.DiscoveryLock(held,budget,5));Check(!IsolatedAdbServer.RetainedProvider.DiscoveryLock(held,budget,5));}finally{release.Set();Check(holder.Join(5000));}}groups++;
             return groups;
         }
         public static int RunAll()

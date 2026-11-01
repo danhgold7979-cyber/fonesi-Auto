@@ -62,7 +62,20 @@ export function parseAdbDiscovery(raw: unknown): AdbDiscoveryResult {
   if (/[\r\0]/.test(text)) return bad('INVALID_DISCOVERY');
   const lines = text.split('\n');
   if (lines.shift() !== 'List of devices attached') return bad('INVALID_DISCOVERY');
-  // adb prints a final blank line; accept zero, one or two terminal line separators.
+  return parseRows(lines);
+}
+// Actual host:devices-l payload, not CLI output and never a fabricated header.
+export function parseAdbServerDiscovery(raw: unknown): AdbDiscoveryResult {
+  if (typeof raw !== 'string') return Object.freeze({ ok: false, code: 'INVALID_DISCOVERY' });
+  if (raw.length > 32768 || new TextEncoder().encode(raw).length > 32768)
+    return Object.freeze({ ok: false, code: 'DISCOVERY_LIMIT' });
+  if (/[\r\0\ufeff]/.test(raw)) return Object.freeze({ ok: false, code: 'INVALID_DISCOVERY' });
+  return parseRows(raw.split('\n'));
+}
+function parseRows(lines: string[]): AdbDiscoveryResult {
+  const bad = (code: 'INVALID_DISCOVERY' | 'DISCOVERY_LIMIT'): AdbDiscoveryResult =>
+    Object.freeze({ ok: false, code });
+  // Both existing CLI and server listings permit up to two terminal separators.
   for (let n = 0; n < 2 && lines.at(-1) === ''; n++) lines.pop();
   const rows: AdbDiscoveryRow[] = [];
   for (const line of lines) {

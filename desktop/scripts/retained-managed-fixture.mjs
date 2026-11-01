@@ -3,7 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyBuild } from './build-manifest.mjs';
 export const MANAGED_SCOPE = 'RETAINED_PROTOCOL_MANAGED_FIXTURE_ONLY';
-export const MANAGED_MARKER = 'RETAINED_MANAGED_GROUPS_19';
+export const MANAGED_MARKER = 'RETAINED_MANAGED_GROUPS_27';
 export function managedProcessPassed(value, fixture = false) {
   if (!value || typeof value !== 'object') return false;
   const d = Object.getOwnPropertyDescriptors(value);

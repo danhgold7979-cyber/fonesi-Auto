@@ -305,3 +305,152 @@ test('retired flag without dispatched exit proof never permits replacement of ex
     assert.ok(p.reserveAttempt('VERSION'));
   }
 });
+
+const acquisition = (payload = '') => ({
+  version: 1,
+  kind: 'ACQUISITION',
+  status: 'COMPLETE',
+  code: 'OK',
+  dispatched: true,
+  operationRetired: true,
+  payloadBase64: Buffer.from(payload).toString('base64'),
+  observedAtUtc: 1000,
+});
+const queryResponse = (q, facts = acquisition()) => ({
+  version: 2,
+  sessionId: q.sessionId,
+  requestId: q.requestId,
+  attemptId: q.attemptId,
+  operation: 'DISCOVER',
+  result: facts,
+});
+test('v2 acquisition exact bounded canonical base64 is disjoint from legacy SESSION frames', () => {
+  const q = { version: 2, sessionId: id(1), requestId: 2, attemptId: id(2), operation: 'DISCOVER' };
+  for (const raw of ['', 'serial device transport_id:1\n', 'x'.repeat(32768)])
+    assert.ok(parseHostFrame(frame({ ...q, result: acquisition(raw) })));
+  for (const patch of [
+    { payloadBase64: 'YQ' },
+    { payloadBase64: 'YR==' },
+    { payloadBase64: 'YQ==\n' },
+    { payloadBase64: Buffer.alloc(32769, 65).toString('base64') },
+    { payloadBase64: 'AA==' },
+    { payloadBase64: '/w==' },
+    { payloadBase64: '77u/' },
+    { operationRetired: false },
+    { observedAtUtc: -1 },
+    { code: 'BUSY' },
+    { raw: 'secret' },
+  ])
+    assert.equal(parseHostFrame(frame({ ...q, result: { ...acquisition(), ...patch } })), null);
+  assert.equal(parseHostFrame(frame({ ...q, version: 1, result: acquisition() })), null);
+  assert.equal(parseHostFrame(frame({ ...q, result: live })), null);
+  assert.equal(parseHostFrame(frame({ ...q, deadlineUtc: 2000, result: acquisition() })), null);
+  const bytes = frame({ ...q, result: acquisition() });
+  assert.equal(
+    parseHostFrame(
+      Buffer.from(
+        Buffer.from(bytes)
+          .toString()
+          .replace('"payloadBase64":""', '"payloadBase64":"","payloadBase64":""'),
+      ),
+    ),
+    null,
+  );
+});
+test('discovery shares counter and foreground attempt without releasing session, while RETIRE preempts query', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    token = p.reserveAttempt('FOREGROUND');
+  const start = p.startForeground(token, {});
+  await tick();
+  f.receive(frame(response(f.writes[0], live)));
+  await start;
+  const query = p.discover(token, 2000);
+  await tick();
+  assert.deepEqual(Object.keys(f.writes[1]), [
+    'version',
+    'sessionId',
+    'requestId',
+    'attemptId',
+    'operation',
+    'deadlineUtc',
+  ]);
+  assert.equal(f.writes[1].version, 2);
+  assert.equal(f.writes[1].requestId, 2);
+  const stop = p.retire(token);
+  await tick();
+  assert.equal(f.writes[2].requestId, 3);
+  f.receive(frame(response(f.writes[2], retired)));
+  await stop;
+  f.receive(frame(queryResponse(f.writes[1])));
+  assert.equal((await query).operationRetired, true);
+  // Late query success must not overwrite actual SESSION retirement.
+  assert.doesNotThrow(() => p.reserveAttempt('FOREGROUND'));
+});
+test('128 admitted queries use one attempt and query success alone never authorizes another reserve', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const start = p.startForeground(t, {});
+  await tick();
+  f.receive(frame(response(f.writes[0], live)));
+  await start;
+  for (let i = 0; i < 128; i++) {
+    const query = p.discover(t, 2000);
+    await tick();
+    f.receive(frame(queryResponse(f.writes.at(-1))));
+    await query;
+  }
+  assert.equal(f.writes.length, 129);
+  assert.throws(() => p.reserveAttempt('FOREGROUND'));
+  await assert.rejects(p.discover(t, 2000));
+  assert.equal(f.writes.length, 129);
+  const stop = p.retire(t);
+  await tick();
+  f.receive(frame(response(f.writes.at(-1), retired)));
+  await stop;
+});
+
+test('acquisition response waits its write callback and refuses cross-version or late duplicate responses', async () => {
+  let receive, writeDone;
+  const writes = [];
+  const f = fixture({
+    transport: {
+      subscribe(c) {
+        receive = c;
+      },
+      write(bytes) {
+        const q = JSON.parse(Buffer.from(bytes));
+        writes.push(q);
+        return q.operation === 'DISCOVER'
+          ? new Promise((r) => {
+              writeDone = r;
+            })
+          : Promise.resolve();
+      },
+      requestCleanup() {},
+    },
+  });
+  const p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND'),
+    start = p.startForeground(t, {});
+  await tick();
+  receive(frame(response(writes[0], live)));
+  await start;
+  const query = p.discover(t, 2000);
+  let complete = false;
+  void query.then(() => {
+    complete = true;
+  });
+  await tick();
+  const bytes = frame(queryResponse(writes[1]));
+  receive(bytes.subarray(0, 21));
+  receive(bytes.subarray(21));
+  await tick();
+  assert.equal(complete, false);
+  writeDone();
+  assert.equal((await query).status, 'COMPLETE');
+  receive(bytes);
+  assert.equal(f.bridge.closed, true);
+  await assert.rejects(p.discover(t, 2000));
+});

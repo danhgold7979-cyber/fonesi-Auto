@@ -438,3 +438,26 @@ test('settled inactive ledger still inspects unknown and partial payload directo
       await f.custody.close();
     });
 });
+
+test('callback-free READ witness rejects close without losing exact release identity', () =>
+  fixture(
+    async (f) => {
+      const read = await f.custody.acquireRead();
+      assert.equal(read.ok, true);
+      let calls = 0;
+      f.owner(() => {
+        calls++;
+        throw Error('must not call owner');
+      });
+      assert.doesNotThrow(() => f.custody.assertReadInternal(read.token));
+      assert.throws(() => f.custody.assertReadInternal({}));
+      assert.equal(calls, 0);
+      const closing = f.custody.close();
+      assert.throws(() => f.custody.assertReadInternal(read.token));
+      assert.equal(calls, 0);
+      assert.deepEqual(await f.custody.releaseRead(read.token), { ok: true, status: 'RETIRED' });
+      assert.equal(await closing, 'RETIRED');
+      assert.throws(() => f.custody.assertReadInternal(read.token));
+    },
+    { installed: true },
+  ));

@@ -23,7 +23,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
 import { transformSync } from 'esbuild';
 import { PLATFORM_TOOLS_CANDIDATE } from '../src/main/platform-tools-candidate.ts';
-import { createHostFactory } from '../src/main/adb-host-factory.ts';
+import { createHostFactory, isRealHostFactory } from '../src/main/adb-host-factory.ts';
 import {
   HOST_ASSETS,
   hostHash,
@@ -144,6 +144,10 @@ function fixture(extra = {}) {
     ),
   });
   const custody = {
+    assertReadInternal(t) {
+      assert.equal(t, token);
+      assert.equal(held, true);
+    },
     assertRead(t) {
       assert.equal(t, token);
       assert.equal(held, true);
@@ -155,7 +159,12 @@ function fixture(extra = {}) {
     },
     async revalidateRead(t) {
       this.assertRead(t);
-      return { ok: true, status: 'READ_VERIFIED_ONLY', token, observation: runtime };
+      return {
+        ok: true,
+        status: 'READ_VERIFIED_ONLY',
+        token,
+        observation: Object.freeze({ ...runtime }),
+      };
     },
     async releaseRead(t) {
       this.assertRead(t);
@@ -1132,6 +1141,81 @@ test('server publication assertions reject stale custody after the last owner ca
     assert.throws(() => f.factory.assertCurrentSession());
     assert.equal(await f.factory.close(), 'RETIRED');
     assert.throws(() => f.factory.assertRetiredSession());
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('injected and structurally copied factories cannot mint real discovery acquisition authority', async () => {
+  const f = fixture({ operationSet: 'SERVER_ONLY' });
+  try {
+    assert.equal(isRealHostFactory(f.factory), false);
+    assert.equal(isRealHostFactory({ ...f.factory }), false);
+    for (const value of [null, {}, Object.freeze({ acquireDiscovery() {} })])
+      assert.equal(isRealHostFactory(value), false);
+    assert.throws(() => f.factory.acquireDiscovery(f.cap, { deadlineUtc: 2000 }));
+    assert.equal(f.spawns, 0);
+    assert.equal(f.held, false);
+    await f.factory.close();
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('discovery epoch observation tolerates pending HEALTH but final holder witness is callback-free and exact', async () => {
+  let calls = 0,
+    heldHealth;
+  const session = (q) => ({
+    version: 2,
+    kind: 'SESSION',
+    dispatched: true,
+    jobState: q.operation === 'RETIRE' ? 'RETIRED' : 'LIVE',
+    exitCode: q.operation === 'RETIRE' ? 1 : null,
+    endpointState: q.operation === 'RETIRE' ? 'ABSENT' : 'OWNED',
+    observation:
+      q.operation === 'RETIRE' ? 'STOPPED' : q.operation === 'HEALTH' ? 'HEALTHY' : 'STARTED',
+  });
+  const options = {
+    operationSet: 'SERVER_ONLY',
+    ownerCallback() {
+      calls++;
+    },
+    facts: session,
+    request(q, child) {
+      if (q.operation === 'HEALTH')
+        heldHealth = () => child.stdout.write(JSON.stringify({ ...q, result: session(q) }) + '\n');
+    },
+  };
+  const f = fixture(options);
+  try {
+    const absent = f.factory.discoveryEpochWitness();
+    assert.equal(absent.valid, false);
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_START'))).outcome, 'OBSERVED');
+    const witness = f.factory.discoveryEpochWitness();
+    assert.equal(witness.valid, true);
+    assert.equal(absent.valid, false);
+    options.hold = true;
+    const health = f.factory.execute(f.cap, f.request('SERVER_HEALTH'));
+    while (!heldHealth) await new Promise((r) => setImmediate(r));
+    assert.equal(f.factory.snapshot().busy, true);
+    assert.throws(() => f.factory.assertCurrentSession());
+    assert.doesNotThrow(() => f.factory.assertDiscoveryEpochCurrent());
+    const before = calls;
+    assert.equal(witness.valid, true);
+    f.invalidateRead();
+    assert.equal(witness.valid, false);
+    assert.equal(calls, before);
+    f.restoreRead();
+    heldHealth();
+    assert.equal((await health).outcome, 'OBSERVED');
+    assert.equal(witness.valid, true); // Actual custody returns a fresh equivalent observation.
+    options.hold = false;
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_STOP'))).outcome, 'OBSERVED');
+    assert.equal(witness.valid, false);
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_START'))).outcome, 'OBSERVED');
+    assert.equal(witness.valid, false); // New attempt cannot revive a witness even if an injected token is reused.
+    assert.equal(f.factory.discoveryEpochWitness().valid, true);
+    assert.equal(await f.factory.close(), 'RETIRED');
   } finally {
     f.cleanup();
   }

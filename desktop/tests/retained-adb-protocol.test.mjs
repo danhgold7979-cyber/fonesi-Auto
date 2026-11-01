@@ -42,7 +42,7 @@ function before(text, left, right) {
 test('reviewed native custody helpers and fixed provider adapter have no new interop and dispatch only existing native methods', () => {
   for (const [name, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
-    ['RetainedAdbSession.cs', 'c22e40441fb6bc9bd7d1b1b1aaced656572c3ded8c2666d006449dd8b2f45470'],
+    ['RetainedAdbSession.cs', 'd192f132cd7c4463ae2e3cd65d75f34b95ae10cdfab92dfb1eb61d3b60446d4f'],
   ])
     assert.equal(
       createHash('sha256')
@@ -282,4 +282,47 @@ test('SERVER_ONLY scope retains live SESSION identity, bounded health and cleanu
     /\$b.operationSet -cne 'VERSION_ONLY' -and \$b.operationSet -cne 'SERVER_ONLY'/,
   );
   assert.match(bootstrap, /\$adapter,\$admission.Liveness\(\),\$true,\$b.operationSet/);
+});
+
+test('discovery v2 is separately bounded and never writes session terminal state', () => {
+  const patternLiteral = /DiscoveryPattern = new Regex\(("(?:\\.|[^"\\])*")/.exec(source);
+  assert.ok(patternLiteral);
+  const expression = new RegExp(
+    JSON.parse(patternLiteral[1]).replace('\\A', '^').replace('\\z', '$(?![\\s\\S])'),
+  );
+  const frame =
+    JSON.stringify({
+      version: 2,
+      sessionId: id(1),
+      requestId: 2,
+      attemptId: id(2),
+      operation: 'DISCOVER',
+      deadlineUtc: 30000,
+    }) + '\n';
+  assert.ok(expression.test(frame));
+  assert.equal(expression.test(frame.replace('"version":2', '"version":2,"version":2')), false);
+  assert.equal(expression.test(frame.replace('30000', '030000')), false);
+  assert.match(source, /deadline-now>30000/);
+  assert.match(source, /attempt.discoveryCalls >= 128/);
+  const worker = source.slice(
+    source.indexOf('void DiscoveryWorker('),
+    source.indexOf('void Cleanup('),
+  );
+  assert.doesNotMatch(worker, /attempt\.terminal\s*=/);
+  assert.match(worker, /provider.Discover\(attempt.token,effective\)/);
+  assert.match(source, /payload.Length>43692/);
+  assert.match(source, /bytes.Length>32768\|\|Convert.ToBase64String\(bytes\)!=payload/);
+  assert.match(source, /request.Version.ToString/);
+  const discovery = fixture.slice(
+    fixture.indexOf('public static int RunDiscovery()'),
+    fixture.indexOf('public static int RunAll()'),
+  );
+  assert.equal((discovery.match(/groups\+\+/g) ?? []).length, 8);
+  assert.match(
+    fixture,
+    /ReadDevicesList\(channel,new IsolatedAdbServer.RetainedProvider.DiscoveryBudget/,
+  );
+  assert.match(fixture, /DiscoveryWorkRetired\(false,true,true,connect.Task\)/);
+  assert.match(fixture, /GetField\("outstanding",Flags\)/);
+  assert.match(fixture, /ordinary.Join\(0\)/);
 });

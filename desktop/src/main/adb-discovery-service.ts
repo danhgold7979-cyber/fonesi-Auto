@@ -1,8 +1,16 @@
 // Private software-only ingestion. Synthetic text never becomes native discovery authority.
-import { parseAdbDiscovery, type AdbDiscoveryRow } from './adb-discovery.ts';
+import {
+  parseAdbDiscovery,
+  parseAdbServerDiscovery,
+  type AdbDiscoveryRow,
+} from './adb-discovery.ts';
 import { isRegistrySnapshot, type RegistrySnapshot } from './transport-registry.ts';
 import { DurableFault, type DurableMutationResult } from './durable-coordinator.ts';
 import type { RegistryStore } from './registry-store.ts';
+import {
+  inspectOwnedDiscoveryProvider,
+  type OwnedDiscoveryProvider,
+} from './adb-server-service.ts';
 const NativePromise = Promise;
 const promisePrototype = Promise.prototype;
 const promiseThen = Promise.prototype.then;
@@ -38,6 +46,7 @@ type Provider = {
   begin(request: DiscoveryRequest): DiscoveryAcquisition;
   current(): void;
 };
+const claimedProviders = new WeakSet<object>();
 const providers = new WeakMap<SyntheticDiscoveryProvider, Provider>();
 export function createSyntheticDiscoveryProvider(
   options: Readonly<{
@@ -83,7 +92,7 @@ export type DiscoveryReceipt =
       revision: number;
       requestId: string;
       sequence: number;
-      source: 'SYNTHETIC_TEST';
+      source: 'SYNTHETIC_TEST' | 'ADB_DISCOVERY';
       auditHealth: 'AVAILABLE' | 'DEGRADED';
       projectionCurrent: boolean;
     }>
@@ -166,7 +175,7 @@ function classify(error: unknown): LocalCode | Exclude<DurableCode, 'OUTCOME_UNK
 }
 export function createAdbDiscoveryService(
   options: Readonly<{
-    provider: SyntheticDiscoveryProvider;
+    provider: SyntheticDiscoveryProvider | OwnedDiscoveryProvider;
     registry: RegistryStore;
     readDurableRevision(): number;
     assertOwnedSync(): void;
@@ -174,11 +183,21 @@ export function createAdbDiscoveryService(
     newId(): string;
   }>,
 ) {
-  const admittedProvider = providers.get(options.provider);
-  if (!admittedProvider || admittedProvider.claimed || admittedProvider.revoked)
+  const synthetic = providers.get(options.provider as SyntheticDiscoveryProvider);
+  const native = synthetic ? null : inspectOwnedDiscoveryProvider(options.provider);
+  if (
+    (!synthetic && !native) ||
+    claimedProviders.has(options.provider) ||
+    synthetic?.revoked ||
+    native?.revoked
+  )
     throw Error('INVALID_REQUEST');
-  const provider: Provider = admittedProvider;
-  provider.claimed = true;
+  claimedProviders.add(options.provider);
+  if (synthetic) synthetic.claimed = true;
+  const admitted = synthetic ?? native;
+  if (!admitted) throw Error('INVALID_REQUEST');
+  const provider: NonNullable<typeof admitted> = admitted;
+  const source = synthetic ? ('SYNTHETIC_TEST' as const) : ('ADB_DISCOVERY' as const);
   const snapshot = options.registry.snapshot.bind(options.registry),
     reconcile = options.registry.reconcile.bind(options.registry),
     readRevision = options.readDurableRevision.bind(options),
@@ -262,11 +281,13 @@ export function createAdbDiscoveryService(
           timer: ReturnType<typeof setTimeout> | null = null,
           expired = false,
           entered = false,
+          requireCustody = false,
           deadline = 0;
         function internal() {
           if (
             closed ||
             provider?.revoked ||
+            (requireCustody && native !== null && !native.finalCurrent()) ||
             currentRequest !== token ||
             expired ||
             (lastClock !== null && lastClock >= deadline)
@@ -278,7 +299,12 @@ export function createAdbDiscoveryService(
           internal();
         }
         publicationCurrent = () =>
-          !closed && !provider.revoked && !expired && lastClock !== null && lastClock < deadline;
+          !closed &&
+          !provider.revoked &&
+          (!requireCustody || native === null || native.finalCurrent()) &&
+          !expired &&
+          lastClock !== null &&
+          lastClock < deadline;
         try {
           admission();
           if (!integer(expectedRevision)) throw new Fault('INVALID_REQUEST');
@@ -361,7 +387,10 @@ export function createAdbDiscoveryService(
                 value.observedAtUtc > completed
               )
                 throw new Fault('INVALID_DISCOVERY');
-              const parsed = parseAdbDiscovery(value.raw);
+              const parsed =
+                source === 'ADB_DISCOVERY'
+                  ? parseAdbServerDiscovery(value.raw)
+                  : parseAdbDiscovery(value.raw);
               if (!parsed.ok) throw new Fault(parsed.code);
               return Object.freeze({ observedAtUtc: value.observedAtUtc, rows: parsed.rows });
             }) as Promise<Readonly<{ observedAtUtc: number; rows: readonly AdbDiscoveryRow[] }>>;
@@ -389,6 +418,7 @@ export function createAdbDiscoveryService(
             throw new Fault(classify(result.reason));
           }
           const value = result.value;
+          requireCustody = true;
           external();
           entered = true;
           const committed = await reconcile(
@@ -396,7 +426,7 @@ export function createAdbDiscoveryService(
             Object.freeze({
               sequence: seq,
               observedAtUtc: value.observedAtUtc,
-              source: 'SYNTHETIC_TEST',
+              source,
               rows: value.rows,
               proofs: Object.freeze([]),
             }),
@@ -412,7 +442,7 @@ export function createAdbDiscoveryService(
               if (
                 !isRegistrySnapshot(candidate) ||
                 candidate.sequence !== seq ||
-                candidate.source !== 'SYNTHETIC_TEST'
+                candidate.source !== source
               )
                 throw Error();
               internal();
@@ -427,7 +457,7 @@ export function createAdbDiscoveryService(
                 revision: committed.revision,
                 requestId,
                 sequence: seq,
-                source: 'SYNTHETIC_TEST',
+                source,
                 auditHealth: committed.auditHealth,
                 projectionCurrent: valid,
               }),
@@ -472,7 +502,7 @@ export function createAdbDiscoveryService(
         admission();
         const latest = snapshot();
         admission();
-        if (latest !== projection) throw Error();
+        if (latest !== projection || (native !== null && !native.finalCurrent())) throw Error();
         return projection;
       } catch {
         projection = null;
@@ -480,7 +510,16 @@ export function createAdbDiscoveryService(
       }
     },
     availability(): 'LIVE_DISCOVERY_UNAVAILABLE' | 'OBSERVED' {
-      return 'LIVE_DISCOVERY_UNAVAILABLE';
+      if (source !== 'ADB_DISCOVERY' || !projection) return 'LIVE_DISCOVERY_UNAVAILABLE';
+      try {
+        admission();
+        return projection && (native === null || native.finalCurrent())
+          ? 'OBSERVED'
+          : 'LIVE_DISCOVERY_UNAVAILABLE';
+      } catch {
+        projection = null;
+        return 'LIVE_DISCOVERY_UNAVAILABLE';
+      }
     },
     close(): Promise<Readonly<{ status: 'RETIRED' | 'UNRETIRED' }>> {
       if (closing) return closing;

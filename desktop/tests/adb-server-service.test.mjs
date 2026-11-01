@@ -121,9 +121,29 @@ function fixture(extra = {}) {
         grant: adapter.grant,
         execute: adapter.execute,
         snapshot: adapter.snapshot,
+        acquireDiscovery(cap, request) {
+          calls.push('discover');
+          return extra.acquire(cap, request);
+        },
         assertCurrentSession() {
           assert.equal(adapter.snapshot().state, 'READY');
           custody.assertRead(read);
+        },
+        assertDiscoveryEpochCurrent() {
+          assert.equal(adapter.snapshot().state, 'READY');
+          custody.assertRead(read);
+        },
+        discoveryEpochWitness() {
+          return Object.freeze({
+            get valid() {
+              return (
+                adapter.snapshot().state === 'READY' &&
+                !adapter.snapshot().closed &&
+                held &&
+                leaseValid
+              );
+            },
+          });
         },
         assertRetiredSession() {
           assert.equal(adapter.snapshot().state, 'STOPPED');
@@ -144,7 +164,7 @@ function fixture(extra = {}) {
       return extra.audit ? extra.audit(record, service) : 'AVAILABLE';
     },
   };
-  service = createAdbServerService(options);
+  service = (extra.createService ?? createAdbServerService)(options);
   return {
     service,
     calls,
@@ -409,4 +429,203 @@ test('final clock invalidation is checked by retained-token assertion before pub
   assert.notEqual((await f.service.start()).result.outcome, 'OBSERVED');
   assert.equal((await f.service.close()).status, 'RETIRED');
   assert.equal(f.held(), false);
+});
+// Explicit test-only native-issuer admission transform. Real runtime/default binding proof is NOT supplied.
+async function transformedService() {
+  const { readFileSync } = await import('node:fs');
+  const { transformSync } = await import('esbuild');
+  const path = new URL('../src/main/adb-server-service.ts', import.meta.url);
+  let source = readFileSync(path, 'utf8');
+  assert.equal(source.split('!isRealHostFactory(factory)').length, 2);
+  source = source.replace(
+    '!isRealHostFactory(factory)',
+    'false /* SYNTHETIC_TEST_ONLY_FACTORY_ADMISSION */',
+  );
+  source = source.replace(
+    /from '(\.\/[^']+)'/g,
+    (_, relative) => `from '${new URL(relative, path).href}'`,
+  );
+  const code = transformSync(source, { loader: 'ts', format: 'esm', target: 'es2022' }).code;
+  return import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+}
+const acquisition = (raw = '', extra = {}) =>
+  Object.freeze({
+    version: 1,
+    kind: 'ACQUISITION',
+    status: 'COMPLETE',
+    code: 'OK',
+    dispatched: true,
+    operationRetired: true,
+    payloadBase64: Buffer.from(raw).toString('base64'),
+    observedAtUtc: 1000,
+    ...extra,
+  });
+const acquired = (facts = acquisition()) =>
+  Object.freeze({
+    result: Promise.resolve(facts),
+    retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+  });
+const query = (record) =>
+  Object.freeze({ requestId: id(700), epoch: record.epoch, sequence: 1, deadlineUtc: 31000 });
+test('production native provider issuer refuses injected factory even after actual adapter START', async () => {
+  const { inspectOwnedDiscoveryProvider } = await import('../src/main/adb-server-service.ts');
+  const f = fixture();
+  try {
+    await f.service.start();
+    assert.throws(() => f.service.discoveryProvider(), /NOT_READY/);
+    assert.equal(inspectOwnedDiscoveryProvider({ ownedDiscovery: true }), null);
+  } finally {
+    await f.service.close();
+  }
+});
+test('transformed-only issuer holds service lane through query retirement without retiring foreground holder', async () => {
+  const module = await transformedService(),
+    retirement = deferred();
+  const f = fixture({
+    createService: module.createAdbServerService,
+    acquire: () =>
+      Object.freeze({
+        result: Promise.resolve(acquisition('synthetic device transport_id:1\n')),
+        retirement: retirement.promise,
+      }),
+  });
+  try {
+    assert.throws(() => f.service.discoveryProvider());
+    await f.service.start();
+    const provider = f.service.discoveryProvider(),
+      record = module.inspectOwnedDiscoveryProvider(provider);
+    assert.ok(record);
+    const handle = record.begin(query(record));
+    await tick();
+    assert.equal((await f.service.health()).result.code, 'BUSY');
+    assert.equal(f.held(), true);
+    retirement.resolve(Object.freeze({ status: 'RETIRED' }));
+    assert.equal((await handle.result).outcome, 'COMPLETE');
+    assert.deepEqual(await handle.retirement, { status: 'RETIRED' });
+    assert.equal(f.held(), true);
+    assert.equal(f.closes(), 0);
+    assert.equal(f.service.snapshot().state, 'READY');
+  } finally {
+    await f.service.close();
+  }
+});
+test('pending HEALTH RESULT audit causes settled local refusal without native handoff or cleanup', async () => {
+  const module = await transformedService(),
+    audit = deferred();
+  let hold = false;
+  const f = fixture({
+    createService: module.createAdbServerService,
+    acquire: () => acquired(),
+    audit: (event) => (hold && event.phase === 'RESULT' ? audit.promise : 'AVAILABLE'),
+  });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    hold = true;
+    const health = f.service.health();
+    await tick();
+    const handle = record.begin(query(record));
+    assert.equal((await handle.result).outcome, 'FAILED');
+    assert.deepEqual(await handle.retirement, { status: 'RETIRED' });
+    assert.equal(f.calls.includes('discover'), false);
+    assert.equal(record.revoked, false);
+    assert.equal(f.closes(), 0);
+    audit.resolve('AVAILABLE');
+    await health;
+  } finally {
+    await f.service.close();
+  }
+});
+test('native failed query revokes epoch and immediately starts cleanup while retirement remains pending', async () => {
+  const module = await transformedService(),
+    retirement = deferred();
+  const f = fixture({
+    createService: module.createAdbServerService,
+    acquire: () =>
+      Object.freeze({
+        result: Promise.resolve(
+          acquisition('', {
+            status: 'FAILED',
+            code: 'BUSY',
+            payloadBase64: null,
+            observedAtUtc: null,
+          }),
+        ),
+        retirement: retirement.promise,
+      }),
+  });
+  await f.service.start();
+  const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+  const handle = record.begin(query(record));
+  await tick();
+  assert.equal(record.revoked, true);
+  assert.equal(f.closes(), 1);
+  retirement.resolve(Object.freeze({ status: 'RETIRED' }));
+  assert.equal((await handle.result).outcome, 'FAILED');
+  assert.deepEqual(await handle.retirement, { status: 'RETIRED' });
+  assert.equal(f.held(), false);
+  assert.throws(() => f.service.discoveryProvider());
+  await f.service.close();
+});
+test('STOP during pending query preempts through factory cleanup and never promotes late complete result', async () => {
+  const module = await transformedService(),
+    result = deferred(),
+    retirement = deferred();
+  const f = fixture({
+    createService: module.createAdbServerService,
+    acquire: () => Object.freeze({ result: result.promise, retirement: retirement.promise }),
+  });
+  await f.service.start();
+  const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+  const handle = record.begin(query(record));
+  await tick();
+  const stop = f.service.stop();
+  assert.equal(f.closes(), 1);
+  assert.equal(record.revoked, true);
+  result.resolve(acquisition());
+  retirement.resolve(Object.freeze({ status: 'RETIRED' }));
+  assert.equal((await handle.result).outcome, 'FAILED');
+  assert.equal((await stop).kind, 'CLEANUP');
+  assert.equal(f.held(), false);
+});
+test('transformed-only discovery cap128 and malformed byte payloads cannot gain additional native observation', async () => {
+  const module = await transformedService();
+  const f = fixture({ createService: module.createAdbServerService, acquire: () => acquired() });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    for (let i = 0; i < 128; i++) {
+      const handle = record.begin(query(record));
+      assert.equal((await handle.result).outcome, 'COMPLETE');
+      await handle.retirement;
+    }
+    const refused = record.begin(query(record));
+    assert.equal((await refused.result).outcome, 'FAILED');
+    await refused.retirement;
+    assert.equal(f.calls.filter((c) => c === 'discover').length, 128);
+    assert.equal(f.closes(), 0);
+  } finally {
+    await f.service.close();
+  }
+  for (const payloadBase64 of [
+    ' Zm9v',
+    Buffer.from('\ufeff').toString('base64'),
+    Buffer.from('List of devices attached\n').toString('base64'),
+  ]) {
+    const g = fixture({
+      createService: module.createAdbServerService,
+      acquire: () => acquired(acquisition('', { payloadBase64 })),
+    });
+    try {
+      await g.service.start();
+      const record = module.inspectOwnedDiscoveryProvider(g.service.discoveryProvider());
+      const handle = record.begin(query(record));
+      assert.equal((await handle.result).outcome, 'FAILED');
+      await handle.retirement;
+      assert.equal(record.revoked, true);
+      assert.equal(g.held(), false);
+    } finally {
+      await g.service.close();
+    }
+  }
 });

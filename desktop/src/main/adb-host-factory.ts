@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { lstatSync, realpathSync } from 'node:fs';
 import { createHostAdapter } from './adb-host-adapter.ts';
+import type { HostCapability } from './adb-host-lifecycle.ts';
 import { createHostBridge } from './adb-host-bridge.ts';
 import type {
   PlatformToolsRuntimeCustody,
@@ -172,6 +173,10 @@ function compileFrame(line: string): CompileFailure | null {
 }
 const observationKey = (o: RuntimeReadObservation) =>
   JSON.stringify([o.release, o.archiveSha256, o.manifestSha256, o.installationRevision, o.adbPath]);
+const realFactories = new WeakSet<object>();
+export function isRealHostFactory(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && realFactories.has(value);
+}
 export function createHostFactory(
   options: Readonly<{
     entry: PersistenceEntry;
@@ -184,8 +189,10 @@ export function createHostFactory(
     now(): number;
     diagnosticId(): string;
   }>,
-  bindings: Bindings = realBindings(),
+  injectedBindings?: Bindings,
 ) {
+  const real = injectedBindings === undefined;
+  const bindings = injectedBindings ?? realBindings();
   const suppliedOperationSet = options.operationSet;
   const operationSet = suppliedOperationSet === undefined ? 'VERSION_ONLY' : suppliedOperationSet;
   if (operationSet !== 'VERSION_ONLY' && operationSet !== 'SERVER_ONLY') fail();
@@ -225,6 +232,8 @@ export function createHostFactory(
     child: ChildProcessWithoutNullStreams | null = null;
   let readToken: object | null = null,
     liveObservation: RuntimeReadObservation | null = null,
+    liveObservationKey: string | null = null,
+    readGeneration = 0,
     pinned: string | null = null;
   let root: ReturnType<typeof createHostRoot> | null = null,
     bootstrap = '',
@@ -452,8 +461,10 @@ export function createHostFactory(
     async acquireRead() {
       const r = await custody.acquireRead();
       if (r.ok) {
+        readGeneration++;
         readToken = r.token;
         liveObservation = r.observation;
+        liveObservationKey = observationKey(r.observation);
       }
       return r;
     },
@@ -462,6 +473,7 @@ export function createHostFactory(
       if (r.ok) {
         readToken = r.token;
         liveObservation = r.observation;
+        liveObservationKey = observationKey(r.observation);
       }
       return r;
     },
@@ -478,6 +490,7 @@ export function createHostFactory(
       if (r.ok && r.status === 'RETIRED' && readToken === token) {
         readToken = null;
         liveObservation = null;
+        liveObservationKey = null;
       }
       return r;
     },
@@ -520,6 +533,17 @@ export function createHostFactory(
   });
   const provider = Object.freeze({
     ...bridge.provider,
+    discover(attempt: object, deadlineUtc: number) {
+      const token = readToken,
+        observation = liveObservation;
+      if (operationSet !== 'SERVER_ONLY' || !token || !observation) fail();
+      currentRuntime(observation);
+      custody.assertRead(token);
+      if (stopped || broken || readToken !== token || liveObservation !== observation) fail();
+      const query = bridge.provider.discover;
+      if (typeof query !== 'function') fail();
+      return query(attempt, deadlineUtc);
+    },
     reserveAttempt(kind: 'VERSION' | 'FOREGROUND') {
       if (kind !== (operationSet === 'VERSION_ONLY' ? 'VERSION' : 'FOREGROUND')) fail();
       if (
@@ -539,8 +563,69 @@ export function createHostFactory(
     diagnosticId: diagnostic,
   });
   let closing: Promise<'RETIRED' | 'UNRETIRED'> | null = null;
-  return Object.freeze({
+  const factory = Object.freeze({
+    acquireDiscovery(capability: HostCapability, request: unknown) {
+      if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY') fail();
+      return adapter.acquireDiscovery(capability, request);
+    },
     snapshot: adapter.snapshot,
+    // Observation admission permits an existing ordinary HEALTH lane to be busy.
+    assertDiscoveryEpochCurrent(): void {
+      const token = readToken,
+        observation = liveObservation;
+      if (
+        operationSet !== 'SERVER_ONLY' ||
+        stopped ||
+        broken ||
+        !token ||
+        !observation ||
+        adapter.snapshot().state !== 'READY' ||
+        adapter.snapshot().closed
+      )
+        fail();
+      currentRuntime(observation);
+      custody.assertRead(token);
+      custody.assertReadInternal(token);
+      if (
+        stopped ||
+        broken ||
+        readToken !== token ||
+        liveObservation !== observation ||
+        adapter.snapshot().state !== 'READY' ||
+        adapter.snapshot().closed
+      )
+        fail();
+    },
+    discoveryEpochWitness(): Readonly<{ readonly valid: boolean }> {
+      const token = readToken,
+        key = liveObservationKey,
+        generation = readGeneration;
+      return Object.freeze({
+        get valid(): boolean {
+          // Exact captured holder only. Never calls owner, clock, filesystem or runtime callbacks.
+          if (
+            operationSet !== 'SERVER_ONLY' ||
+            stopped ||
+            broken ||
+            !token ||
+            !key ||
+            readToken !== token ||
+            liveObservationKey !== key ||
+            pinned !== key ||
+            readGeneration !== generation ||
+            adapter.snapshot().state !== 'READY' ||
+            adapter.snapshot().closed
+          )
+            return false;
+          try {
+            custody.assertReadInternal(token);
+          } catch {
+            return false;
+          }
+          return true;
+        },
+      });
+    },
     assertCurrentSession(): void {
       const token = readToken,
         observation = liveObservation;
@@ -659,4 +744,6 @@ export function createHostFactory(
       });
     },
   });
+  if (real) realFactories.add(factory);
+  return factory;
 }

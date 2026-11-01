@@ -262,6 +262,11 @@ export function createPlatformToolsRuntimeCustody(
       if (!h?.pinned || h.inspection) fail('INVALID_TOKEN');
       check(h);
     },
+    // Internal-only final fence: no owner/location callbacks and no new observation.
+    assertReadInternal(token: unknown): void {
+      const h = exact(token, 'READ');
+      if (!h?.pinned || h.inspection || !h.valid || stopped) fail('INVALID_TOKEN');
+    },
     acquireRead(): Promise<ReadResult> {
       const h = reserve('READ');
       return 'ok' in h ? Promise.resolve(h) : run(h, true);

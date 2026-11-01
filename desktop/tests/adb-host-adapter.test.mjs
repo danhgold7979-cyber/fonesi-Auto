@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHostAdapter } from '../src/main/adb-host-adapter.ts';
+import { createHostAdapter, snapshotHostAcquisitionFacts } from '../src/main/adb-host-adapter.ts';
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const invoke = (observation = 'VERSION', exitCode = 0) => ({
   version: 2,
@@ -110,6 +110,7 @@ function fixture(extra = {}) {
   const adapter = createHostAdapter({
     runtimeCustody: custody,
     nativeProvider: provider,
+    operationSet: extra.operationSet,
     assertOwnedSync() {
       if (!owned) throw Error('private');
     },
@@ -510,4 +511,222 @@ test('custody admission callback cannot revoke adapter owner immediately before 
   assert.deepEqual(f.calls, []);
   assert.equal(f.released(), 1);
   assert.equal(await f.adapter.close(), 'RETIRED');
+});
+
+const queryFacts = () => ({
+  version: 1,
+  kind: 'ACQUISITION',
+  status: 'COMPLETE',
+  code: 'OK',
+  dispatched: true,
+  operationRetired: true,
+  payloadBase64: '',
+  observedAtUtc: 1000,
+});
+test('discovery uses same ordinary lane/foreground holder and separate actual query settlement', async () => {
+  const gate = deferred();
+  let queries = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      discover: async () => {
+        queries++;
+        return gate.promise;
+      },
+    },
+  });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const h = f.adapter.acquireDiscovery(f.cap, { deadlineUtc: 2000 });
+  await tick();
+  assert.equal((await f.adapter.execute(f.cap, f.request('SERVER_HEALTH'))).code, 'BUSY');
+  assert.throws(() => f.adapter.acquireDiscovery(f.cap, { deadlineUtc: 2000 }));
+  gate.resolve(queryFacts());
+  assert.equal((await h.result).kind, 'ACQUISITION');
+  assert.deepEqual(await h.retirement, { status: 'RETIRED' });
+  assert.equal(queries, 1);
+  assert.equal(f.held(), true);
+  assert.equal(f.released(), 0);
+  assert.equal(f.adapter.snapshot().state, 'READY');
+  assert.equal(await f.adapter.close(), 'RETIRED');
+  assert.equal(f.released(), 1);
+});
+test('query cleanup preempts provider but retains live read holder until pending query actually settles', async () => {
+  const gate = deferred();
+  const f = fixture({ operationSet: 'SERVER_ONLY', provider: { discover: () => gate.promise } });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const h = f.adapter.acquireDiscovery(f.cap, { deadlineUtc: 2000 });
+  const failed = assert.rejects(h.result);
+  await tick();
+  const closing = f.adapter.close();
+  await tick();
+  assert.ok(f.calls.some((x) => x[0] === 'retire'));
+  assert.equal(f.held(), true);
+  gate.resolve(queryFacts());
+  await failed;
+  assert.deepEqual(await h.retirement, { status: 'UNRETIRED' });
+  assert.equal(await closing, 'RETIRED');
+  assert.equal(f.held(), false);
+});
+test('wrong scope, forged grant and invalid acquisition deadline never invoke query provider', async () => {
+  for (const kind of ['scope', 'cap', 'other-grant', 'deadline', 'getter']) {
+    let queries = 0,
+      getters = 0;
+    const f = fixture({
+      operationSet: kind === 'scope' ? 'VERSION_ONLY' : 'SERVER_ONLY',
+      provider: {
+        discover: async () => {
+          queries++;
+          return queryFacts();
+        },
+      },
+    });
+    if (kind !== 'scope') await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    if (kind === 'scope')
+      assert.throws(() => f.adapter.acquireDiscovery(f.cap, { deadlineUtc: 2000 }));
+    else {
+      const request =
+        kind === 'getter'
+          ? Object.defineProperty({}, 'deadlineUtc', {
+              enumerable: true,
+              get() {
+                getters++;
+                return 2000;
+              },
+            })
+          : { deadlineUtc: kind === 'deadline' ? 31001 : 2000 };
+      const h = f.adapter.acquireDiscovery(
+        kind === 'cap' ? {} : kind === 'other-grant' ? f.adapter.grant(id(3), () => {}) : f.cap,
+        request,
+      );
+      await assert.rejects(h.result);
+      assert.deepEqual(await h.retirement, { status: 'UNRETIRED' });
+    }
+    assert.equal(queries, 0);
+    assert.equal(getters, 0);
+    await f.adapter.close();
+  }
+});
+test('acquisition descriptor snapshot never calls getters and failed tuples do not masquerade as retirement', () => {
+  let reads = 0;
+  const f = queryFacts();
+  Object.defineProperty(f, 'payloadBase64', {
+    enumerable: true,
+    get() {
+      reads++;
+      return '';
+    },
+  });
+  assert.equal(snapshotHostAcquisitionFacts(f), null);
+  assert.equal(reads, 0);
+  assert.equal(
+    snapshotHostAcquisitionFacts({
+      ...queryFacts(),
+      status: 'UNRETIRED',
+      code: 'UNRETIRED',
+      operationRetired: false,
+      payloadBase64: null,
+      observedAtUtc: null,
+    }).operationRetired,
+    false,
+  );
+});
+
+test('discovery deadline does not erase pending query or release foreground custody; late result cannot revive it', async () => {
+  const gate = deferred();
+  const f = fixture({ operationSet: 'SERVER_ONLY', provider: { discover: () => gate.promise } });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const h = f.adapter.acquireDiscovery(f.cap, { deadlineUtc: 1005 });
+  let retired = false;
+  void h.retirement.then(() => {
+    retired = true;
+  });
+  await assert.rejects(h.result, /HOST_DISCOVERY_DEADLINE/);
+  assert.equal(retired, false);
+  assert.equal(f.held(), true);
+  assert.throws(() => f.adapter.acquireDiscovery(f.cap, { deadlineUtc: 2000 }));
+  const closing = f.adapter.close();
+  await tick();
+  assert.ok(f.calls.some((x) => x[0] === 'retire'));
+  assert.equal(f.held(), true);
+  gate.resolve(queryFacts());
+  assert.deepEqual(await h.retirement, { status: 'UNRETIRED' });
+  assert.equal(await closing, 'RETIRED');
+  assert.equal(f.held(), false);
+});
+test('adapter snapshots deadline before await and caps discovery calls at128 on the same live attempt', async () => {
+  let queries = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      discover: async (_token, deadline) => {
+        queries++;
+        assert.equal(deadline, 2000);
+        return queryFacts();
+      },
+    },
+  });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  for (let i = 0; i < 128; i++) {
+    const request = { deadlineUtc: 2000 },
+      h = f.adapter.acquireDiscovery(f.cap, request);
+    request.deadlineUtc = 0;
+    assert.equal((await h.result).status, 'COMPLETE');
+    assert.deepEqual(await h.retirement, { status: 'RETIRED' });
+  }
+  const denied = f.adapter.acquireDiscovery(f.cap, { deadlineUtc: 2000 });
+  await assert.rejects(denied.result);
+  await denied.retirement;
+  assert.equal(queries, 128);
+  assert.equal(f.calls.filter((x) => x[0] === 'reserve').length, 1);
+  assert.equal(f.held(), true);
+  assert.equal(await f.adapter.close(), 'RETIRED');
+});
+
+test('late unretired, malformed or rejected acquisition invalidates early cleanup until fresh actual confirmation', async () => {
+  for (const mode of ['UNRETIRED', 'MALFORMED', 'REJECTED']) {
+    const query = deferred(),
+      fresh = deferred();
+    let retires = 0;
+    const f = fixture({
+      operationSet: 'SERVER_ONLY',
+      provider: {
+        discover: async () => {
+          const value = await query.promise;
+          if (mode === 'REJECTED') throw Error('synthetic query failure');
+          return value;
+        },
+        retire: () => (++retires === 1 ? Promise.resolve(dead()) : fresh.promise),
+      },
+    });
+    await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    const h = f.adapter.acquireDiscovery(f.cap, { deadlineUtc: 2000 });
+    const result = mode === 'UNRETIRED' ? h.result : assert.rejects(h.result);
+    await tick();
+    const closing = f.adapter.close();
+    await tick();
+    assert.equal(retires, 1);
+    assert.equal(f.held(), true);
+    query.resolve(
+      mode === 'MALFORMED'
+        ? {}
+        : {
+            ...queryFacts(),
+            status: 'UNRETIRED',
+            code: 'UNRETIRED',
+            operationRetired: false,
+            payloadBase64: null,
+            observedAtUtc: null,
+          },
+    );
+    if (mode === 'UNRETIRED') assert.equal((await result).status, 'UNRETIRED');
+    else await result;
+    await h.retirement;
+    await tick();
+    assert.equal(retires, 2);
+    assert.equal(f.held(), true);
+    assert.equal(f.released(), 0);
+    fresh.resolve(dead());
+    assert.equal(await closing, 'RETIRED');
+    assert.equal(f.released(), 1);
+  }
 });

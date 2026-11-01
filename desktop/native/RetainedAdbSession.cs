@@ -6,6 +6,9 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Net;
+using System.Net.Sockets;
 using System.Collections.Generic;
 using Microsoft.Win32.SafeHandles;
 
@@ -42,7 +45,8 @@ namespace Fonesi.Development.Server
                 internal readonly long generation;
                 internal readonly string kind;
                 internal bool stopping, entered, terminal, started, assigned, profileReserved;
-                internal int workers, port;
+                internal int workers, port, discoveryCalls;
+                internal long lastDiscovery; internal Acquisition acquisition;
                 internal bool stdoutJoinAttempted, stdoutJoined, stderrJoinAttempted, stderrJoined;
                 internal IntPtr job;
                 internal PROCESS_INFORMATION process;
@@ -261,6 +265,116 @@ namespace Fonesi.Development.Server
                 lock (gate) { if (observed && !a.stopping) return Facts(a, "HEALTHY"); }
                 return Failure("UNRETIRED");
             }
+            public sealed class AcquisitionReply
+            {
+                readonly Dictionary<string, object> fields;
+                internal AcquisitionReply(string status, string code, bool dispatched, bool retired, byte[] payload, long? observed)
+                { fields = new Dictionary<string, object>{{"version",1},{"kind","ACQUISITION"},{"status",status},{"code",code},{"dispatched",dispatched},{"operationRetired",retired},{"payloadBase64",payload == null ? null : Convert.ToBase64String(payload)},{"observedAtUtc",observed}}; }
+                public IDictionary<string, object> Snapshot() { return new System.Collections.ObjectModel.ReadOnlyDictionary<string,object>(new Dictionary<string,object>(fields)); }
+            }
+            internal interface IDiscoveryChannel
+            {
+                int Send(byte[] bytes, int offset, int count, int timeout);
+                int Receive(byte[] bytes, int offset, int count, int timeout);
+            }
+            internal sealed class DiscoveryBudget
+            {
+                readonly Func<long> clock; readonly Stopwatch elapsed = Stopwatch.StartNew();
+                readonly long started, duration, deadline; long last;
+                internal DiscoveryBudget(long deadlineUtc) : this(deadlineUtc, UtcMilliseconds) { }
+                internal DiscoveryBudget(long deadlineUtc, Func<long> clock)
+                {
+                    this.clock=clock; started=clock(); last=started; deadline=deadlineUtc; duration=deadline-started;
+                    if(started<0 || deadline>9007199254740991L || duration<=0 || duration>30000) throw new IOException("DEADLINE");
+                }
+                internal int Remaining()
+                {
+                    long current=clock(); if(current<last) throw new IOException("DEADLINE"); last=current;
+                    long remaining=Math.Min(deadline-current,duration-elapsed.ElapsedMilliseconds);
+                    if(remaining<=0) throw new IOException("DEADLINE"); return (int)remaining;
+                }
+                internal long Observed() { Remaining(); return last; }
+            }
+            static long UtcMilliseconds() { return (DateTime.UtcNow.Ticks-621355968000000000L)/10000; }
+            internal static byte[] ReadDevicesList(IDiscoveryChannel channel, DiscoveryBudget budget)
+            {
+                byte[] request=Encoding.ASCII.GetBytes("000ehost:devices-l"); int sent=0;
+                while(sent<request.Length){int n=channel.Send(request,sent,request.Length-sent,budget.Remaining());budget.Remaining();if(n<=0||n>request.Length-sent)throw new IOException("DISCOVERY_REJECTED");sent+=n;}
+                byte[] header=new byte[8]; ReadDiscoveryExact(channel,budget,header);
+                if(header[0]!=79||header[1]!=75||header[2]!=65||header[3]!=89)throw new IOException("DISCOVERY_REJECTED");
+                int length=0;for(int n=4;n<8;n++){int b=header[n],digit=b>=48&&b<=57?b-48:b>=65&&b<=70?b-55:b>=97&&b<=102?b-87:-1;if(digit<0)throw new IOException("DISCOVERY_REJECTED");length=(length<<4)|digit;}
+                if(length>32768)throw new IOException("DISCOVERY_REJECTED");
+                byte[] payload=new byte[length];ReadDiscoveryExact(channel,budget,payload);
+                byte[] extra=new byte[1];int trailing=channel.Receive(extra,0,1,budget.Remaining());budget.Remaining();if(trailing!=0)throw new IOException("DISCOVERY_REJECTED");
+                string text=new UTF8Encoding(false,true).GetString(payload);
+                if(text.IndexOf('\0')>=0 || (text.Length>0&&text[0]=='\ufeff'))throw new IOException("DISCOVERY_REJECTED");
+                return payload;
+            }
+            static void ReadDiscoveryExact(IDiscoveryChannel channel,DiscoveryBudget budget,byte[] bytes)
+            {int offset=0;while(offset<bytes.Length){int n=channel.Receive(bytes,offset,bytes.Length-offset,budget.Remaining());budget.Remaining();if(n<=0||n>bytes.Length-offset)throw new IOException("DISCOVERY_REJECTED");offset+=n;}}
+            sealed class SocketDiscoveryChannel : IDiscoveryChannel
+            {
+                readonly Socket socket;internal SocketDiscoveryChannel(Socket socket){this.socket=socket;}
+                public int Send(byte[] bytes,int offset,int count,int timeout){socket.SendTimeout=timeout;return socket.Send(bytes,offset,count,SocketFlags.None);}
+                public int Receive(byte[] bytes,int offset,int count,int timeout){socket.ReceiveTimeout=timeout;return socket.Receive(bytes,offset,count,SocketFlags.None);}
+            }
+            sealed class Acquisition
+            {
+                internal Socket socket; internal Task connect; internal Task<bool> close;
+                internal bool registering=true, closeRequested, workerDone;
+            }
+            internal static bool DiscoveryLock(object value,Stopwatch deadline,int milliseconds)
+            {int remaining=Math.Max(0,milliseconds-(int)Math.Min(Int32.MaxValue,deadline.ElapsedMilliseconds));return Monitor.TryEnter(value,remaining);}
+            bool CloseAcquisition(State a) { return CloseAcquisition(a,Stopwatch.StartNew(),0); }
+            bool CloseAcquisition(State a,Stopwatch deadline,int milliseconds)
+            {
+                Acquisition q;if(!DiscoveryLock(gate,deadline,milliseconds))return false;
+                try{q=a.acquisition;}finally{Monitor.Exit(gate);}if(q==null)return true;
+                if(!DiscoveryLock(q,deadline,milliseconds))return false;
+                try{if(q.close==null){q.closeRequested=true;q.close=Task.Run(delegate(){try{q.socket.Dispose();return true;}catch{return false;}});}return true;}
+                finally{Monitor.Exit(q);}
+            }
+            internal static bool DiscoveryWorkRetired(bool registering,bool disposed,bool workerDone,Task connect)
+            {if(connect!=null&&connect.IsCompleted&&connect.IsFaulted){AggregateException observed=connect.Exception;}return !registering&&disposed&&workerDone&&(connect==null||connect.IsCompleted);}
+            static bool AcquisitionClosed(Acquisition q)
+            {return q.close!=null&&q.close.Status==TaskStatus.RanToCompletion&&q.close.Result;}
+            bool AcquisitionSettled(State a){return AcquisitionSettled(a,Stopwatch.StartNew(),0);}
+            bool AcquisitionSettled(State a,Stopwatch deadline,int milliseconds)
+            {
+                Acquisition q=a.acquisition;if(q==null)return true;
+                if(!DiscoveryLock(q,deadline,milliseconds))return false;
+                try{return DiscoveryWorkRetired(q.registering,AcquisitionClosed(q),q.workerDone,q.connect);}finally{Monitor.Exit(q);}
+            }
+            public AcquisitionReply Discover(Attempt attempt,long deadlineUtc)
+            {
+                State a=attempt==null?null:attempt.state as State;
+                if(!Enter(a,"FOREGROUND",false))return new AcquisitionReply("FAILED","BUSY",false,true,null,null);
+                Acquisition q=null;byte[] payload=null;long? observed=null;string code="NATIVE_FAILED";bool dispatched=false;
+                try {
+                    DiscoveryBudget budget=new DiscoveryBudget(deadlineUtc);
+                    Admission();SameProfile(a);if(!Live(a)||ProfileWitness(a.android,owner,true)!=a.profileWitness)throw new IOException("ADMISSION_REJECTED");
+                    lock(gate){if(a.stopping||a.discoveryCalls>=128||!AcquisitionSettled(a))throw new IOException("ADMISSION_REJECTED");a.discoveryCalls++;q=new Acquisition();q.socket=new Socket(AddressFamily.InterNetwork,SocketType.Stream,ProtocolType.Tcp);a.acquisition=q;}
+                    // Registration precedes BeginConnect, including synchronous completion and RETIRE races.
+                    try {
+                        lock(q){if(q.closeRequested)throw new IOException("CLOSED");dispatched=true;}
+                        Task connected=Task.Factory.FromAsync(q.socket.BeginConnect,q.socket.EndConnect,IPAddress.Loopback,a.port,null);
+                        lock(q){q.connect=connected;}
+                    } finally {lock(q){q.registering=false;}}
+                    while(!q.connect.IsCompleted){if(Stopping(a))throw new IOException("CLOSED");q.connect.Wait(Math.Min(10,budget.Remaining()));}
+                    q.connect.GetAwaiter().GetResult();budget.Remaining();
+                    Admission();SameProfile(a);if(!Live(a))throw new IOException("ADMISSION_REJECTED");
+                    payload=ReadDevicesList(new SocketDiscoveryChannel(q.socket),budget);observed=budget.Observed();
+                    while(!CloseAcquisition(a)){budget.Remaining();Thread.Sleep(1);}while(!AcquisitionClosed(q)){budget.Remaining();Thread.Sleep(1);}Admission();SameProfile(a);
+                    if(Stopping(a)||!Live(a)||ProfileWitness(a.android,owner,true)!=a.profileWitness||observed.Value<a.lastDiscovery)throw new IOException("ADMISSION_REJECTED");
+                    budget.Remaining();code="OK";
+                }catch(Exception error){code=error is IOException&&(error.Message=="DEADLINE"||error.Message=="CLOSED"||error.Message=="ADMISSION_REJECTED"||error.Message=="DISCOVERY_REJECTED")?error.Message:error is DecoderFallbackException?"DISCOVERY_REJECTED":"NATIVE_FAILED";payload=null;observed=null;}
+                finally {if(q!=null){CloseAcquisition(a);lock(q){q.workerDone=true;}}Leave(a);}
+                lock(gate){
+                    if(!AcquisitionSettled(a))return new AcquisitionReply("UNRETIRED","UNRETIRED",dispatched,false,null,null);
+                    if(code=="OK"&&!a.stopping){a.lastDiscovery=observed.Value;return new AcquisitionReply("COMPLETE","OK",true,true,payload,observed);}
+                    return new AcquisitionReply("FAILED",code=="OK"?"CLOSED":code,dispatched,true,null,null);
+                }
+            }
             public Reply Retire(Attempt attempt)
             {
                 return RetireCore(attempt == null ? null : attempt.state as State);
@@ -279,13 +393,14 @@ namespace Fonesi.Development.Server
                 if (!RetirementLock(gate, deadline)) return Failure("UNRETIRED");
                 try { if (!Exact(a)) return Failure("ADMISSION_REJECTED"); a.stopping = true; }
                 finally { Monitor.Exit(gate); }
+                if(!CloseAcquisition(a,deadline,10000))return Failure("UNRETIRED"); // Retained close work starts before worker waits.
                 if (!RetirementLock(cleanupGate, deadline)) return Failure("UNRETIRED");
                 try {
                     bool workersSettled = false;
                     while (!workersSettled) {
                         if (!RetirementLock(gate, deadline)) return Failure("UNRETIRED");
                         try {
-                            workersSettled = a.workers == 0;
+                            workersSettled = a.workers == 0 && AcquisitionSettled(a,deadline,10000);
                             if (workersSettled && a.terminal) {
                                 try { ExactOwner(root, owner); }
                                 catch { return Failure("UNRETIRED"); }

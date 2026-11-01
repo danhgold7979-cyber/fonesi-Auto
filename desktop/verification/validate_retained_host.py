@@ -145,15 +145,18 @@ MANAGED_V2_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f75
 
 MANAGED_V3_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': 'c22e40441fb6bc9bd7d1b1b1aaced656572c3ded8c2666d006449dd8b2f45470', 'protocol': '3082dce2e17b728747187f3213863302bb2506a0ace746ff273b28759eff121d', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'fixture': '85b463edf046860370e20a4cbd05f456369f9ef8a42654d604e51134657083ae', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': '7988ea94db09b3567787fcb33eec5c616391210341aba0dd69e257e3e0940397', 'wrapper': 'c07aa2b221eea816045ecc4bfb881fc2309e4097680d059ea9a788fc73dfe3fb', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
 
+MANAGED_V4_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': 'd192f132cd7c4463ae2e3cd65d75f34b95ae10cdfab92dfb1eb61d3b60446d4f', 'protocol': '1959feb7f83d005fddf9c6df0762ca5c7dd21946fe3c2f1b8bd9056b2e426757', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'fixture': '1e7a2def3b57a3b79cfc51b6dc6143807aab7513d3bb387d9a8ac2ecf9303d8a', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': 'd1ba3f6cb95018fab74492d4f89579e1dc5ff6b04518085c7881c996accf4236', 'wrapper': '6a018a9694a155e28b849e620f55061cff76ed32a5a105195fc74c7f0b6fba6b', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
+
+
 
 def validate_managed(value):
-    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2, 3):
+    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2, 3, 4):
         reject()
     version = value['version']
     keys = ('version', 'scope', 'compileProcess', 'fixtureProcess', 'groupsPassed', 'compilerDiagnostics', 'sourceUnchanged', 'directoryCleanup', 'passed')
     exact_record(value, keys + (('inputHashes',) if version >= 2 else ()))
-    groups = {1: 8, 2: 10, 3: 19}[version]
-    expected_hashes = MANAGED_V2_HASHES if version == 2 else MANAGED_V3_HASHES
+    groups = {1: 8, 2: 10, 3: 19, 4: 27}[version]
+    expected_hashes = {2: MANAGED_V2_HASHES, 3: MANAGED_V3_HASHES, 4: MANAGED_V4_HASHES}.get(version, {})
     hashes = {}
     if version >= 2:
         hashes = value['inputHashes']
@@ -225,7 +228,7 @@ def managed_output(raw):
     return value
 
 
-def managed(base, current_server=False):
+def managed(base, current_server=False, current_discovery=False):
     if (not base.is_absolute() or base.resolve() != base or
             not stat.S_ISDIR(base.lstat().st_mode)):
         reject()
@@ -234,6 +237,8 @@ def managed(base, current_server=False):
         reject()
     value = managed_output(_read_owned(base, file.name))
     if current_server and value['version'] != 3:
+        reject()
+    if current_discovery and value['version'] != 4:
         reject()
     _write_new(base, 'retained-managed-validated.json', value)
     return value['passed']
@@ -247,8 +252,8 @@ def main(argv=None):
             ok = stage(Path(args[1]))
             print('RETAINED_HOST_STAGE_VALIDATED')
             return 0 if ok else 1
-        if args in (['managed'], ['managed-server']):
-            ok = managed(Path(__file__).resolve().parents[1], args == ['managed-server'])
+        if args in (['managed'], ['managed-server'], ['managed-discovery']):
+            ok = managed(Path(__file__).resolve().parents[1], args == ['managed-server'], args == ['managed-discovery'])
             print('RETAINED_MANAGED_VALIDATION_WRITTEN')
             print('RETAINED_MANAGED_VALIDATION_PASS' if ok else 'RETAINED_MANAGED_VALIDATION_FAIL')
             return 0 if ok else 1
@@ -256,7 +261,7 @@ def main(argv=None):
             reject()
         ok = publish(Path(__file__).resolve().parents[1] / '.retained-host-runtime')
     except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
-        print('RETAINED_MANAGED_VALIDATION_INVALID' if args in (['managed'], ['managed-server']) else 'RETAINED_HOST_VALIDATION_INVALID')
+        print('RETAINED_MANAGED_VALIDATION_INVALID' if args in (['managed'], ['managed-server'], ['managed-discovery']) else 'RETAINED_HOST_VALIDATION_INVALID')
         return 2
     print('RETAINED_HOST_VALIDATION_WRITTEN')
     print('RETAINED_HOST_VALIDATION_PASS' if ok else 'RETAINED_HOST_VALIDATION_FAIL')
