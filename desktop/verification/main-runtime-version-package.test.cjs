@@ -14,7 +14,9 @@ const helperFile = path.join(__dirname, 'main-runtime-version-package.cjs'),
   tree = 'b'.repeat(40);
 function fixture() {
   const temp = fs.realpathSync.native(
-      fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'pkv-')),
+      fs.mkdtempSync(
+        path.join(fs.realpathSync.native(process.env.RUNNER_TEMP || os.tmpdir()), 'pkv-'),
+      ),
     ),
     desktop = path.join(temp, 'd'),
     root = path.join(desktop, '.retained-host-runtime', 'r'),
@@ -91,6 +93,13 @@ function fixture() {
     },
     { filename: helperFile },
   );
+  // Shared semantic fixtures must satisfy the real startup budget before any case-specific fault.
+  try {
+    assert.equal(module.exports.pathBudget(root, extracted), true);
+  } catch (error) {
+    fs.rmSync(temp, { recursive: true, force: false });
+    throw error;
+  }
   return {
     api: module.exports,
     root,
@@ -171,6 +180,8 @@ test('branded output loading rechecks owned marker and exact module bytes with n
 test('hardlinked package payload is refused before binding publication', () => {
   const f = fixture();
   try {
+    f.api.prepareBinding(f.root, head, tree); // Positive complete baseline before introducing a hardlink.
+    fs.unlinkSync(path.join(f.root, 'package-binding.json'));
     const file = path.join(f.extracted, 'app/build/main.cjs');
     fs.linkSync(file, path.join(f.root, 'held'));
     assert.throws(() => f.api.prepareBinding(f.root, head, tree));
@@ -186,6 +197,28 @@ test('projected helper and packaged file limits refuse unsupported roots before 
     assert.throws(() => f.api.pathBudget(path.join(f.root, 'x'.repeat(80)), f.extracted));
     assert.throws(() => f.api.pathBudget(f.root, path.join(f.extracted, 'x'.repeat(260))));
     assert.equal(fs.existsSync(path.join(f.root, 'package-binding.json')), false);
+    const windows = { exports: {} };
+    vm.runInNewContext(fs.readFileSync(helperFile, 'utf8'), {
+      module: windows,
+      exports: windows.exports,
+      __dirname: 'D:\\a\\fonesi-Auto\\fonesi-Auto\\desktop\\verification',
+      Buffer,
+      TextDecoder,
+      require(name) {
+        return name === 'node:path' ? path.win32 : require(name);
+      },
+    });
+    const rootAt = (base) =>
+      path.win32.join(base, 'pkv-abcdef', 'd', '.retained-host-runtime', 'r');
+    const short = rootAt('D:\\a\\_temp'),
+      deep = rootAt('C:\\Users\\RUNNER~1\\AppData\\Local\\Temp');
+    assert.equal(
+      windows.exports.pathBudget(short, path.win32.join(short, 'relocated-package')),
+      true,
+    );
+    assert.throws(() =>
+      windows.exports.pathBudget(deep, path.win32.join(deep, 'relocated-package')),
+    );
   } finally {
     f.close();
   }

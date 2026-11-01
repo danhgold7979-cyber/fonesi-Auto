@@ -141,24 +141,26 @@ test('main mode is explicit and old transform still selects only original histor
   assert.match(ps, /240000,10000,32768/);
 });
 test('new main workflow is explicit JSON-only and never reruns unchanged managed or other native campaigns', () => {
-  const workflow = fs.readFileSync(
-      path.resolve(desktop, '../.github/workflows/phase-02-software.yml'),
-      'utf8',
-    ),
-    job = workflow
-      .slice(workflow.indexOf('  owned-main-version-development:'))
+  const source = fs
+    .readFileSync(path.resolve(desktop, '../.github/workflows/phase-02-software.yml'), 'utf8')
+    .replaceAll('\r\n', '\n');
+  for (const workflow of [source, source.replaceAll('\n', '\r\n')]) {
+    const job = workflow
+      .replaceAll('\r\n', '\n')
+      .slice(workflow.replaceAll('\r\n', '\n').indexOf('  owned-main-version-development:'))
       .split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
-  assert.match(job, /needs: windows-software-only/);
-  assert.match(job, /inputs.run_main_version/);
-  assert.match(job, /\[main-version\]/);
-  assert.match(job, /Invoke-RetainedHostCheck.ps1 -MainVersion/);
-  assert.match(job, /validate_main_runtime_version.py publish/);
-  assert.match(job, /outputs.written == 'true'/);
-  assert.doesNotMatch(
-    job,
-    /Invoke-RetainedManagedFixture|validate_retained_host.py managed|Invoke-Foundation|Invoke-Persistence|screenshots|\.png/,
-  );
-  assert.equal((job.match(/uses: actions\/upload-artifact/g) || []).length, 1);
+    assert.match(job, /needs: windows-software-only/);
+    assert.match(job, /inputs.run_main_version/);
+    assert.match(job, /\[main-version\]/);
+    assert.match(job, /Invoke-RetainedHostCheck.ps1 -MainVersion/);
+    assert.match(job, /validate_main_runtime_version.py publish/);
+    assert.match(job, /outputs.written == 'true'/);
+    assert.doesNotMatch(
+      job,
+      /Invoke-RetainedManagedFixture|validate_retained_host.py managed|Invoke-Foundation|Invoke-Persistence|screenshots|\.png/,
+    );
+    assert.equal((job.match(/uses: actions\/upload-artifact/g) || []).length, 1);
+  }
 });
 
 test('main workflow gate is exact under LF/CRLF and refuses missing, wrong or always-on conditions', () => {
