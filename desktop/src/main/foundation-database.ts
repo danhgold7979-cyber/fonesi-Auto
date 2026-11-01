@@ -6,6 +6,15 @@ import { dirname, resolve, win32 } from 'node:path';
 import { MIGRATIONS, TABLES, DATABASE_VERSION, epoch, checksum } from '../persistence-contract.ts';
 import { diagnosticId } from '../log-contract.ts';
 import { snapshotSettings, type SettingsSnapshot } from '../settings-contract.ts';
+import {
+  DURABLE_COLUMNS,
+  DURABLE_LIMITS,
+  snapshotDurable,
+  snapshotDurableDelta,
+  applyDurableDelta,
+  type DurableSnapshot,
+  type DurableCommitResult,
+} from './durable-contract.ts';
 // Internal main-only adapter. Caller holds the persistent data-root lease. No SQL
 // or path is accepted from renderer IPC; the integrated owner verifies the root.
 // Physical SQLite spelling only: logical ownership/identity paths remain unchanged.
@@ -78,6 +87,7 @@ function settingsRow(row: Record<string, unknown>): SettingsSnapshot {
 }
 function visibleTable(name: string, version: number): boolean {
   if (version < 1) return false;
+  if (Object.hasOwn(DURABLE_COLUMNS, name)) return version >= 4;
   if (name === 'app_settings_revision') return version >= 3;
   return version >= 2 || ['foundation_store', 'schema_migration'].includes(name);
 }
@@ -174,6 +184,7 @@ export class FoundationDatabase {
   private closed = false;
   private migrating = false;
   private settingsUncertain = false;
+  private durableUncertain = false;
   readonly filename: string;
   readonly storeId: string;
   constructor(filename: string, storeId: string, readOnly = false) {
@@ -253,9 +264,10 @@ export class FoundationDatabase {
     )
       throw new Error('DATABASE_INTEGRITY_FAILED');
     for (const name of Object.keys(TABLES)) {
-      if (!visibleTable(name, version)) continue;
+      if (!visibleTable(name, version) || Object.hasOwn(DURABLE_COLUMNS, name)) continue;
       validateRows(name, rows(this.connection, `SELECT * FROM ${name}`), version);
     }
+    if (version >= 4) this.durableRows();
     if (version > 0) {
       const identities = rows(this.connection, 'SELECT * FROM foundation_store');
       if (
@@ -342,7 +354,7 @@ export class FoundationDatabase {
   }
   readSettings(): SettingsSnapshot {
     this.validate();
-    if (this.closed || this.version !== 3 || this.settingsUncertain)
+    if (this.closed || this.version < 3 || this.settingsUncertain || this.durableUncertain)
       throw new Error('SETTINGS_RECOVERY_REQUIRED');
     const value = rows(
       this.connection,
@@ -371,6 +383,7 @@ export class FoundationDatabase {
       this.closed ||
       this.migrating ||
       this.settingsUncertain ||
+      this.durableUncertain ||
       !epoch(expectedRevision) ||
       expectedRevision === Number.MAX_SAFE_INTEGER ||
       !next ||
@@ -440,9 +453,139 @@ export class FoundationDatabase {
       return { ok: false, code: 'WRITE_FAILED' };
     }
   }
+  private durableRows(): DurableSnapshot {
+    const read = (table: keyof typeof DURABLE_COLUMNS, max: number) =>
+      rows(this.connection, `SELECT * FROM ${table} LIMIT ${max + 1}`).map((row) =>
+        Object.fromEntries(
+          Object.entries(row).map(([k, v]) => [
+            k,
+            typeof v === 'bigint'
+              ? v >= 0n && v <= BigInt(Number.MAX_SAFE_INTEGER)
+                ? Number(v)
+                : NaN
+              : v,
+          ]),
+        ),
+      );
+    const meta = read('registry_meta', 1);
+    const value = snapshotDurable({
+      meta: meta.length === 1 ? meta[0] : null,
+      devices: read('registry_device', DURABLE_LIMITS.devices),
+      bindings: read('registry_binding', DURABLE_LIMITS.bindings),
+      identityEvidence: read('registry_identity_evidence', DURABLE_LIMITS.identityEvidence),
+      captures: read('capture_artifact', DURABLE_LIMITS.captures),
+      holds: read('capture_hold', DURABLE_LIMITS.holds),
+    });
+    if (!value) throw new Error('DURABLE_RECOVERY_REQUIRED');
+    return value;
+  }
+  readDurable(): DurableSnapshot {
+    if (
+      this.closed ||
+      this.migrating ||
+      this.durableUncertain ||
+      this.settingsUncertain ||
+      this.version !== 4
+    )
+      throw new Error('DURABLE_RECOVERY_REQUIRED');
+    this.validate();
+    return this.durableRows();
+  }
+  commitDurable(
+    expectedRevision: number,
+    deltaInput: unknown,
+    admit: () => void,
+  ): DurableCommitResult {
+    const delta = snapshotDurableDelta(deltaInput);
+    if (
+      this.closed ||
+      this.migrating ||
+      this.durableUncertain ||
+      this.settingsUncertain ||
+      !epoch(expectedRevision) ||
+      expectedRevision === Number.MAX_SAFE_INTEGER ||
+      !delta ||
+      typeof admit !== 'function'
+    )
+      return { ok: false, code: 'RECOVERY_REQUIRED' };
+    let transaction = false,
+      commitStarted = false,
+      admissionFailed = false,
+      admissionError: unknown;
+    try {
+      this.readDurable();
+      this.connection.exec('BEGIN IMMEDIATE');
+      transaction = true;
+      const before = this.readDurable();
+      if (before.meta.revision !== expectedRevision) {
+        this.connection.exec('ROLLBACK');
+        transaction = false;
+        return { ok: false, code: 'CONFLICT' };
+      }
+      const next = applyDurableDelta(before, delta);
+      if (!next) throw new Error('DURABLE_DELTA_REJECTED');
+      // Closed table/column inventory only; no caller SQL. Replace within one FK-safe transaction.
+      for (const table of [
+        'capture_hold',
+        'capture_artifact',
+        'registry_identity_evidence',
+        'registry_binding',
+        'registry_device',
+        'registry_meta',
+      ] as const)
+        this.connection.exec(`DELETE FROM ${table}`);
+      const values = {
+        registry_meta: [next.meta],
+        registry_device: next.devices,
+        registry_binding: next.bindings,
+        registry_identity_evidence: next.identityEvidence,
+        capture_artifact: next.captures,
+        capture_hold: next.holds,
+      };
+      for (const table of Object.keys(DURABLE_COLUMNS) as (keyof typeof DURABLE_COLUMNS)[]) {
+        const columns = DURABLE_COLUMNS[table];
+        const sql = `INSERT INTO ${table} (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`;
+        statement(this.connection, sql, (q) => {
+          for (const row of values[table])
+            q.run(
+              ...columns.map((k) => (row as unknown as Record<string, SQLInputValue>)[k] ?? null),
+            );
+        });
+      }
+      this.validate();
+      try {
+        admit();
+      } catch (error) {
+        admissionFailed = true;
+        admissionError = error;
+        throw error;
+      }
+      commitStarted = true;
+      this.connection.exec('COMMIT');
+      transaction = false;
+      return { ok: true, value: this.readDurable() };
+    } catch {
+      if (transaction) {
+        try {
+          this.connection.exec('ROLLBACK');
+          transaction = false;
+        } catch {
+          this.durableUncertain = true;
+        }
+      }
+      if (commitStarted || this.durableUncertain) {
+        this.durableUncertain = true;
+        return { ok: false, code: 'OUTCOME_UNKNOWN' };
+      }
+      if (admissionFailed) throw admissionError;
+      return { ok: false, code: 'WRITE_FAILED' };
+    }
+  }
   async snapshot(destination: string): Promise<number> {
     if (
       this.closed ||
+      this.settingsUncertain ||
+      this.durableUncertain ||
       destination !== resolve(destination) ||
       realpathSync(dirname(destination)) !== dirname(destination) ||
       entry(destination) !== undefined

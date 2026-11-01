@@ -9,11 +9,19 @@ import {
   epoch,
   checksum,
 } from '../src/persistence-contract.ts';
-test('exact foundation schema has three migrations and six named tables only', () => {
-  assert.equal(MIGRATIONS.length, 3);
+test('exact foundation schema has four migrations and twelve exact named tables only', () => {
+  assert.equal(MIGRATIONS.length, 4);
   const names = [...MIGRATIONS.join('\n').matchAll(/CREATE TABLE ([a-z_]+)/g)].map((m) => m[1]);
   assert.deepEqual(names, Object.keys(TABLES));
-  assert.equal((MIGRATIONS.join('\n').match(/\) STRICT;/g) || []).length, 6);
+  assert.deepEqual(names.slice(6), [
+    'registry_meta',
+    'registry_device',
+    'registry_binding',
+    'registry_identity_evidence',
+    'capture_artifact',
+    'capture_hold',
+  ]);
+  assert.equal((MIGRATIONS.join('\n').match(/\) STRICT;/g) || []).length, 12);
   assert.equal(/CREATE TABLE (?:device|account|job|secret)/.test(MIGRATIONS.join('\n')), false);
 });
 test('maintenance admits only normal startup or one exact reviewed literal', () => {

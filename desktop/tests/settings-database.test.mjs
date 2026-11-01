@@ -54,7 +54,7 @@ const next = (db, patch = {}) => ({
   revision: db.readSettings().revision + 1,
   ...patch,
 });
-test('fresh schema3 exact defaults and unchanged first two historical migration hashes', async () => {
+test('latest schema4 preserves exact settings defaults and unchanged first two historical migration hashes', async () => {
   assert.deepEqual(MIGRATION_HASHES.slice(0, 2), [
     'a7dcc15acf94d6f8617716d4b096d1aa080fe59ecbf0b306688c4c81f2d14d73',
     '5f9d4df89fbf0ee078120acd0810c8b1e0367bbee6cb60f9be64f35814cd44b3',
@@ -65,8 +65,8 @@ test('fresh schema3 exact defaults and unchanged first two historical migration 
     db = new FoundationDatabase(f.file, f.id);
     const seen = [];
     await db.migrate(provider(db, f, seen), 1000);
-    assert.deepEqual(seen, [0, 1, 2]);
-    assert.equal(db.version, 3);
+    assert.deepEqual(seen, [0, 1, 2, 3]);
+    assert.equal(db.version, 4);
     assert.deepEqual(db.readSettings(), {
       revision: 0,
       ...DEFAULT_PREFERENCES,
@@ -239,8 +239,8 @@ test('existing schema2 requires version2 prerequisite and preserves foundation r
     assert.equal(db.fingerprint(), fingerprint);
     const seen = [];
     await db.migrate(provider(db, f, seen), 2000);
-    assert.deepEqual(seen, [2]);
-    assert.equal(db.version, 3);
+    assert.deepEqual(seen, [2, 3]);
+    assert.equal(db.version, 4);
     assert.deepEqual(
       statement(db.connection, 'SELECT * FROM foundation_store', (s) => s.all()),
       before,

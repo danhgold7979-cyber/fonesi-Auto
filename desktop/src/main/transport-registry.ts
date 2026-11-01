@@ -1,6 +1,7 @@
 // Pure main-only continuity ledger. Supplied resolver evidence is not acquired here.
-// No serialization/import API: durable registry custody requires a later reviewed contract.
+// Restart reconstruction accepts only validated committed startup ledger shape, never live authority.
 import { snapshotDiscoveryRow, type AdbDiscoveryRow } from './adb-discovery.ts';
+import { snapshotDurable } from './durable-contract.ts';
 export type RegistrySource = 'ADB_DISCOVERY' | 'SYNTHETIC_TEST';
 export type RegistryDevice = Readonly<{
   deviceId: string;
@@ -477,4 +478,48 @@ export function reconcileRegistry(
     for (const [name, token] of faults) if (error === token) code = name;
     return Object.freeze({ ok: false, code, snapshot: original });
   }
+}
+
+// Main RegistryStore calls only after confirmed STARTUP COMMIT. Structural validation
+// cannot itself prove disk durability; reconstruction always discards live authority.
+export function reconstructDisconnectedRegistry(input: unknown): RegistrySnapshot | null {
+  const value = snapshotDurable(input);
+  if (
+    !value ||
+    value.meta.revision === 0 ||
+    value.meta.host_epoch === 0 ||
+    value.meta.last_change_kind !== 'STARTUP' ||
+    value.bindings.some((b) => b.retired !== 1) ||
+    value.devices.some((d) => d.generation === 0)
+  )
+    return null;
+  return freeze({
+    version: 1,
+    revision: value.meta.revision,
+    sequence: null,
+    observedAtUtc: null,
+    source: null,
+    devices: value.devices.map((d) => ({
+      deviceId: d.device_id,
+      generation: d.generation,
+      state: 'DISCONNECTED',
+      verification: 'PROVISIONAL',
+      evidenceIds: value.identityEvidence
+        .filter((e) => e.device_id === d.device_id)
+        .map((e) => e.evidence_id),
+      currentBindingId: null,
+    })),
+    bindings: value.bindings.map((b) => ({
+      bindingId: b.binding_id,
+      deviceId: b.device_id,
+      generation: b.generation,
+      serial: b.serial,
+      transportId: b.transport_id,
+      state: b.last_state,
+      observedAtUtc: b.observed_utc,
+      source: b.source,
+      retired: true,
+    })),
+    claims: [],
+  });
 }

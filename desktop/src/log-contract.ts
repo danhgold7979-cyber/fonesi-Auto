@@ -1,3 +1,9 @@
+import {
+  DURABLE_CODES,
+  DURABLE_OPERATIONS,
+  type DurableCode,
+  type DurableAudit,
+} from './durable-audit-contract.ts';
 import { FLEET_ERRORS, type FleetErrorCode } from './fleet-contract.ts';
 import {
   SETTINGS_ERRORS,
@@ -124,7 +130,46 @@ export type FleetLogRecord = FleetAuditFields &
     task: 'P2-10';
     event: 'FLEET_OPERATION';
   }>;
-export type LogRecord = LegacyLogRecord | VaultLogRecord | SettingsLogRecord | FleetLogRecord;
+export type DurableAuditFields = DurableAudit;
+export type DurableLogRecord = DurableAuditFields &
+  Readonly<{
+    schemaVersion: 5;
+    runId: string;
+    sequence: number;
+    utc: string;
+    severity: 'INFO' | 'WARN';
+    component: 'MAIN';
+    task: 'P2-03' | 'P2-09';
+    event: 'DURABLE_STORE_OPERATION';
+  }>;
+function durableTuple(record: Record<string, unknown>): boolean {
+  return (
+    record.component === 'MAIN' &&
+    record.event === 'DURABLE_STORE_OPERATION' &&
+    typeof record.operation === 'string' &&
+    DURABLE_OPERATIONS.some((x) => x === record.operation) &&
+    record.task ===
+      (['STARTUP', 'RECONCILE', 'DISPLAY'].includes(record.operation) ? 'P2-03' : 'P2-09') &&
+    ['INTENT', 'RESULT'].includes(record.phase as string) &&
+    diagnosticId(record.diagnosticId) &&
+    diagnosticId(record.operationId) &&
+    record.diagnosticId !== record.operationId &&
+    (record.code === 'OK' || DURABLE_CODES.includes(record.code as DurableCode)) &&
+    record.severity === (record.code === 'OK' ? 'INFO' : 'WARN') &&
+    (record.expectedRevision === null || validSettingsRevision(record.expectedRevision)) &&
+    (record.resultingRevision === null || validSettingsRevision(record.resultingRevision)) &&
+    (record.phase !== 'INTENT' ||
+      (record.code === 'OK' &&
+        record.expectedRevision !== null &&
+        record.resultingRevision === null))
+  );
+}
+export type LogRecord =
+  | LegacyLogRecord
+  | VaultLogRecord
+  | SettingsLogRecord
+  | FleetLogRecord
+  | DurableLogRecord;
 function fleetTuple(record: Record<string, unknown>): boolean {
   return (
     record.component === 'MAIN' &&
@@ -307,6 +352,8 @@ export function encodeLogRecord(input: unknown): string | null {
     const version = Object.getOwnPropertyDescriptor(input, 'schemaVersion');
     if (!version || !Object.hasOwn(version, 'value')) return null;
     if (version.value === 2) fields.push('operation', 'phase', 'secretId', 'revision');
+    else if (version.value === 5)
+      fields.push('operation', 'phase', 'operationId', 'expectedRevision', 'resultingRevision');
     else if (version.value === 3 || version.value === 4)
       fields.push('operation', 'phase', 'expectedRevision', 'resultingRevision');
     else if (version.value !== 1) return null;
@@ -330,7 +377,9 @@ export function encodeLogRecord(input: unknown): string | null {
           ? vaultTuple(record)
           : record.schemaVersion === 3
             ? settingsTuple(record)
-            : fleetTuple(record))
+            : record.schemaVersion === 4
+              ? fleetTuple(record)
+              : durableTuple(record))
     )
       return null;
     const encoded = JSON.stringify(record) + '\n';

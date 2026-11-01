@@ -37,7 +37,8 @@ bounded PASS; isolated-server development refused an existing profile before lau
 Actual device/physical/AVD/input/capture/Unicode/wireless acceptance tests remain NOT_RUN.
 [Fleet integration](../evidence/P2-fleet-facade-integration-2026-11-01.md),
 [selection/fault fixtures](../evidence/P2-selection-diagnostics-faults-software-2026-11-01.md)
-and [durable source entry](P2-DURABLE-REGISTRY-CAPTURE-PROPOSAL.md) retain exact scopes,
+and [durable implementation](../evidence/P2-durable-registry-capture-2026-11-01.md) under its
+[approved source entry](P2-DURABLE-REGISTRY-CAPTURE-PROPOSAL.md) retain exact scopes,
 not wholesale task completion. Each row names deliverable, direct dependencies, both positive and negative assertions, evidence and rollback. Common evidence/rollback rules in §§5–6 apply to every row.
 
 | ID / deliverable and proposed module | Dependencies | Positive acceptance | Negative / failure acceptance | Required evidence / rollback |

@@ -400,6 +400,23 @@ export class FoundationPersistence {
         current().commitSettings(expectedRevision, next, admit),
     });
   }
+  durableAdapter(): Pick<FoundationDatabase, 'readDurable' | 'commitDurable'> {
+    const current = () => {
+      if (
+        !this.database ||
+        this.stopping ||
+        this.restored ||
+        this.database.version !== DATABASE_VERSION
+      )
+        throw new Error('DURABLE_RECOVERY_REQUIRED');
+      return this.database;
+    };
+    current().readDurable();
+    return Object.freeze({
+      readDurable: () => current().readDurable(),
+      commitDurable: (revision, delta, admit) => current().commitDurable(revision, delta, admit),
+    });
+  }
   async list(): Promise<readonly { backupId: string; reason: string; protected: boolean }[]> {
     return this.lane(async () => {
       if (!this.database) throw new Error('DATABASE_NOT_READY');

@@ -141,6 +141,15 @@
         "./main/transport-registry.js": {
           "emptyRegistry": "value"
         },
+        "./main/durable-coordinator.js": {
+          "createDurableCoordinator": "value"
+        },
+        "./main/registry-store.js": {
+          "createRegistryStore": "value"
+        },
+        "./main/capture-store.js": {
+          "CaptureStore": "value"
+        },
         "./main/settings-window.js": {
           "captureNativeWindow": "value",
           "restoreWindowOptions": "value",
@@ -278,6 +287,12 @@
     "log-contract.ts": {
       "role": "contract",
       "imports": {
+        "./durable-audit-contract.ts": {
+          "DURABLE_CODES": "value",
+          "DURABLE_OPERATIONS": "value",
+          "DurableCode": "type",
+          "DurableAudit": "type"
+        },
         "./fleet-contract.ts": {
           "FLEET_ERRORS": "value",
           "FleetErrorCode": "type"
@@ -446,7 +461,8 @@
           "LogRecord": "type",
           "VaultAuditFields": "type",
           "SettingsAuditFields": "type",
-          "FleetAuditFields": "type"
+          "FleetAuditFields": "type",
+          "DurableAuditFields": "type"
         }
       }
     },
@@ -500,6 +516,15 @@
         "../settings-contract.ts": {
           "snapshotSettings": "value",
           "SettingsSnapshot": "type"
+        },
+        "./durable-contract.ts": {
+          "DURABLE_COLUMNS": "value",
+          "DURABLE_LIMITS": "value",
+          "snapshotDurable": "value",
+          "snapshotDurableDelta": "value",
+          "applyDurableDelta": "value",
+          "DurableSnapshot": "type",
+          "DurableCommitResult": "type"
         }
       }
     },
@@ -1122,6 +1147,9 @@
         "./adb-discovery.ts": {
           "snapshotDiscoveryRow": "value",
           "AdbDiscoveryRow": "type"
+        },
+        "./durable-contract.ts": {
+          "snapshotDurable": "value"
         }
       }
     },
@@ -1260,6 +1288,103 @@
           "FleetRequest": "type",
           "FleetSnapshot": "type",
           "FleetErrorCode": "type"
+        }
+      }
+    },
+    "durable-audit-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "main/durable-contract.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-discovery.ts": {
+          "validAdbSerial": "value",
+          "validTransportId": "value"
+        }
+      }
+    },
+    "main/durable-coordinator.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./durable-contract.ts": {
+          "snapshotDurable": "value",
+          "snapshotDurableDelta": "value",
+          "DurableSnapshot": "type",
+          "DurableDelta": "type"
+        },
+        "../durable-audit-contract.ts": {
+          "DURABLE_OPERATIONS": "value",
+          "DurableCode": "type",
+          "DurableOperation": "type",
+          "DurableHealth": "type",
+          "DurableAudit": "type"
+        }
+      }
+    },
+    "main/registry-store.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./transport-registry.ts": {
+          "reconstructDisconnectedRegistry": "value",
+          "reconcileRegistry": "value",
+          "RegistrySnapshot": "type"
+        },
+        "./durable-contract.ts": {
+          "DurableDelta": "type",
+          "DurableSnapshot": "type",
+          "DurableDevice": "type",
+          "DurableBinding": "type",
+          "DurableIdentityEvidence": "type"
+        },
+        "./durable-coordinator.ts": {
+          "DurableFault": "value",
+          "DurableCoordinator": "type",
+          "DurableContext": "type",
+          "DurableMutationResult": "type"
+        }
+      }
+    },
+    "main/capture-store.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value",
+          "realpath": "value",
+          "mkdir": "value",
+          "open": "value",
+          "opendir": "value",
+          "link": "value",
+          "unlink": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "dirname": "value",
+          "join": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "./input-contract.ts": {
+          "snapshotDisplayEvidence": "value",
+          "DisplayEvidence": "type"
+        },
+        "./capture-contract.ts": {
+          "validateCapturePng": "value",
+          "validateHierarchyXml": "value",
+          "classifyCaptureEvidence": "value"
+        },
+        "./durable-contract.ts": {
+          "DurableCapture": "type",
+          "DurableSnapshot": "type",
+          "DurableDelta": "type"
+        },
+        "./durable-coordinator.ts": {
+          "DurableFault": "value",
+          "DurableContext": "type",
+          "DurableStepResult": "type",
+          "DurableDenied": "type",
+          "createDurableCoordinator": "type"
         }
       }
     }

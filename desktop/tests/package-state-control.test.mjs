@@ -143,16 +143,25 @@ test('actual SQLite settings facts exclude native geometry and reject corrupt CU
     const { data, id } = marker(f.root),
       file = path.join(data, 'active.sqlite');
     let db = new FoundationDatabase(file, id);
-    await db.migrate(async (version) => {
-      const snap = path.join(f.root, `snap-${version}.sqlite`);
-      await db.snapshot(snap);
-      const copy = new FoundationDatabase(snap, id, true);
-      try {
-        return { backupId: randomUUID(), schemaVersion: version, fingerprint: copy.fingerprint() };
-      } finally {
-        copy.close();
-      }
-    }, 1000);
+    // Historical schema3 campaign: deliberately stop before migration4.
+    await assert.rejects(
+      db.migrate(async (version) => {
+        if (version === 3) throw new Error('HISTORICAL_SCHEMA3_STOP');
+        const snap = path.join(f.root, `snap-${version}.sqlite`);
+        await db.snapshot(snap);
+        const copy = new FoundationDatabase(snap, id, true);
+        try {
+          return {
+            backupId: randomUUID(),
+            schemaVersion: version,
+            fingerprint: copy.fingerprint(),
+          };
+        } finally {
+          copy.close();
+        }
+      }, 1000),
+      /HISTORICAL_SCHEMA3_STOP/,
+    );
     db.close();
     const facts = databaseFacts(data, FoundationDatabase, statement);
     assert.equal(facts.version, 3);

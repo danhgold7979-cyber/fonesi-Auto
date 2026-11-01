@@ -56,8 +56,8 @@ test('actual SQLite migration core uses real snapshot witnesses, WAL/FK and reop
         snap.close();
       }
     }, 1000);
-    assert.equal(copies, 3);
-    assert.equal(db.version, 3);
+    assert.equal(copies, 4);
+    assert.equal(db.version, 4);
     const fingerprint = db.fingerprint();
     assert.throws(
       () =>
@@ -171,7 +171,7 @@ test('newer schema and corrupt bytes fail without resetting database content', (
   let db;
   try {
     db = new FoundationDatabase(f.file, f.id);
-    db.connection.exec('PRAGMA user_version=3');
+    db.connection.exec('PRAGMA user_version=5');
     db.close();
     db = undefined;
     const before = readFileSync(f.file);
@@ -243,7 +243,7 @@ test('online snapshot remains coherent while a real second connection commits', 
     await pending;
     snapshot = new FoundationDatabase(target, f.id, true);
     snapshot.validate();
-    assert.equal(snapshot.version, 3);
+    assert.equal(snapshot.version, 4);
     const row = statement(
       snapshot.connection,
       'SELECT created_utc,last_auto_admitted_utc FROM foundation_store',

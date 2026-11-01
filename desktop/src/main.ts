@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { installFleetBridge } from './fleet-bridge.js';
 import { createFleetService, type FleetService } from './main/fleet-service.js';
 import { emptyRegistry } from './main/transport-registry.js';
+import { createDurableCoordinator } from './main/durable-coordinator.js';
+import { createRegistryStore } from './main/registry-store.js';
+import { CaptureStore } from './main/capture-store.js';
 import {
   captureNativeWindow,
   restoreWindowOptions,
@@ -71,6 +74,7 @@ let persistence: FoundationPersistence | undefined;
 const persistenceLifecycle = createPersistenceLifecycle<FoundationPersistence>();
 const secretLifecycle = createPersistenceLifecycle<SecretStore>();
 const fleetLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
+const durableLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
 const settingsLifecycle = createPersistenceLifecycle<{ shutdown: () => Promise<void> }>();
 let backupTimer: ReturnType<typeof setInterval> | undefined;
 function reportLoggingDegraded(): void {
@@ -305,9 +309,46 @@ try {
         stylesheet.toString('utf8'),
       );
       bridge = installFoundationBridge(ipcMain, logger);
-      const registry = emptyRegistry();
+      const empty = emptyRegistry();
+      let durableRegistry: ReturnType<typeof createRegistryStore> | undefined;
+      if (persistence && persistenceEntry) {
+        const ownedPersistence = persistence;
+        const assertDurableOwner = () => {
+          if (closing) throw new Error('OWNER_REVOKED');
+          assertPreparedPersistenceLease(persistenceEntry);
+        };
+        const coordinator = createDurableCoordinator({
+          db: ownedPersistence.durableAdapter(),
+          assertOwnedSync: assertDurableOwner,
+          clock: () => Date.now(),
+          newId: () => randomUUID(),
+          audit: (fields) => logger?.durableAudit(fields) ?? Promise.resolve('DEGRADED'),
+        });
+        await durableLifecycle.open(async () => ({ shutdown: () => coordinator.close() }));
+        durableRegistry = createRegistryStore({
+          coordinator,
+          nextId: () => randomUUID(),
+          quarantined: () => ownedPersistence.restored,
+          assertOwnedSync: assertDurableOwner,
+        });
+        const started = await durableRegistry.startup();
+        if (!started.ok) throw new Error('DURABLE_STARTUP_FAILED');
+        const captures = new CaptureStore({
+          coordinator,
+          dataRoot: ownedPersistence.root,
+          storeId: ownedPersistence.storeId,
+          assertOwnedSync: assertDurableOwner,
+          clock: () => Date.now(),
+          newId: () => randomUUID(),
+          // No admitted display/acquisition provider exists yet. Persisted metadata is not authority.
+          currentDisplay: () => ({ display: null, connected: false }),
+        });
+        const recovered = await captures.recover(started.revision);
+        if (!recovered.ok) throw new Error('DURABLE_RECOVERY_REQUIRED');
+      }
+      const registry = durableRegistry;
       fleetService = createFleetService({
-        registry: () => registry,
+        registry: () => (registry ? registry.snapshot() : empty),
         assertOwnedSync: () => {
           if (closing || !persistenceEntry) throw new Error('OWNER_REVOKED');
           assertPreparedPersistenceLease(persistenceEntry);
@@ -480,6 +521,7 @@ try {
       try {
         await fleetLifecycle.stop();
         await settingsLifecycle.stop();
+        await durableLifecycle.stop();
         cleanupComplete = cleanup() && cleanupComplete;
         await secretLifecycle.stop();
         await persistenceLifecycle.stop();

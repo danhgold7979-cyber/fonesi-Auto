@@ -26,11 +26,11 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual sixty-six modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 66, runtimeInputs: 66 });
+test('actual seventy-one modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 71, runtimeInputs: 71 });
 });
-test('fleet stays in its exact role boundary and graph limit remains finite at sixty-six', async () => {
-  assert.equal(Object.keys(map.modules).length, 66);
+test('fleet stays in its exact role boundary and graph limit remains finite at seventy-one', async () => {
+  assert.equal(Object.keys(map.modules).length, 71);
   await assert.rejects(
     () =>
       validateGraph(actual(), {
@@ -60,6 +60,24 @@ test('fleet stays in its exact role boundary and graph limit remains finite at s
       ),
     /LAYER_DENIED/,
   );
+});
+test('durable main-only closure is source-bound without new standalone bundle surfaces', async () => {
+  const { inputs, outputs } = await import('../scripts/build-manifest.mjs');
+  for (const name of [
+    'durable-audit-contract.ts',
+    'main/durable-contract.ts',
+    'main/durable-coordinator.ts',
+    'main/registry-store.ts',
+    'main/capture-store.ts',
+  ])
+    assert.ok(inputs.includes(`src/${name}`));
+  for (const name of ['durable-coordinator.cjs', 'registry-store.cjs', 'capture-store.cjs'])
+    assert.equal(outputs.includes(name), false);
+  for (const name of ['renderer.tsx', 'preload.ts', 'fleet-client.ts', 'durable-audit-contract.ts'])
+    await denied(
+      { ...actual(), [name]: "import { CaptureStore } from './main/capture-store.ts';" },
+      /EDGE_DENIED/,
+    );
 });
 test('renderer cannot import native, Electron, or main-owned profile services', async () => {
   for (const statement of [

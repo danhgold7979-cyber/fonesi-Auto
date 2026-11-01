@@ -333,3 +333,14 @@ Node/owned-filesystem tests are not native Android capture or physical identity 
 A scoped Windows filesystem campaign can verify platform semantics after source review;
 real-device P2 acceptance remains independently required. No source changes or database
 writes are authorized by this proposal itself.
+
+### Implementation clarification — 2026-11-01
+
+The shared no-queue coordinator reports `BUSY` as a fixed `NOT_COMMITTED` admission
+result with null operation/diagnostic IDs and DEGRADED audit health; no INTENT or
+filesystem/SQL effect occurs. This makes the already required lane refusal explicit
+in the exact error vocabulary. Capture mutation plans carry a private issued-effect
+witness: after an exclusive create/link/unlink has been issued, later ownership or
+validation failure is conservatively OUTCOME_UNKNOWN and fences the coordinator
+until reopening. It is not represented as a filesystem rollback merely because SQL
+did not commit. The witness is internal only, not a renderer or transport capability.

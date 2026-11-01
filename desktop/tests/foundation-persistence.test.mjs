@@ -13,6 +13,10 @@ import {
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { deflateSync } from 'node:zlib';
+import { createDurableCoordinator } from '../src/main/durable-coordinator.ts';
+import { createRegistryStore } from '../src/main/registry-store.ts';
+import { CaptureStore } from '../src/main/capture-store.ts';
 import { FoundationDatabase } from '../src/main/foundation-database.ts';
 import { FoundationPersistence } from '../src/main/foundation-persistence.ts';
 import {
@@ -79,7 +83,7 @@ test('orchestrator refuses migration without separate durability evidence, then 
     );
     await app.initialize(1002);
     await assert.rejects(app.initialize(1002), /DATABASE_ALREADY_OPEN/);
-    assert.equal((await app.list()).length, 3);
+    assert.equal((await app.list()).length, 4);
     assert.ok((await app.list()).every((row) => row.protected));
     const manual = await app.backup(1003);
     assert.equal(manual.header.reason, 'MANUAL');
@@ -104,7 +108,7 @@ test('orchestrator refuses migration without separate durability evidence, then 
     try {
       await reopened.initialize(1006);
       assert.equal(await reopened.backup(1007, true), null);
-      assert.equal((await reopened.list()).length, 5);
+      assert.equal((await reopened.list()).length, 6);
     } finally {
       reopened.close();
     }
@@ -168,7 +172,7 @@ test('existing version1 active database migrates behind authenticated content wi
       previous.close();
     }
     await app.initialize(1002);
-    assert.equal((await app.list()).length, 3);
+    assert.equal((await app.list()).length, 4);
     assert.ok((await app.list()).every((row) => row.protected));
   }));
 
@@ -203,7 +207,7 @@ test('corrupted final activation copy is never promoted', async () =>
     }
   }));
 
-for (const snapshotVersion of [0, 2, 3])
+for (const snapshotVersion of [0, 2, 3, 4])
   test(`restored schema${snapshotVersion} root stays quarantined after reopen/migration and automatic admission stays off`, async () =>
     fixture(async ({ root, location, storeId, app }) => {
       const selected = join(root, 'selected');
@@ -224,10 +228,10 @@ for (const snapshotVersion of [0, 2, 3])
       const backup =
         snapshotVersion === 0
           ? bootstrap
-          : snapshotVersion === 3
+          : snapshotVersion === 4
             ? await app.backup(1002)
             : JSON.parse(readFileSync(join(location.root, 'migration-backups.json'), 'utf8')).find(
-                (receipt) => receipt.header.schemaVersion === 2,
+                (receipt) => receipt.header.schemaVersion === snapshotVersion,
               );
       assert.equal(backup.header.schemaVersion, snapshotVersion);
       const checkpoint = join(location.root, `key-checkpoint-${randomUUID()}.json`);
@@ -253,6 +257,7 @@ for (const snapshotVersion of [0, 2, 3])
         reopened = await FoundationPersistence.open(restoredLocation, token, keys, false);
         await reopened.initialize(1003);
         assert.equal(reopened.restored, true);
+        assert.throws(() => reopened.durableAdapter(), /DURABLE_RECOVERY_REQUIRED/);
         assert.equal(await reopened.backup(1004, true), null);
         reopened.close();
         const database = new FoundationDatabase(join(restoredRoot, 'active.sqlite'), storeId, true);
@@ -317,5 +322,199 @@ test('packaged persistence refuses backup and restore writes into its admitted a
       assert.deepEqual(readFileSync(join(location.root, 'active.sqlite')), before);
     } finally {
       guarded.close();
+    }
+  }));
+
+function tinyPng() {
+  const chunk = (name, data) => {
+    const type = Buffer.from(name),
+      out = Buffer.alloc(data.length + 12);
+    out.writeUInt32BE(data.length);
+    type.copy(out, 4);
+    data.copy(out, 8);
+    let crc = 0xffffffff;
+    for (const byte of Buffer.concat([type, data])) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    out.writeUInt32BE((crc ^ 0xffffffff) >>> 0, data.length + 8);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1);
+  header.writeUInt32BE(1, 4);
+  header[8] = 8;
+  header[9] = 2;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.from([0, 1, 2, 3]))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+test('actual persistence adapter composes durable startup and PNG lifecycle; DB-only restore carries metadata without authority or payload', async () =>
+  fixture(async ({ root, location, storeId, ownerToken, app }) => {
+    assert.throws(() => app.durableAdapter(), /DURABLE_RECOVERY_REQUIRED/);
+    const selected = join(root, 'selected');
+    mkdirSync(selected);
+    const bootstrap = await app.provision(selected, 1000);
+    // Synthetic wrapping and supervisor proof only: no native key or live display claim.
+    await writePersistenceFile(
+      join(location.root, 'key-durability-proof.json'),
+      JSON.stringify({
+        version: 1,
+        storeId,
+        backupId: bootstrap.header.backupId,
+        locationId: bootstrap.header.locationId,
+        encryptedSha256: bootstrap.encryptedSha256,
+        state: 'ORDERLY_AND_ABRUPT_RECOVERED',
+      }),
+    );
+    await app.initialize(1001);
+    const adapter = app.durableAdapter();
+    let current = null;
+    const make = (db) => {
+      const coordinator = createDurableCoordinator({
+        db,
+        assertOwnedSync: () => {},
+        clock: () => 1100,
+        newId: randomUUID,
+        audit: async () => 'AVAILABLE',
+      });
+      const registry = createRegistryStore({
+        coordinator,
+        nextId: randomUUID,
+        quarantined: () => false,
+        assertOwnedSync: () => {},
+      });
+      const captures = new CaptureStore({
+        coordinator,
+        dataRoot: location.root,
+        storeId,
+        assertOwnedSync: () => {},
+        clock: () => 1100,
+        newId: randomUUID,
+        currentDisplay: () => ({ display: current, connected: current !== null }),
+      });
+      return { coordinator, registry, captures };
+    };
+    const first = make(adapter);
+    let receiptId, raw;
+    try {
+      assert.equal((await first.registry.startup()).ok, true);
+      assert.equal(
+        (
+          await first.registry.reconcile(adapter.readDurable().meta.revision, {
+            sequence: 1,
+            observedAtUtc: 1100,
+            source: 'SYNTHETIC_TEST',
+            rows: [{ serial: 'synthetic-display', transportId: '1', state: 'DEVICE' }],
+            proofs: [],
+          })
+        ).ok,
+        true,
+      );
+      const rows = adapter.readDurable(),
+        device = rows.devices[0],
+        binding = rows.bindings[0];
+      current = {
+        version: 1,
+        evidenceId: randomUUID(),
+        deviceId: device.device_id,
+        bindingId: binding.binding_id,
+        generation: device.generation,
+        serial: binding.serial,
+        displayId: 0,
+        width: 1,
+        height: 1,
+        rotation: 0,
+        orientationEpoch: device.display_profile_revision,
+        observedUtc: 1100,
+        validUntilUtc: 2100,
+        source: 'SYNTHETIC_TEST',
+      };
+      const reserved = await first.captures.reserve(rows.meta.revision, {
+        kind: 'PNG',
+        display: current,
+      });
+      assert.equal(reserved.ok, true, JSON.stringify(reserved));
+      receiptId = reserved.value;
+      raw = tinyPng();
+      const completed = await first.captures.complete(
+        adapter.readDurable().meta.revision,
+        receiptId,
+        raw,
+      );
+      assert.equal(completed.ok, true, JSON.stringify(completed));
+      assert.deepEqual(Buffer.from((await first.captures.read(receiptId)).data), raw);
+    } finally {
+      first.registry.close();
+      await first.coordinator.close();
+    }
+    const backup = await app.backup(1200);
+    assert.equal(backup.header.schemaVersion, 4);
+    app.close();
+    assert.throws(() => adapter.readDurable(), /DURABLE_RECOVERY_REQUIRED/);
+    assert.throws(() => adapter.commitDurable(0, {}, () => {}), /DURABLE_RECOVERY_REQUIRED/);
+    const reopened = await FoundationPersistence.open(location, ownerToken, keys, false);
+    try {
+      assert.throws(() => reopened.durableAdapter(), /DURABLE_RECOVERY_REQUIRED/);
+      await reopened.initialize(1201);
+      const nextAdapter = reopened.durableAdapter(),
+        next = make(nextAdapter);
+      try {
+        assert.equal(nextAdapter.readDurable().captures[0].state, 'VALIDATED');
+        assert.deepEqual(Buffer.from((await next.captures.read(receiptId)).data), raw);
+        current = null;
+        assert.equal((await next.registry.startup()).ok, true);
+        assert.equal(next.registry.snapshot().devices[0].verification, 'PROVISIONAL');
+        assert.equal(next.registry.snapshot().devices[0].state, 'DISCONNECTED');
+        assert.equal((await next.captures.read(receiptId)).ok, false);
+      } finally {
+        next.registry.close();
+        await next.coordinator.close();
+      }
+      const checkpoint = join(location.root, `key-checkpoint-${randomUUID()}.json`);
+      await writePersistenceFile(
+        checkpoint,
+        JSON.stringify({
+          os_crypt: {
+            encrypted_key: Buffer.from('DPAPIsynthetic-retained-key').toString('base64'),
+          },
+        }),
+      );
+      const restoreParent = join(root, 'restore-capture');
+      mkdirSync(restoreParent);
+      const restoredRoot = await reopened.restore(
+        backup.header.backupId,
+        restoreParent,
+        checkpoint,
+      );
+      const restoredLocation = {
+          root: restoredRoot,
+          parentToken: readFileSync(join(dirname(restoredRoot), '.owner'), 'utf8'),
+        },
+        token = randomUUID(),
+        lease = await acquirePersistenceLease(restoredLocation, token);
+      let restored;
+      try {
+        restored = await FoundationPersistence.open(restoredLocation, token, keys, false);
+        await restored.initialize(1202);
+        assert.throws(() => restored.durableAdapter(), /DURABLE_RECOVERY_REQUIRED/);
+        assert.equal(existsSync(join(restoredRoot, 'captures-v1')), false);
+        restored.close();
+        const db = new FoundationDatabase(join(restoredRoot, 'active.sqlite'), storeId, true);
+        try {
+          assert.equal(db.readDurable().captures[0].evidence_id, receiptId);
+        } finally {
+          db.close();
+        }
+      } finally {
+        restored?.close();
+        await lease.release();
+      }
+    } finally {
+      reopened.close();
     }
   }));

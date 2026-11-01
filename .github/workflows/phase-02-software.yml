@@ -201,9 +201,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Schema3 historical runner is suspended on the schema4 application until its exact envelope is reviewed.
   owned-fleet-ui-development:
     needs: windows-software-only
-    if: (github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[fleet-ui]'))
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[fleet-ui]')))
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:

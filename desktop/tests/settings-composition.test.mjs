@@ -270,7 +270,7 @@ test('actual main bounds settings drain before destruction and database shutdown
   assert.ok(main.includes('settingsDrain=settingsStore?.shutdown()'));
   assert.ok(
     main.includes(
-      'awaitsettingsLifecycle.stop();cleanupComplete=cleanup()&&cleanupComplete;awaitsecretLifecycle.stop();awaitpersistenceLifecycle.stop();',
+      'awaitsettingsLifecycle.stop();awaitdurableLifecycle.stop();cleanupComplete=cleanup()&&cleanupComplete;awaitsecretLifecycle.stop();awaitpersistenceLifecycle.stop();',
     ),
   );
   assert.ok(
