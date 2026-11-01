@@ -1,6 +1,6 @@
 # P2-02 — private retained server source integration
 
-**SOURCE IMPLEMENTED / WINDOWS MANAGED GATE PREPARED — actual server lifecycle remains UNMET.**
+**SOURCE IMPLEMENTED / WINDOWS COMPILE + MANAGED19 PASS — actual server lifecycle remains UNMET.**
 The accepted [P2-01 criterion audit](P2-01-canonical-criterion-audit-2026-11-01.md)
 remains technical PASS with formal dependencies pending. This checkpoint advances the
 next original requirement, P2-02 owned server startup/health/shutdown; it does not add
@@ -17,8 +17,9 @@ server autostart, renderer/preload command, device operation or profile workarou
 The new private SERVER_ONLY scope is separate from the existing VERSION_ONLY default.
 
 The local implementation provides executable injected controller/adapter composition
-and authored managed-reader fixture coverage for retained live SESSION facts, exact same-attempt
-health and cleanup, not a new Windows result. Current source hashes and completed test accounting are recorded below.
+and managed-reader fixture coverage for retained live SESSION facts, exact same-attempt
+health and cleanup. The current Windows compiler/fake-provider result is recorded below;
+it is not an actual native server result.
 
 ## Actual prerequisite, not another blind native retry
 
@@ -153,3 +154,37 @@ a missing closing parenthesis caused one syntax-only failed invocation before te
 it was corrected before this final result and never published. Scoped formatter/lint
 exits0 with informational suggestions retained, diff clean. Expected hosted1219/109/277
 remains pending. Same authorized managed-only retry; no new server execution scope.
+
+
+## Actual current-source Windows managed19 result — 18:58 UTC
+
+Public `d93b70aa8e6b59c60ba681b7cd16226b6da42e80`, local
+`655572482ee97bbc7650d8a8ed558a6fc7c8aafc`, exact tree
+`d29bf2facb870027b63bd858c5ce27b4e6a36166`, CI41338918419:
+source job124944547155 and managed job124945251828 both SUCCESS. Actual source
+count is **1218/1218**, not the earlier estimated1219; foundation109/109 has zero
+failure/cancel/skip/todo, and Python277/OK passes the exact inventory/no-skip gate.
+All other optional native campaigns were SKIPPED. No unchanged native campaign replay.
+
+The delivered [strict managed-v3 sample](samples/P2-retained-server-managed19-pass.json)
+is1197 bytes, canonical UTF-8 without trailing LF, SHA256
+`99aeedc921caf76522962b3ca6e0540d31cebde992d58803a0d24c07931fec1c`.
+Artifact13097080543 is886 ZIP bytes, SHA256
+`247dcd7ce33692e603b32cd704aca5f6e9d74b638a1d07589f1efec2140a7c96`.
+Exact committed validator reconstruction matches byte-for-byte: version3/group19,
+compiler and fixture SUCCESS/0, actual retired/untruncated process results, no compiler
+diagnostics, all ten current input hashes, sourceUnchanged and directoryCleanup true.
+This compiles the current four production C# sources and runs the bounded fake-provider
+reader/version/server groups. It does not instantiate the native server provider,
+execute ADB, touch a native profile, start Electron or demonstrate a real server.
+
+The first capture-limited attempt remains historical failure; successful repaired CI
+establishes the current checkpoint, without recovering its private original assertion.
+No source test was repeated solely for this ledger update. Independent exact committed-validator/input/log review completed at18:59 and the
+coordinator accepted only this bounded compile/managed proof. P2-02 remains unaccepted.
+
+Read-only environment inventory at18:58 still contains no authorized Auto Windows
+machine: the visible Mac is not task-authorized, and saved environments belong to other
+repositories. Actual native KnownFolder eligibility and P2-02 real lifecycle/fault proof
+remain open. No profile adoption/deletion, environment redirect or security alteration
+is authorized or implied. P2 technical1/13 and overall11/154 remain unchanged.
