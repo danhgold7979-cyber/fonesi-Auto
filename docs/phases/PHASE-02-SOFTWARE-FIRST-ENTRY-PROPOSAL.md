@@ -199,3 +199,17 @@ another confirmation ceremony. Technical review and concrete SDK/device/security
 remain separate; no premature main merge is authorized.
 **Phase2 source implementation:** IN_PROGRESS — bounded pure/main-only foundation batch.
 **Native/ADB/physical execution:** NOT_RUN / not granted by software entry.
+
+## November1 continuation — pure input/capture source
+
+After the first pure foundation and bounded official-candidate version job passed,
+coordinator Coder Bin directed continued independent pure input/capture source work
+at03:06–03:09UTC. This extends internal source development to P2-08/P2-13/P2-09
+contracts and fixture validators, not their physical acceptance or live transport.
+[Exact interface and limitations](../evidence/P2-input-capture-software-2026-11-01.md).
+The earlier unpinned-candidate statements in §2 are historical: current exact pins
+and the restricted development invocation are in the
+[version evidence](../evidence/P2-01-platform-tools-development-2026-11-01.md).
+Production activation/distribution remains unresolved. A server lifecycle experiment
+is separately pending: environment variables are not proof of redirecting Windows
+native-profile ADB key storage, and no server command is authorized by these pure tests.

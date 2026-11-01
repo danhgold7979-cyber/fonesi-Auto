@@ -64,6 +64,8 @@ export const inputs = [
   'src/main/adb-host-lifecycle.ts',
   'src/main/transport-registry.ts',
   'src/main/device-actor.ts',
+  'src/main/input-contract.ts',
+  'src/main/capture-contract.ts',
   'src/main/foundation-database.ts',
   'src/main/backup-container.ts',
   'src/main/backup-service.ts',

@@ -1,6 +1,6 @@
 # P2-01 — pinned Platform Tools development verifier and version runner
 
-**SOURCE IN_PROGRESS / native version NOT_RUN / no canonical task PASS.**
+**DEVELOPMENT_VERSION_PASS — 2026-11-01 03:11 UTC / no canonical task PASS.**
 
 ## Authority and scope
 
@@ -104,5 +104,21 @@ owned retirement. This does not authorize server/discovery/device operations,
 production activation or redistribution. Actual hosted result remains NOT_RUN at
 this source commit; no actual ADB command ran in the local checkpoint.
 
-P2-01 canonical packaging/license/Windows invocation requirements remain incomplete.
+P2-01 canonical packaging/license and broader host/device requirements remain incomplete; the bounded version invocation now passes as recorded below.
 No Phase2 task count changes; inherited P1-06 UNMET, physical matrix and formal0 remain.
+
+## Hosted development disposition — 03:11 UTC
+
+Coordinator Coder Bin accepts **DEVELOPMENT_VERSION_PASS**, not full P2-01 acceptance.
+Exact public `4f08053add53084f8a50174146b4641ea0e4ad1e`, tree
+`d670b088606fd813b31a9f6fe98cbb79a880dc42`, [run41267669556](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41267669556)
+completed both jobs SUCCESS: Windows source649/109/185 and the isolated version job.
+Artifact13067798094 [fixed report](samples/P2-01-platform-tools-version-pass.json) is
+688 LF bytes, SHA256 `4f8b9927d45fc0b1eed127a0399c4a14930e605ebe16a091aefa20377853f79d`.
+Independent exact-commit duplicate-aware reconstruction and canonical byte equality
+passed: all11 cases true, processSUCCESS/exit0/retired/untruncated, versionObserved,
+directoryCleanup true and failure null. This establishes only the admitted candidate's
+bounded Windows version invocation and unchanged-profile/candidate checks, not an
+ADB server, discovery, device connection, full architecture support, production
+activation, redistributed package or license closure. Prior NOT_RUN wording above
+is the historical source checkpoint. No canonical task count changes.

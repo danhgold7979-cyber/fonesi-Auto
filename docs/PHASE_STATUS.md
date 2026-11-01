@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 02:48 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 03:11 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -25,6 +25,7 @@ Ten of eleven canonical task scopes have technical passes (10/11=90.9%;10/154=6.
 P1-06 cross-user proof remains UNMET; formal accepted count is0. P1-10 internal packaging
 and known-retired/RESTORED launcher obligations passed their bounded native scope.
 Phase2 reviewed internal P2-01–P2-07 source batch is authorized under Amendment02; exact base `f8b155738e0ebbe404449579d4f4b60b911aed28`. [Entry record](phases/PHASE-02-SOFTWARE-FIRST-ENTRY-PROPOSAL.md) and [software checkpoint](evidence/P2-01-07-software-foundation-2026-11-01.md) distinguish pure source/fixture tests from actual ADB/binary/device gates. Independent local and exact Windows source-only CI41266813063 checkpoint641 desktop/109 foundation/157 Python passes; six main-only modules remain unwired and production ADB remains `BINARY_UNAVAILABLE`. No Phase2 task PASS is added.
+The [official candidate version job](evidence/P2-01-platform-tools-development-2026-11-01.md) now has bounded DEVELOPMENT_VERSION_PASS (CI41267669556); production remains unavailable. [Pure input/capture contracts](evidence/P2-input-capture-software-2026-11-01.md) are the next in-progress source slice, with no actual device effect or full task acceptance.
 Historical Phase0 records below are preserved, not the current software work queue.
 
 | Item | Status | Evidence / boundary |

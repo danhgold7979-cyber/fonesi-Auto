@@ -355,3 +355,177 @@ test('actor rejects deadlines beyond120 seconds and does not let microtasks outr
     'DEADLINE_EXCEEDED',
   );
 });
+
+test('input queue fences rotation epochs before dispatch and after retirement; no exit-only effect success', async () => {
+  let display = {
+    version: 1,
+    evidenceId: id(500),
+    ...target,
+    displayId: 0,
+    width: 1080,
+    height: 1920,
+    rotation: 0,
+    orientationEpoch: 1,
+    observedUtc: 900,
+    validUntilUtc: 9000,
+    source: 'SYNTHETIC_TEST',
+  };
+  const first = deferred();
+  let calls = 0;
+  const f = fixture({
+    now: () => 1000,
+    currentDisplay: () => display,
+    dispatch: () => {
+      calls++;
+      return first.promise;
+    },
+    observe: () => false,
+  });
+  const input = (n) =>
+    f.req(n, { version: 2, deadlineUtc: 5000, operation: { kind: 'TAP', x: 0, y: 0 }, display });
+  const active = f.actor.execute(f.cap, input(600));
+  const queued = f.actor.execute(f.cap, input(601));
+  display = { ...display, orientationEpoch: 3 }; // Rotate away and back: dimensions unchanged.
+  first.resolve(success());
+  assert.equal((await active).code, 'STALE_DISPLAY');
+  assert.deepEqual([(await queued).code, calls], ['STALE_DISPLAY', 1]);
+  assert.equal(await f.actor.shutdown(), true);
+  const fresh = fixture({ now: () => 1000, currentDisplay: () => display, observe: () => false });
+  const denied = await fresh.actor.execute(
+    fresh.cap,
+    fresh.req(602, {
+      version: 2,
+      deadlineUtc: 5000,
+      operation: { kind: 'TAP', x: 1, y: 1 },
+      display,
+    }),
+  );
+  assert.equal(denied.outcome, 'DISPATCHED_UNCONFIRMED');
+  assert.equal(denied.code, 'OBSERVATION_REJECTED');
+});
+
+test('input has no default display authority or Unicode fallback; owner revocation cannot dispatch', async () => {
+  const f = fixture({ now: () => 1000 });
+  const display = {
+    version: 1,
+    evidenceId: id(500),
+    ...target,
+    displayId: 0,
+    width: 1080,
+    height: 1920,
+    rotation: 0,
+    orientationEpoch: 1,
+    observedUtc: 900,
+    validUntilUtc: 9000,
+    source: 'SYNTHETIC_TEST',
+  };
+  const tap = f.req(700, {
+    version: 2,
+    deadlineUtc: 5000,
+    operation: { kind: 'TAP', x: 0, y: 0 },
+    display,
+  });
+  assert.equal((await f.actor.execute(f.cap, tap)).code, 'STALE_DISPLAY');
+  const text = f.req(701, {
+    version: 2,
+    deadlineUtc: 5000,
+    operation: { kind: 'TEXT', text: 'Tiếng Việt 🔒' },
+    display: null,
+  });
+  assert.equal((await f.actor.execute(f.cap, text)).code, 'UNICODE_UNAVAILABLE');
+  assert.equal(f.count(), 0);
+  let revoke;
+  const g = fixture({
+    now: () => 1000,
+    currentDisplay: () => {
+      revoke();
+      return display;
+    },
+  });
+  revoke = () => g.actor.revoke(g.cap);
+  assert.equal((await g.actor.execute(g.cap, tap)).code, 'OWNER_REVOKED');
+  assert.equal(g.count(), 0);
+});
+
+test('completed swipe does not reserve its duration twice; actual expiry remains unconfirmed', async () => {
+  for (const completedAt of [1400, 1600]) {
+    let time = 1000;
+    const display = {
+      version: 1,
+      evidenceId: id(800),
+      ...target,
+      displayId: 0,
+      width: 100,
+      height: 200,
+      rotation: 0,
+      orientationEpoch: 1,
+      observedUtc: 900,
+      validUntilUtc: 2000,
+      source: 'SYNTHETIC_TEST',
+    };
+    const f = fixture({
+      now: () => time,
+      currentDisplay: () => display,
+      dispatch: async () => {
+        time = completedAt;
+        return success();
+      },
+    });
+    const r = await f.actor.execute(
+      f.cap,
+      f.req(801, {
+        version: 2,
+        deadlineUtc: 1600,
+        display,
+        operation: { kind: 'SWIPE', x1: 0, y1: 0, x2: 90, y2: 190, durationMs: 400 },
+      }),
+    );
+    assert.equal(r.outcome, completedAt === 1400 ? 'OBSERVED' : 'DISPATCHED_UNCONFIRMED');
+    assert.equal(r.code, completedAt === 1400 ? 'OK' : 'DEADLINE_EXCEEDED');
+  }
+});
+
+test('display callback cannot retire the registry binding and still dispatch or release success', async () => {
+  const display = {
+    version: 1,
+    evidenceId: id(900),
+    ...target,
+    displayId: 0,
+    width: 100,
+    height: 200,
+    rotation: 0,
+    orientationEpoch: 1,
+    observedUtc: 900,
+    validUntilUtc: 9000,
+    source: 'SYNTHETIC_TEST',
+  };
+  for (const retireAt of [1, 3, 4, 5]) {
+    let current = true,
+      reads = 0,
+      dispatches = 0;
+    const f = fixture({
+      now: () => 1000,
+      current: () => current,
+      currentDisplay: () => {
+        if (++reads === retireAt) current = false;
+        return display;
+      },
+      dispatch: async () => {
+        dispatches++;
+        return success();
+      },
+    });
+    const r = await f.actor.execute(
+      f.cap,
+      f.req(901, {
+        version: 2,
+        deadlineUtc: 5000,
+        display,
+        operation: { kind: 'TAP', x: 1, y: 1 },
+      }),
+    );
+    assert.equal(r.code, 'STALE_BINDING');
+    assert.equal(dispatches, retireAt >= 4 ? 1 : 0);
+    assert.equal(r.outcome, retireAt >= 4 ? 'DISPATCHED_UNCONFIRMED' : 'NOT_DISPATCHED');
+  }
+});

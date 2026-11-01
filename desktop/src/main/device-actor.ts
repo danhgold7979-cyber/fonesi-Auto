@@ -1,5 +1,10 @@
 // Main-only scheduling engine. No executable, endpoint, shell or live device adapter.
 import { validAdbSerial } from './adb-discovery.ts';
+import {
+  displayCurrent,
+  snapshotDeviceInputRequest,
+  type DeviceInputRequest,
+} from './input-contract.ts';
 export type DeviceBinding = Readonly<{
   deviceId: string;
   bindingId: string;
@@ -18,7 +23,7 @@ export const METADATA_OPERATIONS = Object.freeze([
   'STORAGE',
 ] as const);
 export type MetadataOperation = (typeof METADATA_OPERATIONS)[number];
-export type DeviceRequest = DeviceBinding &
+export type DeviceMetadataRequest = DeviceBinding &
   Readonly<{
     version: 1;
     commandId: string;
@@ -27,12 +32,15 @@ export type DeviceRequest = DeviceBinding &
     operation: MetadataOperation;
     deadlineUtc: number;
   }>;
+export type DeviceRequest = DeviceMetadataRequest | DeviceInputRequest;
 export type ActorCode =
   | 'OK'
   | 'INVALID_REQUEST'
   | 'OWNER_REVOKED'
   | 'BUSY'
   | 'STALE_BINDING'
+  | 'STALE_DISPLAY'
+  | 'UNICODE_UNAVAILABLE'
   | 'DEADLINE_EXCEEDED'
   | 'CANCELLED'
   | 'BINARY_UNAVAILABLE'
@@ -93,6 +101,8 @@ function binding(value: unknown): DeviceBinding | null {
   return Object.freeze(v) as DeviceBinding;
 }
 function request(value: unknown): DeviceRequest | null {
+  const input = snapshotDeviceInputRequest(value);
+  if (input) return input;
   const v = record(value, [
     'version',
     'commandId',
@@ -123,7 +133,7 @@ function request(value: unknown): DeviceRequest | null {
     })
   )
     return null;
-  return Object.freeze(v) as DeviceRequest;
+  return Object.freeze(v) as DeviceMetadataRequest;
 }
 function processResult(value: unknown): DeviceProcessResult | null {
   const v = record(value, ['status', 'exitCode', 'retired', 'truncated', 'stdout']);
@@ -186,6 +196,7 @@ export type ActorOptions = Readonly<{
   assertOwned: () => boolean;
   current: (binding: DeviceBinding) => boolean;
   binaryAvailable: () => boolean;
+  currentDisplay?: (binding: DeviceBinding) => unknown;
   dispatch: (request: DeviceRequest) => Promise<unknown>;
   observe: (request: DeviceRequest, stdout: string) => boolean;
 }>;
@@ -202,8 +213,9 @@ export function createDeviceActor(options: ActorOptions) {
   const registered = budgets.get(options.budget);
   if (!registered || registered.has(target.deviceId)) throw new Error('ACTOR_ALREADY_OWNED');
   const { now, assertOwned, current, binaryAvailable, dispatch, observe, budget } = options;
+  const currentDisplay = options.currentDisplay ?? (() => null);
   if (
-    [now, assertOwned, current, binaryAvailable, dispatch, observe].some(
+    [now, assertOwned, current, binaryAvailable, dispatch, observe, currentDisplay].some(
       (fn) => typeof fn !== 'function',
     )
   )
@@ -223,7 +235,11 @@ export function createDeviceActor(options: ActorOptions) {
   }
   const queue: Pending[] = [];
   const idle: (() => void)[] = [];
-  function admission(cap: ActorCapability, r: DeviceRequest): ActorCode | null {
+  function admission(
+    cap: ActorCapability,
+    r: DeviceRequest,
+    phase: 'DISPATCH' | 'OBSERVE' = 'DISPATCH',
+  ): ActorCode | null {
     if (closed) return 'CLOSED';
     if (uncertain) return 'OUTCOME_UNKNOWN';
     if (!cap || typeof cap !== 'object' || owner !== cap || cap.ownerId !== r.ownerId || draining)
@@ -240,7 +256,13 @@ export function createDeviceActor(options: ActorOptions) {
         return 'STALE_BINDING';
       const time = clock();
       if (r.deadlineUtc <= time || r.deadlineUtc - time > 120000) return 'DEADLINE_EXCEEDED';
+      if (r.version === 2) {
+        if (r.operation.kind === 'TEXT') return 'UNICODE_UNAVAILABLE';
+        if (!displayCurrent(r, r.display === null ? null : currentDisplay(target), time, phase))
+          return 'STALE_DISPLAY';
+      }
       if (binaryAvailable() !== true) return 'BINARY_UNAVAILABLE';
+      if (r.version === 2 && current(target) !== true) return 'STALE_BINDING';
       if (closed || draining || uncertain || owner !== cap) return 'OWNER_REVOKED';
     } catch {
       return 'OWNER_REVOKED';
@@ -273,6 +295,17 @@ export function createDeviceActor(options: ActorOptions) {
         return;
       }
       const remaining = Math.min(120000, r.deadlineUtc - clock());
+      if (
+        r.version === 2 &&
+        !displayCurrent(r, r.display === null ? null : currentDisplay(target), lastTime)
+      ) {
+        finish(result(r, 'STALE_DISPLAY'));
+        return;
+      }
+      if (r.version === 2 && current(target) !== true) {
+        finish(result(r, 'STALE_BINDING'));
+        return;
+      }
       if (owner !== item.cap || closed || draining || uncertain) {
         finish(result(r, 'OWNER_REVOKED'));
         return;
@@ -297,7 +330,7 @@ export function createDeviceActor(options: ActorOptions) {
         finish(result(r, 'OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN'));
         return;
       }
-      const stale = admission(item.cap, r);
+      const stale = admission(item.cap, r, 'OBSERVE');
       if (stale) {
         finish(result(r, stale, 'DISPATCHED_UNCONFIRMED'));
         return;
@@ -312,7 +345,7 @@ export function createDeviceActor(options: ActorOptions) {
       } catch {
         /* fixed rejection */
       }
-      const final = admission(item.cap, r);
+      const final = admission(item.cap, r, 'OBSERVE');
       finish(
         final
           ? result(r, final, 'DISPATCHED_UNCONFIRMED')

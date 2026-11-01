@@ -1102,6 +1102,11 @@
       "imports": {
         "./adb-discovery.ts": {
           "validAdbSerial": "value"
+        },
+        "./input-contract.ts": {
+          "displayCurrent": "value",
+          "snapshotDeviceInputRequest": "value",
+          "DeviceInputRequest": "type"
         }
       }
     },
@@ -1121,6 +1126,29 @@
         },
         "node:crypto": {
           "createHash": "value"
+        }
+      }
+    },
+    "main/input-contract.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-discovery.ts": {
+          "validAdbSerial": "value"
+        }
+      }
+    },
+    "main/capture-contract.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:zlib": {
+          "inflateSync": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "./input-contract.ts": {
+          "snapshotDisplayEvidence": "value",
+          "DisplayEvidence": "type"
         }
       }
     }
