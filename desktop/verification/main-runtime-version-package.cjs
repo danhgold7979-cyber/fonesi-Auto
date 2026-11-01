@@ -1,6 +1,8 @@
 'use strict';
 // Verification-only package custody. No executable invocation or source fallback.
-const fs = require('node:fs'),
+// Match production package admission: ASAR checksums require physical bytes.
+// Missing original-fs is fatal; never disable ASAR globally or fall back.
+const fs = require(process.versions.electron ? 'original-fs' : 'node:fs'),
   path = require('node:path'),
   { createHash } = require('node:crypto');
 const admission = require('../launch/package-admission.cjs');

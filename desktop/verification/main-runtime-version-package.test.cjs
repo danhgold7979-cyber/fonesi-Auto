@@ -12,7 +12,7 @@ const helperFile = path.join(__dirname, 'main-runtime-version-package.cjs'),
   id = '00000000-0000-4000-8000-000000000001',
   head = 'a'.repeat(40),
   tree = 'b'.repeat(40);
-function fixture() {
+function fixture(electron = false) {
   const temp = fs.realpathSync.native(
       fs.mkdtempSync(
         path.join(fs.realpathSync.native(process.env.RUNNER_TEMP || os.tmpdir()), 'pkv-'),
@@ -44,6 +44,11 @@ function fixture() {
   for (const base of [original, extracted]) {
     fs.mkdirSync(path.join(base, 'app/build'), { recursive: true });
     fs.mkdirSync(path.join(base, 'app/launch'), { recursive: true });
+    fs.mkdirSync(path.join(base, 'runtime/electron/resources'), { recursive: true });
+    fs.writeFileSync(
+      path.join(base, 'runtime/electron/resources/default_app.asar'),
+      Buffer.from('physical synthetic ASAR bytes'),
+    );
     fs.writeFileSync(path.join(base, 'package-manifest.json'), JSON.stringify(manifest));
     fs.writeFileSync(path.join(base, 'app/build/.verified-build.json'), build);
     fs.writeFileSync(path.join(base, 'app/build/main.cjs'), 'module.exports={source:"PACKAGE"};');
@@ -70,16 +75,34 @@ function fixture() {
     JSON.stringify({ directory: original, zip, sha256: hash(bytes), bytes: bytes.length }) + '\n',
   );
   const module = { exports: {} };
-  let semanticCalls = 0;
+  let semanticCalls = 0,
+    originalFsLoads = 0,
+    virtualFsReads = 0;
   vm.runInNewContext(
     fs.readFileSync(helperFile, 'utf8'),
     {
       module,
       exports: module.exports,
       __dirname: path.join(desktop, 'verification'),
+      process: { versions: electron ? { electron: '45.1.0' } : {} },
       Buffer,
       TextDecoder,
       require(name) {
+        if (name === 'original-fs') {
+          originalFsLoads++;
+          return fs;
+        }
+        if (electron && name === 'node:fs')
+          return {
+            ...fs,
+            lstatSync(file) {
+              if (String(file).endsWith('.asar')) {
+                virtualFsReads++;
+                throw Error('VIRTUAL_ASAR_NOT_PHYSICAL');
+              }
+              return fs.lstatSync(file);
+            },
+          };
         if (name === '../launch/package-admission.cjs')
           return {
             ...admission,
@@ -107,6 +130,12 @@ function fixture() {
     extracted,
     original,
     zip,
+    get originalFsLoads() {
+      return originalFsLoads;
+    },
+    get virtualFsReads() {
+      return virtualFsReads;
+    },
     get semanticCalls() {
       return semanticCalls;
     },
@@ -201,6 +230,7 @@ test('projected helper and packaged file limits refuse unsupported roots before 
     vm.runInNewContext(fs.readFileSync(helperFile, 'utf8'), {
       module: windows,
       exports: windows.exports,
+      process,
       __dirname: 'D:\\a\\fonesi-Auto\\fonesi-Auto\\desktop\\verification',
       Buffer,
       TextDecoder,
@@ -311,4 +341,37 @@ test('initializer probe resolves original packaged filename only from exact PACK
   } finally {
     f.close();
   }
+});
+
+test('Electron package checks use physical original-fs for actual ASAR bytes, never virtual-fs stat', () => {
+  const f = fixture(true);
+  try {
+    const admitted = f.api.prepareBinding(f.root, head, tree);
+    assert.equal(admitted.packageRoot, f.extracted);
+    assert.equal(f.originalFsLoads, 1);
+    assert.equal(f.virtualFsReads, 0);
+    assert.equal(
+      f.api.fileProof(path.join(f.extracted, 'runtime/electron/resources/default_app.asar')).sha256,
+      hash(Buffer.from('physical synthetic ASAR bytes')),
+    );
+  } finally {
+    f.close();
+  }
+});
+test('missing Electron original-fs is fatal without virtual filesystem fallback', () => {
+  let virtual = 0;
+  assert.throws(
+    () =>
+      vm.runInNewContext(fs.readFileSync(helperFile, 'utf8'), {
+        module: { exports: {} },
+        process: { versions: { electron: '45.1.0' } },
+        require(name) {
+          if (name === 'original-fs') throw Error('MISSING_ORIGINAL_FS');
+          if (name === 'node:fs') virtual++;
+          return require(name);
+        },
+      }),
+    /MISSING_ORIGINAL_FS/,
+  );
+  assert.equal(virtual, 0);
 });
