@@ -2073,6 +2073,34 @@
           "RegistrySnapshot": "type"
         }
       }
+    },
+    "main/transport-metadata.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-discovery.ts": {
+          "validAdbSerial": "value",
+          "validTransportId": "value"
+        },
+        "./adb-metadata.ts": {
+          "parseAdbMetadata": "value",
+          "staleMetadata": "value",
+          "MetadataResult": "type"
+        },
+        "./device-actor.ts": {
+          "createDeviceActor": "value",
+          "METADATA_OPERATIONS": "value",
+          "ActorCode": "type",
+          "ActorResult": "type",
+          "DeviceMetadataRequest": "type",
+          "DeviceProcessResult": "type",
+          "DeviceQueueBudget": "type",
+          "MetadataOperation": "type"
+        },
+        "./transport-registry.ts": {
+          "isRegistrySnapshot": "value",
+          "RegistrySnapshot": "type"
+        }
+      }
     }
   }
 }

@@ -71,6 +71,7 @@ export const inputs = [
   'src/main/adb-discovery.ts',
   'src/main/adb-discovery-service.ts',
   'src/main/adb-metadata.ts',
+  'src/main/transport-metadata.ts',
   'src/discovery-contract.ts',
   'src/discovery-audit-contract.ts',
   'src/discovery-client.ts',

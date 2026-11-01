@@ -110,6 +110,7 @@ export const TEST_FILES = Object.freeze([
   'tests/settings-window.test.mjs',
   'tests/test-batches.test.mjs',
   'tests/test-diagnostics.test.mjs',
+  'tests/transport-metadata.test.mjs',
   'tests/transport-registry.test.mjs',
   'tests/ui-shell.test.mjs',
   'tests/vault-audit.test.mjs',

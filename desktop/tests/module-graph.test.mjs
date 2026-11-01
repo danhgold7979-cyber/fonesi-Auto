@@ -26,11 +26,39 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual one hundred three modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 103, runtimeInputs: 103 });
+test('actual one hundred four modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 104, runtimeInputs: 104 });
 });
-test('fleet stays in its exact role boundary and graph limit remains finite at one hundred three', async () => {
-  assert.equal(Object.keys(map.modules).length, 103);
+test('synthetic metadata owner has no incoming production edge or main activation', () => {
+  const incoming = (candidate) =>
+    Object.entries(candidate.modules)
+      .filter(
+        ([name, entry]) =>
+          name !== 'main/transport-metadata.ts' &&
+          Object.keys(entry.imports).some((specifier) =>
+            /(?:^|\/)transport-metadata\.(?:ts|js)$/.test(specifier),
+          ),
+      )
+      .map(([name]) => name);
+  assert.equal(map.modules['main/transport-metadata.ts'].role, 'main-adapter');
+  assert.deepEqual(incoming(map), []);
+  const wrong = {
+    ...map,
+    modules: {
+      ...map.modules,
+      'main.ts': {
+        ...map.modules['main.ts'],
+        imports: {
+          ...map.modules['main.ts'].imports,
+          './main/transport-metadata.ts': { createSyntheticTransportMetadataOwner: 'value' },
+        },
+      },
+    },
+  };
+  assert.deepEqual(incoming(wrong), ['main.ts']);
+});
+test('fleet stays in its exact role boundary and graph limit remains finite at one hundred four', async () => {
+  assert.equal(Object.keys(map.modules).length, 104);
   await assert.rejects(
     () =>
       validateGraph(actual(), {
