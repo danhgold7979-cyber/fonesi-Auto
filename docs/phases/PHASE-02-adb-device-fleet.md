@@ -40,10 +40,9 @@ Contracts include device ID, explicit serial/transport ID, connection generation
 
 ## 4. Task packages
 
-Internal P2-01–P2-12 software portions are **IN_PROGRESS** within their recorded finite
-contracts; P2-13 actual Unicode round-trip remains NOT_STARTED. No complete canonical
-task has new acceptance. The official candidate version-only development job has a
-bounded PASS; the retained SOURCE app-local VERSION/EOF campaign now also passes24 native cases and8 managed groups with actual cleanup. [Accepted exact evidence and subcriteria mapping](../evidence/P2-retained-windows-campaign-2026-11-01.md) preserves genuine-delivery/server/physical obligations; the separately [accepted instrumented PACKAGE Help VERSION campaign](../evidence/P2-package-runtime-version-native-2026-11-01.md) now establishes the packaged invocation positive criterion. The [catalog-aware rollback source](../evidence/P2-retained-runtime-rollback-source-2026-11-01.md) now composes synthetic A→B→A/reopen through actual owned files/custody; the subsequent [reviewed prior36 metadata](../evidence/P2-prior-360-metadata-2026-11-01.md) adds one exact known predecessor while37 remains the sole INSTALL target; genuine two-release/native proof is pending. Whole P2-01 acceptance is therefore still incomplete. Isolated-server development refused an existing profile before launch.
+P2-01 is **TECHNICAL_PASS / DEPENDENCIES_PENDING**; other internal P2-02–P2-12 software portions are **IN_PROGRESS** within their recorded finite
+contracts; P2-13 actual Unicode round-trip remains NOT_STARTED. No formal phase acceptance is added. The official candidate version-only development job has a
+bounded PASS; the retained SOURCE app-local VERSION/EOF campaign now also passes24 native cases and8 managed groups with actual cleanup. [Accepted exact evidence and subcriteria mapping](../evidence/P2-retained-windows-campaign-2026-11-01.md) preserves genuine-delivery/server/physical obligations; the separately [accepted instrumented PACKAGE Help VERSION campaign](../evidence/P2-package-runtime-version-native-2026-11-01.md) now establishes the packaged invocation positive criterion. The [catalog-aware rollback source](../evidence/P2-retained-runtime-rollback-source-2026-11-01.md) now composes synthetic A→B→A/reopen through actual owned files/custody; the subsequent [reviewed prior36 metadata](../evidence/P2-prior-360-metadata-2026-11-01.md) adds one exact known predecessor while37 remains the sole INSTALL target; the [accepted actual four-stage campaign](../evidence/P2-retained-rollback-windows-campaign-2026-11-01.md) now proves genuine36→37→rollback36→reopen36 with refreshed managed10 and cleanup. Coordinator18:06 accepted **P2-01 TECHNICAL_PASS / DEPENDENCIES_PENDING** after [original-criterion reconciliation](../evidence/P2-01-canonical-criterion-audit-2026-11-01.md): Phase2 technical1/13, not formal phase acceptance. Isolated-server development refused an existing profile before launch.
 Actual device/physical/AVD/input/capture/Unicode/wireless acceptance tests remain NOT_RUN.
 [Fleet integration](../evidence/P2-fleet-facade-integration-2026-11-01.md),
 [selection/fault fixtures](../evidence/P2-selection-diagnostics-faults-software-2026-11-01.md)
@@ -111,3 +110,5 @@ Risks/stop conditions: identity collision → quarantine; Unicode unsupported �
 - 2026-10-30 / 1.1-draft: aligned accepted USB-first, provisioning, two-physical/two-AVD and exact-Unicode directions; no hardware result inferred.
 
 - 2026-11-01 / 1.2: recorded reviewed bounded software entry and exact development base under Amendment02; canonical13 task definitions/physical acceptance unchanged, no new task PASS.
+
+- 2026-11-01 18:06: coordinator accepted P2-01 technical task under Amendment03; exact CI41333874497/publica68e6a62 proves current managed10 and real retained36→37→36/reopen with strict cleanup. Phase2 technical1/13, overall11/154≈7.14%, formal0; server/device/phase acceptance unchanged.
