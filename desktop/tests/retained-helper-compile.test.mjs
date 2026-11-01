@@ -146,7 +146,7 @@ test('compile workflow is default-off exact opt-in after source checks, never an
   );
   const check = (text) => {
     const s = text.replace(/\r\n/g, '\n');
-    assert.match(s, /run_retained_compile:\n(?:[^\n]*\n){3}        default: false/);
+    assert.match(s, /run_retained_compile:\n(?:[^\n]*\n){3} {8}default: false/);
     const step = s
       .split('      - name: Retained helper compile only without assembly execution\n')[1]
       ?.split('      - name:')[0];

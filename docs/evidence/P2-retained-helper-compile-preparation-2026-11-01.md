@@ -52,3 +52,17 @@ Source hashes:
 Local preparation does not bypass denied public publication of custody795 or authorize
 sending a newer descendant instead. No new public head, CI run, compilation result,
 canonical task completion, physical-device evidence or formal acceptance is claimed.
+
+## First admitted hosted checkpoint and quality-only repair
+
+Exact39-file publication succeeded as public
+`493b1b28a9f0e21c5806e729fd1a60ddeb9d68fe` / tree
+`b8307a5eaa83cf2cb22f9b8e142e6302491029e2` after explicit recipient approval.
+CI41286185772 stopped at QUALITY before desktop tests or C# compilation. Local full
+quality reproduction identified one warning in the new workflow test: eight literal
+spaces in a regex. The earlier targeted error-level lint missed warnings, whereas
+the actual pipeline rejects them. This is a verification gap, not a compiler result.
+The repair replaces those exact eight spaces with equivalent ` {8}`, preserving all
+workflow predicates. The affected gate test and full quality check pass after repair;
+no unchanged aggregate/native campaign is repeated. Actual Windows compilation is
+still NOT_RUN. The approved compiler script/workflow/helper bytes are unchanged.
