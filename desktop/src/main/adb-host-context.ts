@@ -301,6 +301,33 @@ export function readHostContext(
     assets: Object.freeze(assets),
   });
 }
+/** Conservative private compatibility subset, not a guarantee for all Windows/compiler paths. */
+export function assertHostPathBudget(
+  launchRoot: string,
+  sessionId: string,
+  adbPath?: string,
+  nativePaths: readonly string[] = [],
+): string {
+  if (typeof launchRoot !== 'string' || resolve(launchRoot) !== launchRoot || !hostUuid(sessionId))
+    reject();
+  const root = join(launchRoot, `host-session-${sessionId}`);
+  if (
+    root.length > 220 ||
+    join(root, 'profile').length > 228 ||
+    join(root, 'bootstrap.json').length > 235
+  )
+    reject();
+  for (const file of adbPath === undefined ? nativePaths : [adbPath, ...nativePaths]) {
+    if (
+      typeof file !== 'string' ||
+      resolve(file) !== file ||
+      file.length > 259 ||
+      dirname(file).length > 247
+    )
+      reject();
+  }
+  return root;
+}
 export function createHostRoot(
   launchRoot: string,
   sessionId: string,
@@ -308,10 +335,10 @@ export function createHostRoot(
   fence: () => void,
 ) {
   if (!hostUuid(sessionId) || !hostUuid(ownerToken)) reject();
+  const root = assertHostPathBudget(launchRoot, sessionId);
   hostPlain(launchRoot, true);
   fence();
   if (hostNames(launchRoot).some((n) => n.startsWith('host-session'))) reject();
-  const root = join(launchRoot, `host-session-${sessionId}`);
   mkdirSync(root);
   const identity = hostPlain(root, true);
   hostWrite(join(root, '.owner'), ownerToken, 36, fence);

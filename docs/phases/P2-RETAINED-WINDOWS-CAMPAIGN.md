@@ -126,3 +126,30 @@ new progress receipts, delete retained files or change Retired/Require/PASS pred
 Thrown observer diagnostic writes must still reach its existing failure exit; this
 robustness correction does not claim to resolve a permanently blocking write or the
 unobserved cause of the actual timeout.
+
+### Supported native path subset — 12:19 UTC
+
+The post-retirement vector shows exact short script/entry, then exact deep script and
+complete deep owned chain but no deep entry; later parameter cases were not reached.
+This supports avoiding the unsupported depth, not identifying a Windows API failure.
+Use the smallest verification-only layout correction: the already exclusively reserved,
+non-adoptable `.retained-host-runtime` base contains the single exact child `r`, rather
+than a second UUID-bearing `run-*` name. The independent canonical UUID owner marker,
+exclusive directory creation, exact parent and source proof, all retirement and closed
+cleanup predicates remain. Current validators admit only `r`; old reports remain valid
+historical data, not current owned roots. This saves39 UTF-16 units across helper AND
+ADB paths, rather than changing product session/runtime/hash directory grammar.
+
+Production now fails before helper writes/spawn when its conservative supported path
+subset is exceeded: helper root220, profile228, bootstrap235 UTF-16 units; actual ADB,
+fixed source assets and parent image file259 and containing directory247. Full random
+sessionId and `host-session-<UUID>` grammar are unchanged. The profile limit leaves30
+filename units after separator/NUL under classic260, not a guarantee for every compiler
+temporary filename. No registry, manifest, policy, prefix bypass or deadline adjustment.
+Actual supported-layout VERSION/EOF still must prove the new build.
+
+Do not replay the deliberately old-depth discriminator as a prerequisite for the repaired
+layout. The next campaign runs directly through actual factory VERSION/EOF; historical
+fixture fields are UNAVAILABLE, never synthesized PASS. Existing fixture parsers/tests
+and recorded vectors remain for provenance. Success cleanup rejects all old fixture
+partitions. No canonical acceptance is added by source tests or this amendment.

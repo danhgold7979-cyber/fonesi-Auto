@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 11:59 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 12:19 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -36,16 +36,15 @@ stitched checkpoint (remaining151 tests plus earlier passed batches); no new ful
 aggregate count or native PASS is inferred. The user approved the
 [single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
 and necessary important checkpoint publication. After a test-only Windows CRLF repair,
-public `6800f519d1b3c02c697120133a82fd7f3a7b2bce` / CI41302960438 passes1037/109/232
-source checks and instrumented four-source compilation/eight managed groups. The prior
-baseline/InputFormat None fixtures both entered/responded before EOF, read Q and
-retired; no production flag change is justified. The subsequent four-case discriminator
-hit the unchanged240s outer deadline, with known outer retirement but no forwarded
-fixture vector. Its existing diagnostic gate excludes TIMEOUT, so this does not prove
-where execution stalled. A read-only, fixed-field snapshot of already-owned fixture
-files after known outer retirement is being prepared; it cannot authorize cleanup,
-adopt pending captures or turn failure into PASS. Native VERSION/EOF and canonical
-P2-02 acceptance remain pending; no server/device/profile adoption.
+public `e34e63d5811d85679e33c0cc2b6fcf84ea20983c` / CI41304568866 passes1044/109/232
+and instrumented four-source compilation/eight managed groups. Native remains TIMEOUT.
+Read-only post-retirement facts show short fixture entry, then fully materialized deep
+fixture without entry; parameter cases never ran. The exact blocking call is unknown.
+The next coherent candidate shortens only the verification-owned runroot (all product
+UUID/runtime/hash grammar unchanged) and adds conservative production path-budget
+refusal before helper writes/spawn. Actual VERSION/EOF will run directly on that supported
+layout, without replaying the old-depth reproducer. Historical fixtures remain unavailable,
+not fake PASS. Canonical P2-02 acceptance remains pending; no server/device/profile adoption.
 
 ## 1. Status definitions
 

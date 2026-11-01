@@ -6,7 +6,13 @@ const nativeStackGetter = Object.getOwnPropertyDescriptor(new Error(), 'stack')?
 const initialStackFormatter = Object.getOwnPropertyDescriptor(Error, 'prepareStackTrace');
 const initialErrorToString = Object.getOwnPropertyDescriptor(Error.prototype, 'toString').value;
 const { write } = require('./persistence-restore-contract.cjs');
-const { rootForLaunch } = require('./recipient-setup-contract.cjs');
+const { rootForLaunch: recipientRootForLaunch } = require('./recipient-setup-contract.cjs');
+function rootForLaunch(launch) {
+  const root = recipientRootForLaunch(launch);
+  if (path.basename(root) !== 'r' || path.basename(path.dirname(root)) !== '.retained-host-runtime')
+    throw Error('RETAINED_HOST_OWNER');
+  return root;
+}
 const CASES = Object.freeze([
   'mainReady',
   'schema4Observed',

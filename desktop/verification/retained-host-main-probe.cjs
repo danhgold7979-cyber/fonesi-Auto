@@ -7,7 +7,6 @@ const { createHash, randomUUID } = require('node:crypto');
 const {
   DIAGNOSTICS,
   PIPE_DIAGNOSTICS,
-  PIPE_MODES,
   pipeDiagnostic,
   progressDiagnostic,
   contextDiagnostic,
@@ -291,31 +290,9 @@ function runObserver() {
     )
       throw Error('RETAINED_HOST_PARENT');
     cases.parentReceiptBound = true;
-    phase = 'PIPE_STARTUP';
-    const systemRoot = process.env.SystemRoot;
-    if (typeof systemRoot !== 'string' || systemRoot !== path.resolve(systemRoot))
-      throw Error('RETAINED_HOST_PIPE_STARTUP');
-    const { runPairedStartup } = require('./retained-pipe-startup.cjs');
-    pipeFacts = await runPairedStartup({
-      root,
-      owner: bounded(path.join(root, '.owner'), 64).toString('ascii'),
-      powershell: path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
-      environment: Object.freeze({
-        SystemRoot: systemRoot,
-        WINDIR: systemRoot,
-        TEMP: root,
-        TMP: root,
-      }),
-      assertOwned: context.assertOwnedSync,
-    });
+    // Historical startup discriminators are not replayed before this supported-layout run.
+    // Unrun fixture observations remain explicitly unavailable, never inferred PASS.
     emitPipeDiagnostics();
-    if (
-      PIPE_MODES.some(
-        (mode) =>
-          pipeFacts?.[mode]?.stdioRetired !== true || pipeFacts[mode].outcome === 'UNRETIRED',
-      )
-    )
-      throw Error('RETAINED_HOST_PIPE_STARTUP');
     phase = 'ADMISSION';
     factory = require('../build/adb-host-factory.cjs').createHostFactory({
       entry: context.entry,

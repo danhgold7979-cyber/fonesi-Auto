@@ -68,8 +68,7 @@ function owned(root) {
   if (
     !uuid(token) ||
     path.basename(path.dirname(root)) !== '.retained-host-runtime' ||
-    path.basename(root) !== 'run-' + path.basename(root).slice(4) ||
-    !uuid(path.basename(root).slice(4))
+    path.basename(root) !== 'r'
   )
     fail();
   return token;
@@ -741,10 +740,6 @@ async function diagnoseTimeout(root) {
     ([slot, value]) => 'RETAINED_HOST_TIMEOUT_' + slot + '_' + value,
   );
 }
-function pipeStartupRoots() {
-  const { CASES } = require('./retained-pipe-startup.cjs');
-  return [...CASES.map((c) => c.directory), 'pipe-deep', 'pipe-test'];
-}
 function pipeStartupPlans(root, owner) {
   const { CASES, ENTRY, BOOTSTRAP, materializeScript } = require('./retained-pipe-startup.cjs');
   const plans = [];
@@ -846,7 +841,7 @@ async function cleanup(root) {
     fail('RETAINED_HOST_RESULT');
   hostReceipt(s);
   released(s);
-  const plans = pipeStartupPlans(root, token),
+  const plans = [],
     files = [];
   const add = (dir, limit) => plans.push(tree(dir, limit));
   const managedEntries = entries(s.managed, 9),
@@ -960,14 +955,13 @@ async function cleanup(root) {
     'schema4-observed.json',
     'public.json',
     'integrity.json',
-    ...pipeStartupRoots(),
     ...['provision', 'auth', 'ui'].map((k) => path.basename(witnessPath(s.launch, k))),
   ];
   const rootEntries = entries(root, expected.length);
   if (rootEntries.length !== expected.length || rootEntries.some((e) => !expected.includes(e.name)))
     fail('RETAINED_HOST_INVENTORY');
   for (const e of rootEntries) {
-    if (['first-use', '.owner', ...pipeStartupRoots()].includes(e.name)) continue;
+    if (['first-use', '.owner'].includes(e.name)) continue;
     if (
       !e.stat.isFile() ||
       e.stat.nlink !== 1 ||

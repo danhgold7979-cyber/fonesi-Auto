@@ -19,6 +19,7 @@ import {
   hostWrite,
   readHostContext,
   createHostRoot,
+  assertHostPathBudget,
   cleanupHostRoot,
 } from './adb-host-context.ts';
 type Bindings = Readonly<{
@@ -110,6 +111,11 @@ export function createHostFactory(
   if (hostNames(launchRoot).some((n) => n.startsWith('host-session'))) fail();
   const exePin = PLATFORM_TOOLS_CANDIDATE.files.find((f) => f.path === 'adb.exe')?.sha256;
   if (!exePin || !hostUuid(sessionId)) fail();
+  const nativePaths = Object.freeze([
+    ...HOST_ASSETS.map((name) => join(desktopRoot, name)),
+    context.receipt.parentImagePath,
+  ]);
+  assertHostPathBudget(launchRoot, sessionId, undefined, nativePaths);
   let stopped = false,
     broken = false,
     clean = false,
@@ -189,6 +195,7 @@ export function createHostFactory(
     if (stopped || broken || !readToken || observationKey(o) !== observationKey(liveObservation))
       fail();
     if (pinned !== null && pinned !== observationKey(o)) fail();
+    assertHostPathBudget(launchRoot, sessionId, o.adbPath, nativePaths);
   }
   function closeInput() {
     inputEnded = true;

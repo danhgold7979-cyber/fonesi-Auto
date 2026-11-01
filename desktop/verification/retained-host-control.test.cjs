@@ -15,7 +15,7 @@ function fixture() {
   const parent = fs.mkdtempSync(path.join(base, 'retained-control-')),
     container = path.join(parent, '.retained-host-runtime');
   fs.mkdirSync(container);
-  const root = path.join(container, 'run-' + crypto.randomUUID());
+  const root = path.join(container, 'r');
   fs.mkdirSync(root);
   const token = crypto.randomUUID();
   fs.writeFileSync(path.join(root, '.owner'), token, { flag: 'wx' });
@@ -644,6 +644,43 @@ test('unreadable top-level fixture is INVALID rather than falsely ABSENT and cre
       assert.equal(v[prefix + field], 'INVALID');
     assert.equal(v[prefix + 'CHAIN'], 'NOT_APPLICABLE');
     assert.deepEqual(fs.readdirSync(f.root).sort(), before);
+  } finally {
+    f.close();
+  }
+});
+test('current verification root is exclusively fixed r with canonical owner and no legacy run fallback', () => {
+  const f = fixture();
+  try {
+    assert.throws(() => fs.mkdirSync(f.root), { code: 'EEXIST' });
+    timeoutCapture(f.root);
+    api.timeoutSnapshot(f.root);
+    const legacy = path.join(path.dirname(f.root), 'run-' + crypto.randomUUID());
+    fs.renameSync(f.root, legacy);
+    try {
+      assert.throws(() => api.timeoutSnapshot(legacy));
+    } finally {
+      fs.renameSync(legacy, f.root);
+    }
+    const file = path.join(f.root, '.owner'),
+      owner = fs.readFileSync(file);
+    fs.appendFileSync(file, '\n');
+    try {
+      assert.throws(() => api.timeoutSnapshot(f.root));
+    } finally {
+      fs.writeFileSync(file, owner);
+    }
+    assert.throws(() => api.timeoutSnapshot(f.root + path.sep + '..' + path.sep + 'r'));
+    const source = fs.readFileSync(path.join(__dirname, 'retained-host-control.cjs'), 'utf8'),
+      cleanup = source.slice(
+        source.indexOf('async function cleanup(root)'),
+        source.indexOf('const PHASES ='),
+      );
+    assert.doesNotMatch(
+      cleanup,
+      /pipeStartupPlans|pipeStartupRoots|retained-pipe-|pipe-deep|pipe-test/,
+    );
+    assert.match(cleanup, /rootEntries\.length !== expected\.length/);
+    assert.match(cleanup, /!expected\.includes\(e.name\)/);
   } finally {
     f.close();
   }

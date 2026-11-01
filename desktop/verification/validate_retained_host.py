@@ -91,7 +91,7 @@ def validate(value):
 def stage(root):
     root, token = _admit_root(root)
     if (root.parent.name != '.retained-host-runtime' or
-            re.fullmatch(r'run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', root.name) is None):
+            root.name != 'r'):
         reject()
     names = ('launcher-capture.json', 'bootstrap.json', 'retained-host-result.json', 'integrity.json')
     raw = {name: _read_owned(root, name) for name in names}

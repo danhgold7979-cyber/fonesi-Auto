@@ -428,3 +428,51 @@ Frozen timeout diagnostic SHA256 values:
 - `desktop/verification/retained-host-control.cjs`: `221ad293ba71ca5ec52b2584477ac6061ef40ef232045227bc60a7131b95baa7`.
 - `desktop/verification/retained-host-main-probe.cjs`: `50bc59a8c42d53e92425908aad2418851466a321d7d8fa47d1e277c78c7518fa`.
 - `desktop/verification/Invoke-RetainedHostCheck.ps1`: `706602e0378448da7b7cd811515add6accc51d2ec16e52b2c5043ad1625b10b7`.
+
+## Depth evidence and supported-layout candidate — 12:19 UTC
+
+Exact public `e34e63d5811d85679e33c0cc2b6fcf84ea20983c` / CI41304568866 passes
+1044/109/232. Managed artifact13083356415 is414 bytes/SHA41e93f3c… (same exact full
+hash above), native artifact13083321559 is390 bytes/SHA94c61e08… (same full hash above),
+strict TIMEOUT/FAIL. The fixed read-only vector reports plain-short directory/script/
+entry valid, then plain-depth directory/script and owned chain complete with entry
+ABSENT; both parameter case directories are ABSENT. Profiles are empty. These are
+post-retirement filesystem observations. Sequential helper source permits the second
+case only after first-case stdio retirement, but no missing response/EOF facts are
+invented, and exact blocking OS call is still unobserved.
+
+The coherent candidate shortens only the verification root to exclusive `r` under its
+already-exclusive base, preserving the UUID marker and every product directory grammar.
+On the observed checkout, this reduces helper profile261→222 and actual adb.exe282→243
+(runtime directory274→235). A helper-leaf-only rename was considered but abandoned
+before publication because it would not shorten ADB. Production journal/bootstrap/C#
+remain unchanged. Conservative fail-fast factory/context path budgets cover helper,
+actual admitted ADB, known native source assets and parent image before mkdir/write/
+spawn. Unsupported paths refuse; no long-path policy or timeout relaxation is made.
+[Windows path limits](https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation)
+explain the compatibility constraint, not this exact private hang's syscall.
+
+Historical four-case reproducer is not rerun before the new factory. Actual observer
+proceeds directly to VERSION/EOF and reports historical fixture slots UNAVAILABLE.
+Current success cleanup excludes their partitions; old fixture evidence is not promoted.
+
+Final supported-layout affected evidence: factory17/17; observer/contract16/16;
+control21/21 composed from19 non-build-bound plus2 actual-copy cases after the sole
+fresh product build; graph/package44/44; Python retained-host19/19. Exact discovery
+counts233 Python cases (not a fresh233 execution). Module graph89, strict production
+TypeScript, BUILD_VERIFIED and eight changed JS/TS warning-level quality pass. No full
+local aggregate or unchanged foundation rerun; prior1044/109/232 remains historical.
+Expected next hosted counts1047/109/233 are NOT_RUN. Existing test-file inventory is
+unchanged. The old diagnostic observer gating tests are adapted to direct-run/no-replay
+and exact short-root refusal; independent helper lifetime tests remain retained.
+
+Frozen supported-layout SHA256 values:
+- `desktop/src/main/adb-host-context.ts`: `b6902139f0a89245d5802e41da7c0605a719cce5fc5918fe02712bb430778f7f`.
+- `desktop/src/main/adb-host-factory.ts`: `3d9fee7be352a48a8ec06fe48fa4868cf9eabf15ae1c8806c8e7a4fccf80cc0a`.
+- `desktop/module-map.json`: `140e25d731dca36b12a2fe5f125c23836b34046b27bf2e3ec2f3f6195f443079`.
+- `desktop/verification/retained-host-control.cjs`: `f1483be489390770e992ebf3a614f7a90751b66960881aecae96d19493829073`.
+- `desktop/verification/retained-host-contract.cjs`: `2640356079144f6b548695afc95c99f72ebbfe08272824b78aa0fa7da57f2984`.
+- `desktop/verification/retained-host-main-probe.cjs`: `560737d2cdd92e027c8112c6553f22a153183afda1a56fdf62c58957b2f7daa8`.
+- `desktop/verification/Invoke-RetainedHostCheck.ps1`: `4fa3c8b954e05b601faa1acc48dadc7ac99fb7ac2c98c9b0406a74da8a88aa7f`.
+- `desktop/verification/validate_retained_host.py`: `903c90244c66f0bac20acc74841f27ec9b07dcb95921e9e5d63cd565e225f366`.
+- `.github/workflows/phase-02-software.yml`: `e13c8fb125a18c369c3a1e90a468cba8f6243a920b1add9273a54ed68bfabc11`.

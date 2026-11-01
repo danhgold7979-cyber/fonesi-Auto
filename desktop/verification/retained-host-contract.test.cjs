@@ -69,9 +69,10 @@ function serviceSuccessTransition() {
   return snapshot;
 }
 async function simulatedObserver(wrongParent = false, fault = null) {
-  const root = fs.realpathSync.native(
+  const temporary = fs.realpathSync.native(
       fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'retained-observer-')),
     ),
+    root = path.join(temporary, '.retained-host-runtime', fault?.oldRoot ? 'run-' + id(9) : 'r'),
     managed = path.join(root, 'first-use', `Fonesi-Auto-${id(1)}`),
     launch = path.join(managed, `launch-${id(2)}`),
     profile = path.join(launch, 'profile');
@@ -102,7 +103,8 @@ async function simulatedObserver(wrongParent = false, fault = null) {
     bound = false,
     exitCalls = 0,
     clearCalls = 0,
-    thrownWrites = 0;
+    thrownWrites = 0,
+    fixtureCalls = 0;
   const custody = {
     retired: true,
     async acquireRead() {
@@ -268,30 +270,10 @@ async function simulatedObserver(wrongParent = false, fault = null) {
       if (name === 'electron') return electron;
       if (name === 'node:fs') return fsProxy;
       if (name === 'node:module') return FakeModule;
-      if (name === './retained-pipe-startup.cjs')
-        return {
-          async runPairedStartup(options) {
-            assert.equal(options.root, root);
-            assert.equal(options.owner, id(3));
-            assert.deepEqual(Object.keys(options.environment), [
-              'SystemRoot',
-              'WINDIR',
-              'TEMP',
-              'TMP',
-            ]);
-            options.assertOwned();
-            const row = () =>
-              Object.freeze({
-                ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, k !== 'directoryCleanup'])),
-                input: 'Q',
-                outcome: 'COMPLETE',
-              });
-            return (
-              fault?.pair ??
-              Object.freeze(Object.fromEntries(PIPE_MODES.map((mode) => [mode, row()])))
-            );
-          },
-        };
+      if (name === './retained-pipe-startup.cjs') {
+        fixtureCalls++;
+        throw Error('HISTORICAL_FIXTURE_MUST_NOT_RUN');
+      }
       if (name === './fleet-ui-schema4.cjs') return { observeSchema4: async () => true };
       if (name === '../build/adb-host-factory.cjs')
         return {
@@ -314,6 +296,7 @@ async function simulatedObserver(wrongParent = false, fault = null) {
       exitCalls,
       clearCalls,
       thrownWrites,
+      fixtureCalls,
       executed,
       bound,
       stderr,
@@ -323,7 +306,7 @@ async function simulatedObserver(wrongParent = false, fault = null) {
         : null,
     };
   } finally {
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(temporary, { recursive: true, force: true });
   }
 }
 test('actual CJS entry starts through dynamic import, not require.main', () => {
@@ -698,59 +681,31 @@ test('paired startup diagnostic projection is exact, finite and getter-safe', ()
   assert.equal(reads, 0);
   assert.ok(Object.values(pipeDiagnostic(null)).every((v) => v === 'UNAVAILABLE'));
 });
-test('unretired paired startup refuses before VERSION and emits each pipe slot exactly once', async () => {
-  const row = Object.freeze({
-    ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, false])),
-    input: 'UNAVAILABLE',
-    outcome: 'UNRETIRED',
-  });
-  const result = await simulatedObserver(false, {
-    pair: Object.freeze({ plainShort: row, plainDepth: null }),
-  });
-  assert.equal(result.code, 1);
-  assert.equal(result.executed, 0);
-  assert.equal(result.result, null);
+test('supported-layout observer never replays historical startup fixtures or invents their results', async () => {
+  const result = await simulatedObserver(false);
+  assert.equal(result.code, 0);
+  assert.equal(result.executed, 1);
+  assert.equal(result.fixtureCalls, 0);
   for (const slot of Object.keys(PIPE_DIAGNOSTICS))
-    assert.equal(
-      result.stderr.filter((line) => line.startsWith(`RETAINED_HOST_DIAGNOSTIC_${slot}_`)).length,
-      1,
+    assert.deepEqual(
+      result.stderr.filter((line) => line.startsWith(`RETAINED_HOST_DIAGNOSTIC_${slot}_`)),
+      [`RETAINED_HOST_DIAGNOSTIC_${slot}_UNAVAILABLE\n`],
     );
-  assert.ok(result.stderr.includes('RETAINED_HOST_DIAGNOSTIC_PIPE_PLAINSHORT_OUTCOME_UNRETIRED\n'));
-  assert.equal(result.stderr.at(-1), 'RETAINED_HOST_PHASE_PIPE_STARTUP\nRETAINED_HOST_FAILED\n');
 });
-
-test('explicit UNRETIRED outcome refuses even inconsistent positive retirement bit', async () => {
-  const row = Object.freeze({
-    ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, true])),
-    input: 'Q',
-    outcome: 'UNRETIRED',
-  });
-  const result = await simulatedObserver(false, {
-    pair: Object.freeze({ plainShort: row, plainDepth: row }),
-  });
-  assert.equal(result.executed, 0);
+test('current retained observer rejects historical long run root before VERSION', async () => {
+  const result = await simulatedObserver(false, { oldRoot: true });
   assert.equal(result.code, 1);
-  assert.equal(result.stderr.at(-1), 'RETAINED_HOST_PHASE_PIPE_STARTUP\nRETAINED_HOST_FAILED\n');
+  assert.equal(result.executed, 0);
+  assert.equal(result.fixtureCalls, 0);
+  assert.equal(result.result, null);
 });
 
-test('all four 2x2 cases must retire before VERSION; unrun cases remain unavailable', async () => {
+test('historical 2x2 projection retains unrun cases as unavailable', async () => {
   const complete = Object.freeze({
     ...Object.fromEntries(PIPE_FIELDS.map((k) => [k, k !== 'directoryCleanup'])),
     input: 'Q',
     outcome: 'COMPLETE',
   });
-  for (const mode of PIPE_MODES) {
-    const pair = Object.fromEntries(PIPE_MODES.map((key) => [key, complete]));
-    pair[mode] = Object.freeze({ ...complete, outcome: 'UNRETIRED' });
-    const result = await simulatedObserver(false, { pair: Object.freeze(pair) });
-    assert.equal(result.executed, 0, mode);
-    assert.equal(result.code, 1, mode);
-    assert.ok(
-      result.stderr.includes(
-        `RETAINED_HOST_DIAGNOSTIC_PIPE_${mode.toUpperCase()}_OUTCOME_UNRETIRED\n`,
-      ),
-    );
-  }
   const vector = pipeDiagnostic({ plainShort: complete });
   assert.equal(vector.PIPE_PLAINSHORT_PROGRESSBEFOREEOF, 'YES');
   assert.equal(vector.PIPE_PLAINSHORT_PROGRESSAFTEREOF, 'YES');

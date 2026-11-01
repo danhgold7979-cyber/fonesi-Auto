@@ -27,6 +27,7 @@ import {
   hostHash,
   readHostContext,
   createHostRoot,
+  assertHostPathBudget,
   cleanupHostRoot,
 } from '../src/main/adb-host-context.ts';
 const journal = createRequire(import.meta.url)('../launch/launch-journal.cjs');
@@ -179,6 +180,8 @@ function fixture(extra = {}) {
       assert.deepEqual(Object.keys(options.env), ['SystemRoot', 'WINDIR', 'TEMP', 'TMP']);
       const b = JSON.parse(readFileSync(args[5]));
       assert.equal(b.operationSet, 'VERSION_ONLY');
+      assert.match(b.sessionId, /^[0-9a-f-]{36}$/);
+      assert.equal(options.cwd, join(launch, 'host-session-' + b.sessionId));
       assert.equal(b.parentReceiptSha256, hostHash(readFileSync(join(launch, 'host-parent.json'))));
       child = new EventEmitter();
       child.stdout = new PassThrough();
@@ -186,6 +189,7 @@ function fixture(extra = {}) {
       child.stdin = new Writable({
         write(bytes, _enc, done) {
           const q = JSON.parse(bytes.toString());
+          assert.equal(q.sessionId, b.sessionId);
           extra.request?.(q, child);
           if (!extra.hold) {
             setImmediate(() =>
@@ -579,5 +583,72 @@ test('native progress first-occurrence slots do not impose a false concurrent re
     assert.equal(f.factory.evidence.progress.length, 6);
   } finally {
     f.cleanup();
+  }
+});
+
+test('private compatibility budget accepts exact owned helper boundary and rejects one over before any write or callback', () => {
+  const base = realpathSync.native(
+    mkdtempSync(join(realpathSync.native(tmpdir()), 'host-budget-')),
+  );
+  try {
+    for (const length of [220, 221]) {
+      const prefix = join(base, 'x'.repeat(length - base.length - 51));
+      mkdirSync(prefix);
+      let fences = 0;
+      assert.equal(join(prefix, 'host-session-' + id(80)).length, length);
+      const before = readdirSync(prefix);
+      if (length === 220) {
+        const owned = createHostRoot(prefix, id(80), id(81), () => {
+          fences++;
+        });
+        assert.equal(owned.root.length, 220);
+        assert.equal(join(owned.root, 'profile').length, 228);
+        assert.equal(join(owned.root, 'bootstrap.json').length, 235);
+        assert.equal(readFileSync(join(owned.root, '.owner'), 'utf8'), id(81));
+        assert.ok(fences > 0);
+      } else {
+        assert.throws(
+          () =>
+            createHostRoot(prefix, id(80), id(81), () => {
+              fences++;
+            }),
+          /HOST_CONTEXT_REJECTED/,
+        );
+        assert.equal(fences, 0);
+        assert.deepEqual(readdirSync(prefix), before);
+      }
+    }
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+test('actual adb basename and native asset paths obey conservative directory/file bounds without creating files', () => {
+  const base = realpathSync.native(mkdtempSync(join(realpathSync.native(tmpdir()), 'host-path-')));
+  try {
+    const before = readdirSync(base);
+    const pathOf = (parentLength, name) =>
+      join(base, 'x'.repeat(parentLength - base.length - 1), name);
+    const supported = pathOf(247, 'adb.exe');
+    assert.equal(supported.length, 255);
+    assert.equal(
+      assertHostPathBudget(base, id(80), supported),
+      join(base, 'host-session-' + id(80)),
+    );
+    for (const value of [
+      pathOf(248, 'adb.exe'),
+      pathOf(252, 'adb.exe'),
+      pathOf(247, 'x'.repeat(12)),
+    ])
+      assert.throws(() => assertHostPathBudget(base, id(80), value), /HOST_CONTEXT_REJECTED/);
+    assert.doesNotThrow(() =>
+      assertHostPathBudget(base, id(80), supported, [pathOf(247, 'x'.repeat(11))]),
+    );
+    assert.throws(
+      () => assertHostPathBudget(base, id(80), supported, [pathOf(247, 'x'.repeat(12))]),
+      /HOST_CONTEXT_REJECTED/,
+    );
+    assert.deepEqual(readdirSync(base), before);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
   }
 });

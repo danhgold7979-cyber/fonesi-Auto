@@ -38,7 +38,7 @@ try{
  if((Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash -ine 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89'){throw 'HELPER_CHANGED'}
  if('Fonesi.Phase00.NativeProbe' -as [type]){throw 'PRELOADED_HELPER_REJECTED'};Add-Type -Path $helper
  if(Test-Path -LiteralPath $base){throw 'BASE_EXISTS'};[Fonesi.Phase00.NativeProbe]::ReserveDirectory($base);Assert-PlainDirectory $base;$baseVerified=$true
- $root=Join-Path $base ('run-'+[guid]::NewGuid().ToString());[Fonesi.Phase00.NativeProbe]::ReserveDirectory($root)
+ $root=Join-Path $base 'r';[Fonesi.Phase00.NativeProbe]::ReserveDirectory($root)
  $token=[guid]::NewGuid().ToString();$stream=[IO.File]::Open((Join-Path $root '.owner'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
  try{$b=[Text.Encoding]::UTF8.GetBytes($token);$stream.Write($b,0,$b.Length);$stream.Flush($true)}finally{$stream.Dispose()}
  $owner=[pscustomobject]@{Parent=$base;Path=$root;Token=$token};Assert-OwnedRun $owner

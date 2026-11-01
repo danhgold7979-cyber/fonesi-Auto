@@ -25,7 +25,7 @@ def sample():
 def fixture(directory, stdout='PERSISTENCE_DESKTOP_CLOSED\n'):
     base = Path(directory).resolve() / '.retained-host-runtime'
     base.mkdir()
-    root = base / 'run-12345678-1234-4234-8234-123456789abc'
+    root = base / 'r'
     root.mkdir()
     (root / '.owner').write_text('12345678-1234-4234-8234-123456789abc')
     value = sample()
@@ -137,6 +137,29 @@ class RetainedHostEvidence(unittest.TestCase):
             self.assertTrue(validator.parse((base / 'validated.json').read_bytes())['passed'])
             with self.assertRaises(FileExistsError):
                 validator.publish(base)
+
+    def test_current_stage_requires_fixed_r_and_exact_owner_without_legacy_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base, root = fixture(directory)
+            with self.assertRaises(FileExistsError):
+                root.mkdir()
+            before = (root / 'integrity.json').read_bytes()
+            legacy = base / 'run-12345678-1234-4234-8234-123456789abc'
+            root.rename(legacy)
+            with self.assertRaises(ValueError):
+                validator.stage(legacy)
+            self.assertFalse((legacy / 'public.json').exists())
+            legacy.rename(root)
+            marker = root / '.owner'
+            owner = marker.read_bytes()
+            marker.write_bytes(owner + b'\n')
+            with self.assertRaises(ValueError):
+                validator.stage(root)
+            marker.write_bytes(owner)
+            with self.assertRaises(ValueError):
+                validator.stage(root / '..' / 'r')
+            self.assertEqual((root / 'integrity.json').read_bytes(), before)
+            self.assertTrue(validator.stage(root))
 
     def test_capture_only_zero_or_one_leading_blank_and_fixed_failure_denied(self):
         for text, accepted in (('PERSISTENCE_DESKTOP_CLOSED\r\n', True),
