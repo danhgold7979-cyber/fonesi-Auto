@@ -1,18 +1,28 @@
 # Master Implementation Plan
 
+> **Current precedence — 2026-11-01:** Phase1 has ten bounded technical passes and an
+> internal Windows package; Phase2 software-first development is IN_PROGRESS.
+> [Current status](PHASE_STATUS.md), [adopted Amendment02](phases/SOFTWARE-FIRST-HARDWARE-DEFERRED-AMENDMENT-02.md)
+> and the [Phase2 entry record](phases/PHASE-02-SOFTWARE-FIRST-ENTRY-PROPOSAL.md) govern
+> development entry over the historical Oct30 statements below. The user delegated
+> routine later phase/branch progression after reviewed readiness, without repeated
+> entry-confirmation ceremonies. Formal acceptance/main merge, P1-06 UNMET and actual
+> binary/device/security/hardware gates are not silently waived. Canonical task IDs,
+> scope and physical acceptance criteria below remain unchanged.
+
 **Revision:** 0.3-review · **Date:** 2026-10-30
 **Repository:** fonesi-Auto · **Documentation review branch:** plan
-**Implementation state:** Phase 0 feasibility IN_PROGRESS; production application NOT_STARTED. This revision is a documentation proposal, not Phase acceptance or production authorization.
+**Historical implementation state (2026-10-30):** Phase 0 feasibility IN_PROGRESS; production application NOT_STARTED. This revision is a documentation proposal, not Phase acceptance or production authorization.
 
 This plan is intentionally written from zero. It does not inherit the source tree, code, contracts, schema or execution plan of fonesi-W.
 
 ## 1. Overall execution model
 
-Work is divided into strictly sequential, gated phases: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11. Each predecessor must be **accepted by the user and merged**; then the next detailed Phase Plan requires separate approval. Technical independence does not authorize parallel phases. A phase is complete only with its exit evidence and user acceptance, never screenshots/mock data alone.
+**Original formal-gate wording (development entry now amended above):** Work is divided into strictly sequential, gated phases: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11. Each predecessor must be **accepted by the user and merged**; then the next detailed Phase Plan requires separate approval. Technical independence does not authorize parallel phases. A phase is complete only with its exit evidence and user acceptance, never screenshots/mock data alone.
 
 Task IDs in this document identify roadmap work, not completion. [Traceability](14_REQUIREMENTS_TRACEABILITY.md) maps requirements, tests and historical IDs. The approved [Phase 0 plan](phases/PHASE-00-feasibility.md) owns execution IDs P0-01…P0-10; this master uses **G0-01…G0-19** for Phase 0 gates to avoid their former naming collision. Do not renumber or rewrite approved execution history. Future Phase task plans must reference the stable P1…P11 IDs below; new scope/acceptance in an approved plan requires an approved amendment.
 
-**Current evidence boundary (2026-10-30):** Phase 0 has four IN_PROGRESS and six NOT_STARTED execution tasks; its exit checklist is unaccepted. There is no production app or runnable application CI yet. Existing device evidence is partial, not end-to-end certification. [PHASE_STATUS](PHASE_STATUS.md) is the status authority.
+**Historical evidence boundary (2026-10-30):** Phase 0 has four IN_PROGRESS and six NOT_STARTED execution tasks; its exit checklist is unaccepted. There is no production app or runnable application CI yet. Existing device evidence is partial, not end-to-end certification. [PHASE_STATUS](PHASE_STATUS.md) is the status authority.
 
 **Accepted directions:** [C-01…C-22](16_ACCEPTED_PRODUCT_DECISIONS.md), DEC-019 and DEC-020 are settled product choices. G0 gates now close their remaining implementation/version/permission/evidence questions; no gate passes merely because its direction is accepted. The approved physical acceptance and proposed amendment boundaries remain unchanged.
 

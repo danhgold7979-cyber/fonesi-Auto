@@ -60,6 +60,7 @@ export const inputs = [
   'src/main/adb-discovery.ts',
   'src/main/adb-metadata.ts',
   'src/main/platform-tools-contract.ts',
+  'src/main/platform-tools-files.ts',
   'src/main/adb-host-lifecycle.ts',
   'src/main/transport-registry.ts',
   'src/main/device-actor.ts',

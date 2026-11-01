@@ -84,3 +84,13 @@ public service wiring, two-phone targeting, two-AVD matrix, capture/input/Unicod
 full device faults retain their original gates. Disabled wireless is not wireless PASS.
 Rollback removes/disables the unwired software modules while preserving the reviewed
 Phase1 package and all evidence; it never resets a phone or replays an uncertain effect.
+
+## First Windows software-only checkpoint
+
+Exact public `ea559dd91dd30b6faf7ec929627c0bcd0001f193`, tree
+`b3fe6907b63a8f2f51a7e69222ba16f3151bbdd1`,
+[CI41266813063](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41266813063)
+completed SUCCESS; independent log review verified desktop641/641, foundation109/109
+and Python157/157 with no failures/skips/cancellations. This job invoked no ADB/native
+identity/device probe; synthetic Python DEMO/UI markers are not fresh native runs.
+This is Windows software-only PASS, not new canonical Phase2 task acceptance.

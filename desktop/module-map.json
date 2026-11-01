@@ -1104,6 +1104,25 @@
           "validAdbSerial": "value"
         }
       }
+    },
+    "main/platform-tools-files.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value",
+          "realpath": "value",
+          "opendir": "value",
+          "open": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "dirname": "value",
+          "join": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        }
+      }
     }
   }
 }

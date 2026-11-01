@@ -1,4 +1,4 @@
-name: Phase 02 software-only contracts and actors
+name: Phase 02 software and pinned development version
 on:
   workflow_dispatch:
   push:
@@ -63,11 +63,80 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==157; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==185; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Explicit unavailable runtime and deferred hardware boundary
         run: |
           Write-Output 'PHASE02_SOFTWARE_ONLY'
-          Write-Output 'ADB_BINARY_UNAVAILABLE_NOT_EXECUTED'
+          Write-Output 'PRODUCTION_ADB_BINARY_UNAVAILABLE'
+          Write-Output 'SOURCE_JOB_NO_ADB_EXECUTION'
           Write-Output 'DEVICE_HARDWARE_NOT_RUN'
           Write-Output 'P106_CROSS_USER_UNMET_NOT_RERUN'
+  owned-adb-version-development:
+    needs: windows-software-only
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Download exact official candidate for development inspection only
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/fetch_platform_tools.py ([IO.Path]::GetFullPath('desktop'))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax-check bounded runner and control without execution
+        run: |
+          node --check desktop/verification/platform-tools-version-control.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens=$null; $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-PlatformToolsVersion.ps1'),[ref]$tokens,[ref]$errors)
+          if (@($errors).Count -ne 0) { Write-Output 'P201_RUNNER_SYNTAX_FAILED'; exit 1 }
+      - name: Owned exact app-local version command only, no server or device operations
+        run: |
+          try { & ./desktop/verification/Invoke-PlatformToolsVersion.ps1 }
+          catch { Write-Output 'P201_RUNNER_FAILED'; exit 1 }
+      - name: Strict fixed-field publication, never raw capture or candidate binaries
+        id: platform_tools_validation
+        if: always()
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $out=[IO.Path]::GetFullPath('artifacts/platform-tools')
+            [void](New-Item -ItemType Directory -Path $out -ErrorAction Stop)
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_platform_tools.py publish ([IO.Path]::GetFullPath('desktop/.platform-tools-runtime/unvalidated.json')) (Join-Path $out 'validated.json') 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines) {
+              if ([string]$line -cmatch '^(PLATFORM_TOOLS_VALIDATION_WRITTEN|PLATFORM_TOOLS_HOSTED_PASS|PLATFORM_TOOLS_HOSTED_FAIL|PLATFORM_TOOLS_VALIDATION_REJECTED)$') { Write-Output ([string]$line) }
+            }
+            if (@($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_VALIDATION_WRITTEN'}).Count -eq 1) {
+              'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_HOSTED_PASS'}).Count -ne 1) { exit 1 }
+          } catch { Write-Output 'P201_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only fresh validated fixed-field evidence
+        if: always() && steps.platform_tools_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: platform-tools-development-evidence
+          path: artifacts/platform-tools/validated.json
+          if-no-files-found: error
+          retention-days: 14

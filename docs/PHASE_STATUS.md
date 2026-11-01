@@ -24,7 +24,7 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 Ten of eleven canonical task scopes have technical passes (10/11=90.9%;10/154=6.5% overall).
 P1-06 cross-user proof remains UNMET; formal accepted count is0. P1-10 internal packaging
 and known-retired/RESTORED launcher obligations passed their bounded native scope.
-Phase2 reviewed internal P2-01–P2-07 source batch is authorized under Amendment02; exact base `f8b155738e0ebbe404449579d4f4b60b911aed28`. [Entry record](phases/PHASE-02-SOFTWARE-FIRST-ENTRY-PROPOSAL.md) and [software checkpoint](evidence/P2-01-07-software-foundation-2026-11-01.md) distinguish pure source/fixture tests from actual ADB/binary/device gates. Independent local checkpoint641 desktop/109 foundation/157 Python passes; six main-only modules remain unwired and production ADB remains `BINARY_UNAVAILABLE`. No Phase2 task PASS is added.
+Phase2 reviewed internal P2-01–P2-07 source batch is authorized under Amendment02; exact base `f8b155738e0ebbe404449579d4f4b60b911aed28`. [Entry record](phases/PHASE-02-SOFTWARE-FIRST-ENTRY-PROPOSAL.md) and [software checkpoint](evidence/P2-01-07-software-foundation-2026-11-01.md) distinguish pure source/fixture tests from actual ADB/binary/device gates. Independent local and exact Windows source-only CI41266813063 checkpoint641 desktop/109 foundation/157 Python passes; six main-only modules remain unwired and production ADB remains `BINARY_UNAVAILABLE`. No Phase2 task PASS is added.
 Historical Phase0 records below are preserved, not the current software work queue.
 
 | Item | Status | Evidence / boundary |
