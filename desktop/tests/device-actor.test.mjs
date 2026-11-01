@@ -823,3 +823,349 @@ test('v3 proven local refusal maps only closed local codes without converting na
     await f.actor.shutdown();
   }
 });
+
+const inputFacts = (extra = {}) =>
+  Object.freeze({
+    version: 1,
+    kind: 'INPUT_QUERY',
+    status: 'COMPLETE',
+    code: 'OK',
+    dispatched: true,
+    operationRetired: true,
+    remoteExitCode: 0,
+    stdoutEmpty: true,
+    stderrEmpty: true,
+    observedAtUtc: 1000,
+    ...extra,
+  });
+const inputHandle = (
+  facts = inputFacts(),
+  retirement = Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+  handoff = 'QUERY',
+) => Object.freeze({ handoff, result: Promise.resolve(facts), retirement });
+function inputFixture(config = {}) {
+  const events = [];
+  const f = fixture({
+    now: () => 1000,
+    input: {
+      transportId: '7',
+      finalCurrent: () => true,
+      localBusy: () => false,
+      audit: async (r, phase, outcome, code) => {
+        events.push({ r, phase, outcome, code });
+        return Object.freeze({ phase, loggingHealth: 'AVAILABLE' });
+      },
+      dispatch: () => inputHandle(),
+      ...config,
+    },
+  });
+  return {
+    ...f,
+    events,
+    request: (action = 'HOME', extra = {}) => ({
+      version: 4,
+      kind: 'INPUT_QUERY',
+      commandId: id(10),
+      correlationId: id(10010),
+      ownerId: id(3),
+      ...target,
+      transportId: '7',
+      action,
+      deadlineUtc: 2000,
+      display: null,
+      ...extra,
+    }),
+  };
+}
+const tick = () => new Promise((r) => setImmediate(r));
+test('v4 all nine literal actions audit actual head and report remote completion without observed effect', async () => {
+  for (const action of [
+    'HOME',
+    'BACK',
+    'ENTER',
+    'ESCAPE',
+    'DPAD_UP',
+    'DPAD_DOWN',
+    'DPAD_LEFT',
+    'DPAD_RIGHT',
+    'DPAD_CENTER',
+  ]) {
+    const f = inputFixture();
+    const r = await f.actor.execute(f.cap, f.request(action));
+    assert.equal(r.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.equal(r.code, 'OK');
+    assert.equal(r.diagnosticId, null);
+    assert.deepEqual(
+      f.events.map((e) => [e.phase, e.outcome, e.code]),
+      [
+        ['INTENT', 'INTENT', 'OK'],
+        ['RESULT', 'DISPATCHED_UNCONFIRMED', 'OK'],
+      ],
+    );
+    assert.equal(f.events[0].r, f.events[1].r);
+    assert.equal(f.count(), 0);
+    assert.equal(await f.actor.shutdown(), true);
+  }
+});
+test('v4 rejects coordinate/text/changed transport before audit or query', async () => {
+  const f = inputFixture();
+  for (const patch of [
+    { action: 'TAP' },
+    { action: 'TEXT' },
+    { transportId: '8' },
+    { display: {} },
+    { extra: 'PRIVATE' },
+  ])
+    assert.equal(
+      (await f.actor.execute(f.cap, { ...f.request(), ...patch })).outcome,
+      'NOT_DISPATCHED',
+    );
+  assert.equal(f.events.length, 0);
+  await f.actor.shutdown();
+});
+test('v4 pending intent deadline returns known no-dispatch and retains actual audit until settlement', async () => {
+  const intent = deferred();
+  let dispatches = 0;
+  const f = inputFixture({
+    audit: (_r, phase) =>
+      phase === 'INTENT'
+        ? intent.promise
+        : Promise.resolve(Object.freeze({ phase, loggingHealth: 'AVAILABLE' })),
+    dispatch: () => {
+      dispatches++;
+      return inputHandle();
+    },
+  });
+  const p = f.actor.execute(f.cap, f.request('HOME', { deadlineUtc: 1020 }));
+  const r = await p;
+  assert.equal(r.outcome, 'NOT_DISPATCHED');
+  assert.equal(r.code, 'DEADLINE_EXCEEDED');
+  assert.equal(dispatches, 0);
+  assert.equal(f.budget.pending(), 1);
+  const close = f.actor.shutdown();
+  intent.resolve(Object.freeze({ phase: 'INTENT', loggingHealth: 'AVAILABLE' }));
+  assert.equal(await close, true);
+  assert.equal(dispatches, 0);
+  assert.equal(f.budget.pending(), 0);
+});
+test('v4 degraded intent cannot dispatch and result audit preserves known no-effect', async () => {
+  let calls = 0;
+  const f = inputFixture({
+    audit: async (_r, phase) => Object.freeze({ phase, loggingHealth: 'DEGRADED' }),
+    dispatch: () => {
+      calls++;
+      return inputHandle();
+    },
+  });
+  const r = await f.actor.execute(f.cap, f.request());
+  assert.equal(r.code, 'AUDIT_UNAVAILABLE');
+  assert.equal(r.outcome, 'NOT_DISPATCHED');
+  assert.equal(calls, 0);
+  await f.actor.shutdown();
+});
+test('v4 known native result survives held RESULT audit deadline but actual work remains busy', async () => {
+  const resultAudit = deferred();
+  const f = inputFixture({
+    audit: async (_r, phase) =>
+      phase === 'INTENT'
+        ? Object.freeze({ phase, loggingHealth: 'AVAILABLE' })
+        : resultAudit.promise,
+  });
+  const p = f.actor.execute(f.cap, f.request('HOME', { deadlineUtc: 1020 }));
+  const r = await p;
+  assert.equal(r.outcome, 'DISPATCHED_UNCONFIRMED');
+  assert.equal(r.code, 'OK');
+  assert.equal(f.actor.snapshot().uncertain, false);
+  assert.equal(f.budget.pending(), 1);
+  const close = f.actor.shutdown();
+  resultAudit.resolve(Object.freeze({ phase: 'RESULT', loggingHealth: 'DEGRADED' }));
+  assert.equal(await close, true);
+  assert.equal(f.budget.pending(), 0);
+});
+test('v4 COMPLETE alone cannot bypass held retirement or start known RESULT audit', async () => {
+  const retirement = deferred();
+  const f = inputFixture({ dispatch: () => inputHandle(inputFacts(), retirement.promise) });
+  const p = f.actor.execute(f.cap, f.request('HOME', { deadlineUtc: 1020 }));
+  assert.equal((await p).outcome, 'OUTCOME_UNKNOWN');
+  assert.equal(f.events.length, 2);
+  assert.equal(f.events[1].outcome, 'OUTCOME_UNKNOWN');
+  assert.equal(f.budget.pending(), 1);
+  retirement.resolve(Object.freeze({ status: 'RETIRED' }));
+  await tick();
+  assert.equal(f.budget.pending(), 0);
+  assert.equal(await f.actor.shutdown(), false);
+});
+test('v4 local refusal mappings do not recast query failure and absent remote exit is unknown', async () => {
+  for (const [handoff, code, dispatched, expected] of [
+    ['LOCAL_REFUSAL', 'BUSY', false, 'BUSY'],
+    ['LOCAL_REFUSAL', 'CLOSED', false, 'CLOSED'],
+    ['LOCAL_REFUSAL', 'DEADLINE', false, 'DEADLINE_EXCEEDED'],
+    ['LOCAL_REFUSAL', 'ADMISSION_REJECTED', false, 'BINARY_UNAVAILABLE'],
+    ['LOCAL_REFUSAL', 'INPUT_REJECTED', false, 'INVALID_REQUEST'],
+    ['QUERY', 'BUSY', false, 'TRANSPORT_FAILED'],
+    ['QUERY', 'NATIVE_FAILED', true, 'OUTCOME_UNKNOWN'],
+  ]) {
+    const f = inputFixture({
+      dispatch: () =>
+        inputHandle(
+          inputFacts({
+            status: 'FAILED',
+            code,
+            dispatched,
+            remoteExitCode: null,
+            stdoutEmpty: null,
+            stderrEmpty: null,
+            observedAtUtc: null,
+          }),
+          undefined,
+          handoff,
+        ),
+    });
+    const r = await f.actor.execute(f.cap, f.request());
+    assert.equal(r.code, expected);
+    assert.notEqual(r.outcome, 'OBSERVED');
+    await f.actor.shutdown();
+  }
+});
+test('v4 malformed audit or hostile query promise cannot release uncertain reservation', async () => {
+  const f = inputFixture({
+    audit: async () =>
+      Object.freeze({ phase: 'INTENT', loggingHealth: 'AVAILABLE', extra: 'PRIVATE' }),
+  });
+  const failedIntent = await f.actor.execute(f.cap, f.request());
+  assert.equal(failedIntent.outcome, 'NOT_DISPATCHED');
+  assert.equal(failedIntent.code, 'AUDIT_UNAVAILABLE');
+  assert.equal(f.budget.pending(), 1);
+  assert.equal(await f.actor.shutdown(), false);
+  const promise = Promise.resolve(inputFacts());
+  Object.defineProperty(promise, 'then', {
+    get() {
+      throw Error('PRIVATE');
+    },
+  });
+  const g = inputFixture({
+    dispatch: () =>
+      Object.freeze({ handoff: 'QUERY', result: promise, retirement: new Promise(() => {}) }),
+  });
+  assert.equal((await g.actor.execute(g.cap, g.request())).outcome, 'OUTCOME_UNKNOWN');
+  assert.equal(g.budget.pending(), 1);
+  assert.equal(await g.actor.shutdown(), false);
+});
+test('v4 final authority loss after audit prevents handoff', async () => {
+  const f = inputFixture({
+    audit: async (_r, phase) => {
+      if (phase === 'INTENT') f.actor.revoke(f.cap);
+      return Object.freeze({ phase, loggingHealth: 'AVAILABLE' });
+    },
+    dispatch: () => {
+      throw Error('MUST_NOT_DISPATCH');
+    },
+  });
+  assert.equal((await f.actor.execute(f.cap, f.request())).outcome, 'NOT_DISPATCHED');
+  assert.equal(await f.actor.shutdown(), true);
+  const g = inputFixture();
+  const q = g.actor.execute(g.cap, g.request('HOME'));
+  assert.equal((await q).outcome, 'DISPATCHED_UNCONFIRMED');
+  await g.actor.shutdown();
+});
+test('v4 binary loss after QUERY or RESULT maps stale history while prehandoff remains binary unavailable', async () => {
+  for (const phase of ['BEFORE', 'QUERY', 'RESULT']) {
+    let binary = phase !== 'BEFORE';
+    const events = [];
+    const f = fixture({
+      now: () => 1000,
+      binaryAvailable: () => binary,
+      input: {
+        transportId: '7',
+        localBusy: () => false,
+        finalCurrent: () => true,
+        audit: async (_r, p, outcome, code) => {
+          events.push({ phase: p, outcome, code });
+          if (phase === 'RESULT' && p === 'RESULT') binary = false;
+          return Object.freeze({ phase: p, loggingHealth: 'AVAILABLE' });
+        },
+        dispatch: () => {
+          if (phase === 'QUERY') binary = false;
+          return inputHandle();
+        },
+      },
+    });
+    const request = {
+      version: 4,
+      kind: 'INPUT_QUERY',
+      commandId: id(10),
+      correlationId: id(10010),
+      ownerId: id(3),
+      ...target,
+      transportId: '7',
+      action: 'HOME',
+      deadlineUtc: 2000,
+      display: null,
+    };
+    const response = await f.actor.execute(f.cap, request);
+    assert.equal(response.code, phase === 'BEFORE' ? 'BINARY_UNAVAILABLE' : 'STALE_BINDING');
+    assert.equal(
+      response.outcome,
+      phase === 'BEFORE' ? 'NOT_DISPATCHED' : 'DISPATCHED_UNCONFIRMED',
+    );
+    if (phase === 'QUERY') assert.equal(events.at(-1).code, 'STALE_BINDING');
+    if (phase === 'RESULT') assert.equal(events.at(-1).code, 'OK'); // Historical candidate, not a second contradictory RESULT.
+    await f.actor.shutdown();
+  }
+});
+test('v4 thrown/rejected/malformed INTENT has known no-query receipt but retains unobservable audit', async () => {
+  for (const mode of ['THROW', 'REJECT', 'MALFORMED']) {
+    let dispatches = 0;
+    const f = inputFixture({
+      audit: (_r, phase) => {
+        if (phase === 'RESULT')
+          return Promise.resolve(Object.freeze({ phase, loggingHealth: 'DEGRADED' }));
+        if (mode === 'THROW') throw Error('PRIVATE');
+        return mode === 'REJECT'
+          ? Promise.reject(Error('PRIVATE'))
+          : Promise.resolve(Object.freeze({ phase, loggingHealth: 'PRIVATE' }));
+      },
+      dispatch: () => {
+        dispatches++;
+        return inputHandle();
+      },
+    });
+    const r = await f.actor.execute(f.cap, f.request());
+    assert.equal(r.outcome, 'NOT_DISPATCHED');
+    assert.equal(r.code, 'AUDIT_UNAVAILABLE');
+    assert.equal(dispatches, 0);
+    assert.equal(f.actor.snapshot().uncertain, true);
+    await tick();
+    assert.equal(f.budget.pending(), 1);
+    assert.equal(await f.actor.shutdown(), false);
+  }
+});
+test('v4 timeout starts one unknown RESULT independently and retains query plus audit retirement', async () => {
+  const retirement = deferred(),
+    resultAudit = deferred();
+  const events = [];
+  const f = inputFixture({
+    dispatch: () => inputHandle(inputFacts(), retirement.promise),
+    audit: (_r, phase, outcome) => {
+      events.push([phase, outcome]);
+      return phase === 'INTENT'
+        ? Promise.resolve(Object.freeze({ phase, loggingHealth: 'AVAILABLE' }))
+        : resultAudit.promise;
+    },
+  });
+  const p = f.actor.execute(f.cap, f.request('HOME', { deadlineUtc: 1020 }));
+  assert.equal((await p).outcome, 'OUTCOME_UNKNOWN');
+  assert.deepEqual(events, [
+    ['INTENT', 'INTENT'],
+    ['RESULT', 'OUTCOME_UNKNOWN'],
+  ]);
+  assert.equal(f.budget.pending(), 1);
+  retirement.resolve(Object.freeze({ status: 'RETIRED' }));
+  await tick();
+  assert.equal(f.budget.pending(), 1);
+  resultAudit.resolve(Object.freeze({ phase: 'RESULT', loggingHealth: 'AVAILABLE' }));
+  await tick();
+  assert.equal(f.budget.pending(), 0);
+  assert.equal(events.length, 2);
+  assert.equal(await f.actor.shutdown(), false);
+});

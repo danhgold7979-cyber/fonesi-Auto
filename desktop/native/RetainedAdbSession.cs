@@ -279,6 +279,28 @@ namespace Fonesi.Development.Server
                 { fields=new Dictionary<string,object>{{"version",1},{"kind","METADATA_QUERY"},{"status",reply.status},{"code",reply.code},{"dispatched",reply.dispatched},{"operationRetired",reply.retired},{"stdoutBase64",reply.metadata==null?null:Convert.ToBase64String(reply.metadata.stdout)},{"stderrBase64",reply.metadata==null?null:Convert.ToBase64String(reply.metadata.stderr)},{"remoteExitCode",reply.metadata==null?null:(object)reply.metadata.remoteExitCode},{"observedAtUtc",reply.observed}}; }
                 public IDictionary<string,object> Snapshot(){return new System.Collections.ObjectModel.ReadOnlyDictionary<string,object>(new Dictionary<string,object>(fields));}
             }
+            public sealed class InputReply
+            {
+                readonly Dictionary<string,object> fields;
+                internal InputReply(QueryReply reply)
+                {fields=new Dictionary<string,object>{{"version",1},{"kind","INPUT_QUERY"},{"status",reply.status},{"code",reply.code},{"dispatched",reply.dispatched},{"operationRetired",reply.retired},{"remoteExitCode",reply.metadata==null?null:(object)reply.metadata.remoteExitCode},{"stdoutEmpty",reply.metadata==null?null:(object)(reply.metadata.stdout.Length==0)},{"stderrEmpty",reply.metadata==null?null:(object)(reply.metadata.stderr.Length==0)},{"observedAtUtc",reply.observed}};}
+                public IDictionary<string,object> Snapshot(){return new System.Collections.ObjectModel.ReadOnlyDictionary<string,object>(new Dictionary<string,object>(fields));}
+            }
+            internal static string InputCommand(string action)
+            {
+                switch(action){
+                    case "HOME":return "input keyboard -d 0 keyevent 3";
+                    case "BACK":return "input keyboard -d 0 keyevent 4";
+                    case "ENTER":return "input keyboard -d 0 keyevent 66";
+                    case "ESCAPE":return "input keyboard -d 0 keyevent 111";
+                    case "DPAD_UP":return "input keyboard -d 0 keyevent 19";
+                    case "DPAD_DOWN":return "input keyboard -d 0 keyevent 20";
+                    case "DPAD_LEFT":return "input keyboard -d 0 keyevent 21";
+                    case "DPAD_RIGHT":return "input keyboard -d 0 keyevent 22";
+                    case "DPAD_CENTER":return "input keyboard -d 0 keyevent 23";
+                    default:throw new IOException("INPUT_REJECTED");
+                }
+            }
             internal sealed class MetadataBytes
             {
                 internal readonly byte[] stdout,stderr;internal readonly int remoteExitCode;
@@ -324,7 +346,17 @@ namespace Fonesi.Development.Server
             {string text=new UTF8Encoding(false,true).GetString(bytes);if(text.IndexOf('\0')>=0||(text.Length>0&&text[0]=='\ufeff'))throw new IOException("METADATA_REJECTED");}
             internal static MetadataBytes ReadMetadata(IDiscoveryChannel channel,DiscoveryBudget budget,string transportId,string field,Action beforeShell)
             {
-                if(!MetadataTransport(transportId)||beforeShell==null)throw new IOException("METADATA_REJECTED");string command=MetadataCommand(field);
+                return ReadShell(channel,budget,transportId,MetadataCommand(field),beforeShell,true);
+            }
+            internal static MetadataBytes ReadInput(IDiscoveryChannel channel,DiscoveryBudget budget,string transportId,string action,Action beforeShell)
+            {
+                try{return ReadShell(channel,budget,transportId,InputCommand(action),beforeShell,false);}
+                catch(IOException error){if(error.Message=="METADATA_REJECTED")throw new IOException("INPUT_REJECTED");throw;}
+            }
+            // The only callers select a complete fixed literal; this is not a command API.
+            static MetadataBytes ReadShell(IDiscoveryChannel channel,DiscoveryBudget budget,string transportId,string command,Action beforeShell,bool textOutput)
+            {
+                if(!MetadataTransport(transportId)||beforeShell==null)throw new IOException("METADATA_REJECTED");
                 MetadataService(channel,budget,"host:transport-id:"+transportId);
                 beforeShell();budget.Remaining(); // Actual custody/process/listener fence before the second send.
                 MetadataService(channel,budget,"shell,v2,raw:"+command);
@@ -334,7 +366,7 @@ namespace Fonesi.Development.Server
                         uint length=(uint)header[1]|((uint)header[2]<<8)|((uint)header[3]<<16)|((uint)header[4]<<24);
                         int kind=header[0];if((kind!=1&&kind!=2&&kind!=3)||length>32768||(kind==3&&length!=1)||(kind!=3&&length>32768-total))throw new IOException("METADATA_REJECTED");
                         byte[] payload=new byte[(int)length];MetadataExact(channel,budget,payload);
-                        if(kind==3){byte[] extra=new byte[1];int trailing=channel.Receive(extra,0,1,budget.Remaining());budget.Remaining();if(trailing!=0)throw new IOException("METADATA_REJECTED");byte[] output=stdout.ToArray(),error=stderr.ToArray();MetadataText(output);MetadataText(error);return new MetadataBytes(output,error,payload[0]);}
+                        if(kind==3){byte[] extra=new byte[1];int trailing=channel.Receive(extra,0,1,budget.Remaining());budget.Remaining();if(trailing!=0)throw new IOException("METADATA_REJECTED");byte[] output=stdout.ToArray(),error=stderr.ToArray();if(textOutput){MetadataText(output);MetadataText(error);}return new MetadataBytes(output,error,payload[0]);}
                         total+=(int)length;(kind==1?stdout:stderr).Write(payload,0,payload.Length);
                     }
                     throw new IOException("METADATA_REJECTED");
@@ -414,20 +446,25 @@ namespace Fonesi.Development.Server
                 try{return DiscoveryWorkRetired(q.registering,AcquisitionClosed(q),q.workerDone,q.connect);}finally{Monitor.Exit(q);}
             }
             public AcquisitionReply Discover(Attempt attempt,long deadlineUtc)
-            {QueryReply reply=Query(attempt,deadlineUtc,null,null);return new AcquisitionReply(reply.status,reply.code,reply.dispatched,reply.retired,reply.payload,reply.observed);}
+            {QueryReply reply=Query(attempt,deadlineUtc,null,null,false);return new AcquisitionReply(reply.status,reply.code,reply.dispatched,reply.retired,reply.payload,reply.observed);}
             public MetadataReply Metadata(Attempt attempt,string transportId,string field,long deadlineUtc)
             {
                 if(field==null)return new MetadataReply(new QueryReply("FAILED","METADATA_REJECTED",false,true,null,null,null));
-                return new MetadataReply(Query(attempt,deadlineUtc,transportId,field));
+                return new MetadataReply(Query(attempt,deadlineUtc,transportId,field,false));
             }
-            QueryReply Query(Attempt attempt,long deadlineUtc,string transportId,string field)
+            public InputReply Input(Attempt attempt,string transportId,string action,long deadlineUtc)
+            {
+                if(action==null)return new InputReply(new QueryReply("FAILED","INPUT_REJECTED",false,true,null,null,null));
+                return new InputReply(Query(attempt,deadlineUtc,transportId,action,true));
+            }
+            QueryReply Query(Attempt attempt,long deadlineUtc,string transportId,string field,bool input)
             {
                 State a=attempt==null?null:attempt.state as State;
                 if(!Enter(a,"FOREGROUND",false))return new QueryReply("FAILED","BUSY",false,true,null,null,null);
                 Acquisition q=null;byte[] payload=null;MetadataBytes metadata=null;long? observed=null;string code="NATIVE_FAILED";bool dispatched=false;
                 try {
                     DiscoveryBudget budget=new DiscoveryBudget(deadlineUtc);
-                    if(field!=null){if(deadlineUtc>8640000000000000L||!MetadataTransport(transportId))throw new IOException("METADATA_REJECTED");MetadataCommand(field);}
+                    if(field!=null){if(deadlineUtc>8640000000000000L||!MetadataTransport(transportId))throw new IOException(input?"INPUT_REJECTED":"METADATA_REJECTED");if(input)InputCommand(field);else MetadataCommand(field);}
                     Admission();SameProfile(a);if(!Live(a)||ProfileWitness(a.android,owner,true)!=a.profileWitness)throw new IOException("ADMISSION_REJECTED");
                     lock(gate){if(a.stopping||a.discoveryCalls>=128||!AcquisitionSettled(a))throw new IOException("ADMISSION_REJECTED");a.discoveryCalls++;q=new Acquisition();q.socket=new Socket(AddressFamily.InterNetwork,SocketType.Stream,ProtocolType.Tcp);a.acquisition=q;}
                     // Registration precedes BeginConnect, including synchronous completion and RETIRE races.
@@ -440,12 +477,15 @@ namespace Fonesi.Development.Server
                     q.connect.GetAwaiter().GetResult();budget.Remaining();
                     Admission();SameProfile(a);if(Stopping(a)||!Live(a)||ProfileWitness(a.android,owner,true)!=a.profileWitness)throw new IOException("ADMISSION_REJECTED");
                     if(field==null)payload=ReadDevicesList(new SocketDiscoveryChannel(q.socket),budget);
-                    else metadata=ReadMetadata(new SocketDiscoveryChannel(q.socket),budget,transportId,field,delegate(){Admission();SameProfile(a);if(Stopping(a)||!Live(a)||ProfileWitness(a.android,owner,true)!=a.profileWitness)throw new IOException("ADMISSION_REJECTED");});
+                    else {
+                        Action fence=delegate(){Admission();SameProfile(a);if(Stopping(a)||!Live(a)||ProfileWitness(a.android,owner,true)!=a.profileWitness)throw new IOException("ADMISSION_REJECTED");};
+                        metadata=input?ReadInput(new SocketDiscoveryChannel(q.socket),budget,transportId,field,fence):ReadMetadata(new SocketDiscoveryChannel(q.socket),budget,transportId,field,fence);
+                    }
                     observed=budget.Observed();
                     while(!CloseAcquisition(a)){budget.Remaining();Thread.Sleep(1);}while(!AcquisitionClosed(q)){budget.Remaining();Thread.Sleep(1);}Admission();SameProfile(a);
                     if(Stopping(a)||!Live(a)||ProfileWitness(a.android,owner,true)!=a.profileWitness||observed.Value<a.lastDiscovery)throw new IOException("ADMISSION_REJECTED");
                     budget.Remaining();code="OK";
-                }catch(Exception error){code=error is IOException&&(error.Message=="DEADLINE"||error.Message=="CLOSED"||error.Message=="ADMISSION_REJECTED"||error.Message=="DISCOVERY_REJECTED"||error.Message=="METADATA_REJECTED")?error.Message:error is DecoderFallbackException?(field==null?"DISCOVERY_REJECTED":"METADATA_REJECTED"):"NATIVE_FAILED";payload=null;metadata=null;observed=null;}
+                }catch(Exception error){code=error is IOException&&(error.Message=="DEADLINE"||error.Message=="CLOSED"||error.Message=="ADMISSION_REJECTED"||error.Message=="DISCOVERY_REJECTED"||error.Message=="METADATA_REJECTED"||error.Message=="INPUT_REJECTED")?error.Message:error is DecoderFallbackException?(field==null?"DISCOVERY_REJECTED":"METADATA_REJECTED"):"NATIVE_FAILED";payload=null;metadata=null;observed=null;}
                 finally {if(q!=null){CloseAcquisition(a);lock(q){q.workerDone=true;}}Leave(a);}
                 lock(gate){
                     if(!AcquisitionSettled(a))return new QueryReply("UNRETIRED","UNRETIRED",dispatched,false,null,null,null);

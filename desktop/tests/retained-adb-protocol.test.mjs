@@ -42,7 +42,7 @@ function before(text, left, right) {
 test('reviewed native custody helpers and fixed provider adapter have no new interop and dispatch only existing native methods', () => {
   for (const [name, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
-    ['RetainedAdbSession.cs', 'be62300592244f1474fa340101976cb86ad5ed5c6734b98b28dc545d6b00ce71'],
+    ['RetainedAdbSession.cs', '24dd1324671214de7f0a2dcd41a9725c5823d5ca641ca8a9398a5d83dcd07a50'],
   ])
     assert.equal(
       createHash('sha256')
@@ -393,7 +393,7 @@ test('metadata v3 is exact ordered enum grammar, separate typed facts and bounde
 test('metadata managed groups cover actual codec, shared cap, cleanup races and output saturation without native construction', () => {
   const groups = fixture.slice(
     fixture.indexOf('public static int RunMetadata()'),
-    fixture.indexOf('public static int RunAll()'),
+    fixture.indexOf('static byte[] InputFrame('),
   );
   assert.equal((groups.match(/groups\+\+/g) ?? []).length, 12);
   for (const token of [
@@ -419,7 +419,102 @@ test('metadata managed groups cover actual codec, shared cap, cleanup races and 
     /attempt.queryRetirementGeneration\+\+;attempt.terminal=false;attempt.cleanupIssued=false/,
   );
   assert.match(source, /cleanupGeneration == attempt.queryRetirementGeneration/);
-  assert.equal((source.match(/status=="COMPLETE",status=="UNRETIRED"/g) ?? []).length, 2);
+  assert.equal((source.match(/status=="COMPLETE",status=="UNRETIRED"/g) ?? []).length, 3);
   assert.match(fixture, /new string\[\]\{"METADATA","DISCOVER","THROW","MALFORMED"\}/);
   assert.match(source, /if\(discovery\)Stop\("PROVIDER_FAILED"\)/);
+});
+
+test('input v4 is exact ordered fixed action grammar and separate no-output query facts', () => {
+  const literal = /InputPattern = new Regex\(("(?:\\.|[^"\\])*")/.exec(source);
+  assert.ok(literal);
+  const pattern = new RegExp(
+    JSON.parse(literal[1]).replace('\\A', '^').replace('\\z', '$(?![\\s\\S])'),
+  );
+  const base = {
+    version: 4,
+    sessionId: id(1),
+    requestId: 1,
+    attemptId: id(2),
+    operation: 'INPUT',
+    action: 'HOME',
+    transportId: '1',
+    deadlineUtc: 2000,
+  };
+  for (const action of [
+    'HOME',
+    'BACK',
+    'ENTER',
+    'ESCAPE',
+    'DPAD_UP',
+    'DPAD_DOWN',
+    'DPAD_LEFT',
+    'DPAD_RIGHT',
+    'DPAD_CENTER',
+  ])
+    assert.ok(pattern.test(`${JSON.stringify({ ...base, action })}\n`));
+  for (const action of ['TAP', 'SWIPE', 'TEXT', 'HOME\n', 'HOME;id', '3'])
+    assert.equal(pattern.test(`${JSON.stringify({ ...base, action })}\n`), false);
+  for (const raw of [
+    JSON.stringify(base),
+    `${JSON.stringify(base)}\r\n`,
+    `${JSON.stringify(base)}\n\n`,
+    `${JSON.stringify({ ...base, command: 'private' })}\n`,
+    `${JSON.stringify(base).replace('"version":4', '"version":4,"version":4')}\n`,
+  ])
+    assert.equal(pattern.test(raw), false);
+  assert.match(source, /MetadataTransport\(input.Groups\[5\].Value\)/);
+  assert.match(
+    source,
+    /provider.Input\(attempt.token,request.TransportId,request.Action,effective\)/,
+  );
+  const snapshot = source.slice(
+    source.indexOf('static Facts InputSnapshot('),
+    source.indexOf('static Facts InputFailure('),
+  );
+  for (const key of [
+    'version',
+    'kind',
+    'status',
+    'code',
+    'dispatched',
+    'operationRetired',
+    'remoteExitCode',
+    'stdoutEmpty',
+    'stderrEmpty',
+    'observedAtUtc',
+  ])
+    assert.ok(snapshot.includes(`"${key}"`));
+  assert.doesNotMatch(snapshot, /stdoutBase64|stderrBase64|OBSERVED|SUCCESS|processRetired/);
+  assert.match(snapshot, /return new Facts\(json,false,status=="COMPLETE",status=="UNRETIRED"\)/);
+});
+
+test('input twelve managed groups exercise actual codec and retained query obligations without constructing native effects', () => {
+  const groups = fixture.slice(
+    fixture.indexOf('public static int RunInput()'),
+    fixture.indexOf('public static int RunAll()'),
+  );
+  assert.equal((groups.match(/groups\+\+/g) ?? []).length, 12);
+  for (const token of [
+    'DecodeInput(',
+    'RejectInput(',
+    'p.inputs==43&&p.metadataCalls==43&&p.discoveryCalls==42',
+    'p.retires==2',
+    'OUTPUT_FAILED',
+    'lines[1].Length<65536',
+    'facts.Count==10',
+    'missingEof=true',
+  ])
+    assert.ok(groups.includes(token), token);
+  assert.match(
+    fixture,
+    /RetainedProvider.ReadInput\(channel,new IsolatedAdbServer.RetainedProvider.DiscoveryBudget/,
+  );
+  assert.doesNotMatch(
+    fixture,
+    /new Socket\(|new IsolatedAdbServer\.RetainedProvider\(|new RetainedAdbProtocol.NativeProvider\(/,
+  );
+  assert.match(
+    source,
+    /request.Operation=="DISCOVER"\|\|request.Operation=="METADATA"\|\|request.Operation=="INPUT"/,
+  );
 });

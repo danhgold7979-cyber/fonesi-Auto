@@ -21,6 +21,7 @@ namespace Fonesi.Development.Server
         static readonly Regex RequestPattern = new Regex("\\A\\{\"version\":1,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"(VERSION|START|HEALTH|RETIRE)\"\\}\\n\\z", RegexOptions.CultureInvariant);
         static readonly Regex DiscoveryPattern = new Regex("\\A\\{\"version\":2,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"DISCOVER\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
         static readonly Regex MetadataPattern = new Regex("\\A\\{\"version\":3,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"METADATA\",\"field\":\"(MODEL|MANUFACTURER|OS|SDK|LOCALE|RESOLUTION|DENSITY|BATTERY|STORAGE)\",\"transportId\":\"([1-9][0-9]{0,19})\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
+        static readonly Regex InputPattern = new Regex("\\A\\{\"version\":4,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"INPUT\",\"action\":\"(HOME|BACK|ENTER|ESCAPE|DPAD_UP|DPAD_DOWN|DPAD_LEFT|DPAD_RIGHT|DPAD_CENTER)\",\"transportId\":\"([1-9][0-9]{0,19})\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
         static readonly string[] Errors = { "ADMISSION_REJECTED", "BINARY_CHANGED", "PROFILE_REJECTED", "ENDPOINT_REJECTED", "BUSY", "CLOSED", "NATIVE_FAILED", "UNRETIRED" };
         public interface IProvider
         {
@@ -30,6 +31,7 @@ namespace Fonesi.Development.Server
             IDictionary<string, object> Health(object attempt);
             IDictionary<string, object> Discover(object attempt, long deadlineUtc);
             IDictionary<string, object> Metadata(object attempt, string transportId, string field, long deadlineUtc);
+            IDictionary<string, object> Input(object attempt,string transportId,string action,long deadlineUtc);
             IDictionary<string, object> Retire(object attempt);
         }
         public sealed class NativeProvider : IProvider
@@ -49,12 +51,14 @@ namespace Fonesi.Development.Server
             { return provider.Discover(attempt as IsolatedAdbServer.RetainedProvider.Attempt, deadlineUtc).Snapshot(); }
             public IDictionary<string, object> Metadata(object attempt,string transportId,string field,long deadlineUtc)
             {return provider.Metadata(attempt as IsolatedAdbServer.RetainedProvider.Attempt,transportId,field,deadlineUtc).Snapshot();}
+            public IDictionary<string,object> Input(object attempt,string transportId,string action,long deadlineUtc)
+            {return provider.Input(attempt as IsolatedAdbServer.RetainedProvider.Attempt,transportId,action,deadlineUtc).Snapshot();}
             public IDictionary<string, object> Retire(object attempt)
             { return provider.Retire(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
         }
         public sealed class Request
         {
-            public readonly string SessionId, AttemptId, Operation, Field, TransportId;
+            public readonly string SessionId, AttemptId, Operation, Field, TransportId, Action;
             public readonly long RequestId, DeadlineUtc;
             public readonly int Version;
             internal readonly long AdmittedUtc; readonly Stopwatch budget=Stopwatch.StartNew();
@@ -66,12 +70,23 @@ namespace Fonesi.Development.Server
             { SessionId=session;RequestId=request;AttemptId=attempt;Operation="DISCOVER";Version=2;DeadlineUtc=deadline;AdmittedUtc=admitted; }
             internal Request(string session,long request,string attempt,string field,string transportId,long deadline,long admitted)
             {SessionId=session;RequestId=request;AttemptId=attempt;Operation="METADATA";Field=field;TransportId=transportId;Version=3;DeadlineUtc=deadline;AdmittedUtc=admitted;}
+            internal Request(string session,long request,string attempt,string action,string transportId,long deadline,long admitted,bool input)
+            {SessionId=session;RequestId=request;AttemptId=attempt;Operation="INPUT";Action=action;TransportId=transportId;Version=4;DeadlineUtc=deadline;AdmittedUtc=admitted;}
         }
         public static Request Parse(byte[] frame, string sessionId, long previousRequestId)
         {
             if (frame == null || frame.Length < 2 || frame.Length > FrameLimit || sessionId == null || !Uuid.IsMatch(sessionId)) return null;
             for (int n = 0; n < frame.Length; n++) if (frame[n] > 127 || frame[n] == 13 || (frame[n] == 10 && n != frame.Length - 1)) return null;
             string text=Encoding.ASCII.GetString(frame);Match discovery=DiscoveryPattern.Match(text);long request,deadline;
+            Match input=InputPattern.Match(text);
+            if(input.Success){
+                long now=(DateTime.UtcNow.Ticks-621355968000000000L)/10000;
+                if(input.Groups[1].Value!=sessionId||!Uuid.IsMatch(input.Groups[3].Value)||
+                   !Int64.TryParse(input.Groups[2].Value,NumberStyles.None,CultureInfo.InvariantCulture,out request)||request<=previousRequestId||request>SafeInteger||
+                   !IsolatedAdbServer.RetainedProvider.MetadataTransport(input.Groups[5].Value)||
+                   !Int64.TryParse(input.Groups[6].Value,NumberStyles.None,CultureInfo.InvariantCulture,out deadline)||deadline>8640000000000000L||deadline<=now||deadline-now>30000)return null;
+                return new Request(sessionId,request,input.Groups[3].Value,input.Groups[4].Value,input.Groups[5].Value,deadline,now,true);
+            }
             Match metadata=MetadataPattern.Match(text);
             if(metadata.Success){
                 long now=(DateTime.UtcNow.Ticks-621355968000000000L)/10000;
@@ -217,6 +232,29 @@ namespace Fonesi.Development.Server
         }
         static Facts MetadataFailure(string code,bool unknown)
         {return new Facts("{\"version\":1,\"kind\":\"METADATA_QUERY\",\"status\":\""+(unknown?"UNRETIRED":"FAILED")+"\",\"code\":\""+code+"\",\"dispatched\":"+(unknown?"true":"false")+",\"operationRetired\":"+(unknown?"false":"true")+",\"stdoutBase64\":null,\"stderrBase64\":null,\"remoteExitCode\":null,\"observedAtUtc\":null}",false,false,unknown);}
+        static Facts InputSnapshot(IDictionary<string,object> input,Request request)
+        {
+            string[] keys={"version","kind","status","code","dispatched","operationRetired","remoteExitCode","stdoutEmpty","stderrEmpty","observedAtUtc"};
+            Dictionary<string,object> v=new Dictionary<string,object>();if(input==null)throw new InvalidDataException();
+            foreach(KeyValuePair<string,object> pair in input){if(v.Count==10||v.ContainsKey(pair.Key))throw new InvalidDataException();v.Add(pair.Key,pair.Value);}
+            if(v.Count!=10)throw new InvalidDataException();foreach(string key in keys)if(!v.ContainsKey(key))throw new InvalidDataException();
+            if(!(v["version"] is int)||(int)v["version"]!=1||!(v["kind"] is string)||(string)v["kind"]!="INPUT_QUERY"||!(v["status"] is string)||!(v["code"] is string)||!(v["dispatched"] is bool)||!(v["operationRetired"] is bool))throw new InvalidDataException();
+            string status=(string)v["status"],code=(string)v["code"];bool dispatched=(bool)v["dispatched"],retired=(bool)v["operationRetired"];
+            string output="null",error="null",exit="null",time="null";
+            if(status=="COMPLETE"){
+                if(code!="OK"||!dispatched||!retired||!(v["stdoutEmpty"] is bool)||!(v["stderrEmpty"] is bool)||!(v["remoteExitCode"] is int)||(int)v["remoteExitCode"]<0||(int)v["remoteExitCode"]>255||!(v["observedAtUtc"] is long))throw new InvalidDataException();
+                long observed=(long)v["observedAtUtc"];if(observed<request.AdmittedUtc||observed>request.DeadlineUtc||observed>8640000000000000L)throw new InvalidDataException();
+                output=(bool)v["stdoutEmpty"]?"true":"false";error=(bool)v["stderrEmpty"]?"true":"false";exit=((int)v["remoteExitCode"]).ToString(CultureInfo.InvariantCulture);time=observed.ToString(CultureInfo.InvariantCulture);
+            }else{
+                if(v["stdoutEmpty"]!=null||v["stderrEmpty"]!=null||v["remoteExitCode"]!=null||v["observedAtUtc"]!=null)throw new InvalidDataException();
+                if(status=="UNRETIRED"){if(code!="UNRETIRED"||retired)throw new InvalidDataException();}
+                else if(status!="FAILED"||!retired||Array.IndexOf(new string[]{"ADMISSION_REJECTED","BUSY","CLOSED","DEADLINE","INPUT_REJECTED","NATIVE_FAILED"},code)<0)throw new InvalidDataException();
+            }
+            string json="{\"version\":1,\"kind\":\"INPUT_QUERY\",\"status\":\""+status+"\",\"code\":\""+code+"\",\"dispatched\":"+(dispatched?"true":"false")+",\"operationRetired\":"+(retired?"true":"false")+",\"remoteExitCode\":"+exit+",\"stdoutEmpty\":"+output+",\"stderrEmpty\":"+error+",\"observedAtUtc\":"+time+"}";
+            return new Facts(json,false,status=="COMPLETE",status=="UNRETIRED");
+        }
+        static Facts InputFailure(string code,bool unknown)
+        {return new Facts("{\"version\":1,\"kind\":\"INPUT_QUERY\",\"status\":\""+(unknown?"UNRETIRED":"FAILED")+"\",\"code\":\""+code+"\",\"dispatched\":"+(unknown?"true":"false")+",\"operationRetired\":"+(unknown?"false":"true")+",\"remoteExitCode\":null,\"stdoutEmpty\":null,\"stderrEmpty\":null,\"observedAtUtc\":null}",false,false,unknown);}
         sealed class Reader
         {
             readonly bool diagnostics, server;
@@ -268,7 +306,7 @@ namespace Fonesi.Development.Server
             }
             void Worker(Attempt attempt, Request request, bool cleanup, int cleanupGeneration = 0)
             {
-                if(!cleanup&&(request.Operation=="DISCOVER"||request.Operation=="METADATA")) { DiscoveryWorker(attempt,request);return; }
+                if(!cleanup&&(request.Operation=="DISCOVER"||request.Operation=="METADATA"||request.Operation=="INPUT")) { DiscoveryWorker(attempt,request);return; }
                 Facts facts;
                 try { Progress(ProgressSlot.PROVIDER_ENTERED); facts = Snapshot(cleanup ? provider.Retire(attempt.token) : !server ? provider.Version(attempt.token) : request.Operation == "START" ? provider.StartForeground(attempt.token) : provider.Health(attempt.token), server, cleanup ? "RETIRE" : request.Operation); }
                 catch { facts = new Facts("{\"code\":\"UNRETIRED\"}", false); lock (gate) { attempt.terminal = false; Stop("PROVIDER_FAILED"); } }
@@ -278,9 +316,9 @@ namespace Fonesi.Development.Server
             }
             void DiscoveryWorker(Attempt attempt,Request request)
             {
-                Facts facts;bool good=false;bool metadata=request.Operation=="METADATA";
-                try{long effective;if(!request.DiscoveryDeadline(out effective))facts=metadata?MetadataFailure("DEADLINE",false):AcquisitionFailure("DEADLINE");else{Progress(ProgressSlot.PROVIDER_ENTERED);facts=metadata?MetadataSnapshot(provider.Metadata(attempt.token,request.TransportId,request.Field,effective),request):AcquisitionSnapshot(provider.Discover(attempt.token,effective),request);good=facts.live;}}
-                catch{facts=metadata?MetadataFailure("UNRETIRED",true):new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\"UNRETIRED\",\"code\":\"UNRETIRED\",\"dispatched\":true,\"operationRetired\":false,\"payloadBase64\":null,\"observedAtUtc\":null}",false,false,true);}
+                Facts facts;bool good=false;bool metadata=request.Operation=="METADATA",input=request.Operation=="INPUT";
+                try{long effective;if(!request.DiscoveryDeadline(out effective))facts=input?InputFailure("DEADLINE",false):metadata?MetadataFailure("DEADLINE",false):AcquisitionFailure("DEADLINE");else{Progress(ProgressSlot.PROVIDER_ENTERED);facts=input?InputSnapshot(provider.Input(attempt.token,request.TransportId,request.Action,effective),request):metadata?MetadataSnapshot(provider.Metadata(attempt.token,request.TransportId,request.Field,effective),request):AcquisitionSnapshot(provider.Discover(attempt.token,effective),request);good=facts.live;}}
+                catch{facts=input?InputFailure("UNRETIRED",true):metadata?MetadataFailure("UNRETIRED",true):new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\"UNRETIRED\",\"code\":\"UNRETIRED\",\"dispatched\":true,\"operationRetired\":false,\"payloadBase64\":null,\"observedAtUtc\":null}",false,false,true);}
                 // Query completion never grants terminal custody; late unknown invalidates an older cleanup witness.
                 if(facts.queryUnknown)lock(gate){attempt.queryRetirementGeneration++;attempt.terminal=false;attempt.cleanupIssued=false;}
                 Enqueue(request,attempt,facts);
@@ -373,9 +411,9 @@ namespace Fonesi.Development.Server
                             Cleanup(attempt, request); return;
                         }
                         if (attempt.retiring || attempt.terminal) { Stop("PROTOCOL_FAILED"); return; }
-                        bool discovery=request.Operation=="DISCOVER"||request.Operation=="METADATA";
+                        bool discovery=request.Operation=="DISCOVER"||request.Operation=="METADATA"||request.Operation=="INPUT";
                         if (!attempt.live || !Done(attempt.ordinary) || !Done(attempt.cleanup) || outstanding != 0 || attempt.frames != 0 || (discovery ? attempt.discoveryCalls >= 128 : attempt.healthCalls >= 128)) {
-                            Enqueue(request, attempt, discovery ? (request.Operation=="METADATA"?MetadataFailure("BUSY",false):AcquisitionFailure("BUSY")) : new Facts("{\"code\":\"BUSY\"}", false)); if(discovery)Stop("PROVIDER_FAILED"); return;
+                            Enqueue(request, attempt, discovery ? (request.Operation=="INPUT"?InputFailure("BUSY",false):request.Operation=="METADATA"?MetadataFailure("BUSY",false):AcquisitionFailure("BUSY")) : new Facts("{\"code\":\"BUSY\"}", false)); if(discovery)Stop("PROVIDER_FAILED"); return;
                         }
                         if(discovery)attempt.discoveryCalls++;else attempt.healthCalls++;
                         attempt.ordinaryStarted = elapsed.ElapsedMilliseconds;

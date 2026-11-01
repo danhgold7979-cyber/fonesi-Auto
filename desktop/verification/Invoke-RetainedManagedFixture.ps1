@@ -5,7 +5,7 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsBoundary.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'OwnedFiles.psm1') -Force
 $desktop=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $owner=$null;$retired=$true;$stage='ADMISSION';$sourceBefore=@{}
-$report=[ordered]@{version=5;scope='RETAINED_PROTOCOL_MANAGED_FIXTURE_ONLY';compileProcess=$null;fixtureProcess=$null;groupsPassed=0;compilerDiagnostics=@();sourceUnchanged=$false;inputHashes=[ordered]@{};directoryCleanup=$false;passed=$false}
+$report=[ordered]@{version=6;scope='RETAINED_PROTOCOL_MANAGED_FIXTURE_ONLY';compileProcess=$null;fixtureProcess=$null;groupsPassed=0;compilerDiagnostics=@();sourceUnchanged=$false;inputHashes=[ordered]@{};directoryCleanup=$false;passed=$false}
 function PlainFile([string]$path,[long]$limit){
  $i=Get-Item -LiteralPath $path -Force
  if($i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $i.Length -lt 1 -or $i.Length -gt $limit -or $i.FullName -cne [IO.Path]::GetFullPath($path)){throw 'FILE_REJECTED'}
@@ -30,8 +30,8 @@ using System;
 internal static class ManagedFixtureEntry {
  public static int Main(string[] args) {
   try {
-   if(args.Length != 0 || Fonesi.Tests.RetainedAdbProtocolFixture.RunAll() != 8 || Fonesi.Tests.RetainedAdbProtocolFixture.RunVersionExpectations() != 2 || Fonesi.Tests.RetainedAdbProtocolFixture.RunServer() != 9 || Fonesi.Tests.RetainedAdbProtocolFixture.RunDiscovery() != 8 || Fonesi.Tests.RetainedAdbProtocolFixture.RunMetadata() != 12) return 1;
-   Console.Out.WriteLine("RETAINED_MANAGED_GROUPS_39");
+   if(args.Length != 0 || Fonesi.Tests.RetainedAdbProtocolFixture.RunAll() != 8 || Fonesi.Tests.RetainedAdbProtocolFixture.RunVersionExpectations() != 2 || Fonesi.Tests.RetainedAdbProtocolFixture.RunServer() != 9 || Fonesi.Tests.RetainedAdbProtocolFixture.RunDiscovery() != 8 || Fonesi.Tests.RetainedAdbProtocolFixture.RunMetadata() != 12 || Fonesi.Tests.RetainedAdbProtocolFixture.RunInput() != 12) return 1;
+   Console.Out.WriteLine("RETAINED_MANAGED_GROUPS_51");
    Console.Out.Flush();
    return 0;
   } catch { Console.Error.WriteLine("RETAINED_MANAGED_FIXTURE_FAILED"); return 1; }
@@ -57,7 +57,7 @@ try{
  $sources=@('native/IsolatedAdbServer.cs','native/RetainedAdbSession.cs','native/RetainedAdbProtocol.cs','native/RetainedHostAdmission.cs','tests/fixtures/RetainedAdbProtocolFixture.cs')|ForEach-Object{Join-Path $desktop $_}
  $bound=@($sources)+@($helper,(Join-Path $desktop 'scripts/retained-managed-fixture.mjs'),$PSCommandPath,(Join-Path $PSScriptRoot 'WindowsBoundary.psm1'),(Join-Path $PSScriptRoot 'OwnedFiles.psm1'))
  foreach($p in $bound){PlainFile $p 1048576;$sourceBefore[$p]=(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash}
- $expected=@('4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7','be62300592244f1474fa340101976cb86ad5ed5c6734b98b28dc545d6b00ce71','8af014e0d5082ec3bc0c2872c06114b34f621bfd6097fea61b86d7ba832df5fd','2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110','c10522693707ac3e526756044cf87b58abf9c037704031bfeeca7af26ae92aff')
+ $expected=@('4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7','24dd1324671214de7f0a2dcd41a9725c5823d5ca641ca8a9398a5d83dcd07a50','61f2cf81b13c337d82ba4d0a469f3a068715bbd68564bb0df3f6143dcf01696e','2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110','49abbd1eb8d5553caabf5a437c11849b97437c5c57b0e13c7e50421c1b1dcbb2')
  for($i=0;$i -lt $sources.Count;$i++){if($sourceBefore[$sources[$i]] -ine $expected[$i]){throw 'SOURCE_CHANGED'}}
  $hashNames=@('server','session','protocol','admission','fixture','probe','gate','wrapper','boundary','ownedFiles')
  for($i=0;$i -lt $bound.Count;$i++){$report.inputHashes[$hashNames[$i]]=$sourceBefore[$bound[$i]].ToLowerInvariant()}
@@ -88,10 +88,10 @@ try{
  if([IO.File]::ReadAllText((Join-Path $root 'entry.cs')) -cne $entry){throw 'ENTRY_CHANGED'}
  $assemblyHash=(Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
  $stage='FIXTURE';$p=Run-Fixed $output ([string[]]@()) 120000;$report.fixtureProcess=Evidence $p
- if(-not (Successful $p) -or $p.Status -cne 'SUCCESS' -or ($p.Stdout -replace '\r\n',"`n") -cne "RETAINED_MANAGED_GROUPS_39`n" -or $p.Stderr -cne ''){throw 'FIXTURE_FAILED'}
+ if(-not (Successful $p) -or $p.Status -cne 'SUCCESS' -or ($p.Stdout -replace '\r\n',"`n") -cne "RETAINED_MANAGED_GROUPS_51`n" -or $p.Stderr -cne ''){throw 'FIXTURE_FAILED'}
  PlainFile $output 8388608
  if((Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash -cne $assemblyHash){throw 'OUTPUT_CHANGED'}
- $report.groupsPassed=39
+ $report.groupsPassed=51
  foreach($p in $bound){PlainFile $p 1048576;if((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -cne $sourceBefore[$p]){throw 'SOURCE_CHANGED'}}
  $report.sourceUnchanged=$true
 }catch{
@@ -108,7 +108,7 @@ try{
  }
  $current=[Environment]::GetEnvironmentVariables('Process');foreach($key in @($current.Keys)){[Environment]::SetEnvironmentVariable([string]$key,$null,'Process')};foreach($key in $original.Keys){[Environment]::SetEnvironmentVariable([string]$key,[string]$original[$key],'Process')}
 }
-$report.passed=($report.groupsPassed -eq 39 -and $report.sourceUnchanged -and $report.directoryCleanup)
+$report.passed=($report.groupsPassed -eq 51 -and $report.sourceUnchanged -and $report.directoryCleanup)
 Write-Output ($report|ConvertTo-Json -Depth 6 -Compress)
 if($report.passed){Write-Output 'RETAINED_MANAGED_FIXTURE_PASS';exit 0}
 Write-Output 'RETAINED_MANAGED_FIXTURE_FAIL';exit 1

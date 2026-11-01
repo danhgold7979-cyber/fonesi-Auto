@@ -1,3 +1,4 @@
+import { snapshotInputAudit, type InputAuditFields } from '../input-audit-contract.ts';
 import { randomUUID } from 'node:crypto';
 import { LogStore } from './log-store.ts';
 import type { LogLocation } from './log-files.ts';
@@ -18,6 +19,15 @@ import type {
 } from '../log-contract.ts';
 export type LogClock = () => string;
 export type LogNotice = (marker: 'LOGGING_DEGRADED') => void;
+export type OwnedInputAuditWriter = Readonly<{
+  write: (fields: InputAuditFields) => Promise<LogHealth>;
+  current: () => boolean;
+}>;
+const inputWriters = new WeakMap<object, OwnedInputAuditWriter>();
+const applyInputWriter = Reflect.apply;
+export function inspectOwnedInputAuditWriter(value: unknown): OwnedInputAuditWriter | null {
+  return value !== null && typeof value === 'object' ? (inputWriters.get(value) ?? null) : null;
+}
 // Main-owned only. Caller content, request IDs and native errors never enter emit().
 export class ApplicationLogger {
   private readonly store: LogStore | undefined;
@@ -74,6 +84,20 @@ export class ApplicationLogger {
     if (store?.health === 'AVAILABLE') {
       if (store.recovered) logger.emit('LOGGING_RECOVERED', 'RECOVERED');
       logger.emit('RETENTION_RESULT', 'OK');
+    }
+    if (store?.health === 'AVAILABLE' && !logger.broken && !logger.closing) {
+      const current = () =>
+        !logger.closing && !logger.broken && logger.runId !== null && store.health === 'AVAILABLE';
+      inputWriters.set(
+        logger,
+        Object.freeze({
+          current,
+          write: (fields: InputAuditFields) =>
+            current()
+              ? applyInputWriter(originalInputAudit, logger, [fields])
+              : Promise.resolve('DEGRADED' as const),
+        }),
+      );
     }
     return logger;
   }
@@ -524,6 +548,51 @@ export class ApplicationLogger {
       return 'DEGRADED';
     }
   }
+  async inputAudit(input: InputAuditFields): Promise<LogHealth> {
+    try {
+      if (
+        this.closing ||
+        this.broken ||
+        this.health !== 'AVAILABLE' ||
+        !this.store ||
+        this.runId === null ||
+        !Number.isSafeInteger(this.sequence + 1)
+      )
+        return 'DEGRADED';
+      const fields = snapshotInputAudit(input);
+      if (!fields) throw Error('AUDIT_INVALID');
+      const utc = this.clock();
+      if (this.lastUtc !== null && utc < this.lastUtc) throw Error('AUDIT_CLOCK');
+      const encoded = encodeLogRecord({
+        schemaVersion: 11,
+        runId: this.runId,
+        sequence: this.sequence + 1,
+        utc,
+        severity: fields.code === 'OK' ? 'INFO' : 'WARN',
+        component: 'MAIN',
+        task: 'P2-08',
+        event: 'INPUT',
+        input: fields,
+      });
+      if (encoded === null || this.closing || this.broken || this.health !== 'AVAILABLE')
+        throw Error('AUDIT_INVALID');
+      ++this.sequence;
+      this.lastUtc = utc;
+      if (
+        this.store.enqueue(JSON.parse(encoded) as LogRecord) !== 'QUEUED' ||
+        (await this.store.flush()) !== 'FLUSHED' ||
+        this.closing ||
+        this.broken ||
+        this.health !== 'AVAILABLE'
+      )
+        throw Error('AUDIT_UNAVAILABLE');
+      return 'AVAILABLE';
+    } catch {
+      this.broken = true;
+      this.reportHealth();
+      return 'DEGRADED';
+    }
+  }
   async metadataAudit(input: MetadataAuditFields): Promise<LogHealth> {
     try {
       if (
@@ -781,3 +850,5 @@ export class ApplicationLogger {
     return this.closing;
   }
 }
+
+const originalInputAudit = ApplicationLogger.prototype.inputAudit;

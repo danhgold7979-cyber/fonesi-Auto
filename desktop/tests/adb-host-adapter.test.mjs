@@ -813,3 +813,89 @@ test('metadata late unretired completion invalidates early cleanup and requires 
   assert.equal(retires, 2);
   assert.equal(f.released(), 0);
 });
+
+const inputFacts = () => ({
+  version: 1,
+  kind: 'INPUT_QUERY',
+  status: 'COMPLETE',
+  code: 'OK',
+  dispatched: true,
+  operationRetired: true,
+  stdoutEmpty: true,
+  stderrEmpty: true,
+  remoteExitCode: 0,
+  observedAtUtc: 1000,
+});
+test('input shares exact foreground custody and ordinary lane without process-result coercion', async () => {
+  const pending = deferred();
+  let calls = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      input(_attempt, tid, field, deadline) {
+        calls++;
+        assert.deepEqual([tid, field, deadline], ['2', 'HOME', 2000]);
+        return pending.promise;
+      },
+    },
+  });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const request = { transportId: '2', action: 'HOME', deadlineUtc: 2000 },
+    h = f.adapter.acquireInput(f.cap, request);
+  assert.equal(h.handoff, 'QUERY');
+  request.transportId = '3';
+  await tick();
+  assert.equal(calls, 1);
+  assert.throws(() =>
+    f.adapter.acquireInput(f.cap, { transportId: '2', action: 'HOME', deadlineUtc: 2000 }),
+  );
+  assert.throws(() =>
+    f.adapter.acquireMetadata(f.cap, { transportId: '2', field: 'MODEL', deadlineUtc: 2000 }),
+  );
+  assert.equal(f.held(), true);
+  pending.resolve({ ...inputFacts(), remoteExitCode: 7 });
+  assert.equal((await h.result).remoteExitCode, 7);
+  assert.deepEqual(await h.retirement, { status: 'RETIRED' });
+  assert.equal(f.held(), true);
+  assert.equal(await f.adapter.close(), 'RETIRED');
+  assert.equal(f.released(), 1);
+});
+test('input late unretired completion invalidates early cleanup and requires fresh confirmation', async () => {
+  const pending = deferred();
+  let retires = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      input: () => pending.promise,
+      retire: async () => {
+        retires++;
+        return retires === 1 ? dead() : live('HEALTHY');
+      },
+    },
+  });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const h = f.adapter.acquireInput(f.cap, {
+    transportId: '1',
+    action: 'HOME',
+    deadlineUtc: 2000,
+  });
+  await tick();
+  const closing = f.adapter.close();
+  await tick();
+  assert.equal(retires, 1);
+  pending.resolve({
+    ...inputFacts(),
+    status: 'UNRETIRED',
+    code: 'UNRETIRED',
+    operationRetired: false,
+    stdoutEmpty: null,
+    stderrEmpty: null,
+    remoteExitCode: null,
+    observedAtUtc: null,
+  });
+  await h.result;
+  assert.deepEqual(await h.retirement, { status: 'UNRETIRED' });
+  assert.equal(await closing, 'UNRETIRED');
+  assert.equal(retires, 2);
+  assert.equal(f.released(), 0);
+});

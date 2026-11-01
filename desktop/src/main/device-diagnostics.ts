@@ -38,6 +38,7 @@ const codes = Object.freeze({
   CANCELLED: true,
   BINARY_UNAVAILABLE: true,
   TRANSPORT_FAILED: true,
+  AUDIT_UNAVAILABLE: true,
   OBSERVATION_REJECTED: true,
   OUTCOME_UNKNOWN: true,
   CLOSED: true,

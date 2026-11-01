@@ -2,6 +2,11 @@ name: Phase 02 software and pinned development ADB boundaries
 on:
   workflow_dispatch:
     inputs:
+      run_input_managed:
+        description: 'Compile current sources and run 51 pure/fake managed input groups; no live socket/server/device'
+        required: false
+        type: boolean
+        default: false
       run_metadata_managed:
         description: 'Compile current sources and run 39 pure/fake managed metadata groups; no live socket/server/device'
         required: false
@@ -119,7 +124,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==283; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==286; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Explicit unavailable runtime and deferred hardware boundary
         run: |
@@ -896,7 +901,7 @@ jobs:
 
   owned-metadata-managed-development:
     needs: windows-software-only
-    if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_metadata_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[metadata-managed]')))
+    if: false && github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_metadata_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[metadata-managed]')))
     runs-on: windows-2022
     timeout-minutes: 15
     defaults:
@@ -971,6 +976,87 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: retained-metadata-managed-evidence
+          path: desktop/retained-managed-validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-input-managed-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_input_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[input-managed]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check managed-only fixture entry
+        run: |
+          foreach($name in @('Invoke-RetainedManagedFixture.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_MANAGED_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Compile four production sources and run eight protocol, two selected-release, nine SESSION and eight discovery and twelve metadata and twelve in-memory input groups
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& ./desktop/verification/Invoke-RetainedManagedFixture.ps1)
+            $code=$LASTEXITCODE
+            $bytes=[Text.Encoding]::UTF8.GetBytes(($lines -join "`n")+"`n")
+            if($bytes.Length -gt 16384){throw 'REPORT_LIMIT'}
+            $out=[IO.File]::Open((Join-Path $PWD 'desktop/.retained-managed-output.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+            try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_(STAGE_(ADMISSION|COMPILE|FIXTURE|CLEANUP)|FIXTURE_(PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_RUNNER_FAILED'; exit 1 }
+      - name: Strictly publish managed compilation and fixture evidence
+        id: retained_managed_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_host.py managed-input 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict current fifty-one-group managed evidence
+        if: always() && steps.retained_managed_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-input-managed-evidence
           path: desktop/retained-managed-validated.json
           if-no-files-found: error
           retention-days: 14

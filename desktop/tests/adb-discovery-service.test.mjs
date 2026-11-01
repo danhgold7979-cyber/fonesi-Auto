@@ -766,7 +766,7 @@ test('nonordinary genuine promises cannot release an unretired acquisition', asy
     }
   }
 });
-test('explicit test-transformed native admission composes actual SQLite and fleet; no actual native provenance is claimed', async () => {
+async function exerciseNativeIssuer(verified = false) {
   const { readFileSync } = await import('node:fs'),
     { transformSync } = await import('esbuild');
   const moduleUrl = (source, path) =>
@@ -774,7 +774,7 @@ test('explicit test-transformed native admission composes actual SQLite and flee
     Buffer.from(
       transformSync(
         source.replace(
-          /from '(\.\/[^']+)'/g,
+          /from '(\.\.?\/[^']+)'/g,
           (_, relative) => `from '${new URL(relative, path).href}'`,
         ),
         { loader: 'ts', format: 'esm', target: 'es2022' },
@@ -790,10 +790,12 @@ test('explicit test-transformed native admission composes actual SQLite and flee
   const serverUrl = moduleUrl(serverSource, serverPath),
     serverModule = await import(serverUrl);
   const ingestPath = new URL('../src/main/adb-discovery-service.ts', import.meta.url);
-  const ingestSource = readFileSync(ingestPath, 'utf8').replace(
-    "'./adb-server-service.ts'",
-    JSON.stringify(serverUrl),
-  );
+  const ingestSource = readFileSync(ingestPath, 'utf8')
+    .replace("'./adb-server-service.ts'", JSON.stringify(serverUrl))
+    .replace(
+      'proofs: Object.freeze([]),',
+      'proofs: Object.freeze(globalThis.__inputIssuerFixtureProofs ?? []),',
+    );
   const ingestModule = await import(moduleUrl(ingestSource, ingestPath));
   const f = await fixture();
   await f.store.startup();
@@ -841,6 +843,27 @@ test('explicit test-transformed native admission composes actual SQLite and flee
           closed = true;
           state = 'STOPPED';
           return 'RETIRED';
+        },
+        acquireInput: (_cap, request) => {
+          assert.deepEqual([request.transportId, request.action], ['1', 'HOME']);
+          return Object.freeze({
+            handoff: 'QUERY',
+            result: Promise.resolve(
+              Object.freeze({
+                version: 1,
+                kind: 'INPUT_QUERY',
+                status: 'COMPLETE',
+                code: 'OK',
+                dispatched: true,
+                operationRetired: true,
+                remoteExitCode: 0,
+                stdoutEmpty: true,
+                stderrEmpty: true,
+                observedAtUtc: 1000,
+              }),
+            ),
+            retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+          });
         },
         acquireMetadata: () =>
           Object.freeze({
@@ -899,6 +922,22 @@ test('explicit test-transformed native admission composes actual SQLite and flee
     assert.equal(result.projectionCurrent, true);
     assert.equal(ingestion.snapshot().devices[0].verification, 'PROVISIONAL');
     const deviceId = ingestion.snapshot().devices[0].deviceId;
+    assert.equal(ingestion.inputTarget(deviceId), null); // PROVISIONAL never input-authorized.
+    if (verified) {
+      globalThis.__inputIssuerFixtureProofs = [
+        { deviceId, evidenceId: id(999), serial: 'synthetic-private-device', transportId: '1' },
+      ];
+      try {
+        assert.equal(
+          (await ingestion.refresh(f.db.readDurable().meta.revision)).outcome,
+          'COMMITTED',
+        );
+      } finally {
+        delete globalThis.__inputIssuerFixtureProofs;
+      }
+      assert.equal(ingestion.snapshot().devices[0].verification, 'VERIFIED');
+    }
+
     const ticket = ingestion.metadataTarget(deviceId);
     assert.ok(ticket);
     assert.equal(ingestion.metadataTarget(deviceId), ticket);
@@ -906,15 +945,40 @@ test('explicit test-transformed native admission composes actual SQLite and flee
     const target = ingestModule.inspectOwnedMetadataTarget(ticket);
     assert.equal(target.target.hostEpoch, f.db.readDurable().meta.host_epoch);
     assert.equal(target.finalCurrent(), true);
+    const inputTicket = ingestion.inputTarget(deviceId);
+    assert.equal(ingestModule.inspectOwnedInputTarget(ticket), null);
+    if (verified) {
+      assert(inputTicket);
+      assert.equal(ingestion.inputTarget(deviceId), inputTicket);
+      assert.equal(ingestModule.inspectOwnedInputTarget({ ...inputTicket }), null);
+      assert.equal(ingestModule.inspectOwnedMetadataTarget(inputTicket), null);
+      const inputRecord = ingestModule.inspectOwnedInputTarget(inputTicket);
+      assert.equal(inputRecord.ownerAnchor, target.ownerAnchor);
+      assert.deepEqual(inputRecord.target, target.target);
+      assert.throws(() => inputRecord.begin('TAP', 1100));
+      const h = inputRecord.begin('HOME', 1100);
+      assert.equal(h.handoff, 'QUERY');
+      assert.equal((await h.result).kind, 'INPUT_QUERY');
+      assert.equal((await h.retirement).status, 'RETIRED');
+    } else assert.equal(inputTicket, null);
+
     const metadata = target.begin('MODEL', 1100);
     assert.equal(metadata.handoff, 'QUERY');
     assert.equal((await metadata.result).remoteExitCode, 0);
     assert.equal((await metadata.retirement).status, 'RETIRED');
     assert.equal((await ingestion.refresh(f.db.readDurable().meta.revision)).outcome, 'COMMITTED');
     assert.equal(target.finalCurrent(), false);
+    if (inputTicket) {
+      assert.equal(ingestModule.inspectOwnedInputTarget(inputTicket).finalCurrent(), false);
+      assert.throws(() => ingestModule.inspectOwnedInputTarget(inputTicket).begin('HOME', 1100));
+    }
     const replacement = ingestion.metadataTarget(deviceId);
     assert.ok(replacement);
     assert.notEqual(replacement, ticket);
+    assert.notEqual(
+      ingestModule.inspectOwnedMetadataTarget(replacement).ownerAnchor,
+      target.ownerAnchor,
+    );
 
     fleet = createFleetService({
       registry: () => ingestion.snapshot(),
@@ -944,7 +1008,11 @@ test('explicit test-transformed native admission composes actual SQLite and flee
     await server.close();
     await f.close();
   }
-});
+}
+test('explicit test-transformed native admission composes actual SQLite and fleet; no actual native provenance is claimed', () =>
+  exerciseNativeIssuer());
+test('sealed input ticket requires VERIFIED and shares exact opaque projection anchor, not metadata authority', () =>
+  exerciseNativeIssuer(true));
 test('full transformed ingestion respects pending actual HEALTH lane and callback-free final custody revocation', async () => {
   const { readFileSync } = await import('node:fs'),
     { transformSync } = await import('esbuild');
@@ -954,7 +1022,7 @@ test('full transformed ingestion respects pending actual HEALTH lane and callbac
     Buffer.from(
       transformSync(
         source.replace(
-          /from '(\.\/[^']+)'/g,
+          /from '(\.\.?\/[^']+)'/g,
           (_, relative) => `from '${new URL(relative, path).href}'`,
         ),
         { loader: 'ts', format: 'esm', target: 'es2022' },
@@ -1254,8 +1322,10 @@ test('synthetic committed SQLite projection cannot issue native metadata targets
     assert.equal((await f.service.refresh(1)).outcome, 'COMMITTED');
     const projection = f.service.snapshot();
     assert.equal(projection.source, 'SYNTHETIC_TEST');
-    for (const device of projection.devices)
+    for (const device of projection.devices) {
       assert.equal(f.service.metadataTarget(device.deviceId), null);
+      assert.equal(f.service.inputTarget(device.deviceId), null);
+    }
     const { inspectOwnedMetadataTarget } = await import('../src/main/adb-discovery-service.ts');
     assert.equal(inspectOwnedMetadataTarget(Object.freeze({ ownedMetadataTarget: true })), null);
   } finally {

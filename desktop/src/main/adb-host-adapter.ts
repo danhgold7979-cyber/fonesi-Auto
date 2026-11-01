@@ -1,4 +1,11 @@
 import {
+  snapshotInputQueryFacts,
+  validInputAction,
+  type InputQueryFacts,
+  type InputQueryAction,
+  type InputQueryHandle,
+} from './input-query-contract.ts';
+import {
   snapshotMetadataQueryFacts,
   validMetadataDeadline,
   validMetadataField,
@@ -121,6 +128,12 @@ export interface HostNativeProvider {
   health(attempt: object): Promise<HostTransportFacts>;
   retire(attempt: object): Promise<HostTransportFacts>;
   discover?(attempt: object, deadlineUtc: number): Promise<HostAcquisitionFacts>;
+  input?(
+    attempt: object,
+    transportId: string,
+    action: InputQueryAction,
+    deadlineUtc: number,
+  ): Promise<InputQueryFacts>;
   metadata?(
     attempt: object,
     transportId: string,
@@ -167,7 +180,8 @@ export function createHostAdapter(
     health = provider.health.bind(provider),
     retire = provider.retire.bind(provider),
     discover = provider.discover?.bind(provider),
-    metadata = provider.metadata?.bind(provider);
+    metadata = provider.metadata?.bind(provider),
+    input = provider.input?.bind(provider);
   const capabilities = new WeakMap<object, { ownerId: string; admit(): void }>();
   const attempts = new WeakSet<object>();
   const works = new Set<Promise<unknown>>();
@@ -332,8 +346,8 @@ export function createHostAdapter(
   function acquireQuery(
     cap: HostCapability,
     raw: unknown,
-    kind: 'DISCOVER' | 'METADATA',
-  ): HostAcquisitionHandle | MetadataQueryHandle {
+    kind: 'DISCOVER' | 'METADATA' | 'INPUT',
+  ): HostAcquisitionHandle | MetadataQueryHandle | InputQueryHandle {
     if (
       operationSet !== 'SERVER_ONLY' ||
       closed ||
@@ -341,7 +355,7 @@ export function createHostAdapter(
       busy ||
       works.size ||
       releasing ||
-      !(kind === 'METADATA' ? metadata : discover)
+      !(kind === 'INPUT' ? input : kind === 'METADATA' ? metadata : discover)
     )
       throw Error('HOST_DISCOVERY_REJECTED');
     // Same ordinary lane as execute; reserve before any injected callback.
@@ -363,23 +377,24 @@ export function createHostAdapter(
       if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
         const d = Object.getOwnPropertyDescriptors(raw);
         if (
-          Reflect.ownKeys(d).length === (kind === 'METADATA' ? 3 : 1) &&
+          Reflect.ownKeys(d).length === (kind !== 'DISCOVER' ? 3 : 1) &&
           d.deadlineUtc &&
           'value' in d.deadlineUtc &&
           d.deadlineUtc.enumerable
         ) {
           deadlineUtc = d.deadlineUtc.value;
-          if (kind === 'METADATA') {
+          if (kind !== 'DISCOVER') {
             transportId =
               d.transportId && 'value' in d.transportId && d.transportId.enumerable
                 ? d.transportId.value
                 : null;
-            field = d.field && 'value' in d.field && d.field.enumerable ? d.field.value : null;
+            const selected = d[kind === 'INPUT' ? 'action' : 'field'];
+            field = selected && 'value' in selected && selected.enumerable ? selected.value : null;
           }
           validRequest =
-            kind !== 'METADATA' ||
+            kind === 'DISCOVER' ||
             (validMetadataTransportId(transportId) &&
-              validMetadataField(field) &&
+              (kind === 'INPUT' ? validInputAction(field) : validMetadataField(field)) &&
               validMetadataDeadline(deadlineUtc));
         }
       }
@@ -423,16 +438,20 @@ export function createHostAdapter(
       a.queries++;
       queryAttempt = a;
       const facts =
-        kind === 'METADATA'
-          ? snapshotMetadataQueryFacts(
-              await metadata?.(
-                a.token,
-                transportId as string,
-                field as MetadataQueryField,
-                deadlineUtc,
-              ),
+        kind === 'INPUT'
+          ? snapshotInputQueryFacts(
+              await input?.(a.token, transportId as string, field as InputQueryAction, deadlineUtc),
             )
-          : snapshotHostAcquisitionFacts(await discover?.(a.token, deadlineUtc));
+          : kind === 'METADATA'
+            ? snapshotMetadataQueryFacts(
+                await metadata?.(
+                  a.token,
+                  transportId as string,
+                  field as MetadataQueryField,
+                  deadlineUtc,
+                ),
+              )
+            : snapshotHostAcquisitionFacts(await discover?.(a.token, deadlineUtc));
       if (!facts) throw Error('HOST_DISCOVERY_REJECTED');
       if (facts.status !== 'COMPLETE') {
         if (!facts.operationRetired) a.terminal = false;
@@ -483,9 +502,11 @@ export function createHostAdapter(
         return Object.freeze({ status: 'UNRETIRED' as const });
       },
     );
-    return kind === 'METADATA'
-      ? (Object.freeze({ handoff: 'QUERY' as const, result, retirement }) as MetadataQueryHandle)
-      : (Object.freeze({ result, retirement }) as HostAcquisitionHandle);
+    return kind === 'INPUT'
+      ? (Object.freeze({ handoff: 'QUERY' as const, result, retirement }) as InputQueryHandle)
+      : kind === 'METADATA'
+        ? (Object.freeze({ handoff: 'QUERY' as const, result, retirement }) as MetadataQueryHandle)
+        : (Object.freeze({ result, retirement }) as HostAcquisitionHandle);
   }
 
   return Object.freeze({
@@ -545,6 +566,9 @@ export function createHostAdapter(
     },
     acquireDiscovery(cap: HostCapability, raw: unknown): HostAcquisitionHandle {
       return acquireQuery(cap, raw, 'DISCOVER') as HostAcquisitionHandle;
+    },
+    acquireInput(cap: HostCapability, raw: unknown): InputQueryHandle {
+      return acquireQuery(cap, raw, 'INPUT') as InputQueryHandle;
     },
     acquireMetadata(cap: HostCapability, raw: unknown): MetadataQueryHandle {
       return acquireQuery(cap, raw, 'METADATA') as MetadataQueryHandle;

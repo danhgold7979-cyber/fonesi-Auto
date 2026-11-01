@@ -1,4 +1,10 @@
 import {
+  snapshotInputQueryFacts,
+  validInputAction,
+  type InputQueryFacts,
+  type InputQueryAction,
+} from './input-query-contract.ts';
+import {
   snapshotMetadataQueryFacts,
   validMetadataDeadline,
   validMetadataField,
@@ -15,7 +21,15 @@ import {
 } from './adb-host-adapter.ts';
 import type { RuntimeReadObservation } from './platform-tools-runtime-custody.ts';
 export const HOST_FRAME_LIMIT = 65536;
-const operations = ['VERSION', 'START', 'HEALTH', 'RETIRE', 'DISCOVER', 'METADATA'] as const;
+const operations = [
+  'VERSION',
+  'START',
+  'HEALTH',
+  'RETIRE',
+  'DISCOVER',
+  'METADATA',
+  'INPUT',
+] as const;
 type Operation = (typeof operations)[number];
 const errors = [
   'ADMISSION_REJECTED',
@@ -111,7 +125,7 @@ function json(raw: string): unknown {
   return out;
 }
 type Response = Readonly<{
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   sessionId: string;
   requestId: number;
   attemptId: string;
@@ -120,6 +134,7 @@ type Response = Readonly<{
     | HostTransportFacts
     | HostAcquisitionFacts
     | MetadataQueryFacts
+    | InputQueryFacts
     | Readonly<{ code: string }>;
 }>;
 export function parseHostFrame(bytes: Uint8Array): Response | null {
@@ -143,7 +158,14 @@ export function parseHostFrame(bytes: Uint8Array): Response | null {
       'result',
     ]);
     if (
-      v.version !== (v.operation === 'METADATA' ? 3 : v.operation === 'DISCOVER' ? 2 : 1) ||
+      v.version !==
+        (v.operation === 'INPUT'
+          ? 4
+          : v.operation === 'METADATA'
+            ? 3
+            : v.operation === 'DISCOVER'
+              ? 2
+              : 1) ||
       !uuid(v.sessionId) ||
       !uuid(v.attemptId) ||
       typeof v.requestId !== 'number' ||
@@ -153,19 +175,25 @@ export function parseHostFrame(bytes: Uint8Array): Response | null {
     )
       return null;
     let result: Response['result'] | null =
-      v.operation === 'METADATA'
-        ? snapshotMetadataQueryFacts(v.result)
-        : v.operation === 'DISCOVER'
-          ? snapshotHostAcquisitionFacts(v.result)
-          : snapshotHostTransportFacts(v.result);
-    if ((v.operation === 'DISCOVER' || v.operation === 'METADATA') && !result) return null;
+      v.operation === 'INPUT'
+        ? snapshotInputQueryFacts(v.result)
+        : v.operation === 'METADATA'
+          ? snapshotMetadataQueryFacts(v.result)
+          : v.operation === 'DISCOVER'
+            ? snapshotHostAcquisitionFacts(v.result)
+            : snapshotHostTransportFacts(v.result);
+    if (
+      (v.operation === 'DISCOVER' || v.operation === 'METADATA' || v.operation === 'INPUT') &&
+      !result
+    )
+      return null;
     if (!result) {
       const e = record(v.result, ['code']);
       if (!errors.includes(e.code as (typeof errors)[number])) return null;
       result = Object.freeze({ code: e.code as string });
     }
     return Object.freeze({
-      version: v.version as 1 | 2 | 3,
+      version: v.version as 1 | 2 | 3 | 4,
       sessionId: v.sessionId,
       requestId: v.requestId,
       attemptId: v.attemptId,
@@ -195,7 +223,9 @@ type Pending = {
   attempt: Attempt;
   operation: Operation;
   deadlineUtc: number | undefined;
-  resolve(f: HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts): void;
+  resolve(
+    f: HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts | InputQueryFacts,
+  ): void;
   reject(e: Error): void;
   writeDone: boolean;
   response: Response | null;
@@ -247,10 +277,15 @@ export function createHostBridge(
     if (!p.writeDone || !p.response || pending.get(id) !== p) return;
     pending.delete(id);
     const result = p.response.result;
-    if (p.operation === 'DISCOVER' || p.operation === 'METADATA') {
+    if (p.operation === 'DISCOVER' || p.operation === 'METADATA' || p.operation === 'INPUT') {
       if (
         !('kind' in result) ||
-        result.kind !== (p.operation === 'METADATA' ? 'METADATA_QUERY' : 'ACQUISITION') ||
+        result.kind !==
+          (p.operation === 'INPUT'
+            ? 'INPUT_QUERY'
+            : p.operation === 'METADATA'
+              ? 'METADATA_QUERY'
+              : 'ACQUISITION') ||
         (result.observedAtUtc !== null &&
           (p.deadlineUtc === undefined || result.observedAtUtc > p.deadlineUtc))
       ) {
@@ -262,7 +297,12 @@ export function createHostBridge(
       p.resolve(result);
       return; // Query retirement never changes foreground terminal state.
     }
-    if ('kind' in result && (result.kind === 'ACQUISITION' || result.kind === 'METADATA_QUERY')) {
+    if (
+      'kind' in result &&
+      (result.kind === 'ACQUISITION' ||
+        result.kind === 'METADATA_QUERY' ||
+        result.kind === 'INPUT_QUERY')
+    ) {
       breakChannel();
       p.reject(failure());
       return;
@@ -337,27 +377,36 @@ export function createHostBridge(
     operation: Operation,
     runtime?: RuntimeReadObservation,
     deadlineUtc?: number,
-    metadata?: Readonly<{ transportId: string; field: MetadataQueryField }>,
-  ): Promise<HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts> {
+    metadata?: Readonly<{
+      transportId: string;
+      field?: MetadataQueryField;
+      action?: InputQueryAction;
+    }>,
+  ): Promise<HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts | InputQueryFacts> {
     try {
       const a = exact(token);
       if (operation !== 'RETIRE' && (closed || a.stopping)) throw failure();
       if (
-        (operation === 'HEALTH' || operation === 'DISCOVER' || operation === 'METADATA') &&
+        (operation === 'HEALTH' ||
+          operation === 'DISCOVER' ||
+          operation === 'METADATA' ||
+          operation === 'INPUT') &&
         (a.kind !== 'FOREGROUND' || a.terminal)
       )
         throw failure();
       if (
-        (operation === 'DISCOVER' || operation === 'METADATA') &&
+        (operation === 'DISCOVER' || operation === 'METADATA' || operation === 'INPUT') &&
         (!Number.isSafeInteger(deadlineUtc) || (deadlineUtc as number) < 0 || a.queries >= 128)
       )
         throw failure();
       if (
-        operation === 'METADATA' &&
+        (operation === 'METADATA' || operation === 'INPUT') &&
         (!validMetadataDeadline(deadlineUtc) ||
           !metadata ||
           !validMetadataTransportId(metadata.transportId) ||
-          !validMetadataField(metadata.field))
+          !(operation === 'INPUT'
+            ? validInputAction(metadata.action)
+            : validMetadataField(metadata.field)))
       )
         throw failure();
       if (
@@ -401,37 +450,38 @@ export function createHostBridge(
       }
       const id = ++next;
       const frame = new TextEncoder().encode(
-        `${JSON.stringify(operation === 'METADATA' ? { version: 3, sessionId, requestId: id, attemptId: a.id, operation, field: metadata?.field, transportId: metadata?.transportId, deadlineUtc } : operation === 'DISCOVER' ? { version: 2, sessionId, requestId: id, attemptId: a.id, operation, deadlineUtc } : { version: 1, sessionId, requestId: id, attemptId: a.id, operation })}\n`,
+        `${JSON.stringify(operation === 'INPUT' ? { version: 4, sessionId, requestId: id, attemptId: a.id, operation, action: metadata?.action, transportId: metadata?.transportId, deadlineUtc } : operation === 'METADATA' ? { version: 3, sessionId, requestId: id, attemptId: a.id, operation, field: metadata?.field, transportId: metadata?.transportId, deadlineUtc } : operation === 'DISCOVER' ? { version: 2, sessionId, requestId: id, attemptId: a.id, operation, deadlineUtc } : { version: 1, sessionId, requestId: id, attemptId: a.id, operation })}\n`,
       );
       if (operation === 'RETIRE') a.stopping = true;
       a.handed = true;
-      if (operation === 'DISCOVER' || operation === 'METADATA') a.queries++;
+      if (operation === 'DISCOVER' || operation === 'METADATA' || operation === 'INPUT')
+        a.queries++;
       else a.terminal = false;
-      return new Promise<HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts>(
-        (resolve, reject) => {
-          const p: Pending = {
-            attempt: a,
-            operation,
-            deadlineUtc,
-            resolve,
-            reject,
-            writeDone: false,
-            response: null,
-          };
-          pending.set(id, p);
-          try {
-            Promise.resolve(write(frame)).then(
-              () => {
-                p.writeDone = true;
-                finish(id, p);
-              },
-              () => breakChannel(),
-            );
-          } catch {
-            breakChannel();
-          }
-        },
-      );
+      return new Promise<
+        HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts | InputQueryFacts
+      >((resolve, reject) => {
+        const p: Pending = {
+          attempt: a,
+          operation,
+          deadlineUtc,
+          resolve,
+          reject,
+          writeDone: false,
+          response: null,
+        };
+        pending.set(id, p);
+        try {
+          Promise.resolve(write(frame)).then(
+            () => {
+              p.writeDone = true;
+              finish(id, p);
+            },
+            () => breakChannel(),
+          );
+        } catch {
+          breakChannel();
+        }
+      });
     } catch {
       return Promise.reject(failure());
     }
@@ -473,6 +523,11 @@ export function createHostBridge(
       send(token, 'START', runtime) as Promise<HostTransportFacts>,
     health: (token: object) => send(token, 'HEALTH') as Promise<HostTransportFacts>,
     retire: (token: object) => send(token, 'RETIRE') as Promise<HostTransportFacts>,
+    input: (token: object, transportId: string, action: InputQueryAction, deadlineUtc: number) =>
+      send(token, 'INPUT', undefined, deadlineUtc, {
+        transportId,
+        action,
+      }) as Promise<InputQueryFacts>,
     metadata: (
       token: object,
       transportId: string,

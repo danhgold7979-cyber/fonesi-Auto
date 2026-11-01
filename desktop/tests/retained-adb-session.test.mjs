@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { inputArguments } from '../src/main/input-contract.ts';
 const original = readFileSync(new URL('../native/IsolatedAdbServer.cs', import.meta.url));
 const source = readFileSync(new URL('../native/RetainedAdbSession.cs', import.meta.url), 'utf8');
 function body(signature) {
@@ -311,7 +312,11 @@ test('metadata fixed table and shell-v2 codec share acquisition lifetime without
     ['BATTERY', 'dumpsys battery'],
     ['STORAGE', 'df -k /data'],
   ]);
-  const codec = body('internal static MetadataBytes ReadMetadata(');
+  const codec = body('static MetadataBytes ReadShell(');
+  assert.match(
+    body('internal static MetadataBytes ReadMetadata('),
+    /ReadShell\(channel,budget,transportId,MetadataCommand\(field\),beforeShell,true\)/,
+  );
   before(
     codec,
     'MetadataService(channel,budget,"host:transport-id:"+transportId)',
@@ -328,7 +333,8 @@ test('metadata fixed table and shell-v2 codec share acquisition lifetime without
   const query = body('QueryReply Query(');
   assert.match(query, /a.discoveryCalls>=128/);
   assert.match(query, /if\(field==null\)payload=ReadDevicesList/);
-  assert.match(query, /else metadata=ReadMetadata/);
+  assert.match(query, /metadata=input\?ReadInput/);
+  assert.match(query, /:ReadMetadata\(new SocketDiscoveryChannel/);
   assert.match(
     query,
     /delegate\(\)\{Admission\(\);SameProfile\(a\);if\(Stopping\(a\)\|\|!Live\(a\)/,
@@ -344,4 +350,61 @@ test('metadata fixed table and shell-v2 codec share acquisition lifetime without
     1,
   );
   assert.doesNotMatch(codec, /Process|Socket|File\.|Profile|kill|shell,v1/);
+});
+
+test('input fixed table shares private shell codec and returns no output bytes or physical effect evidence', () => {
+  const pairs = [
+    ...body('internal static string InputCommand(').matchAll(/case "([A-Z_]+)":return "([^"]+)";/g),
+  ].map((m) => [m[1], m[2]]);
+  assert.deepEqual(pairs, [
+    ['HOME', 'input keyboard -d 0 keyevent 3'],
+    ['BACK', 'input keyboard -d 0 keyevent 4'],
+    ['ENTER', 'input keyboard -d 0 keyevent 66'],
+    ['ESCAPE', 'input keyboard -d 0 keyevent 111'],
+    ['DPAD_UP', 'input keyboard -d 0 keyevent 19'],
+    ['DPAD_DOWN', 'input keyboard -d 0 keyevent 20'],
+    ['DPAD_LEFT', 'input keyboard -d 0 keyevent 21'],
+    ['DPAD_RIGHT', 'input keyboard -d 0 keyevent 22'],
+    ['DPAD_CENTER', 'input keyboard -d 0 keyevent 23'],
+  ]);
+  const id = (n) => `${n.toString(16).padStart(8, '0')}-1234-4234-8234-123456789abc`;
+  for (const [action, literal] of pairs) {
+    const args = inputArguments({
+      version: 2,
+      commandId: id(1),
+      correlationId: id(2),
+      deviceId: id(3),
+      bindingId: id(4),
+      ownerId: id(5),
+      generation: 1,
+      serial: 'synthetic-input',
+      operation:
+        action === 'HOME' || action === 'BACK' ? { kind: action } : { kind: 'KEY', key: action },
+      deadlineUtc: 9000,
+      display: null,
+    });
+    assert.ok(args);
+    assert.equal(args.join(' '), literal);
+  }
+  assert.match(
+    body('internal static MetadataBytes ReadInput('),
+    /InputCommand\(action\),beforeShell,false/,
+  );
+  assert.match(
+    body('static MetadataBytes ReadShell('),
+    /if\(textOutput\)\{MetadataText\(output\);MetadataText\(error\);\}/,
+  );
+  const reply = body('internal InputReply(');
+  assert.match(reply, /"stdoutEmpty"/);
+  assert.match(reply, /"stderrEmpty"/);
+  assert.match(reply, /"remoteExitCode"/);
+  assert.doesNotMatch(
+    reply,
+    /Base64|Encoding|observation|processRetired|exitCode|OBSERVED|SUCCESS/,
+  );
+  const query = body('QueryReply Query(');
+  before(query, 'if(input)InputCommand(field)', 'new Socket(');
+  assert.match(query, /a.discoveryCalls>=128/);
+  assert.match(query, /metadata=input\?ReadInput/);
+  assert.match(query, /error.Message=="INPUT_REJECTED"/);
 });

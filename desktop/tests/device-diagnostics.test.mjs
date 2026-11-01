@@ -49,6 +49,7 @@ test('outcomes and actor codes must agree, missing timing remains null', () => {
   const e = createDeviceDiagnosticEncoder();
   for (const [outcome, code] of [
     ['NOT_DISPATCHED', 'BUSY'],
+    ['NOT_DISPATCHED', 'AUDIT_UNAVAILABLE'],
     ['DISPATCHED_UNCONFIRMED', 'TRANSPORT_FAILED'],
     ['OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN'],
   ])
@@ -58,6 +59,8 @@ test('outcomes and actor codes must agree, missing timing remains null', () => {
     );
   for (const [outcome, code] of [
     ['OBSERVED', 'BUSY'],
+    ['OBSERVED', 'AUDIT_UNAVAILABLE'],
+    ['DISPATCHED_UNCONFIRMED', 'AUDIT_UNAVAILABLE'],
     ['NOT_DISPATCHED', 'OK'],
     ['OBSERVED', 'OUTCOME_UNKNOWN'],
     ['OUTCOME_UNKNOWN', 'TRANSPORT_FAILED'],

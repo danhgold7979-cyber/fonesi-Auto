@@ -1,3 +1,8 @@
+import {
+  validInputAction,
+  type InputQueryAction,
+  type InputQueryHandle,
+} from './input-query-contract.ts';
 // Private software-only ingestion. Synthetic text never becomes native discovery authority.
 import {
   parseAdbDiscovery,
@@ -182,6 +187,7 @@ function classify(error: unknown): LocalCode | Exclude<DurableCode, 'OUTCOME_UNK
 }
 export type OwnedMetadataTarget = Readonly<{ ownedMetadataTarget: true }>;
 export type MetadataTargetRecord = Readonly<{
+  ownerAnchor: object;
   target: Readonly<{
     deviceId: string;
     bindingId: string;
@@ -197,6 +203,16 @@ export type MetadataTargetRecord = Readonly<{
   localBusy(): boolean;
   begin(field: MetadataQueryField, deadlineUtc: number): MetadataQueryHandle;
 }>;
+export type OwnedInputTarget = Readonly<{ ownedInputTarget: true }>;
+export type InputTargetRecord = Readonly<
+  Omit<MetadataTargetRecord, 'begin'> & {
+    begin(action: InputQueryAction, deadlineUtc: number): InputQueryHandle;
+  }
+>;
+const inputTargets = new WeakMap<object, InputTargetRecord>();
+export function inspectOwnedInputTarget(value: unknown): InputTargetRecord | null {
+  return value !== null && typeof value === 'object' ? (inputTargets.get(value) ?? null) : null;
+}
 const metadataTargets = new WeakMap<object, MetadataTargetRecord>();
 export function inspectOwnedMetadataTarget(value: unknown): MetadataTargetRecord | null {
   return value !== null && typeof value === 'object' ? (metadataTargets.get(value) ?? null) : null;
@@ -255,6 +271,8 @@ export function createAdbDiscoveryService(
   let issuedTickets = 0,
     metadataSequence = 0;
   const tickets = new Map<string, OwnedMetadataTarget>();
+  const inputTickets = new Map<string, OwnedInputTarget>();
+  const ownerAnchors = new Map<string, object>();
 
   function now() {
     const value = clock();
@@ -310,6 +328,8 @@ export function createAdbDiscoveryService(
     projection = null;
     nativeRows = null;
     tickets.clear();
+    inputTickets.clear();
+    ownerAnchors.clear();
     active = Promise.resolve()
       .then(async () => {
         let requestId: string | null = null,
@@ -485,6 +505,8 @@ export function createAdbDiscoveryService(
               projection = candidate;
               nativeRows = native ? value.rows : null;
               tickets.clear();
+              inputTickets.clear();
+              ownerAnchors.clear();
               valid = true;
             } catch {
               projection = null;
@@ -532,7 +554,10 @@ export function createAdbDiscoveryService(
       });
     return response;
   }
-  function metadataTarget(deviceId: string): OwnedMetadataTarget | null {
+  function issueTarget(
+    deviceId: string,
+    mode: 'METADATA' | 'INPUT',
+  ): OwnedMetadataTarget | OwnedInputTarget | null {
     if (
       !native ||
       !projection ||
@@ -553,7 +578,12 @@ export function createAdbDiscoveryService(
       const witness = inspectRegistryProjection(actualRegistry, captured);
       if (!witness?.finalCurrent() || !native.finalCurrent()) return null;
       const device = captured.devices.find((d) => d.deviceId === deviceId);
-      if (device?.state !== 'DEVICE' || !device.currentBindingId) return null;
+      if (
+        device?.state !== 'DEVICE' ||
+        !device.currentBindingId ||
+        (mode === 'INPUT' && device.verification !== 'VERIFIED')
+      )
+        return null;
       const binding = captured.bindings.find((b) => b.bindingId === device.currentBindingId);
       if (
         !binding ||
@@ -605,10 +635,21 @@ export function createAdbDiscoveryService(
         if (!finalCurrent()) throw Error('EPOCH_REVOKED');
       };
       current();
-      const prior = tickets.get(deviceId);
-      if (prior) return metadataTargets.get(prior)?.finalCurrent() ? prior : null;
-      if (issuedTickets >= 65536 || tickets.size >= 256) return null;
-      const ticket: OwnedMetadataTarget = Object.freeze({ ownedMetadataTarget: true });
+      const prior = mode === 'INPUT' ? inputTickets.get(deviceId) : tickets.get(deviceId);
+      if (prior)
+        return (mode === 'INPUT'
+          ? inputTargets.get(prior)
+          : metadataTargets.get(prior)
+        )?.finalCurrent()
+          ? prior
+          : null;
+      if (issuedTickets >= 65536 || (mode === 'INPUT' ? inputTickets : tickets).size >= 256)
+        return null;
+      const ticket =
+        mode === 'INPUT'
+          ? Object.freeze({ ownedInputTarget: true as const })
+          : Object.freeze({ ownedMetadataTarget: true as const });
+      const ownerAnchor = ownerAnchors.get(deviceId) ?? Object.freeze({});
       const target = Object.freeze({
         deviceId,
         bindingId: binding.bindingId,
@@ -619,33 +660,56 @@ export function createAdbDiscoveryService(
         registryRevision: captured.revision,
         observationSequence: captured.sequence,
       });
-      const record: MetadataTargetRecord = Object.freeze({
+      const record = Object.freeze({
+        ownerAnchor,
         target,
         current,
         finalCurrent,
         localBusy,
-        begin(field: MetadataQueryField, deadlineUtc: number) {
-          if (!validMetadataField(field) || !validMetadataDeadline(deadlineUtc))
+        begin(field: MetadataQueryField | InputQueryAction, deadlineUtc: number) {
+          if (
+            !(mode === 'INPUT' ? validInputAction(field) : validMetadataField(field)) ||
+            !validMetadataDeadline(deadlineUtc)
+          )
             throw Error('INVALID_REQUEST');
           if (localBusy())
-            return Object.freeze({
-              handoff: 'LOCAL_REFUSAL',
-              result: Promise.resolve(
-                Object.freeze({
-                  version: 1,
-                  kind: 'METADATA_QUERY',
-                  status: 'FAILED',
-                  code: 'BUSY',
-                  dispatched: false,
-                  operationRetired: true,
-                  stdoutBase64: null,
-                  stderrBase64: null,
-                  remoteExitCode: null,
-                  observedAtUtc: null,
-                }),
-              ),
-              retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
-            });
+            return mode === 'INPUT'
+              ? Object.freeze({
+                  handoff: 'LOCAL_REFUSAL' as const,
+                  result: Promise.resolve(
+                    Object.freeze({
+                      version: 1 as const,
+                      kind: 'INPUT_QUERY' as const,
+                      status: 'FAILED' as const,
+                      code: 'BUSY' as const,
+                      dispatched: false,
+                      operationRetired: true,
+                      remoteExitCode: null,
+                      stdoutEmpty: null,
+                      stderrEmpty: null,
+                      observedAtUtc: null,
+                    }),
+                  ),
+                  retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' as const })),
+                })
+              : Object.freeze({
+                  handoff: 'LOCAL_REFUSAL',
+                  result: Promise.resolve(
+                    Object.freeze({
+                      version: 1,
+                      kind: 'METADATA_QUERY',
+                      status: 'FAILED',
+                      code: 'BUSY',
+                      dispatched: false,
+                      operationRetired: true,
+                      stdoutBase64: null,
+                      stderrBase64: null,
+                      remoteExitCode: null,
+                      observedAtUtc: null,
+                    }),
+                  ),
+                  retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+                });
           current();
           if (metadataSequence >= 65536 || ids.size >= 65536) throw Error('ID_EXHAUSTED');
           const sequence = ++metadataSequence;
@@ -654,29 +718,48 @@ export function createAdbDiscoveryService(
             throw Error('ID_EXHAUSTED');
           ids.add(requestId);
           current();
-          return native.beginMetadata(
-            Object.freeze({
-              requestId,
-              epoch: native.epoch,
-              sequence,
-              transportId: target.transportId,
-              field,
-              deadlineUtc,
-            }),
-          );
+          return mode === 'INPUT'
+            ? native.beginInput(
+                Object.freeze({
+                  requestId,
+                  epoch: native.epoch,
+                  sequence,
+                  transportId: target.transportId,
+                  action: field as InputQueryAction,
+                  deadlineUtc,
+                }),
+              )
+            : native.beginMetadata(
+                Object.freeze({
+                  requestId,
+                  epoch: native.epoch,
+                  sequence,
+                  transportId: target.transportId,
+                  field: field as MetadataQueryField,
+                  deadlineUtc,
+                }),
+              );
         },
       });
       if (!finalCurrent()) return null;
       issuedTickets++;
-      tickets.set(deviceId, ticket);
-      metadataTargets.set(ticket, record);
+      ownerAnchors.set(deviceId, ownerAnchor);
+      if (mode === 'INPUT') {
+        inputTickets.set(deviceId, ticket as OwnedInputTarget);
+        inputTargets.set(ticket, record as InputTargetRecord);
+      } else {
+        tickets.set(deviceId, ticket as OwnedMetadataTarget);
+        metadataTargets.set(ticket, record as MetadataTargetRecord);
+      }
       return ticket;
     } catch {
       return null;
     }
   }
   return Object.freeze({
-    metadataTarget,
+    metadataTarget: (deviceId: string) =>
+      issueTarget(deviceId, 'METADATA') as OwnedMetadataTarget | null,
+    inputTarget: (deviceId: string) => issueTarget(deviceId, 'INPUT') as OwnedInputTarget | null,
     refresh,
     snapshot(): RegistrySnapshot | null {
       if (!projection) return null;

@@ -564,6 +564,10 @@ export function createHostFactory(
   });
   let closing: Promise<'RETIRED' | 'UNRETIRED'> | null = null;
   const factory = Object.freeze({
+    acquireInput(capability: HostCapability, request: unknown) {
+      if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY') fail();
+      return adapter.acquireInput(capability, request);
+    },
     acquireMetadata(capability: HostCapability, request: unknown) {
       if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY') fail();
       return adapter.acquireMetadata(capability, request);

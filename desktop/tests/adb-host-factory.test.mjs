@@ -1154,6 +1154,9 @@ test('injected and structurally copied factories cannot mint real discovery acqu
     for (const value of [null, {}, Object.freeze({ acquireDiscovery() {} })])
       assert.equal(isRealHostFactory(value), false);
     assert.throws(() => f.factory.acquireDiscovery(f.cap, { deadlineUtc: 2000 }));
+    assert.throws(() =>
+      f.factory.acquireInput(f.cap, { transportId: '1', action: 'HOME', deadlineUtc: 2000 }),
+    );
     assert.equal(f.spawns, 0);
     assert.equal(f.held, false);
     await f.factory.close();

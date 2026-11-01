@@ -1,3 +1,4 @@
+import { snapshotInputAudit, type InputAudit } from './input-audit-contract.ts';
 import { snapshotMetadataAudit, type MetadataAudit } from './metadata-audit-contract.ts';
 import {
   validDiscoveryAuditTuple,
@@ -203,6 +204,31 @@ function setupTuple(record: Record<string, unknown>): boolean {
 export type SetupV2LogRecord = SetupAudit &
   Omit<SetupLogRecord, 'schemaVersion'> &
   Readonly<{ schemaVersion: 8 }>;
+export type InputAuditFields = InputAudit;
+export type InputLogRecord = Readonly<{
+  schemaVersion: 11;
+  runId: string;
+  sequence: number;
+  utc: string;
+  severity: 'INFO' | 'WARN';
+  component: 'MAIN';
+  task: 'P2-08';
+  event: 'INPUT';
+  input: InputAuditFields;
+}>;
+function inputTuple(record: Record<string, unknown>): boolean {
+  const value = snapshotInputAudit(record.input);
+  if (
+    !value ||
+    record.component !== 'MAIN' ||
+    record.task !== 'P2-08' ||
+    record.event !== 'INPUT' ||
+    record.severity !== (value.code === 'OK' ? 'INFO' : 'WARN')
+  )
+    return false;
+  record.input = value;
+  return true;
+}
 export type MetadataAuditFields = MetadataAudit;
 export type MetadataLogRecord = Readonly<{
   schemaVersion: 10;
@@ -291,7 +317,8 @@ export type LogRecord =
   | SetupV2LogRecord
   | RuntimeVersionLogRecord
   | DiscoveryLogRecord
-  | MetadataLogRecord;
+  | MetadataLogRecord
+  | InputLogRecord;
 function fleetTuple(record: Record<string, unknown>): boolean {
   return (
     record.component === 'MAIN' &&
@@ -473,7 +500,7 @@ export function encodeLogRecord(input: unknown): string | null {
     ];
     const version = Object.getOwnPropertyDescriptor(input, 'schemaVersion');
     if (!version || !Object.hasOwn(version, 'value')) return null;
-    if (version.value === 9 || version.value === 10)
+    if (version.value === 9 || version.value === 10 || version.value === 11)
       fields.splice(
         0,
         fields.length,
@@ -485,7 +512,7 @@ export function encodeLogRecord(input: unknown): string | null {
         'component',
         'task',
         'event',
-        version.value === 10 ? 'metadata' : 'discovery',
+        version.value === 11 ? 'input' : version.value === 10 ? 'metadata' : 'discovery',
       );
     else if (version.value === 6 || version.value === 7 || version.value === 8)
       fields.splice(
@@ -549,7 +576,9 @@ export function encodeLogRecord(input: unknown): string | null {
                       ? discoveryTuple(record)
                       : record.schemaVersion === 10
                         ? metadataTuple(record)
-                        : runtimeVersionTuple(record))
+                        : record.schemaVersion === 11
+                          ? inputTuple(record)
+                          : runtimeVersionTuple(record))
     )
       return null;
     const encoded = JSON.stringify(record) + '\n';

@@ -1,12 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import {
+  readFileSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  realpathSync,
+  rmSync,
+  readdirSync,
+} from 'node:fs';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { ApplicationLogger } from '../src/main/logging.ts';
 import { stripTypeScriptTypes } from 'node:module';
 import { createOwnedTransportMetadataOwner as production } from '../src/main/owned-transport-metadata.ts';
 import { createDeviceQueueBudget } from '../src/main/device-actor.ts';
 // Explicit test-transformed private lookup only. This models issuer facts, never native proof.
 const records = new WeakMap();
 globalThis.__syntheticMetadataRecords = records;
+const inputRecords = new WeakMap();
+globalThis.__syntheticInputRecords = inputRecords;
 const sourceUrl = new URL('../src/main/owned-transport-metadata.ts', import.meta.url);
 let source = stripTypeScriptTypes(readFileSync(sourceUrl, 'utf8'));
 const matches = source.match(
@@ -17,10 +30,16 @@ source = source.replace(
   matches[0],
   'const inspectOwnedMetadataTarget=(v)=>globalThis.__syntheticMetadataRecords.get(v)??null;',
 );
-source = source.replace(/from '(\.\/[^']+)'/g, (_m, p) => `from '${new URL(p, sourceUrl).href}'`);
-const { createOwnedTransportMetadataOwner: create } = await import(
-  `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+source = source.replace(
+  /import\s*\{\s*inspectOwnedInputTarget\s*,?\s*\}\s*from '\.\/adb-discovery-service\.ts';/,
+  'const inspectOwnedInputTarget=(v)=>globalThis.__syntheticInputRecords.get(v)??null;',
 );
+source = source.replace(
+  /from '(\.\.?\/[^']+)'/g,
+  (_m, p) => `from '${new URL(p, sourceUrl).href}'`,
+);
+const { createOwnedTransportMetadataOwner: create, createOwnedDeviceTransportOwner: combined } =
+  await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const texts = {
   MODEL: 'Synthetic Phone\n',
@@ -326,5 +345,273 @@ test('actor-level local BUSY after owner initial check preserves captured projec
     assert.equal((await owner.read('MODEL', Date.now() + 1000)).actor.outcome, 'OBSERVED');
   } finally {
     await owner.close();
+  }
+});
+
+// Actual owned LogStore + actual actor/core. ONLY issuer lookups/native facts are transformed synthetic seams.
+async function combinedFixture(extra = {}) {
+  const base = new URL('../.test-output/', import.meta.url);
+  mkdirSync(base, { recursive: true });
+  const root = mkdtempSync(join(realpathSync(base), 'combined-input-')),
+    token = randomUUID();
+  writeFileSync(join(root, '.owner'), token, { flag: 'wx' });
+  const logger = await ApplicationLogger.open(
+    { root: join(root, 'logs-main'), parentToken: token },
+    () => {},
+  );
+  const metadataTicket = Object.freeze({ metadata: true }),
+    inputTicket = Object.freeze({ input: true }),
+    anchor = Object.freeze({});
+  const target = Object.freeze({
+    deviceId: id(101),
+    bindingId: id(102),
+    generation: 0,
+    serial: 'synthetic-private',
+    transportId: '7',
+    hostEpoch: 1,
+    registryRevision: 3,
+    observationSequence: 1,
+  });
+  const calls = [];
+  let valid = true;
+  const shared = {
+    target,
+    ownerAnchor: anchor,
+    current() {
+      if (!valid) throw Error('REVOKED');
+    },
+    finalCurrent: () => valid,
+    localBusy: () => false,
+  };
+  records.set(
+    metadataTicket,
+    Object.freeze({
+      ...shared,
+      begin(field) {
+        calls.push(`metadata:${field}`);
+        return Object.freeze({
+          handoff: 'QUERY',
+          result: Promise.resolve(facts(field)),
+          retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+        });
+      },
+      ...extra.metadata,
+    }),
+  );
+  inputRecords.set(
+    inputTicket,
+    Object.freeze({
+      ...shared,
+      begin(action) {
+        calls.push(`input:${action}`);
+        return Object.freeze({
+          handoff: 'QUERY',
+          result: Promise.resolve(
+            Object.freeze({
+              version: 1,
+              kind: 'INPUT_QUERY',
+              status: 'COMPLETE',
+              code: 'OK',
+              dispatched: true,
+              operationRetired: true,
+              remoteExitCode: 0,
+              stdoutEmpty: true,
+              stderrEmpty: true,
+              observedAtUtc: Date.now(),
+            }),
+          ),
+          retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+        });
+      },
+      ...extra.input,
+    }),
+  );
+  const budget = createDeviceQueueBudget();
+  let owner;
+  return {
+    root,
+    logger,
+    metadataTicket,
+    inputTicket,
+    budget,
+    calls,
+    build() {
+      owner = combined({
+        metadataTarget: metadataTicket,
+        inputTarget: inputTicket,
+        budget,
+        logger,
+      });
+      return owner;
+    },
+    revoke() {
+      valid = false;
+    },
+    async cleanup() {
+      if (owner) assert.equal(await owner.close(), true);
+      await logger.close();
+      assert.equal(readFileSync(join(root, '.owner'), 'utf8'), token);
+      assert.equal(realpathSync(root), root);
+      rmSync(root, { recursive: true, force: false });
+    },
+  };
+}
+test('combined scopes use one actual actor and actual durable input audit without physical success', async () => {
+  const f = await combinedFixture();
+  try {
+    const owner = f.build();
+    assert.deepEqual(Object.keys(owner).sort(), ['close', 'input', 'metadata', 'retired']);
+    assert.deepEqual(Object.keys(owner.metadata).sort(), ['read', 'snapshot']);
+    assert.deepEqual(Object.keys(owner.input), ['press']);
+    const [metadata, input] = await Promise.all([
+      owner.metadata.read('MODEL', Date.now() + 10000),
+      owner.input.press('HOME', Date.now() + 10000),
+    ]);
+    assert.equal(metadata.actor.outcome, 'OBSERVED');
+    assert.equal(input.actor.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.equal(input.actor.code, 'OK');
+    assert.equal(input.actor.diagnosticId, null);
+    assert.equal(input.loggingHealth, 'AVAILABLE');
+    assert.deepEqual(f.calls, ['metadata:MODEL', 'input:HOME']);
+    assert.throws(
+      () => create({ target: f.metadataTicket, budget: f.budget }),
+      /OWNED_METADATA_OPTIONS/,
+    );
+    const files = readdirSync(join(f.root, 'logs-main'));
+    const rows = files
+      .filter((n) => n.endsWith('.ndjson') || n.endsWith('.jsonl'))
+      .flatMap((n) =>
+        readFileSync(join(f.root, 'logs-main', n), 'utf8')
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map(JSON.parse),
+      );
+    const audits = rows
+      .filter((r) => r.schemaVersion === 11)
+      .sort((a, b) => a.sequence - b.sequence);
+    assert.equal(audits.length, 2);
+    assert.equal(audits[0].input.phase, 'INTENT');
+    assert.equal(audits[1].input.phase, 'RESULT');
+    assert.equal(audits[0].input.diagnosticId, audits[1].input.diagnosticId);
+    assert.notEqual(audits[0].input.diagnosticId, input.actor.commandId);
+    assert.equal(audits[1].input.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.ok(!JSON.stringify(audits).includes('synthetic-private'));
+  } finally {
+    await f.cleanup();
+  }
+});
+test('combined rejects mismatched/cast tickets and consumes both genuine claims before reentrant callbacks', async () => {
+  const f = await combinedFixture({ input: { ownerAnchor: Object.freeze({ different: true }) } });
+  try {
+    assert.throws(() => f.build(), /OWNED_INPUT_OPTIONS/);
+    assert.throws(
+      () => create({ target: f.metadataTicket, budget: f.budget }),
+      /OWNED_METADATA_OPTIONS/,
+    );
+    assert.throws(
+      () =>
+        combined({
+          metadataTarget: f.inputTicket,
+          inputTarget: f.metadataTicket,
+          budget: f.budget,
+          logger: f.logger,
+        }),
+      /OWNED_INPUT_OPTIONS/,
+    );
+    assert.equal(f.calls.length, 0);
+  } finally {
+    await f.cleanup();
+  }
+  const g = await combinedFixture();
+  let attempts = 0;
+  const original = records.get(g.metadataTicket);
+  records.set(
+    g.metadataTicket,
+    Object.freeze({
+      ...original,
+      current() {
+        attempts++;
+        assert.throws(
+          () =>
+            combined({
+              metadataTarget: g.metadataTicket,
+              inputTarget: g.inputTicket,
+              budget: g.budget,
+              logger: g.logger,
+            }),
+          /OWNED_INPUT_OPTIONS/,
+        );
+        original.current();
+      },
+    }),
+  );
+  try {
+    g.build();
+    assert.ok(attempts > 0);
+  } finally {
+    await g.cleanup();
+  }
+});
+test('combined rejects unbranded logger before effects and no live upgrade of consumed metadata ticket', async () => {
+  const f = await combinedFixture();
+  try {
+    assert.throws(
+      () =>
+        combined({
+          metadataTarget: f.metadataTicket,
+          inputTarget: f.inputTicket,
+          budget: f.budget,
+          logger: { write: async () => 'AVAILABLE' },
+        }),
+      /OWNED_INPUT_OPTIONS/,
+    );
+    assert.equal(f.calls.length, 0);
+  } finally {
+    await f.cleanup();
+  }
+  const g = await combinedFixture();
+  let metadata;
+  try {
+    metadata = create({ target: g.metadataTicket, budget: g.budget });
+    assert.throws(() => g.build(), /OWNED_INPUT_OPTIONS/);
+    assert.equal(g.calls.length, 0);
+  } finally {
+    if (metadata) assert.equal(await metadata.close(), true);
+    await g.cleanup();
+  }
+});
+test('existing main facade remains metadata-only despite the shared module exporting a combined source constructor', () => {
+  for (const name of ['../src/main.ts', '../src/main/discovery-session-service.ts']) {
+    const source = readFileSync(new URL(name, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /createOwnedDeviceTransportOwner|\.input\.press\(/);
+  }
+  const facade = readFileSync(
+    new URL('../src/main/discovery-session-service.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(facade, /createOwnedTransportMetadataOwner/);
+});
+test('combined closed logger after INTENT reports degraded RESULT instead of retaining old AVAILABLE', async () => {
+  const f = await combinedFixture();
+  const original = inputRecords.get(f.inputTicket);
+  inputRecords.set(
+    f.inputTicket,
+    Object.freeze({
+      ...original,
+      begin(action, deadline) {
+        void f.logger.close();
+        return original.begin(action, deadline);
+      },
+    }),
+  );
+  try {
+    const owner = f.build();
+    const r = await owner.input.press('HOME', Date.now() + 10000);
+    assert.equal(r.actor.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.equal(r.loggingHealth, 'DEGRADED');
+    assert.equal(f.calls.length, 1);
+  } finally {
+    await f.cleanup();
   }
 });

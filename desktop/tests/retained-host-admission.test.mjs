@@ -11,7 +11,7 @@ function before(text, a, b) {
 test('original server and current catalog-aware session source pins remain exact', () => {
   for (const [file, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
-    ['RetainedAdbSession.cs', 'be62300592244f1474fa340101976cb86ad5ed5c6734b98b28dc545d6b00ce71'],
+    ['RetainedAdbSession.cs', '24dd1324671214de7f0a2dcd41a9725c5823d5ca641ca8a9398a5d83dcd07a50'],
   ])
     assert.equal(
       createHash('sha256')

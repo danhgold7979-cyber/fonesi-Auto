@@ -570,3 +570,124 @@ test('metadata response is withheld until actual request write completion', asyn
   done();
   assert.equal((await q).remoteExitCode, 0);
 });
+
+const inputFacts = () => ({
+  version: 1,
+  kind: 'INPUT_QUERY',
+  status: 'COMPLETE',
+  code: 'OK',
+  dispatched: true,
+  operationRetired: true,
+  stdoutEmpty: true,
+  stderrEmpty: true,
+  remoteExitCode: 0,
+  observedAtUtc: 1000,
+});
+const inputResponse = (r, result = inputFacts()) => ({
+  version: 4,
+  sessionId: r.sessionId,
+  requestId: r.requestId,
+  attemptId: r.attemptId,
+  operation: 'INPUT',
+  result,
+});
+test('input v4 binds exact field/transport and shares the discovery request counter and 128 cap', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const start = p.startForeground(t, {});
+  await tick();
+  f.receive(frame(response(f.writes[0], live)));
+  await start;
+  for (let i = 0; i < 128; i++) {
+    const meta = i % 3 === 0,
+      other = i % 3 === 1,
+      q = meta
+        ? p.input(t, '18446744073709551615', 'HOME', 2000)
+        : other
+          ? p.metadata(t, '1', 'MODEL', 2000)
+          : p.discover(t, 2000);
+    await tick();
+    const r = f.writes.at(-1);
+    assert.equal(r.requestId, i + 2);
+    if (meta) {
+      assert.deepEqual(Object.keys(r), [
+        'version',
+        'sessionId',
+        'requestId',
+        'attemptId',
+        'operation',
+        'action',
+        'transportId',
+        'deadlineUtc',
+      ]);
+      assert.equal(r.transportId, '18446744073709551615');
+      f.receive(frame(inputResponse(r)));
+    } else f.receive(frame(other ? metadataResponse(r) : queryResponse(r)));
+    await q;
+  }
+  await assert.rejects(p.input(t, '1', 'HOME', 2000));
+  assert.equal(f.writes.length, 129);
+  assert.throws(() => p.reserveAttempt('FOREGROUND'));
+});
+test('input v4 rejects cross-version facts and noncanonical selector before write', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const start = p.startForeground(t, {});
+  await tick();
+  f.receive(frame(response(f.writes[0], live)));
+  await start;
+  for (const [tid, field, deadline] of [
+    ['1\n', 'HOME', 2000],
+    ['1', 'HOME;id', 2000],
+    ['1', 'HOME', 8640000000000001],
+  ])
+    await assert.rejects(p.input(t, tid, field, deadline));
+  assert.equal(f.writes.length, 1);
+  const q = p.input(t, '1', 'HOME', 2000);
+  await tick();
+  const r = inputResponse(f.writes.at(-1));
+  assert.equal(parseHostFrame(frame({ ...r, version: 2 })), null);
+  f.receive(frame({ ...r, version: 2 }));
+  await assert.rejects(q);
+  assert.equal(f.bridge.closed, true);
+});
+test('input response is withheld until actual request write completion', async () => {
+  let receive, done;
+  const writes = [];
+  const f = fixture({
+    transport: {
+      subscribe(c) {
+        receive = c;
+      },
+      write(bytes) {
+        const r = JSON.parse(Buffer.from(bytes));
+        writes.push(r);
+        return r.operation === 'INPUT'
+          ? new Promise((resolve) => {
+              done = resolve;
+            })
+          : Promise.resolve();
+      },
+      requestCleanup() {},
+    },
+  });
+  const p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND'),
+    start = p.startForeground(t, {});
+  await tick();
+  receive(frame(response(writes[0], live)));
+  await start;
+  let settled = false;
+  const q = p.input(t, '1', 'HOME', 2000).then((v) => {
+    settled = true;
+    return v;
+  });
+  await tick();
+  receive(frame(inputResponse(writes[1])));
+  await tick();
+  assert.equal(settled, false);
+  done();
+  assert.equal((await q).remoteExitCode, 0);
+});

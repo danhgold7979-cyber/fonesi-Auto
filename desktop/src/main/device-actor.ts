@@ -14,6 +14,13 @@ import {
   type MetadataQueryFacts,
   type MetadataQueryHandle,
 } from './metadata-query-contract.ts';
+import {
+  snapshotInputQueryRequest,
+  snapshotInputQueryFacts,
+  type InputQueryRequest,
+  type InputQueryFacts,
+  type InputQueryHandle,
+} from './input-query-contract.ts';
 const NativePromise = Promise,
   promisePrototype = Promise.prototype,
   promiseThen = Promise.prototype.then;
@@ -58,9 +65,14 @@ export type DeviceMetadataRequest = DeviceBinding &
     operation: MetadataOperation;
     deadlineUtc: number;
   }>;
-export type DeviceRequest = DeviceMetadataRequest | DeviceInputRequest | MetadataQueryRequest;
+export type DeviceRequest =
+  | DeviceMetadataRequest
+  | DeviceInputRequest
+  | MetadataQueryRequest
+  | InputQueryRequest;
 export type ActorCode =
   | 'OK'
+  | 'AUDIT_UNAVAILABLE'
   | 'INVALID_REQUEST'
   | 'OWNER_REVOKED'
   | 'BUSY'
@@ -127,6 +139,8 @@ function binding(value: unknown): DeviceBinding | null {
   return Object.freeze(v) as DeviceBinding;
 }
 function request(value: unknown): DeviceRequest | null {
+  const nativeInput = snapshotInputQueryRequest(value);
+  if (nativeInput) return nativeInput;
   const metadata = snapshotMetadataQueryRequest(value);
   if (metadata) return metadata;
   const input = snapshotDeviceInputRequest(value);
@@ -224,7 +238,20 @@ export type ActorMetadataConfig = Readonly<{
   finalCurrent(): boolean;
   localBusy(): boolean;
 }>;
+export type ActorInputConfig = Readonly<{
+  transportId: string;
+  audit(
+    request: InputQueryRequest,
+    phase: 'INTENT' | 'RESULT',
+    outcome: 'INTENT' | ActorResult['outcome'],
+    code: ActorCode,
+  ): Promise<Readonly<{ phase: 'INTENT' | 'RESULT'; loggingHealth: 'AVAILABLE' | 'DEGRADED' }>>;
+  dispatch(request: InputQueryRequest): InputQueryHandle;
+  finalCurrent(): boolean;
+  localBusy(): boolean;
+}>;
 export type ActorOptions = Readonly<{
+  input?: ActorInputConfig;
   metadata?: ActorMetadataConfig;
   binding: DeviceBinding;
   budget: DeviceQueueBudget;
@@ -265,6 +292,24 @@ export function createDeviceActor(options: ActorOptions) {
   )
     throw Error('ACTOR_OPTIONS');
   const metadata = md ? (Object.freeze(md) as ActorMetadataConfig) : null;
+  const inputDescriptor = Object.getOwnPropertyDescriptor(options, 'input');
+  if (inputDescriptor && (!('value' in inputDescriptor) || !inputDescriptor.enumerable))
+    throw Error('ACTOR_OPTIONS');
+  const inputValue = inputDescriptor?.value;
+  const inp =
+    inputValue === undefined
+      ? null
+      : record(inputValue, ['transportId', 'audit', 'dispatch', 'finalCurrent', 'localBusy']);
+  if (
+    inputValue !== undefined &&
+    (!inp ||
+      !validMetadataTransportId(inp.transportId) ||
+      [inp.audit, inp.dispatch, inp.finalCurrent, inp.localBusy].some(
+        (f) => typeof f !== 'function',
+      ))
+  )
+    throw Error('ACTOR_OPTIONS');
+  const input = inp ? (Object.freeze(inp) as ActorInputConfig) : null;
   const currentDisplay = options.currentDisplay ?? (() => null);
   if (
     [now, assertOwned, current, binaryAvailable, dispatch, observe, currentDisplay].some(
@@ -297,6 +342,7 @@ export function createDeviceActor(options: ActorOptions) {
     if (!cap || typeof cap !== 'object' || owner !== cap || cap.ownerId !== r.ownerId || draining)
       return 'OWNER_REVOKED';
     try {
+      if (r.version === 4 && phase === 'DISPATCH' && input?.localBusy() === true) return 'BUSY';
       if (r.version === 3 && phase === 'DISPATCH' && metadata?.localBusy() === true) return 'BUSY';
       if (assertOwned() !== true) return 'OWNER_REVOKED';
       if (
@@ -308,18 +354,22 @@ export function createDeviceActor(options: ActorOptions) {
       )
         return 'STALE_BINDING';
       const time = clock();
-      if (r.deadlineUtc <= time || r.deadlineUtc - time > (r.version === 3 ? 30000 : 120000))
+      if (r.deadlineUtc <= time || r.deadlineUtc - time > (r.version >= 3 ? 30000 : 120000))
         return 'DEADLINE_EXCEEDED';
       if (r.version === 2) {
         if (r.operation.kind === 'TEXT') return 'UNICODE_UNAVAILABLE';
         if (!displayCurrent(r, r.display === null ? null : currentDisplay(target), time, phase))
           return 'STALE_DISPLAY';
       }
+      if (r.version === 4 && (!input || r.transportId !== input.transportId))
+        return 'STALE_BINDING';
       if (r.version === 3 && (!metadata || r.transportId !== metadata.transportId))
         return 'STALE_BINDING';
       if (binaryAvailable() !== true) return 'BINARY_UNAVAILABLE';
       if (r.version === 2 && current(target) !== true) return 'STALE_BINDING';
       if (r.version === 3 && phase === 'DISPATCH' && metadata?.localBusy() === true) return 'BUSY';
+      if (r.version === 4 && phase === 'DISPATCH' && input?.localBusy() === true) return 'BUSY';
+      if (r.version === 4 && input?.finalCurrent() !== true) return 'STALE_BINDING';
       if (r.version === 3 && metadata?.finalCurrent() !== true) return 'STALE_BINDING';
       if (closed || draining || uncertain || owner !== cap) return 'OWNER_REVOKED';
     } catch {
@@ -371,6 +421,224 @@ export function createDeviceActor(options: ActorOptions) {
       }
       if (remaining <= 0) {
         finish(result(r, 'DEADLINE_EXCEEDED'));
+        return;
+      }
+      if (r.version === 4) {
+        if (!input || r.transportId !== input.transportId || !input.finalCurrent()) {
+          finish(result(r, 'STALE_BINDING'));
+          return;
+        }
+        const start = lastTime;
+        let handed = false,
+          intentEntered = false,
+          intentAdmitted = false;
+        let nativeRetired = true,
+          auditCount = 0,
+          auditBroken = false;
+        let known: ActorResult | null = null,
+          resultWork: Promise<void> | null = null;
+        const syncRetirement = () => {
+          queryRetired = nativeRetired && auditCount === 0 && !auditBroken;
+        };
+        const latch = () => {
+          uncertain = true;
+          settleQueued('OUTCOME_UNKNOWN');
+          for (const resolve of idle.splice(0)) resolve();
+        };
+        const audit = async (
+          phase: 'INTENT' | 'RESULT',
+          outcome: 'INTENT' | ActorResult['outcome'],
+          code: ActorCode,
+        ) => {
+          auditCount++;
+          syncRetirement();
+          try {
+            const promise = input.audit(r, phase, outcome, code);
+            if (!queryPromise(promise)) throw Error();
+            const receipt = await Reflect.apply(promiseThen, promise, [
+              (raw: unknown) => {
+                const v = record(raw, ['phase', 'loggingHealth']);
+                return v &&
+                  v.phase === phase &&
+                  ['AVAILABLE', 'DEGRADED'].includes(v.loggingHealth as string)
+                  ? v
+                  : null;
+              },
+              () => null,
+            ]);
+            if (!receipt) throw Error();
+            return receipt.loggingHealth === 'AVAILABLE';
+          } catch {
+            auditBroken = true;
+            throw Error('AUDIT_UNAVAILABLE');
+          } finally {
+            auditCount--;
+            syncRetirement();
+          }
+        };
+        const dispatchedCode = (code: ActorCode): ActorCode =>
+          code === 'BINARY_UNAVAILABLE'
+            ? 'STALE_BINDING'
+            : code === 'OUTCOME_UNKNOWN'
+              ? 'OWNER_REVOKED'
+              : code;
+        const startResult = (candidate: ActorResult, captureKnown: boolean): Promise<void> => {
+          if (resultWork) return resultWork;
+          if (captureKnown) known = candidate;
+          // Install the single-attempt promise before invoking any audit callback.
+          let complete!: () => void;
+          resultWork = new Promise<void>((resolve) => {
+            complete = resolve;
+          });
+          void (async () => {
+            try {
+              await audit('RESULT', candidate.outcome, candidate.code);
+              if (!settled) {
+                const denied = admission(item.cap, r, 'OBSERVE');
+                finish(
+                  denied && candidate.outcome === 'DISPATCHED_UNCONFIRMED'
+                    ? result(r, dispatchedCode(denied), 'DISPATCHED_UNCONFIRMED')
+                    : candidate,
+                );
+              }
+            } catch {
+              latch();
+              finish(candidate);
+            } finally {
+              complete();
+            }
+          })();
+          return resultWork;
+        };
+        const unknown = () => {
+          latch();
+          const candidate = result(r, 'OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN');
+          finish(known ?? candidate);
+          if (intentAdmitted && handed && !resultWork) void startResult(candidate, false);
+        };
+        timer = setTimeout(
+          () => {
+            if (known) finish(known);
+            else if (!handed) finish(result(r, 'DEADLINE_EXCEEDED'));
+            else unknown();
+          },
+          Math.min(30000, remaining),
+        );
+        try {
+          intentEntered = true;
+          const available = await audit('INTENT', 'INTENT', 'OK');
+          intentAdmitted = available;
+          if (settled) {
+            await startResult(result(r, 'DEADLINE_EXCEEDED'), true);
+            return;
+          }
+          if (!available) {
+            await startResult(result(r, 'AUDIT_UNAVAILABLE'), true);
+            return;
+          }
+          const denied = admission(item.cap, r);
+          if (denied) {
+            await startResult(result(r, denied), true);
+            return;
+          }
+          if (closed || draining || uncertain || owner !== item.cap) {
+            await startResult(result(r, 'OWNER_REVOKED'), true);
+            return;
+          }
+          nativeRetired = false;
+          syncRetirement();
+          handed = true;
+          const handle = record(input.dispatch(r), ['handoff', 'result', 'retirement']);
+          if (
+            !handle ||
+            !['LOCAL_REFUSAL', 'QUERY'].includes(handle.handoff as string) ||
+            !queryPromise(handle.result) ||
+            !queryPromise(handle.retirement)
+          )
+            throw Error();
+          const factWork = Reflect.apply(promiseThen, handle.result, [
+            (raw: unknown) => {
+              const facts = snapshotInputQueryFacts(raw),
+                time = clock();
+              return facts &&
+                facts.observedAtUtc !== null &&
+                (facts.observedAtUtc < start ||
+                  facts.observedAtUtc > time ||
+                  facts.observedAtUtc > r.deadlineUtc)
+                ? null
+                : facts;
+            },
+            () => null,
+          ]) as Promise<InputQueryFacts | null>;
+          const retireWork = Reflect.apply(promiseThen, handle.retirement, [
+            (raw: unknown) => snapshotQueryRetirement(raw),
+            () => null,
+          ]) as Promise<ReturnType<typeof snapshotQueryRetirement>>;
+          const [facts, retirement] = await Promise.all([factWork, retireWork]);
+          if (!facts || retirement?.status !== 'RETIRED' || !facts.operationRetired) {
+            unknown();
+            return;
+          }
+          if (handle.handoff === 'LOCAL_REFUSAL') {
+            if (facts.status !== 'FAILED' || facts.dispatched) {
+              unknown();
+              return;
+            }
+            const code: ActorCode | null =
+              facts.code === 'BUSY'
+                ? 'BUSY'
+                : facts.code === 'CLOSED'
+                  ? 'CLOSED'
+                  : facts.code === 'DEADLINE'
+                    ? 'DEADLINE_EXCEEDED'
+                    : facts.code === 'ADMISSION_REJECTED'
+                      ? 'BINARY_UNAVAILABLE'
+                      : facts.code === 'INPUT_REJECTED'
+                        ? 'INVALID_REQUEST'
+                        : null;
+            if (!code) {
+              unknown();
+              return;
+            }
+            nativeRetired = true;
+            syncRetirement();
+            if (!settled) await startResult(result(r, code), true);
+            return;
+          }
+          nativeRetired = true;
+          syncRetirement();
+          if (facts.status === 'FAILED' && facts.dispatched) {
+            unknown();
+            return;
+          }
+          if (settled) return;
+          const observedDenial = admission(item.cap, r, 'OBSERVE');
+          await startResult(
+            result(
+              r,
+              observedDenial
+                ? dispatchedCode(observedDenial)
+                : facts.status === 'COMPLETE' &&
+                    facts.remoteExitCode === 0 &&
+                    facts.stdoutEmpty &&
+                    facts.stderrEmpty
+                  ? 'OK'
+                  : 'TRANSPORT_FAILED',
+              'DISPATCHED_UNCONFIRMED',
+            ),
+            true,
+          );
+        } catch {
+          if (!handed) {
+            latch();
+            const candidate = result(r, 'AUDIT_UNAVAILABLE');
+            finish(candidate);
+            if (intentEntered) await startResult(candidate, true);
+          } else unknown();
+        } finally {
+          if (resultWork) await resultWork;
+          syncRetirement();
+        }
         return;
       }
       if (r.version === 3) {
