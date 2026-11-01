@@ -492,7 +492,7 @@ function hostReceipt(s) {
     receipt.storeId !== s.header.storeId ||
     receipt.ownerToken !== s.header.ownerToken ||
     receipt.parentImageSha256 !== s.header.executableSha256 ||
-    entries(s.launch).some((e) => e.name.startsWith('host-session-'))
+    entries(s.launch).some((e) => e.name === '.host-session' || e.name.startsWith('host-session'))
   )
     fail('RETAINED_HOST_PARENT');
   return receipt;

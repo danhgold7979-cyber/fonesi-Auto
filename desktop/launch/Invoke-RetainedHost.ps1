@@ -147,7 +147,7 @@ try {
     foreach($key in @('parentReceiptSha256','readySha256','adbExeSha256','candidateArchiveSha256','candidateManifestSha256')){if($b.$key -cnotmatch '^[0-9a-f]{64}$'){Reject}}
     if($b.installationRevision -lt 1 -or $b.installationRevision -gt 9007199254740991 -or [Math]::Truncate([double]$b.installationRevision) -ne $b.installationRevision){Reject}
     Plain $b.runRoot $true
-    if($BootstrapFile -cne (Join-Path $b.runRoot 'bootstrap.json') -or [IO.Path]::GetFileName($b.runRoot) -cne ('host-session-'+$b.sessionId)){Reject}
+    if($BootstrapFile -cne (Join-Path $b.runRoot 'bootstrap.json') -or [IO.Path]::GetFileName($b.runRoot) -cne '.host-session'){Reject}
     if([Text.Encoding]::ASCII.GetString((Read-Bounded (Join-Path $b.runRoot '.owner') 36)) -cne $b.ownerToken){Reject}
     if($env:TEMP -cne (Join-Path $b.runRoot 'profile') -or $env:TMP -cne $env:TEMP){Reject};Plain $env:TEMP $true
     foreach($key in [Environment]::GetEnvironmentVariables('Process').Keys){if($key -match '(?i)^(NODE_|ELECTRON|ADB_|ANDROID_)'){Reject}}

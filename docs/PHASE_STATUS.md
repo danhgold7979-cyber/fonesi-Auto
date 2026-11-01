@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 13:05 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 13:18 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -12,7 +12,7 @@ FIRST+REOPEN campaign; [exact accepted evidence](evidence/P2-recipient-setup-nat
 does not cover genuine user consent, production HTTPS, server/devices or later custody source. The next [shared runtime custody slice](phases/P2-RECIPIENT-RUNTIME-CUSTODY-PROPOSAL.md)
 is source-only and grants no executable/server/device capability.
 
-Latest retained-host campaign: public `06bd613d` / CI41308694076 passes1058/109/233 and managed eight-group compilation, but actual SOURCE VERSION remains FAIL. CS1619 identifies temporary-file creation failure with an observed empty filename; its reason is still OTHER, not a proved permission/path-length cause. A bounded ordinary Win32-code lookup and punctuation-compatible reason classifier are prepared locally without raw data or runtime-setting changes. [Current evidence](evidence/P2-retained-windows-campaign-2026-11-01.md) preserves actual failures; expected1060 is not yet run.
+Latest retained-host campaign: public `f1fdc71f` / CI41309744493 passes1060/109/233 and managed eight-group compilation, but actual SOURCE VERSION remains FAIL. CS1619 now reports **BUFFER_TOO_SMALL** with an empty compiler filename. The reviewed fixed `.host-session` layout candidate reduces current compiler profile222→186 while preserving UUID/ownership/retirement and default compiler behavior. [Current evidence](evidence/P2-retained-windows-campaign-2026-11-01.md) records the exact private-layout amendment; expected1061 and revised native VERSION/EOF are not yet run.
 
 Current canonical source step: **P2-02 — ADB server lifecycle (2nd of13 task IDs)**,
 with P2-01 runtime custody. [Host-session source evidence](evidence/P2-host-session-adapter-2026-11-01.md)

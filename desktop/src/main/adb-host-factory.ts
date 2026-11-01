@@ -200,7 +200,8 @@ export function createHostFactory(
   owned();
   const context = readHostContext(entry, launchRoot, desktopRoot, parentPid),
     sessionId = randomUUID();
-  if (hostNames(launchRoot).some((n) => n.startsWith('host-session'))) fail();
+  if (hostNames(launchRoot).some((n) => n === '.host-session' || n.startsWith('host-session')))
+    fail();
   const exePin = PLATFORM_TOOLS_CANDIDATE.files.find((f) => f.path === 'adb.exe')?.sha256;
   if (!exePin || !hostUuid(sessionId)) fail();
   const nativePaths = Object.freeze([
@@ -498,7 +499,11 @@ export function createHostFactory(
     ...bridge.provider,
     reserveAttempt(kind: 'VERSION' | 'FOREGROUND') {
       if (kind !== 'VERSION') fail();
-      if (!child && hostNames(launchRoot).some((n) => n.startsWith('host-session'))) fail();
+      if (
+        !child &&
+        hostNames(launchRoot).some((n) => n === '.host-session' || n.startsWith('host-session'))
+      )
+        fail();
       return bridge.provider.reserveAttempt(kind);
     },
   });

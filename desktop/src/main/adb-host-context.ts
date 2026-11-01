@@ -310,11 +310,11 @@ export function assertHostPathBudget(
 ): string {
   if (typeof launchRoot !== 'string' || resolve(launchRoot) !== launchRoot || !hostUuid(sessionId))
     reject();
-  const root = join(launchRoot, `host-session-${sessionId}`);
+  const root = join(launchRoot, '.host-session');
   if (
-    root.length > 220 ||
-    join(root, 'profile').length > 228 ||
-    join(root, 'bootstrap.json').length > 235
+    root.length > 184 ||
+    join(root, 'profile').length > 192 ||
+    join(root, 'bootstrap.json').length > 199
   )
     reject();
   for (const file of adbPath === undefined ? nativePaths : [adbPath, ...nativePaths]) {
@@ -338,7 +338,8 @@ export function createHostRoot(
   const root = assertHostPathBudget(launchRoot, sessionId);
   hostPlain(launchRoot, true);
   fence();
-  if (hostNames(launchRoot).some((n) => n.startsWith('host-session'))) reject();
+  if (hostNames(launchRoot).some((n) => n === '.host-session' || n.startsWith('host-session')))
+    reject();
   mkdirSync(root);
   const identity = hostPlain(root, true);
   hostWrite(join(root, '.owner'), ownerToken, 36, fence);

@@ -181,7 +181,7 @@ function fixture(extra = {}) {
       const b = JSON.parse(readFileSync(args[5]));
       assert.equal(b.operationSet, 'VERSION_ONLY');
       assert.match(b.sessionId, /^[0-9a-f-]{36}$/);
-      assert.equal(options.cwd, join(launch, 'host-session-' + b.sessionId));
+      assert.equal(options.cwd, join(launch, '.host-session'));
       assert.equal(b.parentReceiptSha256, hostHash(readFileSync(join(launch, 'host-parent.json'))));
       child = new EventEmitter();
       child.stdout = new PassThrough();
@@ -293,7 +293,7 @@ test('actual factory/bridge/adapter uses fixed VERSION private transport and sep
     assert.equal(await f.factory.close(), 'RETIRED');
     assert.equal(f.factory.retired, true);
     assert.equal(
-      readdirSync(f.launch).some((n) => n.startsWith('host-session-')),
+      readdirSync(f.launch).some((n) => n === '.host-session'),
       false,
     );
   } finally {
@@ -329,7 +329,7 @@ test('abnormal helper exit preserves owned evidence even after a retired VERSION
     assert.equal((await f.factory.execute(f.cap, f.request())).outcome, 'OBSERVED');
     assert.equal(await f.factory.close(), 'UNRETIRED');
     assert.equal(f.factory.retired, false);
-    assert.equal(readdirSync(f.launch).filter((n) => n.startsWith('host-session-')).length, 1);
+    assert.equal(readdirSync(f.launch).filter((n) => n === '.host-session').length, 1);
   } finally {
     f.cleanup();
   }
@@ -422,12 +422,12 @@ test('second factory and malformed predecessor refuse without adopting an idle h
     assert.equal(f.spawns, 1);
     assert.equal(await second.close(), 'RETIRED');
     assert.equal(await f.factory.close(), 'RETIRED');
-    put(join(f.launch, 'host-session-invalid'), 'unknown retained state');
-    assert.throws(() => f.buildFactory());
-    assert.equal(
-      readFileSync(join(f.launch, 'host-session-invalid'), 'utf8'),
-      'unknown retained state',
-    );
+    for (const name of ['host-session-invalid', '.host-session']) {
+      put(join(f.launch, name), 'unknown retained state');
+      assert.throws(() => f.buildFactory());
+      assert.equal(readFileSync(join(f.launch, name), 'utf8'), 'unknown retained state');
+      rmSync(join(f.launch, name));
+    }
   } finally {
     f.cleanup();
   }
@@ -477,7 +477,7 @@ test('last ownership callback cannot replace the fixed OS executable before spaw
     afterBootstrap = 0;
   const f = fixture({
     ownerCallback({ base, launch, systemExe }) {
-      const session = readdirSync(launch).find((n) => n.startsWith('host-session-'));
+      const session = readdirSync(launch).find((n) => n === '.host-session');
       if (
         !changed &&
         session &&
@@ -591,19 +591,19 @@ test('private compatibility budget accepts exact owned helper boundary and rejec
     mkdtempSync(join(realpathSync.native(tmpdir()), 'host-budget-')),
   );
   try {
-    for (const length of [220, 221]) {
-      const prefix = join(base, 'x'.repeat(length - base.length - 51));
+    for (const length of [184, 185]) {
+      const prefix = join(base, 'x'.repeat(length - base.length - 15));
       mkdirSync(prefix);
       let fences = 0;
-      assert.equal(join(prefix, 'host-session-' + id(80)).length, length);
+      assert.equal(join(prefix, '.host-session').length, length);
       const before = readdirSync(prefix);
-      if (length === 220) {
+      if (length === 184) {
         const owned = createHostRoot(prefix, id(80), id(81), () => {
           fences++;
         });
-        assert.equal(owned.root.length, 220);
-        assert.equal(join(owned.root, 'profile').length, 228);
-        assert.equal(join(owned.root, 'bootstrap.json').length, 235);
+        assert.equal(owned.root.length, 184);
+        assert.equal(join(owned.root, 'profile').length, 192);
+        assert.equal(join(owned.root, 'bootstrap.json').length, 199);
         assert.equal(readFileSync(join(owned.root, '.owner'), 'utf8'), id(81));
         assert.ok(fences > 0);
       } else {
@@ -630,10 +630,7 @@ test('actual adb basename and native asset paths obey conservative directory/fil
       join(base, 'x'.repeat(parentLength - base.length - 1), name);
     const supported = pathOf(247, 'adb.exe');
     assert.equal(supported.length, 255);
-    assert.equal(
-      assertHostPathBudget(base, id(80), supported),
-      join(base, 'host-session-' + id(80)),
-    );
+    assert.equal(assertHostPathBudget(base, id(80), supported), join(base, '.host-session'));
     for (const value of [
       pathOf(248, 'adb.exe'),
       pathOf(252, 'adb.exe'),

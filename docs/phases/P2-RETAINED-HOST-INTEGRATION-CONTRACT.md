@@ -92,7 +92,7 @@ model substituted into the alleged native path.
 
 ### Exact helper root and separate helper lifetime
 
-Factory exclusively creates launch/host-session-<sessionId>/ with canonical immediate
+Factory exclusively creates launch/.host-session/ with canonical immediate
 ancestry and .owner containing the same36-byte canonical owner UUID. Closed top-level
 inventory: .owner, bootstrap.json, profile/ and optional adb.log only. bootstrap.json
 is immutable canonical UTF8 <=8192 bytes, exact fields {version:1,sessionId,launchId,
@@ -106,7 +106,7 @@ space: entire helper root <=64MiB/256 entries/depth8, plain single-link files/ca
 non-reparse directories only; unknown top-level entries reject before deletion. Overflow
 preserves root, not cap escalation. No candidate/archive copied into this partition.
 
-Only exact host-parent.json and host-session-<canonical-sessionUUID> are additive launch
+Only exact host-parent.json and .host-session are additive launch
 inventory entries, bound to header/receipt/owner and immutable bootstrap. Existing launch
 witness/cleanup must validate these partitions explicitly, with helper retirement proof;
 no broad wildcard directory acceptance. Failed or interrupted contexts remain retained.
@@ -303,3 +303,12 @@ and known failure markers refuse clean completion. Progress is not retirement ev
 RETIRE_END only means return, RESPONSE_FLUSH only means that Flush returned. Actual
 terminal facts and all helper/persistence retirement/cleanup conditions still apply.
 Default managed APIs remain silent and diagnostics expose no paths or caller values.
+
+
+## Private helper layout amendment — 2026-11-01 13:18 UTC
+
+Actual owned Windows execution now identifies CS1619 / BUFFER_TOO_SMALL with an empty compiler temporary filename. The exact internal compiler call/buffer is not known. The original UUID-bearing leaf is superseded by exclusive fixed `.host-session` under the already unique, owned launch directory, reducing current helper/compiler paths by36 characters without changing default Add-Type/CodeDOM options or secure-temp behavior. Full random canonical session UUID remains required in bootstrap and every protocol frame; journal validates it from bounded canonical bootstrap rather than inferring it from the leaf.
+
+Before any helper mkdir/write/spawn, refuse an existing `.host-session` of any type and every legacy `host-session*` predecessor; no reuse, adoption or automatic deletion. Constructor, attempt admission and root creation refuse predecessors; close retires/cleans only its own bound helper, while journal/final verification reject remaining roots. Captured launch/root identities, exact owner markers, marker-last cleanup, unknown-entry refusal, one-helper exclusion and retained-root blocking of RELEASE/RECOVERY remain unchanged. Only the fixed leaf is admitted by the new journal; old retained roots remain refused, not silently migrated.
+
+Supported helper limits tighten to root184/profile192/bootstrap199 UTF-16 units. The current verification layout produces profile186 instead of222. Actual ADB/assets/parent image file259/directory247 limits remain unchanged. These are a conservative supported subset and evidence-supported short-path compatibility candidate, not proof of a universal compiler limit or any specific internal call. Actual revised SOURCE VERSION/EOF is still required; no new server/device/profile/permission authority, no compiler flag/reference/deadline change and no explicit TempFileCollection override.

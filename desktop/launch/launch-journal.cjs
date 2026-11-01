@@ -431,8 +431,14 @@ function hostParent(header, launch) {
 function hostSession(root, header, receipt) {
   if (!receipt) fail();
   plain(root);
-  const sessionId = path.basename(root).slice('host-session-'.length);
-  if (!uuid(sessionId) || read(path.join(root, '.owner')) !== header.ownerToken) fail();
+  if (
+    path.basename(root) !== '.host-session' ||
+    root.length > 184 ||
+    path.join(root, 'profile').length > 192 ||
+    path.join(root, 'bootstrap.json').length > 199 ||
+    read(path.join(root, '.owner')) !== header.ownerToken
+  )
+    fail();
   const { value: b } = hostRecord(path.join(root, 'bootstrap.json'), 8192, [
     'version',
     'operationSet',
@@ -453,7 +459,7 @@ function hostSession(root, header, receipt) {
   if (
     b.version !== 1 ||
     b.operationSet !== 'VERSION_ONLY' ||
-    b.sessionId !== sessionId ||
+    !uuid(b.sessionId) ||
     b.launchId !== header.launchId ||
     b.storeId !== header.storeId ||
     b.ownerToken !== header.ownerToken ||
@@ -551,7 +557,7 @@ function inventory(directory, profileNames = [], host = null) {
       if (++count > 256 || item.isSymbolicLink()) fail();
       if (item.isDirectory()) {
         const child = path.join(directory, item.name);
-        if (host && item.name.startsWith('host-session-')) {
+        if (host && item.name === '.host-session') {
           hostSession(child, host.header, host.receipt);
           entries.push(item.name);
           continue;
@@ -657,7 +663,7 @@ function inspect(parent, launch) {
   for (const name of names) {
     if (
       !profileNames.includes(name) &&
-      !(name.startsWith('host-session-') && uuid(name.slice('host-session-'.length))) &&
+      name !== '.host-session' &&
       !fixed.includes(name) &&
       !/^(intent|settled|capture)-(?:0[1-9]|1[0-6])\.json$/.test(name) &&
       !/^(provision|auth)-(control|result|observed|capture)\.json$/.test(name) &&
@@ -711,7 +717,7 @@ function inspect(parent, launch) {
     settlements.push(settlement);
     previous = sha(sRaw);
   }
-  const hostSessions = names.filter((name) => name.startsWith('host-session-'));
+  const hostSessions = names.filter((name) => name === '.host-session');
   if (receipt && !intents.some((intent) => intent.stage === 'MAIN')) fail();
   return Object.freeze({
     header,

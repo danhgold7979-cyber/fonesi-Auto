@@ -489,7 +489,7 @@ function hostMain(f) {
   };
   write(path.join(f.launch, 'host-parent.json'), receipt);
   const sessionId = randomUUID(),
-    root = path.join(f.launch, `host-session-${sessionId}`);
+    root = path.join(f.launch, '.host-session');
   fs.mkdirSync(root);
   write(path.join(root, '.owner'), f.header.ownerToken);
   fs.mkdirSync(path.join(root, 'profile'));
@@ -575,4 +575,26 @@ test('retained receipt cannot be introduced before MAIN or bind another READY/ow
   fs.writeFileSync(path.join(f.launch, 'host-parent.json'), JSON.stringify(h.receipt));
   fs.unlinkSync(path.join(f.launch, 'intent-06.json'));
   assert.throws(() => j.inspect(f.parent, f.launch));
+});
+
+test('fixed helper leaf retains bootstrap UUID and refuses every legacy predecessor unchanged', (t) => {
+  for (const legacy of ['host-session', 'host-session-unknown', `host-session-${randomUUID()}`]) {
+    const f = fixture(t),
+      h = hostMain(f);
+    assert.equal(path.basename(h.root), '.host-session');
+    assert.match(h.bootstrap.sessionId, /^[0-9a-f]{8}-[0-9a-f-]{27}$/);
+    fs.mkdirSync(path.join(f.launch, legacy));
+    const before = snapshot(f.parent);
+    assert.throws(() => j.inspect(f.parent, f.launch));
+    assert.deepEqual(snapshot(f.parent), before);
+  }
+  const f = fixture(t),
+    h = hostMain(f);
+  fs.writeFileSync(
+    path.join(h.root, 'bootstrap.json'),
+    JSON.stringify({ ...h.bootstrap, sessionId: '.host-session' }),
+  );
+  const before = snapshot(f.parent);
+  assert.throws(() => j.inspect(f.parent, f.launch));
+  assert.deepEqual(snapshot(f.parent), before);
 });

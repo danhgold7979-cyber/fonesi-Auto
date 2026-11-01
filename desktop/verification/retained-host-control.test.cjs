@@ -195,10 +195,13 @@ test('required parent receipt and helper-directory absence remain cleanup prereq
       JSON.stringify({ ...header, parentImageSha256: header.executableSha256 }),
     );
     api.hostReceipt(s);
-    const leftover = path.join(f.root, 'host-session-' + crypto.randomUUID());
-    fs.mkdirSync(leftover);
-    assert.throws(() => api.hostReceipt(s));
-    assert.ok(fs.existsSync(leftover));
+    for (const name of ['host-session-' + crypto.randomUUID(), '.host-session']) {
+      const leftover = path.join(f.root, name);
+      fs.mkdirSync(leftover);
+      assert.throws(() => api.hostReceipt(s));
+      assert.ok(fs.existsSync(leftover));
+      fs.rmdirSync(leftover);
+    }
   } finally {
     f.close();
   }

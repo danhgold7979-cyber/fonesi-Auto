@@ -564,3 +564,22 @@ Frozen ordinary-code diagnostic SHA256 values:
 - `desktop/verification/retained-host-contract.cjs`: `8d976628e9939a41dec321bf30ae809cacb445c6694c2592e07edb9c4be51e93`.
 - `desktop/verification/Invoke-RetainedHostCheck.ps1`: `0338fd5b34e8a9326dfb965add5f063807e00481800fa0aeea2441d46fa36c5e`.
 - `desktop/verification/retained-pipe-startup.cjs`: `e627db9f46c022e01bcd327c4bb63739c940ac1e70618c81e6ec2eb546815897`.
+
+
+## Observed insufficient compiler buffer and fixed helper leaf — 13:18 UTC
+
+Public `f1fdc71ffbad446f68f24c1cae47059d5a26e456` (local `81fe74a7074401df139cb50fb67c34d7bea016b8`, tree `43a9f690a0c3ddc887660d1f0b1d4e304fb68d78`) / CI41309744493 passes **1060/109/233**. Managed artifact13085171657 remains414-byte strict PASS/SHA41e93f3c…; native artifact13085335686 remains392-byte NONZERO/FAIL/SHAd87a7375…. The actual compiler tuple is now **CS1619 / BUFFER_TOO_SMALL / EMPTY / EMPTY**. COMPILE_END, parent admission and native invocation remain unobserved. This identifies an insufficient-buffer compiler failure, not access denial/missing references; the exact internal compiler buffer/call is not established.
+
+The [private-layout amendment](../phases/P2-RETAINED-HOST-INTEGRATION-CONTRACT.md) replaces the UUID-bearing helper leaf with exclusive `.host-session`, preserving the full random session UUID in exact bootstrap/protocol binding. Current profile222 becomes186, leaving substantial compiler temporary-name headroom. Supported helper budgets tighten to184/192/199; actual executable/assets bounds are unchanged. Factory construction, attempt admission and root creation refuse fixed and all legacy predecessors; close retires/cleans only its own bound helper, while journal/final verification reject remaining roots. Journal derives UUID from canonical bootstrap and still blocks RELEASE/RECOVERY while the root is retained. Owner/dev/ino witnesses, one-helper exclusion, marker-last/type-closed cleanup and unknown-residue refusal remain. No legacy adoption/removal, no new directory scope and no global temp or permission change.
+
+Default Add-Type/in-memory compilation and default CodeDOM secure-temp behavior remain unchanged. ReferenceSource documents possible additional random temp components, while [historical Microsoft SSCLI source](https://raw.githubusercontent.com/SSCLI/sscli20_20060311/master/csharp/sccomp/pefile.cpp) has output-buffer insufficient-capacity branches; neither proves the exact hosted implementation. The observed error plus substantial path reduction supports this compatibility candidate, not a guarantee. No further diagnostic-only campaign is substituted for actual VERSION/EOF proof.
+
+Affected checks: journal23/23 PASS (one new fixed-leaf/bootstrap UUID/legacy residue case); factory25 cases covered by24 passing cases plus the predecessor case after updating two remaining factory guards that the test caught; four actual control/prepare/forwarding/cleanup checks PASS. Sole graph89/strict TypeScript/BUILD_VERIFIED PASS; eight changed JS/TS files pass warning-level quality (infos only). Historical four-case fixture paths remain historical and unchanged, with only its production-source pin refreshed. No duplicate full aggregate or unchanged C#/Python campaign locally. Expected hosted **1061/109/233** and revised native VERSION/EOF are NOT_RUN. Full P2 task count/formal/P106/physical gaps do not change.
+
+Frozen fixed-leaf correction SHA256 values:
+- `desktop/launch/Invoke-RetainedHost.ps1`: `f5b8bdf31d6e68665a2f0d8dcd80801e9c32b7518f5996e4808a4aab3d263a26`.
+- `desktop/launch/launch-journal.cjs`: `7d30573f3cccc484b666662a5cb998902d91c17edf894f2efeb6876188d13e0d`.
+- `desktop/src/main/adb-host-context.ts`: `03fe67db1687cd7c02ac8b96ae836e62aac1a5afcd77ea56e5a3155ff2ae687f`.
+- `desktop/src/main/adb-host-factory.ts`: `debc2e0d32b3486082e785334827084da4447e972070e323e6da8c74b51cb1f6`.
+- `desktop/verification/retained-host-control.cjs`: `30fef7dcd9774e5b1bfebb2c9128c701f1455c7aa99e815aee5ea5b2a4c8122f`.
+- `desktop/verification/retained-pipe-startup.cjs`: `696e3f11d811c5b3e02a4b5d345a5a51db4f45602bdcb5107554d92e0cf1619a`.
