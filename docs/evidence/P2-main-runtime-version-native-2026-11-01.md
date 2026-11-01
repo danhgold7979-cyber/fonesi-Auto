@@ -39,3 +39,9 @@ SOURCE only, explicit launcher opt-in, injected consent/local archive only. No g
 ## Recorded execution disposition — 14:22 UTC
 
 Coordinator Coder Bin authorizes the single bounded `[main-version]` SOURCE campaign after final independent exact runner/hash review CLEAR, under the existing user-authorized implementation/build/test scope. Only the actual Help→preload→IPC→main→default factory VERSION path, one Verify, bounded reads/time, fresh owned archive fixture/injected consent, normal retirement/cleanup and strict sanitized artifact are included. Unchanged managed evidence is reused. No server/device/HTTPS/genuine-consent/PACKAGE or security permission is added; any actual tool denial stops that operation. This record is authorization, not a claim that execution has occurred or passed.
+
+## First source CI and narrow fixture correction — 14:28 UTC
+
+Local `63f0e5d37798a92a725515565308376116bb5e1b` was published tree-equivalently as `0ff8d7e8ffad5e596c2f7c16beb8de182f5d6b7a`, tree `4c5246c0e7c26f3bc0227e0311e6eea10b97bd68`. [CI41315979727](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41315979727) stopped in source batch15:45/46 cases passed, ordinal6 failed. Native main VERSION and every unrelated native job were SKIPPED; no1118/full-source/native PASS is claimed.
+
+Ordinal6 is the new workflow LF/CRLF fixture. It synthesized CRLF from the raw Windows CRLF checkout, producing CRCRLF. An actual CRLF-read VM reproduction fails the committed original and passes the corrected fixture. The correction normalizes the input first, verifies every negative mutation changes bytes, and tests the same rejected conditions under both LF and CRLF. The focused case passes; warning-level quality has no errors/warnings. Product, workflow, runner, all seven frozen hashes and every gate predicate are unchanged. No duplicate aggregate or native rerun occurred locally; the same authorized bounded campaign will retry after this test-only repair.

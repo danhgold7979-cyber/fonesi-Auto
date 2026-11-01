@@ -160,10 +160,9 @@ test('new main workflow is explicit JSON-only and never reruns unchanged managed
 });
 
 test('main workflow gate is exact under LF/CRLF and refuses missing, wrong or always-on conditions', () => {
-  const source = fs.readFileSync(
-    path.resolve(desktop, '../.github/workflows/phase-02-software.yml'),
-    'utf8',
-  );
+  const source = fs
+    .readFileSync(path.resolve(desktop, '../.github/workflows/phase-02-software.yml'), 'utf8')
+    .replaceAll('\r\n', '\n');
   const expected =
     "    if: (github.event_name == 'workflow_dispatch' && inputs.run_main_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[main-version]'))";
   function accepted(text) {
@@ -187,8 +186,12 @@ test('main workflow gate is exact under LF/CRLF and refuses missing, wrong or al
     expected.replace('[main-version]', '[retained-version]'),
     expected.replace('refs/heads/phase-02', 'refs/heads/main'),
     expected.replace('inputs.run_main_version', 'true'),
-  ])
-    assert.equal(accepted(source.replace(expected, replacement)), false);
+  ]) {
+    const changed = source.replace(expected, replacement);
+    assert.notEqual(changed, source);
+    assert.equal(accepted(changed), false);
+    assert.equal(accepted(changed.replaceAll('\n', '\r\n')), false);
+  }
 });
 
 test('new main diagnostics match finite PS tables and never echo arbitrary or duplicate values', () => {

@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 14:20 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 14:28 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -14,7 +14,7 @@ is source-only and grants no executable/server/device capability.
 
 Latest retained-host campaign is an accepted **bounded SOURCE VERSION/EOF PASS**: public `c955d1ca`, CI41310721221, source1061/109/233,24/24 native cases and8/8 managed groups. Exact app-local runtime/native parent+Job admission, VERSION observation, EOF/helper retirement and owned cleanup pass on the supported fixed-leaf layout. [Strict reports and canonical subcriteria reconciliation](evidence/P2-retained-windows-campaign-2026-11-01.md) distinguish this from PACKAGE/main production integration, genuine consent/HTTPS, server/device, physical and P106 obligations. Phase2 full-task count remains0/13; proven bounded facts are accepted, not left NOT_RUN.
 
-Current [main-owned VERSION / Help integration](evidence/P2-main-runtime-version-integration-2026-11-01.md) is published at `f3c07c4dd51e0b9ee1638119b3922808da29d8d4`, exact local tree `f8d40307841a670bbb49e1032071d1fc4d78a55f`. Windows source CI41314285490 passed **1097/1097 desktop,109/109 foundation,233 Python**, with all native jobs skipped. Explicit path-free read/verify actions use actual shared custody, schema7 INTENT barriers and cleanup-first lifecycle; status reads never start a helper and launcher opt-in stays explicit. The [bounded actual main/Help campaign](phases/P2-MAIN-RUNTIME-VERSION-NATIVE-CAMPAIGN.md) is being prepared with historical managed evidence reused, not rerun. Actual changed main/Help invocation remains NOT_RUN; prior accepted SOURCE factory bytes are not automatic acceptance of this new user-facing path.
+Current [main-owned VERSION / Help integration](evidence/P2-main-runtime-version-integration-2026-11-01.md) is published at `f3c07c4dd51e0b9ee1638119b3922808da29d8d4`, exact local tree `f8d40307841a670bbb49e1032071d1fc4d78a55f`. Windows source CI41314285490 passed **1097/1097 desktop,109/109 foundation,233 Python**, with all native jobs skipped. Explicit path-free read/verify actions use actual shared custody, schema7 INTENT barriers and cleanup-first lifecycle; status reads never start a helper and launcher opt-in stays explicit. The [bounded actual main/Help campaign](phases/P2-MAIN-RUNTIME-VERSION-NATIVE-CAMPAIGN.md) is being prepared with historical managed evidence reused, not rerun. The first harness CI41315979727 stopped at a new CRLF test-fixture assertion before native execution; the causal test-only correction is recorded in [campaign evidence](evidence/P2-main-runtime-version-native-2026-11-01.md). Actual changed main/Help invocation remains NOT_RUN; prior accepted SOURCE factory bytes are not automatic acceptance of this new user-facing path.
 
 Current canonical source step: **P2-02 — ADB server lifecycle (2nd of13 task IDs)**,
 with P2-01 runtime custody. [Host-session source evidence](evidence/P2-host-session-adapter-2026-11-01.md)
