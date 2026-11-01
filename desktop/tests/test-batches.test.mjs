@@ -22,17 +22,17 @@ function harness(run, inventory) {
 test('fixed inventory sorted unique and every file runs exactly once in bounded sequential batches', () => {
   assert.deepEqual(TEST_FILES, [...TEST_FILES].sort());
   assert.equal(new Set(TEST_FILES).size, TEST_FILES.length);
-  assert.equal(TEST_BATCH_SIZE, 16);
+  assert.equal(TEST_BATCH_SIZE, 8);
   const seen = [];
   const result = harness((args) => {
     assert.deepEqual(args.slice(0, 2), ['--test', '--test-reporter=tap']);
-    assert.ok(args.length - 2 <= 16);
+    assert.ok(args.length - 2 <= 8);
     seen.push(...args.slice(2));
     return success();
   });
   assert.deepEqual(seen, TEST_FILES);
   assert.equal(result.ok, true);
-  const count = Math.ceil(TEST_FILES.length / 16) * 3;
+  const count = Math.ceil(TEST_FILES.length / 8) * 3;
   assert.deepEqual(result.lines, [`TESTS_PASS ${count}/${count}`]);
   assert.deepEqual(result.diagnostics, []);
 });

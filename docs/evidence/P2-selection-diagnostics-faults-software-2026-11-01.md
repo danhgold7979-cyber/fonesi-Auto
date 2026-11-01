@@ -64,3 +64,21 @@ The new checkpoint's hosted source run is pending publication. Ordinary pushes n
 skip both development binary boundaries; no automatic unchanged server retry follows
 this source work. Production
 remains BINARY_UNAVAILABLE; physical/AVD gates, P1-06 cross-user UNMET and formal0 remain.
+
+## Windows source capture limit and bounded batching correction
+
+[Run41269799457](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41269799457)
+at public `c5344b6c6c89eb177d71f1297f4b195ae67a633d` failed source batch2 with
+TEST_PROCESS_CAPTURE_LIMIT / TEST_DIAGNOSTIC_INPUT_REJECTED. This is the unchanged
+64KiB child-output limit, not an observed test assertion failure. Native development
+was not invoked. The fixed batch exceeded its capture envelope on Windows. The evidence does not
+distinguish normal TAP volume from a verbose assertion dump; smaller batches must
+expose any underlying test failure rather than assume all tests passed.
+
+The reviewed inventory is unchanged (88 files); batches are reduced deterministically
+from16 to8 files, still sequential, with the same30-second/64KiB limits, exact complete
+summaries, zero skips and fail-closed aggregate. Affected harness5/5 tests pass, including
+every file exactly once and no partial success on capture/timeout/exit failure. No
+source functionality, test omission, output-cap increase or exception relaxation.
+The prior711 local aggregate is retained, not rerun solely for this scheduling change;
+actual corrected Windows result remains pending publication.

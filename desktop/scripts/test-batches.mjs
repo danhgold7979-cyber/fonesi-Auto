@@ -89,7 +89,7 @@ export const TEST_FILES = Object.freeze([
   'verification/vault-contract.test.cjs',
   'verification/vault-record-negative.test.cjs',
 ]);
-export const TEST_BATCH_SIZE = 16;
+export const TEST_BATCH_SIZE = 8;
 export function tapCounts(stdout) {
   if (typeof stdout !== 'string') return null;
   const counts = {};
