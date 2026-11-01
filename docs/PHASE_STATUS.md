@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 10:17 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 10:27 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -36,15 +36,15 @@ stitched checkpoint (remaining151 tests plus earlier passed batches); no new ful
 aggregate count or native PASS is inferred. The user approved the
 [single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
 and necessary important checkpoint publication. After a test-only Windows CRLF repair,
-public `bb6df17e` / CI41295880761 passed1008/109/232 source checks. Actual four-source
-C# compilation and all eight managed groups passed, with strict publisher PASS; the
-managed artifact upload excluded its dot-prefixed filename and is being corrected to
-one exact nonhidden sanitized JSON file. Actual SOURCE VERSION/EOF timed out after240s,
-so it remains unproved. The observer's require.main guard is incompatible with pinned
-Electron's dynamic-import entry loading; the real dynamic-import regression and entry
-fix pass affected19 Node/18 Python tests. Product/native authority and pass predicates
-are unchanged; the same bounded campaign retry is pending. Existing-profile server,
-hardware/P106 and formal gates remain unchanged; no canonical task count is increased.
+public `d322053d` / CI41296919562 now passes1009/109/232 source checks. Actual
+four-source C# compilation/eight managed groups and the delivered414-byte strict report
+pass with retirement/source/cleanup true. The dynamic-import entry correction works;
+actual setup reaches factory ADMISSION then refuses HOST_CONTEXT_REJECTED before helper
+start. Native392-byte report remains FAIL with directoryCleanup false. A verification-only
+fixed predicate/caller + current OS-file diagnostic increment passes20 affected tests;
+no production guard is weakened or assumed to be the cause. Same bounded retry is pending.
+Existing-profile server, hardware/P106 and formal gates remain unchanged; no canonical
+task count is increased.
 
 ## 1. Status definitions
 

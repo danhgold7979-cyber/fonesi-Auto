@@ -6,6 +6,7 @@ const fs = require('node:fs'),
 const { createHash, randomUUID } = require('node:crypto');
 const {
   DIAGNOSTICS,
+  contextDiagnostic,
   reason,
   CASES,
   PHASES,
@@ -84,7 +85,46 @@ function runObserver() {
     if (failed) return;
     failed = true;
     const e = factory?.evidence;
+    let contextFacts = {};
+    if (phase === 'ADMISSION' && reason(error) === 'HOST_CONTEXT_REJECTED') {
+      try {
+        const file = path.resolve(__dirname, '../build/adb-host-factory.cjs');
+        const manifest = JSON.parse(
+          bounded(path.resolve(__dirname, '../build/.verified-build.json'), 65536),
+        );
+        const source = bounded(file, 8388608).toString('utf8');
+        let system = {};
+        try {
+          const exe = path.join(
+            process.env.SystemRoot,
+            'System32',
+            'WindowsPowerShell',
+            'v1.0',
+            'powershell.exe',
+          );
+          const stat = fs.lstatSync(exe);
+          system = {
+            SYSTEMREGULAR: stat.isFile(),
+            SYSTEMREPARSE: stat.isSymbolicLink(),
+            SYSTEMSINGLELINK: stat.nlink === 1,
+            SYSTEMCANONICAL: fs.realpathSync.native(exe) === exe,
+          };
+        } catch {
+          /* unavailable diagnostic only */
+        }
+        contextFacts = contextDiagnostic(
+          error,
+          source,
+          file,
+          manifest.outputs['adb-host-factory.cjs'],
+          system,
+        );
+      } catch {
+        /* unavailable diagnostic only */
+      }
+    }
     const values = {
+      ...contextFacts,
       REASON: reason(error),
       OUTCOME: hostResult?.outcome,
       CODE: hostResult?.code,

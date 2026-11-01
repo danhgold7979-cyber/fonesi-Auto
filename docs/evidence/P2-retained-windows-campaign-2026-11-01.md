@@ -1,4 +1,4 @@
-# Retained Windows campaign — managed PASS, native timeout under repair
+# Retained Windows campaign — managed PASS, native context refusal under diagnosis
 
 2026-11-01 09:57 UTC. User explicitly approved the Auto `a19406f` Windows campaign
 and necessary important checkpoint publication. Coordinator Coder Bin authorized
@@ -85,8 +85,8 @@ fleet/recipient opt-ins remain off for this campaign.
 
 ## Current result
 
-**Current: actual four-source Windows compilation and eight managed groups PASS in logs;
-managed artifact delivery failed. Actual SOURCE VERSION/EOF timed out: not PASS.**
+**Current: actual four-source Windows compilation/eight managed groups and delivered
+strict managed artifact PASS. SOURCE admission refuses HOST_CONTEXT_REJECTED; no VERSION PASS.**
 Existing-profile server gate remains UNMET; no adoption, deletion, redirect or identity
 workaround. Hardware, P106 cross-user, canonical P2 full-task counts and formal
 acceptance remain unchanged. Failed or partial actual results must be retained honestly.
@@ -147,3 +147,47 @@ validator `a6fc68ec5889070ab3b230f27678c36456cb8b7b7819c07a20d95cb14eb4be0f`,
 workflow `70897d4d4e29480ab3cef031a114f45834ac3688e0130a98f404dd187783962d`.
 Expected next source total1009 is not yet observed. Server/device/P106/formal gates
 and canonical acceptance counts remain unchanged.
+
+## Delivered managed PASS and native context refusal — 10:27 UTC
+
+Public `d322053d9c864489f6a7a63a2c050eb64dfbb579`, exact tree
+`fc88b46422b61eda386eada7e5d95a9fbd0bea56`, run41296919562/source124819594383
+passes1009/109/232. Native job124819943164 now starts the actual observer and setup;
+its fixed failure is ADMISSION / HOST_CONTEXT_REJECTED before any helper observation.
+The actual cause inside that context guard is not yet exposed; no predicate is relaxed.
+
+Both exact reports were delivered and independently reconstructed:
+- Managed artifact13079787208:414 bytes, SHA256
+  `41e93f3cef944512e6d48d2ebebe526f7c56615c7d66a3aab1e542d177b82a0d`;
+  compile EMPTY_OUTPUT/0, fixture SUCCESS/0,8 groups, both retired/untruncated,
+  sourceUnchanged and directoryCleanup true, passed true.
+- Native artifact13079179064:392 bytes, SHA256
+  `d87a7375f0aa42f808a080a0ee7859c1f1287bd7a00d5f1149cfe695a7a681f8`;
+  NONZERO_EXIT/1, outer cleanup true, bootstrap/observation null, directoryCleanup
+  false, NATIVE_FAILED/passed false. This remains failure, not successful native release.
+
+A verification-only diagnostic increment retains exact compiled factory bytes and
+all guards. It observes a bounded native Error stack only under the captured native
+getter/initial formatter, exact native Error prototype and data-only standard fields;
+custom getters/proxies/formatter changes are unavailable. The exact manifest hash
+binds public compiled source before a fixed reject-callsite ordinal and bound caller
+are emitted. No private stack, path, source line or arbitrary error text is exposed.
+Four additional booleans describe the fixed system PowerShell file's PRESENT-TIME
+regular/reparse/single-link/canonical facts, not the prior failed stat. Existing
+retired-journal binding, unique-per-slot forwarding and stream bounds remain intact.
+
+The actual compiled factory rejects an owned synthetic hardlinked system executable
+before spawn; its diagnostic reports SITE_02/createHostFactory and single-link NO.
+This proves the classifier, NOT that the hosted OS file has multiple links. Custom
+name/formatter canaries never run. Initial descriptor-only handling failed this
+causal test because pinned Node24 uses a native stack accessor/default formatter;
+the bounded native adaptation corrected it. Affected Node20/20 and four-file
+warning-level quality pass; a literal four-space regex warning was rewritten with
+an equivalent quantifier. Unchanged Python232/full1009 results are carried forward,
+not rerun locally. Expected next hosted source1010 is not yet observed.
+
+Diagnostic hashes: contract `def192de3241d6d17be6cf90c22ebdd707eff9d1c2306070d0a5d5be6ddf6182`,
+observer `58f2e3e2289cf7b095d401f5bd5738b51efc16aa652b0d0211d3fc52af72fb51`,
+outer `fe1987b1301508b5cb144a3f8b1111ea3038080a86bd71a685c62703c61db883`.
+Product a194 and managed/compiler sources remain unchanged. This is the same bounded
+VERSION campaign diagnostic retry, not server/device authority or canonical completion.

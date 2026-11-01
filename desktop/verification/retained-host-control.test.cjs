@@ -291,7 +291,7 @@ test('actual prepare verifies current build and materializes complete bound scri
     f.close();
   }
 });
-test('bound MAIN marker extraction and exact PS tables forward only six finite diagnostic slots', () => {
+test('bound MAIN marker extraction and exact PS tables forward only fixed finite diagnostic slots', () => {
   const { PHASES, DIAGNOSTICS } = require('./retained-host-contract.cjs');
   const raw = [
     'RETAINED_HOST_PHASE_VERSION',
@@ -305,7 +305,7 @@ test('bound MAIN marker extraction and exact PS tables forward only six finite d
   assert.equal(api.observerMarkers(raw.slice(1).join('\n')).length, 0);
   const doubled = api.observerMarkers([...raw, raw[2]].join('\n'));
   assert.equal(doubled.includes(raw[2]), false);
-  assert.equal(doubled.length, 7);
+  assert.equal(doubled.length, Object.keys(DIAGNOSTICS).length + 1);
   const ps = fs.readFileSync(path.join(__dirname, 'Invoke-RetainedHostCheck.ps1'), 'utf8');
   const table =
     '$slots=[ordered]@{' +

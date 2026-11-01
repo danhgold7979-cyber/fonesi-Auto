@@ -6,7 +6,14 @@ const test = require('node:test'),
   os = require('node:os'),
   vm = require('node:vm');
 const { createHash } = require('node:crypto');
-const { CASES, SCOPE, deriveMain, validateResult } = require('./retained-host-contract.cjs');
+const {
+  CASES,
+  SCOPE,
+  DIAGNOSTICS,
+  contextDiagnostic,
+  deriveMain,
+  validateResult,
+} = require('./retained-host-contract.cjs');
 const observer = path.join(__dirname, 'retained-host-main-probe.cjs'),
   hash = (b) => createHash('sha256').update(b).digest('hex');
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -306,10 +313,10 @@ test('actual observer wrong parent refuses before factory VERSION and emits fini
   assert.equal(r.code, 1);
   assert.equal(r.executed, 0);
   assert.equal(r.result, null);
-  assert.equal(r.stderr.length, 7);
+  assert.equal(r.stderr.length, Object.keys(DIAGNOSTICS).length + 1);
   assert.equal(r.stderr[0], 'RETAINED_HOST_DIAGNOSTIC_REASON_RETAINED_HOST_PARENT\n');
   assert.equal(r.stderr.at(-1), 'RETAINED_HOST_PHASE_ADMISSION\nRETAINED_HOST_FAILED\n');
-  assert.ok(r.stderr.slice(1, 6).every((x) => x.endsWith('_UNAVAILABLE\n')));
+  assert.ok(r.stderr.slice(1, -1).every((x) => x.endsWith('_UNAVAILABLE\n')));
 });
 
 test('diagnostics never invoke getters or echo hostile error objects', () => {
@@ -336,6 +343,126 @@ test('diagnostics never invoke getters or echo hostile error objects', () => {
     'UNCLASSIFIED',
   );
   assert.equal(reason(Error('private path')), 'UNCLASSIFIED');
+});
+test('fixed context diagnostics classify actual compiled system-file rejection without exposing private facts', () => {
+  const file = path.resolve(__dirname, '../build/adb-host-factory.cjs');
+  const source = fs.readFileSync(file, 'utf8'),
+    digest = hash(source);
+  const root = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'private-context-')),
+  );
+  const exe = path.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  fs.mkdirSync(path.dirname(exe), { recursive: true });
+  fs.writeFileSync(exe, 'synthetic OS image');
+  fs.linkSync(exe, path.join(root, 'other-link'));
+  try {
+    let thrown;
+    try {
+      require(file).createHostFactory(
+        {
+          entry: {},
+          launchRoot: root,
+          desktopRoot: root,
+          runtimeCustody: {},
+          assertOwnedSync() {},
+          now: () => 1,
+          diagnosticId: () => id(1),
+        },
+        {
+          platform: 'win32',
+          parentPid: 100,
+          systemRoot: root,
+          spawn() {
+            throw Error('MUST_NOT_SPAWN');
+          },
+        },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    assert.equal(thrown?.message, 'HOST_CONTEXT_REJECTED');
+    const system = {
+      SYSTEMREGULAR: true,
+      SYSTEMREPARSE: false,
+      SYSTEMSINGLELINK: false,
+      SYSTEMCANONICAL: true,
+    };
+    const result = contextDiagnostic(thrown, source, file, digest, system);
+    assert.equal(result.CONTEXTSITE, 'SITE_02');
+    assert.equal(result.CONTEXTCALLER, 'createHostFactory');
+    assert.equal(result.SYSTEMSINGLELINK, 'NO');
+    assert.equal(result.SYSTEMREGULAR, 'YES');
+    let touched = 0;
+    const hostile = Error('HOST_CONTEXT_REJECTED');
+    Object.defineProperty(hostile, 'name', {
+      get() {
+        touched++;
+        throw Error('PRIVATE');
+      },
+    });
+    assert.ok(
+      Object.values(contextDiagnostic(hostile, source, file, digest, system)).every(
+        (v) => v === 'UNAVAILABLE',
+      ),
+    );
+    assert.equal(touched, 0);
+    const initial = Object.getOwnPropertyDescriptor(Error, 'prepareStackTrace');
+    try {
+      Object.defineProperty(Error, 'prepareStackTrace', {
+        configurable: true,
+        value() {
+          touched++;
+          throw Error('PRIVATE');
+        },
+      });
+      assert.ok(
+        Object.values(contextDiagnostic(thrown, source, file, digest, system)).every(
+          (v) => v === 'UNAVAILABLE',
+        ),
+      );
+      assert.equal(touched, 0);
+    } finally {
+      if (initial) Object.defineProperty(Error, 'prepareStackTrace', initial);
+      else delete Error.prepareStackTrace;
+    }
+
+    assert.doesNotMatch(JSON.stringify(result), /private-context|powershell|HOST_CONTEXT_REJECTED/);
+    for (const [bad, pin] of [
+      [thrown, '0'.repeat(64)],
+      [
+        {
+          message: 'HOST_CONTEXT_REJECTED',
+          get stack() {
+            throw Error('PRIVATE');
+          },
+        },
+        digest,
+      ],
+      [
+        new Proxy(
+          {},
+          {
+            getOwnPropertyDescriptor() {
+              throw Error('PRIVATE');
+            },
+          },
+        ),
+        digest,
+      ],
+      [
+        { message: 'HOST_CONTEXT_REJECTED', stack: 'Error: HOST_CONTEXT_REJECTED\nPRIVATE' },
+        digest,
+      ],
+    ]) {
+      assert.ok(
+        Object.values(contextDiagnostic(bad, source, file, pin, system)).every(
+          (v) => v === 'UNAVAILABLE',
+        ),
+      );
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 test('campaign is default-off, source-dependent and keeps managed success before one VERSION with strict artifacts', () => {
   const raw = fs.readFileSync(
