@@ -80,10 +80,13 @@ function binding(value) {
     fail();
   return value;
 }
-async function audit(directory, privateBinding, binary, ownerToken) {
+async function audit(directory, privateBinding, binary, ownerToken, trustedPackage) {
   const b = binding(privateBinding),
     { parseStoreDocument, verifySegment } = await import('../src/log-store-schema.ts');
-  const { encodeLogRecord } = require('../build/log-contract.cjs');
+  const { encodeLogRecord } =
+    trustedPackage === undefined
+      ? require('../build/log-contract.cjs')
+      : require('./main-runtime-version-package.cjs').loadBuild(trustedPackage, 'log-contract.cjs');
   const list = entries(directory, 256),
     files = list.map((e) => e.name),
     witness = {};

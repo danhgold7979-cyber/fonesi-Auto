@@ -21,10 +21,15 @@ function exact(value, keys) {
   )
     failure();
 }
-function receipts(dataRoot, storeId) {
+function buildModule(name, trustedPackage) {
+  if (trustedPackage !== undefined)
+    return require('./main-runtime-version-package.cjs').loadBuild(trustedPackage, name);
+  return require(path.join(__dirname, '../build', name));
+}
+function receipts(dataRoot, storeId, trustedPackage) {
   plain(dataRoot);
   if (!uuid(storeId)) failure();
-  const { parseBackupReceipt } = require('../build/backup-service.cjs');
+  const { parseBackupReceipt } = buildModule('backup-service.cjs', trustedPackage);
   const list = parsed(path.join(dataRoot, 'migration-backups.json'));
   if (!Array.isArray(list) || list.length !== 4) failure();
   const result = list.map((entry, index) => {
@@ -70,15 +75,14 @@ function assertCaptureAbsent(dataRoot) {
   }
   failure();
 }
-function inspectSchema4(dataRoot, storeId, expectedBackupId) {
-  const list = receipts(dataRoot, storeId),
+function inspectSchema4(dataRoot, storeId, expectedBackupId, trustedPackage) {
+  const list = receipts(dataRoot, storeId, trustedPackage),
     receipt = list[3];
   if (expectedBackupId !== undefined && receipt.header.backupId !== expectedBackupId) failure();
-  const {
-    FoundationDatabase,
-    statement,
-    MIGRATION_HASHES,
-  } = require('../build/foundation-database.cjs');
+  const { FoundationDatabase, statement, MIGRATION_HASHES } = buildModule(
+    'foundation-database.cjs',
+    trustedPackage,
+  );
   const db = new FoundationDatabase(path.join(dataRoot, 'active.sqlite'), storeId, true);
   try {
     db.validate();
@@ -101,7 +105,7 @@ function inspectSchema4(dataRoot, storeId, expectedBackupId) {
     db.close();
   }
 }
-function launchState(launch) {
+function launchState(launch, trustedPackage) {
   const managed = path.dirname(launch),
     root = path.dirname(path.dirname(managed));
   const { rootForLaunch } = require('./fleet-ui-contract.cjs');
@@ -110,7 +114,7 @@ function launchState(launch) {
     chain = journal.inspect(managed, launch),
     header = chain.header;
   if (
-    header.entryMode !== 'SOURCE' ||
+    header.entryMode !== (trustedPackage === undefined ? 'SOURCE' : 'PACKAGE') ||
     header.maintenance !== 'NORMAL' ||
     header.dataRoot !== path.join(managed, 'data-main') ||
     header.parentToken !== read(path.join(managed, '.owner')) ||
@@ -118,6 +122,19 @@ function launchState(launch) {
     chain.latest?.stage !== 'PREPARE_READY'
   )
     failure();
+  if (trustedPackage !== undefined) {
+    require('./main-runtime-version-package.cjs').assertPackage(trustedPackage);
+    const control = parsed(path.join(launch, 'auth-control.json'));
+    if (
+      control.version !== 3 ||
+      control.packageRoot !== trustedPackage.packageRoot ||
+      header.executableSha256 !==
+        require('./main-runtime-version-package.cjs').fileProof(
+          path.join(trustedPackage.packageRoot, 'runtime/electron/electron.exe'),
+        ).sha256
+    )
+      failure();
+  }
   const auth = parsed(path.join(launch, 'auth-observed.json')),
     provision = parsed(path.join(launch, 'provision-observed.json'));
   exact(auth, ['version', 'stage', 'status', 'witness']);
@@ -159,16 +176,16 @@ function launchState(launch) {
     backupParent: path.join(managed, 'verification-backup-parent'),
   };
 }
-async function observeSchema4(launch, safeStorage) {
-  const state = launchState(launch),
+async function observeSchema4(launch, safeStorage, trustedPackage) {
+  const state = launchState(launch, trustedPackage),
     { header, witness } = state;
-  const {
-    assertBorrowedPersistenceLease,
-    verifyBackupLocation,
-  } = require('../build/persistence-files.cjs');
-  const { backupKeys } = require('../build/backup-key-profile.cjs');
-  const { FoundationPersistence } = require('../build/foundation-persistence.cjs');
-  const { BackupService } = require('../build/backup-service.cjs');
+  const { assertBorrowedPersistenceLease, verifyBackupLocation } = buildModule(
+    'persistence-files.cjs',
+    trustedPackage,
+  );
+  const { backupKeys } = buildModule('backup-key-profile.cjs', trustedPackage);
+  const { FoundationPersistence } = buildModule('foundation-persistence.cjs', trustedPackage);
+  const { BackupService } = buildModule('backup-service.cjs', trustedPackage);
   const owned = () =>
     assertBorrowedPersistenceLease(
       { root: header.dataRoot, parentToken: header.parentToken },
@@ -194,7 +211,7 @@ async function observeSchema4(launch, safeStorage) {
   } finally {
     persistence.close();
   }
-  const list = receipts(header.dataRoot, header.storeId),
+  const list = receipts(header.dataRoot, header.storeId, trustedPackage),
     receipt = list[3];
   const config = parsed(path.join(header.dataRoot, 'backup-locations.json'));
   exact(config, ['version', 'storeId', 'activeLocationId', 'locations']);
@@ -245,13 +262,14 @@ async function observeSchema4(launch, safeStorage) {
   if (JSON.stringify(validated) !== JSON.stringify(receipt)) failure();
   await owned();
   if (
-    JSON.stringify(receipts(header.dataRoot, header.storeId)) !== JSON.stringify(list) ||
+    JSON.stringify(receipts(header.dataRoot, header.storeId, trustedPackage)) !==
+      JSON.stringify(list) ||
     JSON.stringify(parsed(path.join(header.dataRoot, 'backup-locations.json'))) !==
       JSON.stringify(config)
   )
     failure();
-  if (JSON.stringify(launchState(launch)) !== JSON.stringify(state)) failure();
-  inspectSchema4(header.dataRoot, header.storeId, receipt.header.backupId);
+  if (JSON.stringify(launchState(launch, trustedPackage)) !== JSON.stringify(state)) failure();
+  inspectSchema4(header.dataRoot, header.storeId, receipt.header.backupId, trustedPackage);
   return true;
 }
 module.exports = {

@@ -106,6 +106,38 @@ test('actual read-only schema4 inspection binds synthetic receipt closure and co
       durableStartupCommitted: true,
       captureStoreEmpty: true,
     });
+    // Actual SQLite/receipt bytes, with an injected trusted loader to prove package selection.
+    const selected = [],
+      token = Object.freeze({ packageTest: true }),
+      packaged = { exports: {} };
+    require('node:vm').runInNewContext(
+      fs.readFileSync(path.join(__dirname, 'fleet-ui-schema4.cjs'), 'utf8'),
+      {
+        module: packaged,
+        exports: packaged.exports,
+        __dirname,
+        Buffer,
+        require(name) {
+          if (name === './main-runtime-version-package.cjs')
+            return {
+              loadBuild(t, output) {
+                assert.equal(t, token);
+                selected.push(output);
+                return require(path.join(__dirname, '../build', output));
+              },
+            };
+          if (name.includes('../build')) throw Error('SOURCE_FALLBACK');
+          return require(name);
+        },
+      },
+    );
+    assert.equal(
+      packaged.exports.inspectSchema4(root, storeId, undefined, token).durableStartupCommitted,
+      true,
+    );
+    assert.ok(selected.includes('backup-service.cjs'));
+    assert.ok(selected.includes('foundation-database.cjs'));
+    assert.throws(() => packaged.exports.inspectSchema4(root, storeId, undefined, {}));
     assert.throws(() => inspectSchema4(root, storeId, randomUUID()), /FLEET_UI_SCHEMA4/);
     const original = fs.readFileSync(receiptFile);
     fs.writeFileSync(receiptFile, JSON.stringify(receipts.slice(0, 3)));

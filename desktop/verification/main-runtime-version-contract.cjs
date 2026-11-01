@@ -3,6 +3,7 @@
 const path = require('node:path');
 const { write, rootForLaunch } = require('./retained-host-contract.cjs');
 const SCOPE = 'HOSTED_MAIN_RUNTIME_VERSION_SOURCE_ONLY';
+const PACKAGE_SCOPE = 'HOSTED_MAIN_RUNTIME_VERSION_PACKAGE_ONLY';
 const CASES = Object.freeze([
   'mainReady',
   'schema4Observed',
@@ -63,12 +64,13 @@ function exact(v, keys) {
   )
     throw Error('MAIN_RUNTIME_SCHEMA');
 }
-function validate(v, observed) {
+function validate(v, observed, packageMode) {
+  if (typeof packageMode !== 'boolean') throw Error('MAIN_RUNTIME_SCHEMA');
   exact(v, ['version', 'scope', 'cases', 'readyCount', 'closedCount']);
   exact(v.cases, CASES);
   if (
     v.version !== 1 ||
-    v.scope !== SCOPE ||
+    v.scope !== (packageMode ? PACKAGE_SCOPE : SCOPE) ||
     v.readyCount !== 1 ||
     v.closedCount !== 1 ||
     CASES.some((k) => typeof v.cases[k] !== 'boolean')
@@ -80,8 +82,8 @@ function validate(v, observed) {
     ),
   });
 }
-const validateObserved = (v) => validate(v, true),
-  validateResult = (v) => validate(v, false);
+const validateObserved = (v, packageMode = false) => validate(v, true, packageMode),
+  validateResult = (v, packageMode = false) => validate(v, false, packageMode);
 function validateBinding(v) {
   exact(v, [
     'version',
@@ -190,6 +192,7 @@ function reason(error) {
 }
 module.exports = {
   SCOPE,
+  PACKAGE_SCOPE,
   CASES,
   PHASES,
   REASONS,

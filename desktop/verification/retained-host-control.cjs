@@ -36,6 +36,11 @@ const SOURCES = Object.freeze([
   'verification/main-runtime-version-contract.cjs',
   'verification/main-runtime-version-probe.cjs',
   'verification/main-runtime-version-evidence.cjs',
+  'verification/main-runtime-version-package.cjs',
+  'verification/validate_package_runtime_version.py',
+  'verification/validate_package.py',
+  'verification/validate_ui.py',
+  'verification/package-build-entry.mjs',
   'verification/validate_main_runtime_version.py',
   'verification/retained-host-main-probe.cjs',
   'verification/retained-pipe-startup.cjs',
@@ -89,7 +94,7 @@ function rawWrite(file, raw) {
   }
   if (read(file) !== raw) fail();
 }
-function transform(source, desktop, main = false) {
+function transform(source, desktop, main = false, observerDesktop = desktop) {
   if (hash(source) !== ORIGINAL_SHA) fail('RETAINED_HOST_SOURCE_CHANGED');
   const replacements = [
     [
@@ -99,13 +104,17 @@ function transform(source, desktop, main = false) {
     ['$launchTools=$PSScriptRoot', "$launchTools=Join-Path $desktop 'launch'"],
     [
       "Join-Path $launchTools 'persistence-initialize.cjs'",
-      "Join-Path $desktop 'verification/persistence-launch-init-probe.cjs'",
+      main === 'PACKAGE_VERSION'
+        ? `'${path.join(observerDesktop, 'verification/persistence-launch-init-probe.cjs').replaceAll("'", "''")}'`
+        : "Join-Path $desktop 'verification/persistence-launch-init-probe.cjs'",
     ],
     [
       "Join-Path $desktop 'build/main.cjs'",
-      main
-        ? "Join-Path $desktop 'verification/main-runtime-version-probe.cjs'"
-        : "Join-Path $desktop 'verification/retained-host-main-probe.cjs'",
+      main === 'PACKAGE_VERSION'
+        ? `'${path.join(observerDesktop, 'verification/main-runtime-version-probe.cjs').replaceAll("'", "''")}'`
+        : main
+          ? "Join-Path $desktop 'verification/main-runtime-version-probe.cjs'"
+          : "Join-Path $desktop 'verification/retained-host-main-probe.cjs'",
     ],
   ];
   let derived = source;
@@ -120,13 +129,24 @@ async function binding(root, main = false) {
   const desktop = path.resolve(__dirname, '..');
   const { verifyBuild } = await import('../scripts/build-manifest.mjs');
   if (!verifyBuild(desktop)) fail('RETAINED_HOST_BUILD');
-  const wrapper = read(path.join(desktop, 'launch/Invoke-Desktop.ps1')),
-    original = read(path.join(desktop, 'launch/launch-core.ps1'));
-  if (hash(wrapper) !== WRAPPER_SHA || !wrapper.includes("-EntryMode 'SOURCE'"))
+  const packaged =
+    main === 'PACKAGE_VERSION'
+      ? require('./main-runtime-version-package.cjs').admitPackage(root)
+      : null;
+  const appRoot = packaged ? packaged.appRoot : desktop;
+  const wrapper = read(
+      path.join(appRoot, packaged ? 'launch/Invoke-Package.ps1' : 'launch/Invoke-Desktop.ps1'),
+    ),
+    original = read(path.join(appRoot, 'launch/launch-core.ps1'));
+  if (
+    packaged
+      ? !wrapper.includes("-EntryMode 'PACKAGE'")
+      : hash(wrapper) !== WRAPPER_SHA || !wrapper.includes("-EntryMode 'SOURCE'")
+  )
     fail('RETAINED_HOST_SOURCE_CHANGED');
-  if (typeof main !== 'boolean') fail();
-  const derived = transform(original, desktop, main);
-  const originalMain = binary(path.join(desktop, 'build/main.cjs'), 8388608);
+  if (typeof main !== 'boolean' && main !== 'PACKAGE_VERSION') fail();
+  const derived = transform(original, appRoot, main, desktop);
+  const originalMain = binary(path.join(appRoot, 'build/main.cjs'), 8388608);
   const { deriveMain } = main
     ? require('./main-runtime-version-contract.cjs')
     : require('./retained-host-contract.cjs');
@@ -143,7 +163,10 @@ async function binding(root, main = false) {
     fail('RETAINED_HOST_TRANSFORM');
   const proof = {
     version: main ? 2 : 1,
-    ...(main ? { mode: 'MAIN_VERSION' } : {}),
+    ...(main ? { mode: packaged ? 'PACKAGE_VERSION' : 'MAIN_VERSION' } : {}),
+    ...(packaged
+      ? { packageBindingSha256: hash(read(path.join(root, 'package-binding.json'))) }
+      : {}),
     wrapperSha: hash(wrapper),
     originalSha: hash(original),
     derivedSha: hash(derived),
@@ -245,11 +268,21 @@ function verifyArchives(root) {
 }
 function materialize(root, b) {
   fs.mkdirSync(path.join(root, 'first-use'));
-  rawWrite(path.join(root, 'Invoke-Desktop.instrumented.ps1'), b.wrapper);
+  rawWrite(
+    path.join(
+      root,
+      b.proof.mode === 'PACKAGE_VERSION'
+        ? 'Invoke-Package.instrumented.ps1'
+        : 'Invoke-Desktop.instrumented.ps1',
+    ),
+    b.wrapper,
+  );
   rawWrite(path.join(root, 'launch-core.ps1'), b.derived);
   write(path.join(root, 'copy.json'), b.proof);
 }
-async function prepare(root, archive, main = false) {
+async function prepare(root, archive, main = false, sourceHead, sourceTree) {
+  if (main === 'PACKAGE_VERSION')
+    require('./main-runtime-version-package.cjs').prepareBinding(root, sourceHead, sourceTree);
   const b = await binding(root, main);
   archiveInputs(root, archive);
   if (main)
@@ -265,7 +298,14 @@ async function prepare(root, archive, main = false) {
 async function verifyCopy(root, main = false) {
   const b = await binding(root, main);
   if (
-    read(path.join(root, 'Invoke-Desktop.instrumented.ps1')) !== b.wrapper ||
+    read(
+      path.join(
+        root,
+        main === 'PACKAGE_VERSION'
+          ? 'Invoke-Package.instrumented.ps1'
+          : 'Invoke-Desktop.instrumented.ps1',
+      ),
+    ) !== b.wrapper ||
     read(path.join(root, 'launch-core.ps1')) !== b.derived ||
     JSON.stringify(json(path.join(root, 'copy.json'))) !== JSON.stringify(b.proof)
   )
@@ -405,7 +445,7 @@ function captureChecked(raw, lines) {
     fail('RETAINED_HOST_CAPTURE');
   return v;
 }
-function state(root, completed = true) {
+function state(root, completed = true, main = false) {
   owned(root);
   const children = entries(path.join(root, 'first-use'), 2);
   if (
@@ -435,7 +475,7 @@ function state(root, completed = true) {
         chain.latest?.stage !== 'RELEASE' ||
         chain.latest.status !== 'SUCCESS' ||
         chain.latest.exitCode !== 0)) ||
-    header.entryMode !== 'SOURCE' ||
+    header.entryMode !== (main === 'PACKAGE_VERSION' ? 'PACKAGE' : 'SOURCE') ||
     header.dataRoot !== path.join(managed, 'data-main') ||
     header.parentToken !== token
   )
@@ -501,7 +541,7 @@ async function diagnose(root, main = false) {
     !p.stdoutTruncated &&
     !p.stderrTruncated;
   if (!retired(outer.process)) fail('RETAINED_HOST_RETIREMENT');
-  const s = state(root, false),
+  const s = state(root, false, main),
     matches = s.chain.settlements.filter((x) => x.stage === 'MAIN');
   if (matches.length !== 1 || !retired(matches[0])) return [];
   const latest = matches[0];
@@ -563,7 +603,7 @@ async function inspect(root, main = false) {
   verifyArchives(root);
   assertSchema4Observed(json(path.join(root, 'schema4-observed.json')));
   capture(path.join(root, 'launcher-capture.json'), ['PERSISTENCE_DESKTOP_CLOSED'], 'OUTER');
-  const s = state(root),
+  const s = state(root, true, main),
     { launch, header } = s;
   hostReceipt(s);
   const auth = json(path.join(launch, 'auth-observed.json'));
@@ -603,7 +643,14 @@ async function inspect(root, main = false) {
     })
   )
     fail('RETAINED_HOST_AUTH');
-  inspectDatabase(header.dataRoot, header.storeId, false);
+  if (main === 'PACKAGE_VERSION')
+    require('./fleet-ui-schema4.cjs').inspectSchema4(
+      header.dataRoot,
+      header.storeId,
+      undefined,
+      require('./main-runtime-version-package.cjs').admitPackage(root),
+    );
+  else inspectDatabase(header.dataRoot, header.storeId, false);
   const ui = json(witnessPath(launch, 'ui'));
   if (
     JSON.stringify(ui) !==
@@ -613,15 +660,20 @@ async function inspect(root, main = false) {
   if (main) {
     const contract = require('./main-runtime-version-contract.cjs'),
       observed = json(path.join(root, 'main-runtime-version-observed.json'));
-    if (!contract.validateObserved(observed).passed) fail('MAIN_VERSION_AUDIT');
+    if (!contract.validateObserved(observed, main === 'PACKAGE_VERSION').passed)
+      fail('MAIN_VERSION_AUDIT');
     const audit = await require('./main-runtime-version-evidence.cjs').audit(
       path.join(s.managed, 'logs-main'),
       json(path.join(root, 'main-runtime-version-binding.json')),
       binary,
       header.ownerToken,
+      main === 'PACKAGE_VERSION'
+        ? require('./main-runtime-version-package.cjs').admitPackage(root)
+        : undefined,
     );
     const final = { ...observed, cases: { ...observed.cases, ...audit } };
-    if (!contract.validateResult(final).passed) fail('MAIN_VERSION_AUDIT');
+    if (!contract.validateResult(final, main === 'PACKAGE_VERSION').passed)
+      fail('MAIN_VERSION_AUDIT');
     write(path.join(root, 'main-runtime-version-result.json'), final);
   } else {
     const { validateResult } = require('./retained-host-contract.cjs');
@@ -632,10 +684,12 @@ async function inspect(root, main = false) {
     version: 1,
     cases: Object.fromEntries(BOOTSTRAP.map((k) => [k, true])),
   });
+  const packageFacts = main === 'PACKAGE_VERSION' ? packagePublic(root) : null;
   write(path.join(root, 'integrity.json'), {
     version: 1,
     originalArchiveUnchanged: true,
     originalSourceUnchanged: true,
+    ...(packageFacts ? { originalPackageUnchanged: true, package: packageFacts } : {}),
   });
   return s;
 }
@@ -873,11 +927,34 @@ function pipeStartupPlans(root, owner) {
   }
   return plans;
 }
+function packagePublic(root) {
+  const p = require('./main-runtime-version-package.cjs').admitPackage(root);
+  return {
+    sourceHead: p.sourceHead,
+    sourceTree: p.sourceTree,
+    zipSha256: p.zipSha256,
+    zipBytes: p.zipBytes,
+    manifestSha256: p.manifestSha256,
+  };
+}
+function packagePlan(root) {
+  const p = require('./main-runtime-version-package.cjs').admitPackage(root);
+  const inventory = require('../launch/package-admission.cjs').inventory(p.packageRoot);
+  const names = [...inventory.files.map((e) => e.path), ...inventory.directories];
+  if (names.length > 1024) fail('RETAINED_HOST_LIMIT');
+  return {
+    directory: p.packageRoot,
+    entries: names.map((name) => {
+      const file = path.join(p.packageRoot, name);
+      return { name, file, stat: fs.lstatSync(file) };
+    }),
+  };
+}
 async function cleanup(root, main = false) {
   await verifyCopy(root, main);
   verifyArchives(root);
   const token = owned(root),
-    s = state(root);
+    s = state(root, true, main);
   capture(path.join(root, 'launcher-capture.json'), ['PERSISTENCE_DESKTOP_CLOSED'], 'OUTER');
   const publicResult = json(path.join(root, 'public.json'));
   const { validateResult } = main
@@ -893,13 +970,21 @@ async function cleanup(root, main = false) {
     )
       fail('MAIN_VERSION_HISTORY');
     const observed = json(path.join(root, 'main-runtime-version-observed.json'));
-    if (!require('./main-runtime-version-contract.cjs').validateObserved(observed).passed)
+    if (
+      !require('./main-runtime-version-contract.cjs').validateObserved(
+        observed,
+        main === 'PACKAGE_VERSION',
+      ).passed
+    )
       fail('MAIN_VERSION_AUDIT');
     const audit = await require('./main-runtime-version-evidence.cjs').audit(
       path.join(s.managed, 'logs-main'),
       json(path.join(root, 'main-runtime-version-binding.json')),
       binary,
       s.header.ownerToken,
+      main === 'PACKAGE_VERSION'
+        ? require('./main-runtime-version-package.cjs').admitPackage(root)
+        : undefined,
     );
     if (
       JSON.stringify(raw) !==
@@ -909,7 +994,7 @@ async function cleanup(root, main = false) {
   }
   if (
     publicResult.failure !== null ||
-    !validateResult(raw).passed ||
+    !validateResult(raw, main === 'PACKAGE_VERSION').passed ||
     JSON.stringify(raw) !== JSON.stringify(publicResult.observation)
   )
     fail('RETAINED_HOST_RESULT');
@@ -930,13 +1015,27 @@ async function cleanup(root, main = false) {
     fail('RETAINED_HOST_RESULT');
   if (
     read(path.join(root, 'integrity.json')) !==
-    JSON.stringify({ version: 1, originalArchiveUnchanged: true, originalSourceUnchanged: true })
+    JSON.stringify({
+      version: 1,
+      originalArchiveUnchanged: true,
+      originalSourceUnchanged: true,
+      ...(main === 'PACKAGE_VERSION'
+        ? { originalPackageUnchanged: true, package: packagePublic(root) }
+        : {}),
+    })
   )
     fail('RETAINED_HOST_RESULT');
   hostReceipt(s);
   released(s);
+  if (
+    main === 'PACKAGE_VERSION' &&
+    (publicResult.originalPackageUnchanged !== true ||
+      JSON.stringify(publicResult.package) !== JSON.stringify(packagePublic(root)))
+  )
+    fail('RETAINED_HOST_RESULT');
   const plans = [],
     files = [];
+  if (main === 'PACKAGE_VERSION') plans.push(packagePlan(root));
   const add = (dir, limit) => plans.push(tree(dir, limit));
   const managedEntries = entries(s.managed, 9),
     allowed = [
@@ -1038,7 +1137,10 @@ async function cleanup(root, main = false) {
   const expected = [
     '.owner',
     'first-use',
-    'Invoke-Desktop.instrumented.ps1',
+    main === 'PACKAGE_VERSION'
+      ? 'Invoke-Package.instrumented.ps1'
+      : 'Invoke-Desktop.instrumented.ps1',
+    ...(main === 'PACKAGE_VERSION' ? ['package-binding.json', 'relocated-package'] : []),
     'launch-core.ps1',
     'copy.json',
     'archives.json',
@@ -1062,7 +1164,14 @@ async function cleanup(root, main = false) {
   if (rootEntries.length !== expected.length || rootEntries.some((e) => !expected.includes(e.name)))
     fail('RETAINED_HOST_INVENTORY');
   for (const e of rootEntries) {
-    if (['first-use', '.owner'].includes(e.name)) continue;
+    if (
+      [
+        'first-use',
+        '.owner',
+        ...(main === 'PACKAGE_VERSION' ? ['relocated-package'] : []),
+      ].includes(e.name)
+    )
+      continue;
     if (
       !e.stat.isFile() ||
       e.stat.nlink !== 1 ||
@@ -1132,6 +1241,8 @@ const REASONS = Object.freeze([
   'RECOVERY_REQUIRED',
   'MAIN_VERSION_AUDIT',
   'MAIN_VERSION_HISTORY',
+  'MAIN_VERSION_PACKAGE',
+  'PACKAGE_REJECTED',
   'MAIN_RUNTIME_SCHEMA',
   'MAIN_RUNTIME_MAIN',
   'LAUNCH_JOURNAL_REJECTED',
@@ -1163,6 +1274,8 @@ function diagnostics(action, error) {
 }
 module.exports = {
   prepare,
+  packagePublic,
+  packagePlan,
   materialize,
   binding,
   hostReceipt,
@@ -1195,20 +1308,30 @@ module.exports = {
   observerMarkers,
 };
 if (require.main === module) {
-  const [rawAction, root, archive] = process.argv.slice(2);
-  const main = [
-    'prepare-main',
-    'verify-copy-main',
-    'inspect-main',
-    'cleanup-main',
-    'diagnose-main',
-    'diagnose-timeout-main',
-  ].includes(rawAction);
-  const action = main ? rawAction.slice(0, -5) : rawAction;
+  const [rawAction, root, archive, sourceHead, sourceTree] = process.argv.slice(2);
+  const packageMode = [
+    'prepare',
+    'verify-copy',
+    'inspect',
+    'cleanup',
+    'diagnose',
+    'diagnose-timeout',
+  ].some((a) => rawAction === a + '-package');
+  const main = packageMode
+    ? 'PACKAGE_VERSION'
+    : [
+        'prepare-main',
+        'verify-copy-main',
+        'inspect-main',
+        'cleanup-main',
+        'diagnose-main',
+        'diagnose-timeout-main',
+      ].includes(rawAction);
+  const action = packageMode ? rawAction.slice(0, -8) : main ? rawAction.slice(0, -5) : rawAction;
   Promise.resolve()
     .then(async () => {
-      if (process.argv.length !== (action === 'prepare' ? 5 : 4)) fail();
-      if (action === 'prepare') await prepare(root, archive, main);
+      if (process.argv.length !== (action === 'prepare' ? (packageMode ? 7 : 5) : 4)) fail();
+      if (action === 'prepare') await prepare(root, archive, main, sourceHead, sourceTree);
       else if (action === 'verify-copy') await verifyCopy(root, main);
       else if (action === 'inspect') await inspect(root, main);
       else if (action === 'cleanup') await cleanup(root, main);

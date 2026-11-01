@@ -113,6 +113,7 @@ export const TEST_FILES = Object.freeze([
   'verification/logging-evidence.test.cjs',
   'verification/main-runtime-version-contract.test.cjs',
   'verification/main-runtime-version-evidence.test.cjs',
+  'verification/main-runtime-version-package.test.cjs',
   'verification/package-contract.test.cjs',
   'verification/package-launch-driver.test.cjs',
   'verification/persistence-envelope.test.cjs',

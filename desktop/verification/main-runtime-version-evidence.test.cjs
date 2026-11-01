@@ -136,7 +136,7 @@ test('main mode is explicit and old transform still selects only original histor
   assert.ok(derived.includes('verification/main-runtime-version-probe.cjs'));
   assert.ok(!derived.includes('verification/retained-host-main-probe.cjs'));
   const ps = fs.readFileSync(path.join(__dirname, 'Invoke-RetainedHostCheck.ps1'), 'utf8');
-  assert.match(ps, /param\(\[switch\]\$MainVersion\)/);
+  assert.match(ps, /param\(\[switch\]\$MainVersion,\[switch\]\$PackageVersion\)/);
   assert.match(ps, /\$action\+'-main'/);
   assert.match(ps, /240000,10000,32768/);
 });
@@ -145,7 +145,9 @@ test('new main workflow is explicit JSON-only and never reruns unchanged managed
       path.resolve(desktop, '../.github/workflows/phase-02-software.yml'),
       'utf8',
     ),
-    job = workflow.slice(workflow.indexOf('  owned-main-version-development:'));
+    job = workflow
+      .slice(workflow.indexOf('  owned-main-version-development:'))
+      .split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
   assert.match(job, /needs: windows-software-only/);
   assert.match(job, /inputs.run_main_version/);
   assert.match(job, /\[main-version\]/);
@@ -216,4 +218,60 @@ test('new main diagnostics match finite PS tables and never echo arbitrary or du
   assert.deepEqual(control.observerMarkers(lines.join('\r\n') + '\r\nprivate data', true), lines);
   assert.deepEqual(control.observerMarkers([...lines, lines[0]].join('\n'), true), []);
   assert.deepEqual(control.observerMarkers(lines.slice(1).join('\n'), true), []);
+});
+
+test('actual audit bytes require selected packaged encoder and never fall back when it rejects', async () => {
+  const f = await fixture(),
+    token = Object.freeze({ packageTest: true });
+  let calls = 0,
+    refuse = false;
+  const m = { exports: {} };
+  require('node:vm').runInNewContext(
+    fs.readFileSync(path.join(__dirname, 'main-runtime-version-evidence.cjs'), 'utf8'),
+    {
+      module: m,
+      exports: m.exports,
+      __dirname,
+      Buffer,
+      TextDecoder,
+      require(name) {
+        if (name === './main-runtime-version-package.cjs')
+          return {
+            loadBuild(t, output) {
+              assert.equal(t, token);
+              assert.equal(output, 'log-contract.cjs');
+              return {
+                encodeLogRecord(row) {
+                  calls++;
+                  if (refuse) throw Error('PACKAGE_ENCODER_REJECTED');
+                  return require('../build/log-contract.cjs').encodeLogRecord(
+                    JSON.parse(JSON.stringify(row)),
+                  ); /* VM realm bridge only. */
+                },
+              };
+            },
+          };
+        if (name === '../build/log-contract.cjs') throw Error('SOURCE_FALLBACK');
+        return require(name);
+      },
+    },
+    {
+      filename: path.join(__dirname, 'main-runtime-version-evidence.cjs'),
+      importModuleDynamically: require('node:vm').constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+    },
+  );
+  try {
+    assert.equal(
+      (await m.exports.audit(f.directory, f.b, control.binary, f.owner, token)).schema7Result,
+      true,
+    );
+    assert.equal(calls, 6);
+    refuse = true;
+    await assert.rejects(
+      m.exports.audit(f.directory, f.b, control.binary, f.owner, token),
+      /PACKAGE_ENCODER_REJECTED/,
+    );
+  } finally {
+    f.close();
+  }
 });

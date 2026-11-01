@@ -8,6 +8,7 @@ const {
   CASES,
   PHASES,
   SCOPE,
+  PACKAGE_SCOPE,
   validateObserved,
   validateBinding,
   response,
@@ -69,6 +70,8 @@ const hash = (b) => createHash('sha256').update(b).digest('hex');
 function runObserver() {
   const { app, dialog, shell, safeStorage, ipcMain, BrowserWindow } = require('electron');
   let phase = 'PREPARE',
+    packageMode = false,
+    trustedPackage,
     root,
     launch,
     ready = 0,
@@ -209,7 +212,13 @@ function runObserver() {
     if (!context || ready !== 1 || !registered) throw Error('MAIN_RUNTIME_CONTEXT');
     cases.mainReady = true;
     phase = 'MIGRATION';
-    if ((await require('./fleet-ui-schema4.cjs').observeSchema4(launch, safeStorage)) !== true)
+    if (
+      (await require('./fleet-ui-schema4.cjs').observeSchema4(
+        launch,
+        safeStorage,
+        trustedPackage,
+      )) !== true
+    )
       throw Error('MAIN_RUNTIME_SCHEMA');
     write(path.join(root, 'schema4-observed.json'), {
       version: 2,
@@ -421,12 +430,17 @@ function runObserver() {
       if (args.length === 1 && args[0] === 'BOOTSTRAP_CLOSED') closed++;
       originalLog.apply(console, args);
     };
-    const main = path.resolve(__dirname, '../build/main.cjs'),
+    const proof = JSON.parse(bounded(path.join(root, 'copy.json'), 65536));
+    if (!['MAIN_VERSION', 'PACKAGE_VERSION'].includes(proof.mode))
+      throw Error('MAIN_RUNTIME_CONTEXT');
+    packageMode = proof.mode === 'PACKAGE_VERSION';
+    if (packageMode)
+      trustedPackage = require('./main-runtime-version-package.cjs').admitPackage(root);
+    const main = packageMode
+        ? path.join(trustedPackage.buildRoot, 'main.cjs')
+        : path.resolve(__dirname, '../build/main.cjs'),
       raw = bounded(main, 8388608),
-      manifest = JSON.parse(
-        bounded(path.resolve(__dirname, '../build/.verified-build.json'), 65536),
-      ),
-      proof = JSON.parse(bounded(path.join(root, 'copy.json'), 65536));
+      manifest = JSON.parse(bounded(path.join(path.dirname(main), '.verified-build.json'), 65536));
     if (hash(raw) !== manifest.outputs['main.cjs'] || hash(raw) !== proof.originalMainSha256)
       throw Error('MAIN_RUNTIME_MAIN');
     const derived = deriveMain(new TextDecoder('utf8', { fatal: true }).decode(raw), __filename);
@@ -448,8 +462,14 @@ function runObserver() {
         )
           throw Error('MAIN_RUNTIME_CLOSE');
         cases.mainClosed = true;
-        const result = { version: 1, scope: SCOPE, cases, readyCount: ready, closedCount: closed };
-        if (!validateObserved(result).passed) throw Error('MAIN_RUNTIME_CASES');
+        const result = {
+          version: 1,
+          scope: packageMode ? PACKAGE_SCOPE : SCOPE,
+          cases,
+          readyCount: ready,
+          closedCount: closed,
+        };
+        if (!validateObserved(result, packageMode).passed) throw Error('MAIN_RUNTIME_CASES');
         write(path.join(root, 'main-runtime-version-observed.json'), result);
         write(path.join(root, `launcher-witness-${path.basename(launch).slice(7)}-ui.json`), {
           version: 1,

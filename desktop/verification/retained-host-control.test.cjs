@@ -753,3 +753,117 @@ test('ordinary Win32 code forwarding is exact 1 through 499 and rejects duplicat
   assert.ok(ps.includes('COMPILETEMPREASON_WIN32_0[0-4][0-9]{2}\\z'));
   assert.ok(ps.includes("$line -cne 'RETAINED_HOST_DIAGNOSTIC_COMPILETEMPREASON_WIN32_0000'"));
 });
+
+test('PACKAGE prepare materializes exact raw packaged wrapper with explicit mode and no source fallback (synthetic package admission only)', async () => {
+  const f = fixture();
+  try {
+    const bytes = Buffer.alloc(8044989, 21),
+      input = path.join(f.root, 'synthetic-input.zip');
+    fs.writeFileSync(input, bytes, { flag: 'wx' });
+    const descriptor = {
+      packageRoot: path.join(f.root, 'relocated-package'),
+      appRoot: desktop,
+      buildRoot: path.join(desktop, 'build'),
+      sourceHead: 'a'.repeat(40),
+      sourceTree: 'b'.repeat(40),
+      zipSha256: 'c'.repeat(64),
+      zipBytes: 123,
+      manifestSha256: 'd'.repeat(64),
+    };
+    const helper = {
+      prepareBinding(root, head, tree) {
+        assert.equal(root, f.root);
+        assert.equal(head, descriptor.sourceHead);
+        assert.equal(tree, descriptor.sourceTree);
+        fs.writeFileSync(
+          path.join(root, 'package-binding.json'),
+          JSON.stringify({ version: 1, synthetic: true }),
+          { flag: 'wx' },
+        );
+      },
+      admitPackage(root) {
+        assert.equal(root, f.root);
+        assert.equal(
+          fs.readFileSync(path.join(root, 'package-binding.json'), 'utf8'),
+          JSON.stringify({ version: 1, synthetic: true }),
+        );
+        return descriptor;
+      },
+    };
+    const local = localApi(hash(bytes), { './main-runtime-version-package.cjs': helper });
+    await local.prepare(
+      f.root,
+      input,
+      'PACKAGE_VERSION',
+      descriptor.sourceHead,
+      descriptor.sourceTree,
+    );
+    await local.verifyCopy(f.root, 'PACKAGE_VERSION');
+    const proof = JSON.parse(fs.readFileSync(path.join(f.root, 'copy.json')));
+    assert.equal(proof.mode, 'PACKAGE_VERSION');
+    assert.equal(
+      proof.packageBindingSha256,
+      hash(fs.readFileSync(path.join(f.root, 'package-binding.json'))),
+    );
+    assert.equal(
+      fs.readFileSync(path.join(f.root, 'Invoke-Package.instrumented.ps1'), 'utf8'),
+      fs.readFileSync(path.join(desktop, 'launch/Invoke-Package.ps1'), 'utf8'),
+    );
+    assert.equal(fs.existsSync(path.join(f.root, 'Invoke-Desktop.instrumented.ps1')), false);
+    const core = fs.readFileSync(path.join(f.root, 'launch-core.ps1'), 'utf8');
+    assert.equal(hash(core), proof.derivedSha);
+    assert.ok(core.includes(path.join(desktop, 'verification/main-runtime-version-probe.cjs')));
+    await assert.rejects(local.verifyCopy(f.root, true));
+    await assert.rejects(local.verifyCopy(f.root, false));
+    fs.appendFileSync(path.join(f.root, 'package-binding.json'), ' ');
+    await assert.rejects(local.verifyCopy(f.root, 'PACKAGE_VERSION'));
+  } finally {
+    f.close();
+  }
+});
+
+test('PACKAGE campaign is separately default-off, exact-gated, local-runtime and JSON-only without old matrices', () => {
+  const raw = fs.readFileSync(
+    path.resolve(desktop, '../.github/workflows/phase-02-software.yml'),
+    'utf8',
+  );
+  const gate =
+    "    if: (github.event_name == 'workflow_dispatch' && inputs.run_package_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[package-version]'))";
+  function check(text) {
+    const normalized = text.replaceAll('\r\n', '\n'),
+      job = normalized
+        .split('  owned-package-version-development:\n')[1]
+        ?.split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
+    assert.ok(job);
+    assert.ok(job.split('\n').includes(gate));
+    assert.match(job, /needs: windows-software-only/);
+    assert.match(normalized, /run_package_version:\n[\s\S]*?default: false/);
+    assert.match(job, /Invoke-RetainedHostCheck.ps1 -PackageVersion/);
+    assert.match(job, /validate_package_runtime_version.py publish/);
+    assert.equal((job.match(/uses: actions\/upload-artifact/g) || []).length, 1);
+    assert.match(job, /outputs.written == 'true'/);
+    assert.doesNotMatch(
+      job,
+      /Invoke-(Foundation|Package|FleetUI|RecipientSetup|RetainedManagedFixture)\.ps1|validate_retained_host.py managed|\.png|PACKAGE_PROMOTION_READY|include-hidden-files/,
+    );
+  }
+  for (const text of [raw, raw.replaceAll('\n', '\r\n')]) {
+    check(text);
+    for (const changed of [
+      '',
+      '    if: always()',
+      gate.replace('[package-version]', '[main-version]'),
+      gate.replace('inputs.run_package_version', 'true'),
+      gate.replace('refs/heads/phase-02', 'refs/heads/main'),
+    ])
+      assert.throws(() => check(text.replaceAll('\r\n', '\n').replace(gate, changed)));
+  }
+  const ps = fs.readFileSync(path.join(__dirname, 'Invoke-RetainedHostCheck.ps1'), 'utf8');
+  assert.match(ps, /if\(\$MainVersion -and \$PackageVersion\)\{throw 'MODE_REJECTED'\}/);
+  assert.match(ps, /'package-build-entry.mjs'/);
+  assert.match(ps, /'validate_package.py'\),'extract',\$root/);
+  assert.match(
+    ps,
+    /if\(\$PackageVersion\)\{\[Environment\]::SetEnvironmentVariable\('PATH',\[Environment\]::SystemDirectory,'Process'\)\}/,
+  );
+});

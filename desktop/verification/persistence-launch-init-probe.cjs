@@ -60,7 +60,30 @@ try {
       throw new Error('DIALOG');
     return { response: 0, checkboxChecked: false };
   };
-  require('../launch/persistence-initialize.cjs');
+  const candidateRoot = path.dirname(path.dirname(path.dirname(launch))),
+    retained = path.basename(path.dirname(candidateRoot)) === '.retained-host-runtime';
+  let packageMode = false,
+    retainedRoot;
+  if (retained) {
+    retainedRoot = require('./retained-host-contract.cjs').rootForLaunch(launch);
+    const proof = read(path.join(retainedRoot, 'copy.json'));
+    if (proof.version === 2 && proof.mode === 'PACKAGE_VERSION') packageMode = true;
+    else if (
+      !(proof.version === 1 && proof.mode === undefined) &&
+      !(proof.version === 2 && proof.mode === 'MAIN_VERSION')
+    )
+      throw Error('PACKAGE_CONTROL');
+  }
+  if (packageMode) {
+    if (control.version !== 3) throw Error('PACKAGE_CONTROL');
+    const custody = require('./main-runtime-version-package.cjs'),
+      admitted = custody.admitPackage(retainedRoot);
+    if (control.packageRoot !== admitted.packageRoot) throw Error('PACKAGE_ROOT');
+    require(custody.initializer(admitted));
+  } else {
+    if (![1, 2].includes(control.version)) throw Error('CONTROL');
+    require('../launch/persistence-initialize.cjs');
+  }
   app.on('will-quit', () => {
     const result = { version: 1, stage: control.stage, opens, confirms };
     const fd = fs.openSync(witnessPath(launch, control.stage), 'wx', 0o600);

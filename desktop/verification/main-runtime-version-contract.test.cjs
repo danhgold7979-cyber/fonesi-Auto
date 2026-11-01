@@ -134,9 +134,21 @@ async function simulate(fault = null) {
   fs.mkdirSync(profile, { recursive: true });
   for (const d of [root, managed, launch]) fs.writeFileSync(path.join(d, '.owner'), id(3));
   const raw = fs.readFileSync(path.join(__dirname, '../build/main.cjs'), 'utf8');
+  const packaged = fault === 'package',
+    packageBuild = path.join(root, 'relocated-package/app/build');
+  if (packaged) {
+    fs.mkdirSync(packageBuild, { recursive: true });
+    fs.writeFileSync(path.join(packageBuild, 'main.cjs'), raw);
+    fs.copyFileSync(
+      path.join(__dirname, '../build/.verified-build.json'),
+      path.join(packageBuild, '.verified-build.json'),
+    );
+  }
+  const packageContext = Object.freeze({ buildRoot: packageBuild });
   fs.writeFileSync(
     path.join(root, 'copy.json'),
     JSON.stringify({
+      mode: packaged ? 'PACKAGE_VERSION' : 'MAIN_VERSION',
       originalMainSha256: hash(raw),
       derivedMainSha256: hash(deriveMain(raw, observer)),
     }),
@@ -288,7 +300,10 @@ async function simulate(fault = null) {
     }
     _compile(derived, filename) {
       assert.equal(derived, deriveMain(raw, observer));
-      assert.equal(filename, path.join(__dirname, '../build/main.cjs'));
+      assert.equal(
+        filename,
+        packaged ? path.join(packageBuild, 'main.cjs') : path.join(__dirname, '../build/main.cjs'),
+      );
       module.exports.bindContext(
         Object.freeze({
           entry: { storeId: id(4), ownerToken: id(5) },
@@ -368,7 +383,20 @@ async function simulate(fault = null) {
       if (name === 'electron') return electron;
       if (name === 'node:fs') return fsProxy;
       if (name === 'node:module') return FakeModule;
-      if (name === './fleet-ui-schema4.cjs') return { observeSchema4: async () => true };
+      if (name === './main-runtime-version-package.cjs')
+        return {
+          admitPackage(value) {
+            assert.equal(value, root);
+            return packageContext;
+          },
+        };
+      if (name === './fleet-ui-schema4.cjs')
+        return {
+          observeSchema4: async (_launch, _safe, context) => {
+            assert.equal(context, packaged ? packageContext : undefined);
+            return true;
+          },
+        };
       return require(name);
     },
   };
@@ -463,4 +491,14 @@ test('late main read success cannot override actual client timeout or trigger an
   assert.equal(r.readCalls, 2);
   assert.equal(r.observed, null);
   assert.match(r.stderr.join(''), /MAIN_RUNTIME_VERSION_REASON_RESPONSE/);
+});
+
+test('PACKAGE observer compiles the actual packaged filename and uses only selected packaged schema context', async () => {
+  const r = await simulate('package');
+  assert.equal(r.code, 0, r.stderr.join(''));
+  assert.equal(r.requestCalls, 1);
+  assert.equal(r.observed.scope, contract.PACKAGE_SCOPE);
+  assert.equal(validateObserved(r.observed, true).passed, true);
+  assert.throws(() => validateObserved(r.observed));
+  assert.throws(() => validateObserved(r.observed, 'PACKAGE_VERSION'));
 });
