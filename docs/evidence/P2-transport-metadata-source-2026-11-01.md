@@ -1,6 +1,6 @@
 # P2-06 — synthetic observed-transport metadata composition
 
-**SOURCE REVIEW CLEAR — affected checks PASS; actual metadata/device acquisition NOT_RUN.**
+**SOURCE / HOSTED SOFTWARE1333/109/280 PASS — actual metadata/device acquisition NOT_RUN.**
 
 This finite [adopted source contract](../phases/P2-TRANSPORT-METADATA-SOURCE-CONTRACT.md) advances an original P2-06 dependency without claiming P2-03/04/05/06/07 completion. Independent source-entry design CLEAR binds pre-adoption SHA256 `09eb4c5c335f88d8eb5577561bddd2a2f8c233831d40e33ef58675ff4132a53a`. P2-01 remains TECHNICAL_PASS/DEPENDENCIES_PENDING; technical P2 count1/13, overall11/154 and formal0 are unchanged.
 
@@ -31,7 +31,7 @@ Existing actor, parser, registry, ingestion, main, IPC, UI, native C#, launcher 
 - Fixtures cover all nine fields; unchanged durable rows/identity evidence; provisional input refusal; exact transport/epoch/generation and duplicate-claim invalidation; queue/history caps; callback revocation; copied settlement facts/timestamp; hostile promise/accessor/oversize/unretired cases; logical timeout/actual drain; stale and unavailable semantics.
 - Targeted module graph and batch-runner checks32/32 PASS, including the new causal incoming-main-edge detection and retained exact overflow refusal.
 - Current project TypeScript PASS; exact runtime graph104 PASS; BUILD_VERIFIED and final manifest true. Quality372 files exits0 (legacy information-level diagnostics remain; no errors/warnings).
-- No full local1316-test rerun or managed/native rerun. Previous actual [main integration source](P2-main-discovery-integration-source-2026-11-01.md)1316/109/280 remains separate. Expected hosted desktop1333 = previous1316 +16 new cases +1 graph isolation case; this is an estimate until actual CI. Foundation109/Python280 are unchanged expected counts, not fresh results here.
+- No full local1316-test rerun or managed/native rerun. Previous actual [main integration source](P2-main-discovery-integration-source-2026-11-01.md)1316/109/280 remains separate. At source freeze the estimate was1333 = previous1316 +16 new cases +1 graph isolation case, with109 foundation/280 Python expected. The actual hosted results below now confirm these counts independently of overlapping local runs.
 
 Independent consolidated source review CLEAR20:58 includes the final mutation-watermark fix and both causal ordering cases. Final current source TypeScript/format checks pass, and the build/manifest was refreshed after the correction; unchanged suites were not rerun.
 
@@ -44,3 +44,12 @@ No spawned process/socket, real provider, profile read/change, device query, phy
 - `desktop/src/main/transport-metadata.ts` — `d4d24cbdf0008c5d527fb91a5a5d519f2482ccc9bfd5527e15f7e4fa8bf68848`
 - `desktop/tests/transport-metadata.test.mjs` — `686d12ef69a3fdfce01c814cb2f7a6c87b4ae23fc2c5e4f64323bea4b278df03`
 - `desktop/module-map.json` — `b6415f60767dbb3cc788da0f0be41bb94c4d800839adae93d804a4eca55e2e9e`
+
+## Actual hosted source closure — 2026-11-01 21:04 UTC
+
+- Local reviewed source `75099ad2013a825a51986c22f3c0ed3a2e4d06cf`; tree `de5ee527d43dd9b8383f786f5be9353004489d8d`.
+- Public `phase-02` `535b0942139820163815a4833e38ca248f3391a1` has the exact same tree and normal parent `538ae244676dca03708061c54a9f93a1a30b40b8`; history preserved.
+- CI `41349689623` SUCCESS; source job `124976993745` SUCCESS, exact SOURCE_HEAD.
+- Actual desktop **1333/1333** and DESKTOP_SOURCE_CHECK_PASS; foundation **109/109** with zero failed/cancelled/skipped/todo; Python **280**, OK under the unchanged no-skip gate. This is the actual uninterrupted hosted total, not a combined local count.
+- All eight optional native/managed jobs SKIPPED, observed in terminal API metadata. No native artifact, device command or new managed proof is inferred.
+- Single source log retained privately; independent retained-log audit PASS21:04 confirms exact checkout/source identity and all three software counts. Optional-job skips are the separate coordinator API observation, not inferred from that log. This documentation closure requires no repeated tests.
