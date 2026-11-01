@@ -1,4 +1,4 @@
-/** Fixed VERSION-only private native transport. Not installed in production main. */
+/** Default VERSION_ONLY; SERVER_ONLY remains private and unwired from main. */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -179,12 +179,16 @@ export function createHostFactory(
     desktopRoot: string;
     runtimeCustody: PlatformToolsRuntimeCustody;
     expectedInstallationRevision?: number;
+    operationSet?: 'VERSION_ONLY' | 'SERVER_ONLY';
     assertOwnedSync(): void;
     now(): number;
     diagnosticId(): string;
   }>,
   bindings: Bindings = realBindings(),
 ) {
+  const suppliedOperationSet = options.operationSet;
+  const operationSet = suppliedOperationSet === undefined ? 'VERSION_ONLY' : suppliedOperationSet;
+  if (operationSet !== 'VERSION_ONLY' && operationSet !== 'SERVER_ONLY') fail();
   const entry = Object.freeze({ ...options.entry }),
     launchRoot = options.launchRoot,
     desktopRoot = options.desktopRoot;
@@ -328,7 +332,7 @@ export function createHostFactory(
     root = createHostRoot(launchRoot, sessionId, entry.ownerToken, () => currentRuntime(o));
     bootstrap = JSON.stringify({
       version: 2,
-      operationSet: 'VERSION_ONLY',
+      operationSet,
       sessionId,
       launchId: context.receipt.launchId,
       storeId: entry.storeId,
@@ -517,7 +521,7 @@ export function createHostFactory(
   const provider = Object.freeze({
     ...bridge.provider,
     reserveAttempt(kind: 'VERSION' | 'FOREGROUND') {
-      if (kind !== 'VERSION') fail();
+      if (kind !== (operationSet === 'VERSION_ONLY' ? 'VERSION' : 'FOREGROUND')) fail();
       if (
         !child &&
         hostNames(launchRoot).some((n) => n === '.host-session' || n.startsWith('host-session'))
@@ -529,12 +533,72 @@ export function createHostFactory(
   const adapter = createHostAdapter({
     runtimeCustody: tracked,
     nativeProvider: provider,
+    operationSet,
     assertOwnedSync: fence,
     now: clock,
     diagnosticId: diagnostic,
   });
   let closing: Promise<'RETIRED' | 'UNRETIRED'> | null = null;
   return Object.freeze({
+    snapshot: adapter.snapshot,
+    assertCurrentSession(): void {
+      const token = readToken,
+        observation = liveObservation;
+      const state = adapter.snapshot();
+      if (
+        operationSet !== 'SERVER_ONLY' ||
+        stopped ||
+        broken ||
+        !token ||
+        !observation ||
+        state.state !== 'READY' ||
+        state.busy ||
+        state.closed
+      )
+        fail();
+      currentRuntime(observation);
+      // Last callback boundary: never publish from a cached bootstrap/read observation.
+      custody.assertRead(token);
+      const final = adapter.snapshot();
+      if (
+        stopped ||
+        broken ||
+        readToken !== token ||
+        liveObservation !== observation ||
+        final.state !== 'READY' ||
+        final.busy ||
+        final.closed
+      )
+        fail();
+    },
+    assertRetiredSession(): void {
+      const state = adapter.snapshot();
+      if (
+        operationSet !== 'SERVER_ONLY' ||
+        stopped ||
+        broken ||
+        readToken !== null ||
+        liveObservation !== null ||
+        !adapter.retired ||
+        state.state !== 'STOPPED' ||
+        state.busy ||
+        state.closed
+      )
+        fail();
+      fence();
+      const final = adapter.snapshot();
+      if (
+        stopped ||
+        broken ||
+        readToken !== null ||
+        liveObservation !== null ||
+        !adapter.retired ||
+        final.state !== 'STOPPED' ||
+        final.busy ||
+        final.closed
+      )
+        fail();
+    },
     grant: adapter.grant,
     execute: adapter.execute,
     close(): Promise<'RETIRED' | 'UNRETIRED'> {

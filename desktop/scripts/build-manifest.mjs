@@ -95,6 +95,7 @@ export const inputs = [
   'src/main/adb-host-lifecycle.ts',
   'src/main/adb-host-plan.ts',
   'src/main/adb-host-adapter.ts',
+  'src/main/adb-server-service.ts',
   'src/main/adb-host-bridge.ts',
   'src/main/adb-host-factory.ts',
   'src/main/adb-host-context.ts',

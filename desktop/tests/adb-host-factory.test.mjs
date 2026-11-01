@@ -182,7 +182,7 @@ function fixture(extra = {}) {
       assert.deepEqual(options.stdio, ['pipe', 'pipe', 'pipe']);
       assert.deepEqual(Object.keys(options.env), ['SystemRoot', 'WINDIR', 'TEMP', 'TMP']);
       const b = JSON.parse(readFileSync(args[5]));
-      assert.equal(b.operationSet, 'VERSION_ONLY');
+      assert.equal(b.operationSet, extra.operationSet ?? 'VERSION_ONLY');
       assert.match(b.sessionId, /^[0-9a-f-]{36}$/);
       assert.equal(options.cwd, join(launch, '.host-session'));
       assert.equal(b.parentReceiptSha256, hostHash(readFileSync(join(launch, 'host-parent.json'))));
@@ -199,14 +199,16 @@ function fixture(extra = {}) {
               child.stdout.write(
                 JSON.stringify({
                   ...q,
-                  result: {
-                    version: 2,
-                    kind: 'INVOCATION',
-                    dispatched: true,
-                    processRetired: true,
-                    exitCode: 0,
-                    observation: q.operation === 'VERSION' ? 'VERSION' : null,
-                  },
+                  result: extra.facts
+                    ? extra.facts(q)
+                    : {
+                        version: 2,
+                        kind: 'INVOCATION',
+                        dispatched: true,
+                        processRetired: true,
+                        exitCode: 0,
+                        observation: q.operation === 'VERSION' ? 'VERSION' : null,
+                      },
                 }) + '\n',
               ),
             );
@@ -232,6 +234,7 @@ function fixture(extra = {}) {
         desktopRoot: desktop,
         runtimeCustody: custody,
         expectedInstallationRevision: extra.expectedInstallationRevision,
+        operationSet: extra.operationSet,
         assertOwnedSync() {
           if (!owned) throw Error('private ownership');
           extra.ownerCallback?.({ base, launch, systemExe });
@@ -270,6 +273,15 @@ function fixture(extra = {}) {
     }),
     get spawns() {
       return spawns;
+    },
+    invalidateRead() {
+      held = false;
+    },
+    restoreRead() {
+      held = true;
+    },
+    get held() {
+      return held;
     },
     get releases() {
       return releases;
@@ -979,5 +991,148 @@ test('actual transformed catalog/factory binds selected prior release in bootstr
     } finally {
       f.cleanup();
     }
+  }
+});
+
+test('SERVER_ONLY actual factory/adapter/bridge retains one live attempt across health and stop with engine snapshots', async () => {
+  let capturedOptions;
+  const requests = [],
+    f = fixture({
+      operationSet: 'SERVER_ONLY',
+      createFactory(options, bindings) {
+        capturedOptions = options;
+        return createHostFactory(options, bindings);
+      },
+      request(q) {
+        requests.push(q);
+      },
+      facts(q) {
+        return {
+          version: 2,
+          kind: 'SESSION',
+          dispatched: true,
+          jobState: q.operation === 'RETIRE' ? 'RETIRED' : 'LIVE',
+          exitCode: q.operation === 'RETIRE' ? 7 : null,
+          endpointState: q.operation === 'RETIRE' ? 'ABSENT' : 'OWNED',
+          observation:
+            q.operation === 'START' ? 'STARTED' : q.operation === 'HEALTH' ? 'HEALTHY' : 'STOPPED',
+        };
+      },
+    });
+  try {
+    capturedOptions.operationSet = 'VERSION_ONLY'; // Factory captured SERVER_ONLY once.
+    assert.deepEqual(f.factory.snapshot(), { state: 'STOPPED', busy: false, closed: false });
+    assert.ok(Object.isFrozen(f.factory.snapshot()));
+    assert.equal((await f.factory.execute(f.cap, f.request('HOST_VERSION'))).code, 'NOT_READY');
+    assert.equal(f.spawns, 0);
+    assert.equal(f.held, false);
+    assert.equal(f.releases, 0);
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_START'))).outcome, 'OBSERVED');
+    assert.equal(f.factory.snapshot().state, 'READY');
+    assert.equal(f.held, true);
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_HEALTH'))).outcome, 'OBSERVED');
+    assert.equal(f.releases, 0);
+    assert.notEqual(
+      (await f.factory.execute(f.cap, f.request('SERVER_START'))).outcome,
+      'OBSERVED',
+    );
+    assert.equal(requests.length, 2);
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_STOP'))).outcome, 'OBSERVED');
+    assert.equal(f.factory.snapshot().state, 'STOPPED');
+    assert.equal(new Set(requests.map((q) => q.attemptId)).size, 1);
+    assert.deepEqual(
+      requests.map((q) => q.operation),
+      ['START', 'HEALTH', 'RETIRE'],
+    );
+    assert.equal(f.spawns, 1);
+    assert.equal(f.held, false);
+    assert.equal(f.releases, 1);
+    assert.equal(await f.factory.close(), 'RETIRED');
+    assert.equal(f.factory.snapshot().closed, true);
+  } finally {
+    f.cleanup();
+  }
+});
+test('default scope rejects server ordinary operations before runtime custody and snapshots do not mutate engine', async () => {
+  const f = fixture();
+  try {
+    for (const operation of ['SERVER_START', 'SERVER_HEALTH']) {
+      assert.equal((await f.factory.execute(f.cap, f.request(operation))).code, 'NOT_READY');
+      assert.equal(f.spawns, 0);
+      assert.equal(f.held, false);
+      assert.equal(f.releases, 0);
+    }
+    const snapshot = f.factory.snapshot();
+    assert.throws(() => {
+      snapshot.state = 'READY';
+    });
+    assert.equal(f.factory.snapshot().state, 'STOPPED');
+    assert.equal(await f.factory.close(), 'RETIRED');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('invalid explicit scopes fail before any admission callback or factory binding', () => {
+  for (const operationSet of [null, 'SERVER_ONLY\n', 'server_only', 'BOTH', {}, false]) {
+    let calls = 0;
+    assert.throws(
+      () =>
+        createHostFactory(
+          {
+            operationSet,
+            assertOwnedSync() {
+              calls++;
+            },
+          },
+          {},
+        ),
+      /HOST_FACTORY_REJECTED/,
+    );
+    assert.equal(calls, 0);
+  }
+});
+
+test('server publication assertions reject stale custody after the last owner callback without reacquiring', async () => {
+  let armed = false,
+    ownerCalls = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    ownerCallback() {
+      if (armed && ++ownerCalls === 3) f.invalidateRead();
+    },
+    facts(q) {
+      return {
+        version: 2,
+        kind: 'SESSION',
+        dispatched: true,
+        jobState: q.operation === 'RETIRE' ? 'RETIRED' : 'LIVE',
+        exitCode: q.operation === 'RETIRE' ? 1 : null,
+        endpointState: q.operation === 'RETIRE' ? 'ABSENT' : 'OWNED',
+        observation: q.operation === 'RETIRE' ? 'STOPPED' : 'STARTED',
+      };
+    },
+  });
+  try {
+    assert.throws(() => f.factory.assertCurrentSession());
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_START'))).outcome, 'OBSERVED');
+    assert.doesNotThrow(() => f.factory.assertCurrentSession());
+    assert.throws(() => f.factory.assertRetiredSession());
+    armed = true;
+    assert.throws(() => f.factory.assertCurrentSession());
+    assert.equal(ownerCalls, 3);
+    assert.equal(f.held, false);
+    assert.equal(f.spawns, 1);
+    assert.equal(f.releases, 0);
+    armed = false;
+    f.restoreRead(); // Restore only the injected test holder, not an application operation.
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_STOP'))).outcome, 'OBSERVED');
+    assert.doesNotThrow(() => f.factory.assertRetiredSession());
+    assert.equal(f.factory.retired, false); // Helper remains alive; ordinary STOP proved only attempt/custody retirement.
+    assert.throws(() => f.factory.assertCurrentSession());
+    assert.equal(await f.factory.close(), 'RETIRED');
+    assert.throws(() => f.factory.assertRetiredSession());
+  } finally {
+    f.cleanup();
   }
 });

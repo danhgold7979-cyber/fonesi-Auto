@@ -239,7 +239,10 @@ test('current bootstrap v2 supplies exact catalog expectations while old live v1
       'assets',
     ],
   );
-  assert.match(ps, /if\(\$b.version -ne 2 -or \$b.operationSet -cne 'VERSION_ONLY'\)\{Reject\}/);
+  assert.match(
+    ps,
+    /if\(\$b.version -ne 2 -or \(\$b.operationSet -cne 'VERSION_ONLY' -and \$b.operationSet -cne 'SERVER_ONLY'\)\)\{Reject\}/,
+  );
   assert.ok(ps.includes("$b.expectedRelease -cnotmatch '\\A[0-9]+\\.[0-9]+\\.[0-9]+\\z'"));
   assert.match(ps, /\$b.expectedRelease.Length -gt 32/);
   assert.match(ps, /\$b.expectedBuildGrammar -cne 'DECIMAL_1_20'/);

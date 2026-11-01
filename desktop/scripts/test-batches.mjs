@@ -8,6 +8,7 @@ export const TEST_FILES = Object.freeze([
   'tests/adb-host-lifecycle.test.mjs',
   'tests/adb-host-plan.test.mjs',
   'tests/adb-metadata.test.mjs',
+  'tests/adb-server-service.test.mjs',
   'tests/backup-catalog.test.mjs',
   'tests/backup-container.test.mjs',
   'tests/backup-key-profile.test.mjs',

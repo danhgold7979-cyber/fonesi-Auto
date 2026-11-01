@@ -7,10 +7,10 @@ const raw = fs
   .readFileSync(path.join(__dirname, '../../.github/workflows/phase-02-software.yml'), 'utf8')
   .replaceAll('\r\n', '\n');
 const condition =
-  "    if: (github.event_name == 'workflow_dispatch' && inputs.run_retained_rollback) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[retained-rollback]'))";
+  "    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_rollback) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[retained-rollback]')))";
 function gate(value) {
   const s = value.replaceAll('\r\n', '\n');
-  assert.match(s, /assert s\.countTestCases\(\)==274; r=unittest\.TextTestRunner/);
+  assert.match(s, /assert s\.countTestCases\(\)==277; r=unittest\.TextTestRunner/);
   assert.match(s, /r\.wasSuccessful\(\) and not r\.skipped/);
   assert.match(
     s,
@@ -25,16 +25,17 @@ function gate(value) {
   assert.match(section, /timeout-minutes: 30/);
   return section;
 }
-test('four-stage Windows campaign is exact default-off opt-in under LF and CRLF', () => {
+test('historical four-stage campaign remains suspended pending current server input review under LF and CRLF', () => {
   for (const s of [raw, raw.replaceAll('\n', '\r\n')]) {
     gate(s);
-    for (const replacement of ['s.countTestCases()==263', 's.countTestCases()>=274']) {
-      const changed = s.replace('s.countTestCases()==274', replacement);
+    for (const replacement of ['s.countTestCases()==263', 's.countTestCases()>=277']) {
+      const changed = s.replace('s.countTestCases()==277', replacement);
       assert.notEqual(changed, s);
       assert.throws(() => gate(changed));
     }
     for (const replacement of [
       '    if: true',
+      condition.replace('false && (', '('),
       condition.replace('refs/heads/phase-02', 'refs/heads/main'),
       condition.replace('inputs.run_retained_rollback', 'inputs.run_package_version'),
       condition.replace('[retained-rollback]', '[package-version]'),
@@ -45,7 +46,7 @@ test('four-stage Windows campaign is exact default-off opt-in under LF and CRLF'
     }
   }
 });
-test('current ten-group managed gate precedes exact two archives and four-stage invocation; only strict JSON uploads', () => {
+test('suspended historical ten-group gate retains exact archive ordering and JSON-only uploads', () => {
   const s = gate(raw),
     managed = s.indexOf('Invoke-RetainedManagedFixture.ps1)'),
     validate = s.indexOf('validate_retained_host.py managed'),

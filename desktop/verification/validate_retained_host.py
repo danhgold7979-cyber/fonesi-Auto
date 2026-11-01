@@ -143,20 +143,23 @@ COMPILER_CODES = ('CS0122', 'CS0052', 'CS0051', 'CS0117', 'CS1061', 'CS0246', 'C
 MANAGED_STAGES = ('ADMISSION', 'COMPILE', 'FIXTURE', 'CLEANUP')
 MANAGED_V2_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': 'c22e40441fb6bc9bd7d1b1b1aaced656572c3ded8c2666d006449dd8b2f45470', 'protocol': '187637ea62b9455ad1bb0fd6730c7a8ac7a0ed86b906277c1407fed17905a9dc', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'fixture': '17471cdc8fe506dda87ba0f598615c202d2857e9fbe85d449745a2d9c904dad4', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': '3fa9cbfcc7106239b4001bcf4d6c09495c86f47bdc22cdcb48080a62ab57d4f3', 'wrapper': 'f382bf579b186749c6662b3f268dd8b262838f2f5b6fb932144c535856a2c396', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
 
+MANAGED_V3_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': 'c22e40441fb6bc9bd7d1b1b1aaced656572c3ded8c2666d006449dd8b2f45470', 'protocol': '3082dce2e17b728747187f3213863302bb2506a0ace746ff273b28759eff121d', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'fixture': '85b463edf046860370e20a4cbd05f456369f9ef8a42654d604e51134657083ae', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': '7988ea94db09b3567787fcb33eec5c616391210341aba0dd69e257e3e0940397', 'wrapper': 'c07aa2b221eea816045ecc4bfb881fc2309e4097680d059ea9a788fc73dfe3fb', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
+
 
 def validate_managed(value):
-    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2):
+    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2, 3):
         reject()
     version = value['version']
     keys = ('version', 'scope', 'compileProcess', 'fixtureProcess', 'groupsPassed', 'compilerDiagnostics', 'sourceUnchanged', 'directoryCleanup', 'passed')
-    exact_record(value, keys + (('inputHashes',) if version == 2 else ()))
-    groups = 8 if version == 1 else 10
+    exact_record(value, keys + (('inputHashes',) if version >= 2 else ()))
+    groups = {1: 8, 2: 10, 3: 19}[version]
+    expected_hashes = MANAGED_V2_HASHES if version == 2 else MANAGED_V3_HASHES
     hashes = {}
-    if version == 2:
+    if version >= 2:
         hashes = value['inputHashes']
-        if type(hashes) is not dict or any(k not in MANAGED_V2_HASHES or type(v) is not str or v != MANAGED_V2_HASHES[k] for k, v in hashes.items()):
+        if type(hashes) is not dict or any(k not in expected_hashes or type(v) is not str or v != expected_hashes[k] for k, v in hashes.items()):
             reject()
-        if hashes and tuple(hashes) != tuple(MANAGED_V2_HASHES):
+        if hashes and tuple(hashes) != tuple(expected_hashes):
             reject()
     if (type(value['version']) is not int or
             value['scope'] != MANAGED_SCOPE or type(value['groupsPassed']) is not int or
@@ -184,14 +187,14 @@ def validate_managed(value):
                     row['cleanupComplete'] and not row['stdoutTruncated'] and not row['stderrTruncated'])
     passed = bool(successful(processes['compileProcess'], ('SUCCESS', 'EMPTY_OUTPUT')) and
                   successful(processes['fixtureProcess'], ('SUCCESS',)) and
-                  value['groupsPassed'] == groups and (version == 1 or hashes == MANAGED_V2_HASHES) and value['sourceUnchanged'] and
+                  value['groupsPassed'] == groups and (version == 1 or hashes == expected_hashes) and value['sourceUnchanged'] and
                   value['directoryCleanup'] and not codes)
     if value['passed'] != passed:
         reject()
     return {'version': version, 'scope': MANAGED_SCOPE, **processes,
             'groupsPassed': value['groupsPassed'], 'compilerDiagnostics': list(codes),
             'sourceUnchanged': value['sourceUnchanged'],
-            **({'inputHashes': dict(hashes)} if version == 2 else {}),
+            **({'inputHashes': dict(hashes)} if version >= 2 else {}),
             'directoryCleanup': value['directoryCleanup'], 'passed': passed}
 
 
@@ -222,7 +225,7 @@ def managed_output(raw):
     return value
 
 
-def managed(base):
+def managed(base, current_server=False):
     if (not base.is_absolute() or base.resolve() != base or
             not stat.S_ISDIR(base.lstat().st_mode)):
         reject()
@@ -230,6 +233,8 @@ def managed(base):
     if not 0 < file.lstat().st_size <= 16384:
         reject()
     value = managed_output(_read_owned(base, file.name))
+    if current_server and value['version'] != 3:
+        reject()
     _write_new(base, 'retained-managed-validated.json', value)
     return value['passed']
 
@@ -242,8 +247,8 @@ def main(argv=None):
             ok = stage(Path(args[1]))
             print('RETAINED_HOST_STAGE_VALIDATED')
             return 0 if ok else 1
-        if args == ['managed']:
-            ok = managed(Path(__file__).resolve().parents[1])
+        if args in (['managed'], ['managed-server']):
+            ok = managed(Path(__file__).resolve().parents[1], args == ['managed-server'])
             print('RETAINED_MANAGED_VALIDATION_WRITTEN')
             print('RETAINED_MANAGED_VALIDATION_PASS' if ok else 'RETAINED_MANAGED_VALIDATION_FAIL')
             return 0 if ok else 1
@@ -251,7 +256,7 @@ def main(argv=None):
             reject()
         ok = publish(Path(__file__).resolve().parents[1] / '.retained-host-runtime')
     except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
-        print('RETAINED_MANAGED_VALIDATION_INVALID' if args == ['managed'] else 'RETAINED_HOST_VALIDATION_INVALID')
+        print('RETAINED_MANAGED_VALIDATION_INVALID' if args in (['managed'], ['managed-server']) else 'RETAINED_HOST_VALIDATION_INVALID')
         return 2
     print('RETAINED_HOST_VALIDATION_WRITTEN')
     print('RETAINED_HOST_VALIDATION_PASS' if ok else 'RETAINED_HOST_VALIDATION_FAIL')

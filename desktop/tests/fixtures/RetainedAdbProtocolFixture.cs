@@ -38,6 +38,8 @@ namespace Fonesi.Tests
             internal readonly ManualResetEvent Entered=new ManualResetEvent(false),Release=new ManualResetEvent(true),Retired=new ManualResetEvent(false);
             public object Reserve(string kind){Check(kind=="VERSION");Interlocked.Increment(ref reserves);return token;}
             public IDictionary<string,object> Version(object attempt){Check(Object.ReferenceEquals(token,attempt));Interlocked.Increment(ref versions);Entered.Set();Release.WaitOne();return versionResult ?? Facts("VERSION");}
+            public IDictionary<string,object> StartForeground(object attempt){throw new InvalidOperationException();}
+            public IDictionary<string,object> Health(object attempt){throw new InvalidOperationException();}
             public IDictionary<string,object> Retire(object attempt){Check(Object.ReferenceEquals(token,attempt));Interlocked.Increment(ref retires);Retired.Set();if(releaseOnRetire)Release.Set();return Facts(null);}
             internal static IDictionary<string,object> Facts(string observation){return new Dictionary<string,object>{{"version",2},{"kind","INVOCATION"},{"dispatched",true},{"processRetired",true},{"exitCode",0},{"observation",observation}};}
         }
@@ -60,6 +62,70 @@ namespace Fonesi.Tests
             foreach(string grammar in new string[]{null,"","DECIMAL_1_20\n","[0-9]+","ANY"})
                 Check(!IsolatedAdbServer.RetainedProvider.VersionExpectationValid("37.0.1",grammar));
             return 2;
+        }
+        sealed class ServerProvider : RetainedAdbProtocol.IProvider
+        {
+            internal readonly object token = new object(); internal int reserves, starts, healths, retires;
+            internal readonly ManualResetEvent Entered = new ManualResetEvent(false), Release = new ManualResetEvent(true), Retired = new ManualResetEvent(false);
+            internal IDictionary<string,object> startResult;
+            public object Reserve(string kind) { Check(kind == "FOREGROUND"); Interlocked.Increment(ref reserves); return token; }
+            public IDictionary<string,object> Version(object attempt) { throw new InvalidOperationException(); }
+            public IDictionary<string,object> StartForeground(object attempt) { Check(Object.ReferenceEquals(token,attempt)); Interlocked.Increment(ref starts); Entered.Set(); Release.WaitOne(); return startResult ?? (Retired.WaitOne(0) ? TerminalFacts() : SessionFacts("STARTED")); }
+            public IDictionary<string,object> Health(object attempt) { Check(Object.ReferenceEquals(token,attempt)); Interlocked.Increment(ref healths); Entered.Set(); Release.WaitOne(); return Retired.WaitOne(0) ? TerminalFacts() : SessionFacts("HEALTHY"); }
+            public IDictionary<string,object> Retire(object attempt) { Check(Object.ReferenceEquals(token,attempt)); Interlocked.Increment(ref retires); Retired.Set(); Release.Set(); return SessionFacts("STOPPED"); }
+            internal static IDictionary<string,object> TerminalFacts() { IDictionary<string,object> facts=SessionFacts("STOPPED");facts["observation"]=null;return facts; }
+            internal static IDictionary<string,object> SessionFacts(string observation) { bool stopped=observation=="STOPPED";return new Dictionary<string,object>{{"version",2},{"kind","SESSION"},{"dispatched",true},{"jobState",stopped?"RETIRED":"LIVE"},{"exitCode",stopped?(object)1460:null},{"endpointState",stopped?"ABSENT":"OWNED"},{"observation",observation}}; }
+        }
+        // Fixture-only bounded scheduling: BUSY is permitted before remote Flush/worker settlement.
+        // Production callers never replay. Every BUSY here proves zero provider handoff.
+        static long AwaitHealth(Input input, Output output, ServerProvider provider, ref long nextRequest)
+        {
+            System.Diagnostics.Stopwatch budget=System.Diagnostics.Stopwatch.StartNew();
+            int beforeHealth=Interlocked.CompareExchange(ref provider.healths,0,0);
+            for(int attempt=0;attempt<64&&budget.ElapsedMilliseconds<5000;attempt++) {
+                int beforeOutput=Interlocked.CompareExchange(ref output.count,0,0);
+                long request=nextRequest++;input.Feed(Frame(request,"HEALTH"));
+                while(budget.ElapsedMilliseconds<5000 && Interlocked.CompareExchange(ref provider.healths,0,0)==beforeHealth && Interlocked.CompareExchange(ref output.count,0,0)==beforeOutput) Thread.Sleep(1);
+                int health=Interlocked.CompareExchange(ref provider.healths,0,0);
+                if(health!=beforeHealth){Check(health==beforeHealth+1);return request;}
+                Check(Interlocked.CompareExchange(ref output.count,0,0)==beforeOutput+1);
+                string text;lock(output){text=Encoding.ASCII.GetString(output.ToArray());}
+                string[] frames=text.Split(new char[]{'\n'},StringSplitOptions.RemoveEmptyEntries);
+                string expected="{\"version\":1,\"sessionId\":\""+Session+"\",\"requestId\":"+request+",\"attemptId\":\""+Attempt+"\",\"operation\":\"HEALTH\",\"result\":{\"code\":\"BUSY\"}}";
+                Check(frames.Length==beforeOutput+1&&frames[frames.Length-1]==expected&&Interlocked.CompareExchange(ref provider.healths,0,0)==beforeHealth);
+                Thread.Sleep(5);
+            }
+            Check(false);return 0;
+        }
+        // Source-authored only until separately compiled/run. All providers are memory-only.
+        public static int RunServer()
+        {
+            int groups=0;
+            {ServerProvider p=new ServerProvider();Input i=new Input();Output o=new Output();i.Feed(Frame(1,"VERSION"));i.End();RetainedAdbProtocol.RunResult r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");Check(!r.Clean&&p.reserves==0);}groups++;
+            // Wait for actual reader ordinary/output settlement, not merely response LF/Flush entry.
+            {ServerProvider p=new ServerProvider();Input i=new Input();Output o=new Output();RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();
+             i.Feed(Frame(1,"START"));Wait(delegate{return o.count==1;});long next=2;
+             long healthRequest=AwaitHealth(i,o,p,ref next);Wait(delegate{return o.count==healthRequest;});
+             Check(p.reserves==1&&p.starts==1&&p.healths==1);long retireRequest=next++;i.Feed(Frame(retireRequest,"RETIRE"));Wait(delegate{return o.count==retireRequest;});i.End();Check(t.Join(5000)&&r.Clean&&p.retires==1);string text=Encoding.ASCII.GetString(o.ToArray());Check(text.Contains("\"observation\":\"STARTED\"")&&text.Contains("\"observation\":\"HEALTHY\"")&&text.Contains("\"exitCode\":1460"));}groups++;
+            // Pending START can be retired without waiting for its ordinary worker.
+            {ServerProvider p=new ServerProvider();p.Release.Reset();Input i=new Input();Output o=new Output();RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Check(p.Entered.WaitOne(5000));i.Feed(Frame(2,"RETIRE"));Check(p.Retired.WaitOne(5000));Wait(delegate{return o.count==2;});i.End();Check(t.Join(5000)&&r!=null);Check(p.reserves==1&&p.retires==1);}groups++;
+            // Pre-Flush HEALTH is a bounded BUSY reply, never a provider handoff.
+            {ServerProvider p=new ServerProvider();Input i=new Input();Output o=new Output();o.FlushRelease.Reset();RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Check(o.FlushEntered.WaitOne(5000));i.Feed(Frame(2,"HEALTH"));Wait(delegate{return i.waiting;});Check(p.healths==0);o.FlushRelease.Set();Wait(delegate{return o.count==2;});Check(Encoding.ASCII.GetString(o.ToArray()).Contains("\"code\":\"BUSY\""));i.Feed(Frame(3,"RETIRE"));Wait(delegate{return o.count==3;});i.End();Check(t.Join(5000)&&r.Clean);}groups++;
+            // Saturated START+BUSY output must not postpone cleanup or invent a third frame.
+            {ServerProvider p=new ServerProvider();Input i=new Input();Output o=new Output();o.FlushRelease.Reset();RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Check(o.FlushEntered.WaitOne(5000));i.Feed(Frame(2,"HEALTH"));Wait(delegate{return i.waiting;});i.Feed(Frame(3,"RETIRE"));Check(p.Retired.WaitOne(5000));Thread.Sleep(50);Check(p.healths==0&&t.IsAlive);i.End();o.FlushRelease.Set();Check(t.Join(5000)&&!r.Clean&&r.Code=="OUTPUT_FAILED"&&o.count==2);}groups++;
+            // Invalid SESSION facts are never serialized as successful health/start.
+            foreach(string bad in new string[]{"INVOCATION","EXTRA","WRONG_OBSERVATION","LIVE_EXIT"}) {
+                ServerProvider p=new ServerProvider();p.startResult=ServerProvider.SessionFacts("STARTED");
+                if(bad=="INVOCATION")p.startResult=Provider.Facts("VERSION");else if(bad=="EXTRA")p.startResult["private"]=true;else if(bad=="WRONG_OBSERVATION")p.startResult["observation"]="HEALTHY";else p.startResult["exitCode"]=0;
+                Input i=new Input();Output o=new Output();RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Check(p.Retired.WaitOne(5000));i.End();Check(t.Join(5000)&&!r.Clean&&p.retires==1);
+            }groups++;
+            // HEALTH in flight is independently cleanup-preemptible; no second reservation.
+            {ServerProvider p=new ServerProvider();Input i=new Input();Output o=new Output();RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Wait(delegate{return o.count==1;});p.Entered.Reset();p.Release.Reset();long next=2;AwaitHealth(i,o,p,ref next);Check(p.Entered.WaitOne(5000));long retireRequest=next++;i.Feed(Frame(retireRequest,"RETIRE"));Check(p.Retired.WaitOne(5000));Wait(delegate{return o.count==retireRequest;});i.End();Check(t.Join(5000)&&r.Clean&&p.reserves==1&&p.healths==1&&p.retires==1);}groups++;
+            // Parent loss during START triggers retained cleanup, never clean ordinary publication.
+            {ServerProvider p=new ServerProvider();p.Release.Reset();Input i=new Input();Output o=new Output();int live=1;RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return Interlocked.CompareExchange(ref live,1,1)==1;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Check(p.Entered.WaitOne(5000));Interlocked.Exchange(ref live,0);Check(p.Retired.WaitOne(5000));i.End();Check(t.Join(5000)&&!r.Clean&&p.reserves==1&&p.retires==1);}groups++;
+            // A second START cannot create another native attempt in this server session.
+            {ServerProvider p=new ServerProvider();Input i=new Input();Output o=new Output();RetainedAdbProtocol.RunResult r=null;Thread t=new Thread(delegate(){r=RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},false,"SERVER_ONLY");});t.IsBackground=true;t.Start();i.Feed(Frame(1,"START"));Wait(delegate{return o.count==1;});i.Feed(Frame(2,"START"));Check(p.Retired.WaitOne(5000));i.End();Check(t.Join(5000)&&!r.Clean&&p.reserves==1&&p.starts==1);}groups++;
+            return groups;
         }
         public static int RunAll()
         {

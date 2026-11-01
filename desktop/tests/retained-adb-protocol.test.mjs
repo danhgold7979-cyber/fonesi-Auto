@@ -39,7 +39,7 @@ function before(text, left, right) {
     `${left} before ${right}`,
   );
 }
-test('reviewed native custody helpers and fixed provider adapter have no new interop or server handoff', () => {
+test('reviewed native custody helpers and fixed provider adapter have no new interop and dispatch only existing native methods', () => {
   for (const [name, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
     ['RetainedAdbSession.cs', 'c22e40441fb6bc9bd7d1b1b1aaced656572c3ded8c2666d006449dd8b2f45470'],
@@ -57,7 +57,7 @@ test('reviewed native custody helpers and fixed provider adapter have no new int
   );
   assert.doesNotMatch(
     source,
-    /DllImport|static extern|Process\.Start|StartForeground\(|\.Health\(|kill-server|start-server|JavaScriptSerializer|JsonConvert|System\.Text\.Json/,
+    /DllImport|static extern|Process\.Start|kill-server|start-server|JavaScriptSerializer|JsonConvert|System\.Text\.Json/,
   );
 });
 test('actual TS bridge VERSION frame matches extracted native five-key grammar byte for byte', async () => {
@@ -242,4 +242,44 @@ test('diagnostics are opt-in fixed first-occurrence slots and managed fixture co
   );
   assert.match(bootstrap, /\$progressSlots.ContainsKey\(\$Slot\)/);
   assert.match(bootstrap, /HOST_BOOTSTRAP_PROGRESS_/);
+});
+
+test('SERVER_ONLY scope retains live SESSION identity, bounded health and cleanup before output admission', () => {
+  assert.match(source, /StartForeground\(object attempt\)/);
+  assert.match(
+    source,
+    /provider\.StartForeground\(attempt as IsolatedAdbServer\.RetainedProvider\.Attempt\)/,
+  );
+  assert.match(
+    source,
+    /provider\.Health\(attempt as IsolatedAdbServer\.RetainedProvider\.Attempt\)/,
+  );
+  assert.match(source, /diagnostics, "VERSION_ONLY"/);
+  assert.match(source, /operationSet != "VERSION_ONLY" && operationSet != "SERVER_ONLY"/);
+  assert.match(
+    source,
+    /string\[\] sessionKeys = \{ "version", "kind", "dispatched", "jobState", "exitCode", "endpointState", "observation" \}/,
+  );
+  const dispatch = source.slice(
+    source.indexOf('void DispatchServer('),
+    source.indexOf('void ReadLoop()'),
+  );
+  before(dispatch, 'Cleanup(attempt, request); return;', 'outstanding != 0');
+  assert.match(dispatch, /attempt.healthCalls >= 128/);
+  assert.match(dispatch, /attempt.healthCalls\+\+/);
+  assert.match(dispatch, /attempt.id != request.AttemptId/);
+  assert.match(dispatch, /attempt != null \|\| reserving \|\| seen.Count != 0/);
+  assert.match(source, /outstanding >= OutputLimit \|\| writeFailed/);
+  assert.match(fixture, /public static int RunServer\(\)/);
+  assert.match(fixture, /r.Code=="OUTPUT_FAILED"&&o.count==2/);
+  assert.match(fixture, /p.healths==0/);
+  const bootstrap = readFileSync(
+    new URL('../launch/Invoke-RetainedHost.ps1', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    bootstrap,
+    /\$b.operationSet -cne 'VERSION_ONLY' -and \$b.operationSet -cne 'SERVER_ONLY'/,
+  );
+  assert.match(bootstrap, /\$adapter,\$admission.Liveness\(\),\$true,\$b.operationSet/);
 });

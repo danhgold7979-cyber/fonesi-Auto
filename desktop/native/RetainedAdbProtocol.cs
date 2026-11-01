@@ -1,4 +1,4 @@
-// Fixed private VERSION_ONLY reader. Compile with unchanged IsolatedAdbServer/RetainedAdbSession.
+// Fixed private VERSION_ONLY / SERVER_ONLY reader. Compile with unchanged IsolatedAdbServer/RetainedAdbSession.
 // Source implementation and managed-fixture seam, not evidence of native execution.
 using System;
 using System.Collections.Generic;
@@ -24,6 +24,8 @@ namespace Fonesi.Development.Server
         {
             object Reserve(string kind);
             IDictionary<string, object> Version(object attempt);
+            IDictionary<string, object> StartForeground(object attempt);
+            IDictionary<string, object> Health(object attempt);
             IDictionary<string, object> Retire(object attempt);
         }
         public sealed class NativeProvider : IProvider
@@ -32,9 +34,13 @@ namespace Fonesi.Development.Server
             public NativeProvider(IsolatedAdbServer.RetainedProvider provider)
             { if (provider == null) throw new ArgumentException("ADMISSION_REJECTED"); this.provider = provider; }
             public object Reserve(string kind)
-            { if (kind != "VERSION") throw new ArgumentException("ADMISSION_REJECTED"); return provider.Reserve("VERSION"); }
+            { if (kind != "VERSION" && kind != "FOREGROUND") throw new ArgumentException("ADMISSION_REJECTED"); return provider.Reserve(kind); }
             public IDictionary<string, object> Version(object attempt)
             { return provider.Version(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
+            public IDictionary<string, object> StartForeground(object attempt)
+            { return provider.StartForeground(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
+            public IDictionary<string, object> Health(object attempt)
+            { return provider.Health(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
             public IDictionary<string, object> Retire(object attempt)
             { return provider.Retire(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
         }
@@ -64,7 +70,8 @@ namespace Fonesi.Development.Server
         {
             internal readonly string id; internal readonly object token;
             internal Thread ordinary, cleanup;
-            internal bool terminal, cleanupIssued, retiring, publicationStarted;
+            internal bool terminal, cleanupIssued, retiring, publicationStarted, live;
+            internal int healthCalls;
             internal int frames;
             internal long ordinaryStarted, cleanupStarted;
             internal Attempt(string id, object token) { this.id = id; this.token = token; }
@@ -76,16 +83,46 @@ namespace Fonesi.Development.Server
         }
         sealed class Facts
         {
-            internal readonly string json; internal readonly bool terminal;
-            internal Facts(string json, bool terminal) { this.json = json; this.terminal = terminal; }
+            internal readonly string json; internal readonly bool terminal, live;
+            internal Facts(string json, bool terminal) : this(json, terminal, false) { }
+            internal Facts(string json, bool terminal, bool live) { this.json = json; this.terminal = terminal; this.live = live; }
         }
-        static Facts Snapshot(IDictionary<string, object> input)
+        static bool SessionExit(object value)
+        {
+            if (value == null) return true;
+            if (!(value is int) && !(value is long) && !(value is uint)) return false;
+            long number = Convert.ToInt64(value, CultureInfo.InvariantCulture);
+            return number >= -2147483648L && number <= 4294967295L;
+        }
+        static Facts Snapshot(IDictionary<string, object> input, bool server, string operation)
         {
             if (input == null) throw new InvalidDataException();
             Dictionary<string, object> v = new Dictionary<string, object>();
-            foreach (KeyValuePair<string, object> pair in input) { if (v.Count == 6 || v.ContainsKey(pair.Key)) throw new InvalidDataException(); v.Add(pair.Key, pair.Value); }
+            foreach (KeyValuePair<string, object> pair in input) { if (v.Count == 7 || v.ContainsKey(pair.Key)) throw new InvalidDataException(); v.Add(pair.Key, pair.Value); }
             if (v.Count == 1 && v.ContainsKey("code") && v["code"] is string && Array.IndexOf(Errors, (string)v["code"]) >= 0)
                 return new Facts("{\"code\":\"" + (string)v["code"] + "\"}", false);
+            if (server) {
+                string[] sessionKeys = { "version", "kind", "dispatched", "jobState", "exitCode", "endpointState", "observation" };
+                if (v.Count != sessionKeys.Length) throw new InvalidDataException();
+                foreach (string key in sessionKeys) if (!v.ContainsKey(key)) throw new InvalidDataException();
+                if (!(v["version"] is int) || (int)v["version"] != 2 || !(v["kind"] is string) || (string)v["kind"] != "SESSION" ||
+                    !(v["dispatched"] is bool) || !(v["jobState"] is string) || !(v["endpointState"] is string) ||
+                    !SessionExit(v["exitCode"]) || (v["observation"] != null && !(v["observation"] is string))) throw new InvalidDataException();
+                string job = (string)v["jobState"], endpoint = (string)v["endpointState"], observation = v["observation"] as string;
+                bool dispatchedSession = (bool)v["dispatched"];
+                if (Array.IndexOf(new string[]{"LIVE","RETIRED","UNKNOWN"}, job) < 0 ||
+                    Array.IndexOf(new string[]{"OWNED","ABSENT","UNKNOWN"}, endpoint) < 0 ||
+                    (job == "LIVE" && v["exitCode"] != null) || (!dispatchedSession && (observation != null || v["exitCode"] != null))) throw new InvalidDataException();
+                bool terminalSession = job == "RETIRED" && endpoint == "ABSENT" && (dispatchedSession ? v["exitCode"] != null : v["exitCode"] == null);
+                string expected = operation == "START" ? "STARTED" : operation == "HEALTH" ? "HEALTHY" : "STOPPED";
+                if (observation != null && (observation != expected || !dispatchedSession ||
+                    (operation == "RETIRE" ? !terminalSession : job != "LIVE" || endpoint != "OWNED" || v["exitCode"] != null))) throw new InvalidDataException();
+                string sessionExit = v["exitCode"] == null ? "null" : Convert.ToInt64(v["exitCode"], CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+                return new Facts("{\"version\":2,\"kind\":\"SESSION\",\"dispatched\":" + (dispatchedSession ? "true" : "false") +
+                    ",\"jobState\":\"" + job + "\",\"exitCode\":" + sessionExit + ",\"endpointState\":\"" + endpoint +
+                    "\",\"observation\":" + (observation == null ? "null" : "\"" + observation + "\"") + "}", terminalSession,
+                    observation != null && operation != "RETIRE");
+            }
             string[] keys = { "version", "kind", "dispatched", "processRetired", "exitCode", "observation" };
             if (v.Count != keys.Length) throw new InvalidDataException(); foreach (string key in keys) if (!v.ContainsKey(key)) throw new InvalidDataException();
             if (!(v["version"] is int) || (int)v["version"] != 2 || !(v["kind"] is string) || (string)v["kind"] != "INVOCATION" ||
@@ -101,7 +138,7 @@ namespace Fonesi.Development.Server
         }
         sealed class Reader
         {
-            readonly bool diagnostics;
+            readonly bool diagnostics, server;
             int diagnosticSlots;
             enum ProgressSlot { REQUEST_ACCEPTED, PROVIDER_ENTERED, RESPONSE_WRITE, RESPONSE_FLUSH }
             void Progress(ProgressSlot slot)
@@ -130,8 +167,8 @@ namespace Fonesi.Development.Server
             string failure;
             long closeStarted = -1, writeStarted = -1, lastRequest;
             int outstanding;
-            internal Reader(Stream input, Stream output, string session, IProvider provider, Func<bool> parentAlive, bool diagnostics)
-            { this.input = input; this.output = output; this.session = session; this.provider = provider; this.parentAlive = parentAlive; this.diagnostics = diagnostics; }
+            internal Reader(Stream input, Stream output, string session, IProvider provider, Func<bool> parentAlive, bool diagnostics, string operationSet)
+            { this.server = operationSet == "SERVER_ONLY"; this.input = input; this.output = output; this.session = session; this.provider = provider; this.parentAlive = parentAlive; this.diagnostics = diagnostics; }
             void Stop(string code)
             {
                 lock (gate) { stopping = true; if (code != null && failure == null) failure = code; if (closeStarted < 0) closeStarted = elapsed.ElapsedMilliseconds; Monitor.PulseAll(gate); }
@@ -151,9 +188,9 @@ namespace Fonesi.Development.Server
             void Worker(Attempt attempt, Request request, bool cleanup)
             {
                 Facts facts;
-                try { Progress(ProgressSlot.PROVIDER_ENTERED); facts = Snapshot(cleanup ? provider.Retire(attempt.token) : provider.Version(attempt.token)); }
+                try { Progress(ProgressSlot.PROVIDER_ENTERED); facts = Snapshot(cleanup ? provider.Retire(attempt.token) : !server ? provider.Version(attempt.token) : request.Operation == "START" ? provider.StartForeground(attempt.token) : provider.Health(attempt.token), server, cleanup ? "RETIRE" : request.Operation); }
                 catch { facts = new Facts("{\"code\":\"UNRETIRED\"}", false); lock (gate) { attempt.terminal = false; Stop("PROVIDER_FAILED"); } }
-                lock (gate) { attempt.terminal = facts.terminal; if (!facts.terminal && cleanup) Stop("UNRETIRED"); }
+                lock (gate) { attempt.terminal = facts.terminal; attempt.live = facts.live && !attempt.retiring; if (!facts.terminal && cleanup) Stop("UNRETIRED"); }
                 if (request != null) Enqueue(request, attempt, facts);
                 lock (gate) { Monitor.PulseAll(gate); }
             }
@@ -170,7 +207,7 @@ namespace Fonesi.Development.Server
             {
                 if (!ParentAlive()) { lock (gate) { reserving = false; } Stop("PARENT_LOST"); return; }
                 object token = null;
-                try { token = provider.Reserve("VERSION"); if (token == null) throw new InvalidDataException(); }
+                try { token = provider.Reserve(server ? "FOREGROUND" : "VERSION"); if (token == null) throw new InvalidDataException(); }
                 catch { lock (gate) { reserving = false; } Stop("PROVIDER_FAILED"); return; }
                 bool parentCurrent = ParentAlive();
                 lock (gate) {
@@ -199,8 +236,9 @@ namespace Fonesi.Development.Server
             }
             void Dispatch(Request request)
             {
-                // Fixed bootstrap scope; START/HEALTH rejected before Reserve or provider handoff.
-                if (request.Operation != "VERSION" && request.Operation != "RETIRE") { Stop("OPERATION_REJECTED"); return; }
+                // Immutable scope checked before reservation or provider handoff.
+                if (server ? request.Operation == "VERSION" : request.Operation != "VERSION" && request.Operation != "RETIRE") { Stop("OPERATION_REJECTED"); return; }
+                if (server) { DispatchServer(request); return; }
                 Progress(ProgressSlot.REQUEST_ACCEPTED);
                 Attempt attempt;
                 lock (gate) {
@@ -222,6 +260,35 @@ namespace Fonesi.Development.Server
                     }
                 }
                 if (request.Operation == "RETIRE") { Cleanup(attempt, request); return; }
+                StartVersion(request);
+            }
+            void DispatchServer(Request request)
+            {
+                if (!ParentAlive()) { Stop("PARENT_LOST"); return; }
+                Progress(ProgressSlot.REQUEST_ACCEPTED);
+                Attempt attempt;
+                lock (gate) {
+                    if (stopping) return;
+                    attempt = current;
+                    if (request.Operation == "START") {
+                        if (attempt != null || reserving || seen.Count != 0) { Stop("PROTOCOL_FAILED"); return; }
+                        seen.Add(request.AttemptId); reserving = true;
+                    } else {
+                        if (attempt == null || attempt.id != request.AttemptId) { Stop("PROTOCOL_FAILED"); return; }
+                        if (request.Operation == "RETIRE") {
+                            // Cleanup effects do not wait for output capacity or ordinary completion.
+                            Cleanup(attempt, request); return;
+                        }
+                        if (attempt.retiring || attempt.terminal) { Stop("PROTOCOL_FAILED"); return; }
+                        if (!attempt.live || !Done(attempt.ordinary) || !Done(attempt.cleanup) || outstanding != 0 || attempt.frames != 0 || attempt.healthCalls >= 128) {
+                            Enqueue(request, attempt, new Facts("{\"code\":\"BUSY\"}", false)); return;
+                        }
+                        attempt.healthCalls++;
+                        attempt.ordinaryStarted = elapsed.ElapsedMilliseconds;
+                        attempt.ordinary = new Thread(delegate() { Worker(attempt, request, false); });
+                        attempt.ordinary.IsBackground = true; attempt.ordinary.Start(); return;
+                    }
+                }
                 StartVersion(request);
             }
             void ReadLoop()
@@ -300,9 +367,14 @@ namespace Fonesi.Development.Server
         { return Run(input, output, sessionId, provider, parentAlive, false); }
         public static RunResult Run(Stream input, Stream output, string sessionId, IProvider provider, Func<bool> parentAlive, bool diagnostics)
         {
+            return Run(input, output, sessionId, provider, parentAlive, diagnostics, "VERSION_ONLY");
+        }
+        public static RunResult Run(Stream input, Stream output, string sessionId, IProvider provider, Func<bool> parentAlive, bool diagnostics, string operationSet)
+        {
+            if (operationSet != "VERSION_ONLY" && operationSet != "SERVER_ONLY") return new RunResult(false, "ADMISSION_REJECTED");
             if (input == null || output == null || !input.CanRead || !output.CanWrite || sessionId == null || !Uuid.IsMatch(sessionId) || provider == null || parentAlive == null)
                 return new RunResult(false, "ADMISSION_REJECTED");
-            try { return new Reader(input, output, sessionId, provider, parentAlive, diagnostics).Run(); }
+            try { return new Reader(input, output, sessionId, provider, parentAlive, diagnostics, operationSet).Run(); }
             catch { return new RunResult(false, "UNRETIRED"); }
         }
     }

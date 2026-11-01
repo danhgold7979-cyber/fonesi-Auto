@@ -1916,6 +1916,20 @@
           "PLATFORM_TOOLS_PRIOR_36_CANDIDATE": "value"
         }
       }
+    },
+    "main/adb-server-service.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-host-lifecycle.ts": {
+          "snapshotHostRequest": "value",
+          "HostRequest": "type",
+          "HostResult": "type",
+          "HostState": "type"
+        },
+        "./adb-host-factory.ts": {
+          "createHostFactory": "type"
+        }
+      }
     }
   }
 }

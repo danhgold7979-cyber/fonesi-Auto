@@ -610,3 +610,27 @@ test('fixed helper leaf retains bootstrap UUID and refuses every legacy predeces
   assert.throws(() => j.inspect(f.parent, f.launch));
   assert.deepEqual(snapshot(f.parent), before);
 });
+
+test('retained bootstrap scope is exactly VERSION_ONLY or SERVER_ONLY with unchanged ownership and cleanup gates', (t) => {
+  const f = fixture(t),
+    h = hostMain(f),
+    file = path.join(h.root, 'bootstrap.json');
+  for (const operationSet of ['VERSION_ONLY', 'SERVER_ONLY']) {
+    fs.writeFileSync(file, JSON.stringify({ ...h.bootstrap, operationSet }));
+    assert.deepEqual(j.inspect(f.parent, f.launch).hostSessions, ['.host-session']);
+    assert.throws(() => j.appendIntent(f.parent, f.launch, 7, 'RELEASE'));
+  }
+  for (const operationSet of [
+    null,
+    'SERVER_ONLY\n',
+    'server_only',
+    'VERSION_AND_SERVER',
+    {},
+    false,
+  ]) {
+    fs.writeFileSync(file, JSON.stringify({ ...h.bootstrap, operationSet }));
+    const before = snapshot(f.parent);
+    assert.throws(() => j.inspect(f.parent, f.launch));
+    assert.deepEqual(snapshot(f.parent), before);
+  }
+});

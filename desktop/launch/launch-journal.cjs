@@ -460,7 +460,7 @@ function hostSession(root, header, receipt) {
   ]);
   if (
     b.version !== 2 ||
-    b.operationSet !== 'VERSION_ONLY' ||
+    !['VERSION_ONLY', 'SERVER_ONLY'].includes(b.operationSet) ||
     !uuid(b.sessionId) ||
     b.launchId !== header.launchId ||
     b.storeId !== header.storeId ||

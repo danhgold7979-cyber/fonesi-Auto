@@ -21,11 +21,19 @@ export function createHostAdapter(
       'acquireRead' | 'revalidateRead' | 'assertRead' | 'releaseRead'
     >;
     nativeProvider: HostNativeProvider;
+    operationSet?: 'VERSION_ONLY' | 'SERVER_ONLY';
     assertOwnedSync(): void;
     now(): number;
     diagnosticId(): string;
   }>,
 ) {
+  const operationSet = options.operationSet;
+  if (
+    operationSet !== undefined &&
+    operationSet !== 'VERSION_ONLY' &&
+    operationSet !== 'SERVER_ONLY'
+  )
+    throw Error('HOST_SCOPE');
   const custody = options.runtimeCustody,
     owned = options.assertOwnedSync.bind(options),
     clock = options.now.bind(options),
@@ -190,6 +198,7 @@ export function createHostAdapter(
     },
   });
   return Object.freeze({
+    snapshot: engine.snapshot,
     grant(ownerId: string, admit: () => void): HostCapability {
       if (closed || uncertain || !uuid(ownerId) || typeof admit !== 'function')
         throw Error('HOST_AUTHORITY');
@@ -201,6 +210,13 @@ export function createHostAdapter(
     async execute(cap: HostCapability, raw: unknown): Promise<HostResult> {
       const plan = compileHostPlan(raw);
       if (!plan.ok) return result(plan.code);
+      if (
+        (operationSet === 'VERSION_ONLY' &&
+          plan.plan.kind !== 'VERSION' &&
+          plan.plan.kind !== 'RETIRE') ||
+        (operationSet === 'SERVER_ONLY' && plan.plan.kind === 'VERSION')
+      )
+        return result('NOT_READY');
       if (closed) return result('CLOSED');
       if (uncertain) return result('RECOVERY_REQUIRED');
       if (busy || works.size || releasing || (plan.plan.kind === 'VERSION' && attempt !== null))

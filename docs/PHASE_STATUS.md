@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 18:06 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 18:36 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 **P2-01 TECHNICAL_PASS / DEPENDENCIES_PENDING**, accepted18:06 UTC after independent exact four-stage rollback proof: CI41333874497/publica68e6a62, source1195/109/274 and current managed10 PASS; genuine36→37→rollback36→reopen36 with all64 stage +11 bootstrap predicates and owned cleanup PASS. [Original-criterion audit](evidence/P2-01-canonical-criterion-audit-2026-11-01.md). Phase2 technical1/13; overall11/154≈7.14%; formal accepted0. Next original task is **P2-02 — owned ADB server lifecycle (task2 of13)**; actual server eligibility remains constrained by the preserved absent-profile guard.
 
@@ -10,7 +10,9 @@ Current [four-stage rollback evidence](evidence/P2-retained-rollback-windows-cam
 
 Reviewed metadata: [exact36.0.0 retained prior](evidence/P2-prior-360-metadata-2026-11-01.md) is admitted alongside unchanged37.0.1 INSTALL target. Official bytes/NOTICE/provenance limitations remain documented. The current accepted campaign now verifies both genuine releases and prior-runtime restoration; metadata alone still grants no installed runtime or rollback authority.
 
-Current active requirement: **P2-02 — ADB server lifecycle**. P2-01 exact app-local delivery/invocation and retained-runtime restoration now pass their adopted technical contract. The next real server start/health/close proof requires a genuinely eligible owned Windows profile; prior existing `.android` refusal is not bypassed. No server/device capability is implied by VERSION or rollback acceptance.
+Current active requirement: **P2-02 — ADB server lifecycle**. The [private retained server integration](evidence/P2-retained-server-source-2026-11-01.md) now has reviewed source and stitched143-file software evidence: explicit SERVER_ONLY routing/controller, unchanged VERSION_ONLY default, no main/renderer activation. A separate current-source four-C# /19 fake-provider-group Windows gate is prepared; actual compilation/managed result remains NOT_RUN pending CI. Existing rollback native opt-in is suspended, old accepted proofs remain historical exact-byte evidence. Actual server eligibility remains blocked by the native profile prerequisite; this source progress does not add a second accepted task. Expected hosted1219/109/277 is not an actual result.
+
+P2-01 remains accepted: P2-01 exact app-local delivery/invocation and retained-runtime restoration now pass their adopted technical contract. The next real server start/health/close proof requires a genuinely eligible owned Windows profile; prior existing `.android` refusal is not bypassed. No server/device capability is implied by VERSION or rollback acceptance.
 
 Historical recipient source checkpoint: integration public `611c56e0cd90761f51d7becf996c613ed3ad3e24`
 passed Windows source CI `41279086636` (883 desktop /109 foundation /205 Python; native skipped).
