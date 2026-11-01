@@ -97,68 +97,73 @@ function runObserver() {
   function fail(error) {
     if (failed) return;
     failed = true;
-    const e = factory?.evidence;
-    let contextFacts = {};
-    if (phase === 'ADMISSION' && reason(error) === 'HOST_CONTEXT_REJECTED') {
-      try {
-        const file = path.resolve(__dirname, '../build/adb-host-factory.cjs');
-        const manifest = JSON.parse(
-          bounded(path.resolve(__dirname, '../build/.verified-build.json'), 65536),
-        );
-        const source = bounded(file, 8388608).toString('utf8');
-        let system = {};
+    try {
+      const e = factory?.evidence;
+      let contextFacts = {};
+      if (phase === 'ADMISSION' && reason(error) === 'HOST_CONTEXT_REJECTED') {
         try {
-          const exe = path.join(
-            process.env.SystemRoot,
-            'System32',
-            'WindowsPowerShell',
-            'v1.0',
-            'powershell.exe',
+          const file = path.resolve(__dirname, '../build/adb-host-factory.cjs');
+          const manifest = JSON.parse(
+            bounded(path.resolve(__dirname, '../build/.verified-build.json'), 65536),
           );
-          const stat = fs.lstatSync(exe);
-          system = {
-            SYSTEMREGULAR: stat.isFile(),
-            SYSTEMREPARSE: stat.isSymbolicLink(),
-            SYSTEMSINGLELINK: stat.nlink === 1,
-            SYSTEMCANONICAL: fs.realpathSync.native(exe) === exe,
-          };
+          const source = bounded(file, 8388608).toString('utf8');
+          let system = {};
+          try {
+            const exe = path.join(
+              process.env.SystemRoot,
+              'System32',
+              'WindowsPowerShell',
+              'v1.0',
+              'powershell.exe',
+            );
+            const stat = fs.lstatSync(exe);
+            system = {
+              SYSTEMREGULAR: stat.isFile(),
+              SYSTEMREPARSE: stat.isSymbolicLink(),
+              SYSTEMSINGLELINK: stat.nlink === 1,
+              SYSTEMCANONICAL: fs.realpathSync.native(exe) === exe,
+            };
+          } catch {
+            /* unavailable diagnostic only */
+          }
+          contextFacts = contextDiagnostic(
+            error,
+            source,
+            file,
+            manifest.outputs['adb-host-factory.cjs'],
+            system,
+          );
         } catch {
           /* unavailable diagnostic only */
         }
-        contextFacts = contextDiagnostic(
-          error,
-          source,
-          file,
-          manifest.outputs['adb-host-factory.cjs'],
-          system,
-        );
-      } catch {
-        /* unavailable diagnostic only */
       }
+      const values = {
+        ...contextFacts,
+        ...progressDiagnostic(e),
+        ...pipeDiagnostic(pipeFacts),
+        REASON: reason(error),
+        OUTCOME: hostResult?.outcome,
+        CODE: hostResult?.code,
+        HELPERSTATE: e?.helperState,
+        HELPERPHASE: e?.phase,
+        HELPEREXIT: e?.exit,
+      };
+      for (const [slot, allowed] of Object.entries(DIAGNOSTICS)) {
+        if (pipeEmitted && Object.hasOwn(PIPE_DIAGNOSTICS, slot)) continue;
+        const value = allowed.includes(values[slot]) ? values[slot] : 'UNAVAILABLE';
+        fs.writeSync(2, `RETAINED_HOST_DIAGNOSTIC_${slot}_${value}\n`);
+      }
+      pipeEmitted = true;
+      fs.writeSync(
+        2,
+        `RETAINED_HOST_PHASE_${PHASES.includes(phase) ? phase : 'PREPARE'}\nRETAINED_HOST_FAILED\n`,
+      );
+    } catch {
+      // A thrown diagnostic write must not suppress the failure exit. No raw fallback.
+    } finally {
+      clearTimeout(deadline);
+      app.exit(1);
     }
-    const values = {
-      ...contextFacts,
-      ...progressDiagnostic(e),
-      ...pipeDiagnostic(pipeFacts),
-      REASON: reason(error),
-      OUTCOME: hostResult?.outcome,
-      CODE: hostResult?.code,
-      HELPERSTATE: e?.helperState,
-      HELPERPHASE: e?.phase,
-      HELPEREXIT: e?.exit,
-    };
-    for (const [slot, allowed] of Object.entries(DIAGNOSTICS)) {
-      if (pipeEmitted && Object.hasOwn(PIPE_DIAGNOSTICS, slot)) continue;
-      const value = allowed.includes(values[slot]) ? values[slot] : 'UNAVAILABLE';
-      fs.writeSync(2, `RETAINED_HOST_DIAGNOSTIC_${slot}_${value}\n`);
-    }
-    pipeEmitted = true;
-    fs.writeSync(
-      2,
-      `RETAINED_HOST_PHASE_${PHASES.includes(phase) ? phase : 'PREPARE'}\nRETAINED_HOST_FAILED\n`,
-    );
-    clearTimeout(deadline);
-    app.exit(1);
   }
   function current() {
     try {

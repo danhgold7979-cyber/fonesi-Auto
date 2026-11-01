@@ -391,3 +391,40 @@ Frozen four-case diagnostic SHA256 values:
 - `desktop/verification/retained-host-main-probe.cjs`: `55d90ba5eb2d4206bfbe87c6e6a119768f02450fe93a694ce3a5798c9eddb481`.
 - `desktop/verification/Invoke-RetainedHostCheck.ps1`: `112c0236b17d1bbfd6cab5b2e49434e8ada9917b4efec4a7c030af6b96b496a8`.
 - `.github/workflows/phase-02-software.yml`: `21f8950cdd19790771751cb25771a9b82e3b0e8084bcea8c543f7618fa3bd2b6`.
+
+## Actual four-case campaign — 11:50 UTC
+
+Public `6800f519d1b3c02c697120133a82fd7f3a7b2bce` / run41302960438 passes
+1037/109/232 source checks. Managed artifact13081538979 is the same414-byte strict
+PASS (`41e93f3cef944512e6d48d2ebebe526f7c56615c7d66a3aab1e542d177b82a0d`).
+Native artifact13081369413 is390 bytes, SHA256
+`94c61e0838064cd0b3548732c1a6519b2d3241e85eefffe2c73eb688ca75b277`:
+TIMEOUT/null exit, outer cleanup true, untruncated, no bootstrap/observation,
+directory cleanup false, passed false. No four-case vector was forwarded.
+
+The existing forwarding gate excludes TIMEOUT before even invoking the diagnostic
+reader; that reader independently excludes it. Consequently absence of a vector does
+not establish that the observer emitted nothing or identify a path/parameter cause.
+Source inspection finds bounded asynchronous case timers but cannot exclude a blocking
+synchronous filesystem/spawn/diagnostic write. No deadline, policy, production argv,
+path admission or acceptance change is justified from this result. Current native
+VERSION/EOF and all four-case observations remain unproved.
+
+The corrective diagnostic batch does not modify product/native source. It adds a separate
+read-only route for an exact TIMEOUT/null/cleanup-complete/untruncated outer result.
+Source/copy/owner admission precedes fixed20-slot snapshots of existing owned directories,
+scripts, entry witnesses, profiles and deep chains. Unknown/partial/malformed entries
+remain fixed classifications; no pending capture or journal result is adopted. These
+are post-retirement filesystem observations only. Original Retired/Require/PASS and
+cleanup gates stay unchanged; TIMEOUT still fails and retained directories stay intact.
+The observer's diagnostic construction/writes now use a failure-exit finally block,
+with no raw fallback. This fixes a reproduced thrown-write exit omission, not an
+unproved permanently blocked write or the hosted timeout cause.
+
+Affected author checks: control20/20 (six new timeout cases), observer/contract16/16
+(one new thrown-write case), four changed JS files warning-level quality PASS. Counts
+overlap prior passing suites; no new full aggregate or native outcome is claimed.
+Frozen timeout diagnostic SHA256 values:
+- `desktop/verification/retained-host-control.cjs`: `221ad293ba71ca5ec52b2584477ac6061ef40ef232045227bc60a7131b95baa7`.
+- `desktop/verification/retained-host-main-probe.cjs`: `50bc59a8c42d53e92425908aad2418851466a321d7d8fa47d1e277c78c7518fa`.
+- `desktop/verification/Invoke-RetainedHostCheck.ps1`: `706602e0378448da7b7cd811515add6accc51d2ec16e52b2c5043ad1625b10b7`.

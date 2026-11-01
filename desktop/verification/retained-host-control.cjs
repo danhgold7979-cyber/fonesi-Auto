@@ -571,6 +571,176 @@ async function inspect(root) {
   });
   return s;
 }
+// Read-only, non-authoritative snapshots after an exact outer TIMEOUT cleanup report.
+const TIMEOUT_FIELDS = Object.freeze({
+  DIRECTORY: Object.freeze(['ABSENT', 'VALID', 'INVALID']),
+  SCRIPT: Object.freeze(['ABSENT', 'MATCH', 'INVALID']),
+  ENTRY: Object.freeze(['ABSENT', 'MATCH', 'INVALID']),
+  PROFILE: Object.freeze(['ABSENT', 'EMPTY', 'NONEMPTY', 'INVALID']),
+  CHAIN: Object.freeze(['ABSENT', 'COMPLETE', 'PARTIAL', 'INVALID', 'NOT_APPLICABLE']),
+});
+const TIMEOUT_VECTOR = Object.freeze(
+  Object.fromEntries(
+    require('./retained-pipe-startup.cjs').CASES.flatMap((c) =>
+      Object.entries(TIMEOUT_FIELDS).map(([field, values]) => [
+        c.mode.toUpperCase() + '_' + field,
+        values,
+      ]),
+    ),
+  ),
+);
+function timeoutSnapshot(root) {
+  const owner = owned(root),
+    outer = parseCapture(read(path.join(root, 'launcher-capture.json'))),
+    p = outer.process;
+  if (
+    p.status !== 'TIMEOUT' ||
+    p.exitCode !== null ||
+    p.cleanupComplete !== true ||
+    p.stdoutTruncated !== false ||
+    p.stderrTruncated !== false
+  )
+    fail('RETAINED_HOST_RETIREMENT');
+  const { CASES, ENTRY, BOOTSTRAP, materializeScript } = require('./retained-pipe-startup.cjs');
+  const result = {};
+  function present(file) {
+    try {
+      fs.lstatSync(file);
+      return true;
+    } catch (error) {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+  function directory(dir, allowed) {
+    plain(dir);
+    const list = entries(dir, allowed.length);
+    if (
+      list.some(
+        (e) =>
+          !allowed.includes(e.name) ||
+          (e.stat.isFile() && (e.stat.nlink !== 1 || e.stat.size > 16384)),
+      ) ||
+      !binary(path.join(dir, '.owner'), 36).equals(Buffer.from(owner, 'ascii'))
+    )
+      fail('RETAINED_HOST_OWNER');
+    return list;
+  }
+  function match(file, expected, limit) {
+    return !present(file)
+      ? 'ABSENT'
+      : binary(file, limit).equals(Buffer.from(expected))
+        ? 'MATCH'
+        : 'INVALID';
+  }
+  function profile(dir) {
+    if (!present(dir)) return 'ABSENT';
+    plain(dir);
+    const plan = tree(dir, 8388608);
+    if (plan.entries.some((e) => e.stat.isFile() && e.stat.nlink !== 1))
+      fail('RETAINED_HOST_OWNER');
+    return plan.entries.length ? 'NONEMPTY' : 'EMPTY';
+  }
+  for (const c of CASES) {
+    const prefix = c.mode.toUpperCase() + '_',
+      dir = path.join(root, c.directory);
+    const values = {
+      DIRECTORY: 'ABSENT',
+      SCRIPT: 'ABSENT',
+      ENTRY: 'ABSENT',
+      PROFILE: 'ABSENT',
+      CHAIN: c.deep ? 'ABSENT' : 'NOT_APPLICABLE',
+    };
+    try {
+      values.DIRECTORY = 'INVALID';
+      const exists = present(dir);
+      if (!exists) values.DIRECTORY = 'ABSENT';
+      if (exists) {
+        values.DIRECTORY = 'INVALID';
+        const list = directory(dir, [
+          '.owner',
+          'fixture.ps1',
+          'entry.txt',
+          ...(!c.deep ? ['profile'] : []),
+          ...(c.mode === 'plainShort' ? ['bootstrap.json'] : []),
+        ]);
+        if (list.some((e) => (e.name === 'profile' ? !e.stat.isDirectory() : !e.stat.isFile())))
+          fail('RETAINED_HOST_OWNER');
+        if (
+          c.mode === 'plainShort' &&
+          present(path.join(dir, 'bootstrap.json')) &&
+          match(path.join(dir, 'bootstrap.json'), BOOTSTRAP, 512) !== 'MATCH'
+        )
+          fail('RETAINED_HOST_OWNER');
+        values.DIRECTORY = 'VALID';
+        try {
+          values.SCRIPT = match(
+            path.join(dir, 'fixture.ps1'),
+            materializeScript(c.parameters),
+            16384,
+          );
+        } catch {
+          values.SCRIPT = 'INVALID';
+        }
+        try {
+          values.ENTRY = match(path.join(dir, 'entry.txt'), ENTRY, 128);
+        } catch {
+          values.ENTRY = 'INVALID';
+        }
+      }
+      if (c.deep) {
+        const names = [c.deep, 'Fonesi-Auto-' + owner, 'launch-' + owner, 'host-session-' + owner];
+        let cursor = root;
+        for (let index = 0; index < names.length; index++) {
+          cursor = path.join(cursor, names[index]);
+          if (!present(cursor)) {
+            values.CHAIN = index === 0 ? 'ABSENT' : 'PARTIAL';
+            break;
+          }
+          values.CHAIN = 'INVALID';
+          const child = index === names.length - 1 ? 'profile' : names[index + 1];
+          const list = directory(cursor, ['.owner', child]);
+          if (list.some((e) => e.name === child && !e.stat.isDirectory()))
+            fail('RETAINED_HOST_OWNER');
+          values.CHAIN = 'PARTIAL';
+          if (index === names.length - 1) {
+            values.CHAIN = 'COMPLETE';
+            try {
+              values.PROFILE = profile(path.join(cursor, 'profile'));
+            } catch {
+              values.PROFILE = 'INVALID';
+            }
+          }
+        }
+      } else if (values.DIRECTORY === 'VALID') {
+        try {
+          values.PROFILE = profile(path.join(dir, 'profile'));
+        } catch {
+          values.PROFILE = 'INVALID';
+        }
+      }
+    } catch {
+      if (values.DIRECTORY === 'INVALID') {
+        values.SCRIPT = 'INVALID';
+        values.ENTRY = 'INVALID';
+        values.PROFILE = 'INVALID';
+        if (c.deep) values.CHAIN = 'INVALID';
+      } else if (c.deep) {
+        values.CHAIN = 'INVALID';
+        values.PROFILE = 'INVALID';
+      }
+    }
+    for (const [field, value] of Object.entries(values)) result[prefix + field] = value;
+  }
+  if (owned(root) !== owner) fail('RETAINED_HOST_OWNER');
+  return Object.freeze(result);
+}
+async function diagnoseTimeout(root) {
+  await verifyCopy(root);
+  return Object.entries(timeoutSnapshot(root)).map(
+    ([slot, value]) => 'RETAINED_HOST_TIMEOUT_' + slot + '_' + value,
+  );
+}
 function pipeStartupRoots() {
   const { CASES } = require('./retained-pipe-startup.cjs');
   return [...CASES.map((c) => c.directory), 'pipe-deep', 'pipe-test'];
@@ -882,7 +1052,8 @@ function diagnostics(action, error) {
       break;
     }
   }
-  const phase = String(action).toUpperCase().replaceAll('-', '_');
+  const phase =
+    action === 'diagnose-timeout' ? 'DIAGNOSE' : String(action).toUpperCase().replaceAll('-', '_');
   return [
     'RETAINED_HOST_CONTROL_PHASE_' + (PHASES.includes(phase) ? phase : 'ARGUMENT'),
     'RETAINED_HOST_CONTROL_REASON_' + code,
@@ -908,6 +1079,9 @@ module.exports = {
   inspect,
   cleanup,
   pipeStartupPlans,
+  TIMEOUT_VECTOR,
+  timeoutSnapshot,
+  diagnoseTimeout,
   transform,
   rawWrite,
   capture,
@@ -930,6 +1104,8 @@ if (require.main === module) {
       else if (action === 'verify-copy') await verifyCopy(root);
       else if (action === 'inspect') await inspect(root);
       else if (action === 'cleanup') await cleanup(root);
+      else if (action === 'diagnose-timeout')
+        for (const line of await diagnoseTimeout(root)) console.error(line);
       else if (action === 'diagnose') for (const line of await diagnose(root)) console.error(line);
       else fail();
       console.log('RETAINED_HOST_CONTROL_PASS');

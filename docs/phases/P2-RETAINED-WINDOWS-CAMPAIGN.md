@@ -112,3 +112,17 @@ Progress boundary before the existing byte/EOF protocol, never context/admission
 Add-Type/provider operations. Keep10s+10s per case, unchanged campaign deadline,
 unknown-retirement refusal, exact closed ownership/cleanup and fixed diagnostics.
 No product path/argv/policy changes or inferred long-path cause are authorized by this test.
+
+
+### Timeout filesystem observations (11:59 UTC)
+
+If and only if the pinned outer supervisor reports TIMEOUT, null exit, complete Job/drain
+retirement and untruncated streams, a separate read-only diagnostic may inspect the
+already-owned four fixture partitions after source/copy/owner validation. Emit only
+fixed directory/script/entry/profile/deep-chain classifications, using bounded exact
+inventory and no-link reads. These are post-retirement filesystem facts, not before-EOF,
+response, process-exit or stdio proof. Do not parse/adopt pending capture records, write
+new progress receipts, delete retained files or change Retired/Require/PASS predicates.
+Thrown observer diagnostic writes must still reach its existing failure exit; this
+robustness correction does not claim to resolve a permanently blocking write or the
+unobserved cause of the actual timeout.

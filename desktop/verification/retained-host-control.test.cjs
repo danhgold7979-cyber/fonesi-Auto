@@ -412,3 +412,239 @@ test('bound successful MAIN exposes only complete unique paired diagnostic slots
   assert.deepEqual(api.observerMarkers([...lines, lines[0]].join('\n')), []);
   assert.deepEqual(api.observerMarkers([...lines, 'RETAINED_HOST_FAILED'].join('\n')), []);
 });
+function timeoutCapture(root, change = {}) {
+  const value = capture('private output is never forwarded');
+  value.process = { ...value.process, status: 'TIMEOUT', exitCode: null, ...change };
+  fs.writeFileSync(path.join(root, 'launcher-capture.json'), JSON.stringify(value));
+}
+function timeoutCase(root, c) {
+  const { ENTRY, BOOTSTRAP, materializeScript } = require('./retained-pipe-startup.cjs');
+  const owner = fs.readFileSync(path.join(root, '.owner'), 'utf8'),
+    dir = path.join(root, c.directory);
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, '.owner'), owner);
+  fs.writeFileSync(path.join(dir, 'fixture.ps1'), materializeScript(c.parameters));
+  fs.writeFileSync(path.join(dir, 'entry.txt'), ENTRY);
+  if (c.mode === 'plainShort') fs.writeFileSync(path.join(dir, 'bootstrap.json'), BOOTSTRAP);
+  let cursor = dir;
+  if (c.deep) {
+    cursor = root;
+    for (const name of [
+      c.deep,
+      'Fonesi-Auto-' + owner,
+      'launch-' + owner,
+      'host-session-' + owner,
+    ]) {
+      cursor = path.join(cursor, name);
+      fs.mkdirSync(cursor);
+      fs.writeFileSync(path.join(cursor, '.owner'), owner);
+    }
+  }
+  fs.mkdirSync(path.join(cursor, 'profile'));
+  return { dir, profile: path.join(cursor, 'profile') };
+}
+test('timeout witness reads four owned fixed partitions without modifying any evidence', () => {
+  const f = fixture();
+  try {
+    timeoutCapture(f.root);
+    const { CASES } = require('./retained-pipe-startup.cjs');
+    const absent = api.timeoutSnapshot(f.root);
+    assert.equal(Object.keys(absent).length, 20);
+    for (const c of CASES) {
+      assert.equal(absent[c.mode.toUpperCase() + '_DIRECTORY'], 'ABSENT');
+      timeoutCase(f.root, c);
+    }
+    const inventory = () => {
+      const out = [];
+      function walk(dir) {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const p = path.join(dir, e.name);
+          if (e.isDirectory()) walk(p);
+          else {
+            const s = fs.statSync(p);
+            out.push([p, hash(fs.readFileSync(p)), s.mtimeMs, s.size]);
+          }
+        }
+      }
+      walk(f.root);
+      return out;
+    };
+    const before = inventory(),
+      v = api.timeoutSnapshot(f.root);
+    assert.deepEqual(inventory(), before);
+    for (const c of CASES) {
+      const p = c.mode.toUpperCase() + '_';
+      assert.equal(v[p + 'DIRECTORY'], 'VALID');
+      assert.equal(v[p + 'SCRIPT'], 'MATCH');
+      assert.equal(v[p + 'ENTRY'], 'MATCH');
+      assert.equal(v[p + 'PROFILE'], 'EMPTY');
+      assert.equal(v[p + 'CHAIN'], c.deep ? 'COMPLETE' : 'NOT_APPLICABLE');
+    }
+    assert.equal(JSON.stringify(v).includes('private'), false);
+  } finally {
+    f.close();
+  }
+});
+test('timeout witness rejects wrong outer contexts and malformed duplicate capture before any fixture observation', () => {
+  const f = fixture();
+  try {
+    for (const change of [
+      { status: 'SUCCESS', exitCode: 0 },
+      { exitCode: 1 },
+      { cleanupComplete: false },
+      { stdoutTruncated: true },
+      { stderrTruncated: true },
+    ]) {
+      timeoutCapture(f.root, change);
+      assert.throws(() => api.timeoutSnapshot(f.root));
+    }
+    timeoutCapture(f.root);
+    const file = path.join(f.root, 'launcher-capture.json'),
+      raw = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(file, raw.replace('"status":', '"status":"TIMEOUT","status":'));
+    assert.throws(() => api.timeoutSnapshot(f.root));
+  } finally {
+    f.close();
+  }
+});
+test('timeout witness classifies foreign owners unknown entries links and oversized profiles INVALID without cleanup', () => {
+  const f = fixture();
+  try {
+    timeoutCapture(f.root);
+    const c = require('./retained-pipe-startup.cjs').CASES[0],
+      { dir, profile } = timeoutCase(f.root, c),
+      prefix = c.mode.toUpperCase() + '_';
+    const owner = fs.readFileSync(path.join(dir, '.owner'), 'utf8');
+    fs.writeFileSync(path.join(dir, '.owner'), crypto.randomUUID());
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'DIRECTORY'], 'INVALID');
+    fs.writeFileSync(path.join(dir, '.owner'), owner);
+    const highBitOwner = Buffer.from(owner);
+    highBitOwner[0] |= 128;
+    fs.writeFileSync(path.join(dir, '.owner'), highBitOwner);
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'DIRECTORY'], 'INVALID');
+    fs.writeFileSync(path.join(dir, '.owner'), owner);
+    const unknown = path.join(dir, 'unknown');
+    fs.writeFileSync(unknown, 'preserve');
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'DIRECTORY'], 'INVALID');
+    assert.equal(fs.readFileSync(unknown, 'utf8'), 'preserve');
+    fs.unlinkSync(unknown);
+    const script = path.join(dir, 'fixture.ps1'),
+      copy = fs.readFileSync(script),
+      alias = path.join(f.root, 'held-script');
+    fs.linkSync(script, alias);
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'DIRECTORY'], 'INVALID');
+    fs.unlinkSync(alias);
+    assert.deepEqual(fs.readFileSync(script), copy);
+    const file = path.join(profile, 'private');
+    fs.writeFileSync(file, 'not published');
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'PROFILE'], 'NONEMPTY');
+    fs.truncateSync(file, 8388609);
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'PROFILE'], 'INVALID');
+    assert.equal(fs.statSync(file).size, 8388609);
+    fs.unlinkSync(file);
+    const target = path.join(f.root, 'target');
+    fs.writeFileSync(target, 'owned');
+    const link = path.join(profile, 'alias');
+    try {
+      fs.symlinkSync(target, link);
+      assert.equal(api.timeoutSnapshot(f.root)[prefix + 'PROFILE'], 'INVALID');
+    } finally {
+      if (fs.existsSync(link)) fs.unlinkSync(link);
+    }
+  } finally {
+    f.close();
+  }
+});
+test('timeout deep-chain absence partial completeness and foreign marker are distinct bounded facts', () => {
+  const f = fixture();
+  try {
+    timeoutCapture(f.root);
+    const c = require('./retained-pipe-startup.cjs').CASES[1],
+      prefix = c.mode.toUpperCase() + '_',
+      owner = fs.readFileSync(path.join(f.root, '.owner'), 'utf8');
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'CHAIN'], 'ABSENT');
+    let cursor = f.root;
+    const names = [c.deep, 'Fonesi-Auto-' + owner, 'launch-' + owner, 'host-session-' + owner];
+    for (let n = 0; n < names.length; n++) {
+      cursor = path.join(cursor, names[n]);
+      fs.mkdirSync(cursor);
+      fs.writeFileSync(path.join(cursor, '.owner'), owner);
+      assert.equal(api.timeoutSnapshot(f.root)[prefix + 'CHAIN'], n === 3 ? 'COMPLETE' : 'PARTIAL');
+    }
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'PROFILE'], 'ABSENT');
+    fs.writeFileSync(path.join(cursor, '.owner'), crypto.randomUUID());
+    assert.equal(api.timeoutSnapshot(f.root)[prefix + 'CHAIN'], 'INVALID');
+  } finally {
+    f.close();
+  }
+});
+test('timeout CLI route verifies actual copy binding and exact twenty-slot PS forwarding while ordinary retirement stays unchanged', async () => {
+  const f = fixture();
+  try {
+    api.materialize(f.root, await api.binding(f.root));
+    timeoutCapture(f.root);
+    const lines = await api.diagnoseTimeout(f.root);
+    assert.equal(lines.length, 20);
+    for (const [slot, values] of Object.entries(api.TIMEOUT_VECTOR))
+      assert.equal(
+        lines.filter((line) =>
+          values.some((value) => line === 'RETAINED_HOST_TIMEOUT_' + slot + '_' + value),
+        ).length,
+        1,
+      );
+    const ps = fs.readFileSync(path.join(__dirname, 'Invoke-RetainedHostCheck.ps1'), 'utf8');
+    const table =
+      '$slots=[ordered]@{' +
+      Object.entries(api.TIMEOUT_VECTOR)
+        .map(([k, v]) => k + '=@(' + v.map((x) => "'" + x + "'").join(',') + ')')
+        .join(';') +
+      '}';
+    assert.ok(ps.includes(table));
+    assert.match(
+      ps,
+      /\$native.Status -ceq 'TIMEOUT' -and \$null -eq \$native.ExitCode -and \$native.CleanupComplete -and -not \$native.StdoutTruncated -and -not \$native.StderrTruncated/,
+    );
+    const retired = ps.slice(ps.indexOf('function Retired'), ps.indexOf('function Evidence'));
+    assert.doesNotMatch(retired, /TIMEOUT/);
+    assert.equal(
+      api.diagnostics('diagnose-timeout', Error('private'))[0],
+      'RETAINED_HOST_CONTROL_PHASE_DIAGNOSE',
+    );
+    fs.appendFileSync(path.join(f.root, 'launch-core.ps1'), '# drift');
+    await assert.rejects(api.diagnoseTimeout(f.root));
+  } finally {
+    f.close();
+  }
+});
+
+test('unreadable top-level fixture is INVALID rather than falsely ABSENT and creates no witnesses', () => {
+  const f = fixture();
+  try {
+    timeoutCapture(f.root);
+    const c = require('./retained-pipe-startup.cjs').CASES[0],
+      target = path.join(f.root, c.directory);
+    const before = fs.readdirSync(f.root).sort();
+    let failures = 0;
+    const local = localApi('a'.repeat(64), {
+      'node:fs': {
+        ...fs,
+        lstatSync(file, ...args) {
+          if (file === target) {
+            failures++;
+            throw Object.assign(Error('private denied'), { code: 'EACCES' });
+          }
+          return fs.lstatSync(file, ...args);
+        },
+      },
+    });
+    const v = local.timeoutSnapshot(f.root),
+      prefix = c.mode.toUpperCase() + '_';
+    assert.equal(failures, 1);
+    for (const field of ['DIRECTORY', 'SCRIPT', 'ENTRY', 'PROFILE'])
+      assert.equal(v[prefix + field], 'INVALID');
+    assert.equal(v[prefix + 'CHAIN'], 'NOT_APPLICABLE');
+    assert.deepEqual(fs.readdirSync(f.root).sort(), before);
+  } finally {
+    f.close();
+  }
+});

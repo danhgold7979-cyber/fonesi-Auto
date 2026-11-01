@@ -99,7 +99,10 @@ async function simulatedObserver(wrongParent = false, fault = null) {
     installed = 0,
     closed = false,
     executed = 0,
-    bound = false;
+    bound = false,
+    exitCalls = 0,
+    clearCalls = 0,
+    thrownWrites = 0;
   const custody = {
     retired: true,
     async acquireRead() {
@@ -127,6 +130,7 @@ async function simulatedObserver(wrongParent = false, fault = null) {
         events[k] = fn;
       },
       exit(code) {
+        exitCalls++;
         done({ code });
       },
       quit() {
@@ -228,6 +232,13 @@ async function simulatedObserver(wrongParent = false, fault = null) {
     ...fs,
     writeSync(fd, ...args) {
       if (fd === 2) {
+        if (
+          fault?.diagnosticWriteThrows &&
+          args[0].startsWith('RETAINED_HOST_DIAGNOSTIC_REASON_')
+        ) {
+          thrownWrites++;
+          throw Error('PRIVATE_WRITE_FAILURE');
+        }
         stderr.push(args[0]);
         return Buffer.byteLength(args[0]);
       }
@@ -242,7 +253,10 @@ async function simulatedObserver(wrongParent = false, fault = null) {
     Buffer,
     TextDecoder,
     setTimeout,
-    clearTimeout,
+    clearTimeout(timer) {
+      clearCalls++;
+      clearTimeout(timer);
+    },
     setImmediate,
     process: { pid: 200, env: { FONESI_BOOTSTRAP_ROOT: profile, SystemRoot: root } },
     console: {
@@ -297,6 +311,9 @@ async function simulatedObserver(wrongParent = false, fault = null) {
     const result = await finished;
     return {
       ...result,
+      exitCalls,
+      clearCalls,
+      thrownWrites,
       executed,
       bound,
       stderr,
@@ -747,4 +764,15 @@ test('all four 2x2 cases must retire before VERSION; unrun cases remain unavaila
       (slot) => slot.startsWith('PIPE_BASELINE_') || slot.startsWith('PIPE_NONE_'),
     ),
   );
+});
+
+test('thrown failure diagnostic write still clears deadline and exits once without raw fallback', async () => {
+  const result = await simulatedObserver(true, { diagnosticWriteThrows: true });
+  assert.equal(result.code, 1);
+  assert.equal(result.exitCalls, 1);
+  assert.equal(result.clearCalls, 1);
+  assert.equal(result.thrownWrites, 1);
+  assert.equal(result.executed, 0);
+  assert.equal(result.result, null);
+  assert.deepEqual(result.stderr, []);
 });

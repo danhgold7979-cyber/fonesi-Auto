@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 11:26 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 11:59 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -36,14 +36,16 @@ stitched checkpoint (remaining151 tests plus earlier passed batches); no new ful
 aggregate count or native PASS is inferred. The user approved the
 [single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
 and necessary important checkpoint publication. After a test-only Windows CRLF repair,
-public `45f08d6e16e34aaa441215b74b94d61e0e8e437c` / CI41301083935 passes1036/109/232
-source checks. Instrumented four-source compilation/eight managed groups pass. Actual
-baseline and InputFormat None pipe fixtures both enter/respond before EOF, read Q and
-retire successfully, so no production flag change is justified. Product VERSION still
-returns DEADLINE with no observed first bootstrap marker. One finite2×2 fixture now
-isolates mandatory-parameter/prelude versus exact product cwd/TEMP depth while keeping
-script/witness paths short and all budgets/guards unchanged. Native VERSION/EOF and
-canonical P2-02 acceptance remain pending; no server/device/profile adoption.
+public `6800f519d1b3c02c697120133a82fd7f3a7b2bce` / CI41302960438 passes1037/109/232
+source checks and instrumented four-source compilation/eight managed groups. The prior
+baseline/InputFormat None fixtures both entered/responded before EOF, read Q and
+retired; no production flag change is justified. The subsequent four-case discriminator
+hit the unchanged240s outer deadline, with known outer retirement but no forwarded
+fixture vector. Its existing diagnostic gate excludes TIMEOUT, so this does not prove
+where execution stalled. A read-only, fixed-field snapshot of already-owned fixture
+files after known outer retirement is being prepared; it cannot authorize cleanup,
+adopt pending captures or turn failure into PASS. Native VERSION/EOF and canonical
+P2-02 acceptance remain pending; no server/device/profile adoption.
 
 ## 1. Status definitions
 

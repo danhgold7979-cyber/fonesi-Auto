@@ -19,6 +19,13 @@ function Show-Control($p){
  $capture=[ordered]@{TARGET=@('OUTER','PROVISION','AUTH','MAIN','UNKNOWN');SCHEMA=@('VALID','INVALID');STATUS=@('SUCCESS','NONZERO_EXIT','OTHER','UNAVAILABLE');EXIT=@('ZERO','NONZERO','NULL','UNAVAILABLE');RETIRED=@('TRUE','FALSE','UNAVAILABLE');TRUNCATED=@('TRUE','FALSE','UNAVAILABLE');EXPECTED=@('ZERO','EXACT','OTHER','UNAVAILABLE');ORDER=@('MATCH','MISMATCH','UNAVAILABLE');LEADING=@('ZERO','ONE','MULTIPLE','UNAVAILABLE');TRAILING=@('ZERO','ONE','MULTIPLE','UNAVAILABLE');INTERIOR=@('TRUE','FALSE','UNAVAILABLE');UNKNOWN=@('TRUE','FALSE','UNAVAILABLE');FAILURE=@('ZERO','ONE','MULTIPLE','UNAVAILABLE');STDERR_FAILURE=@('TRUE','FALSE','UNAVAILABLE')}
  foreach($key in $capture.Keys){$count=0;$found=$null;foreach($value in $capture[$key]){$literal='RETAINED_HOST_CAPTURE_'+$key+'_'+$value;$n=@($p.Stderr -split '\r?\n'|Where-Object {$_ -ceq $literal}).Count;if($n -gt 0){$count+=$n;$found=$literal}};if($count -eq 1){Write-Output $found}}
 }
+function Show-TimeoutWitness($p){
+ if(-not (Retired $p) -or $p.Status -cne 'SUCCESS' -or $p.ExitCode -ne 0 -or $p.Stdout.Replace("`r`n","`n") -cne "RETAINED_HOST_CONTROL_PASS`n"){Show-Control $p;return}
+ $slots=[ordered]@{PLAINSHORT_DIRECTORY=@('ABSENT','VALID','INVALID');PLAINSHORT_SCRIPT=@('ABSENT','MATCH','INVALID');PLAINSHORT_ENTRY=@('ABSENT','MATCH','INVALID');PLAINSHORT_PROFILE=@('ABSENT','EMPTY','NONEMPTY','INVALID');PLAINSHORT_CHAIN=@('ABSENT','COMPLETE','PARTIAL','INVALID','NOT_APPLICABLE');PLAINDEPTH_DIRECTORY=@('ABSENT','VALID','INVALID');PLAINDEPTH_SCRIPT=@('ABSENT','MATCH','INVALID');PLAINDEPTH_ENTRY=@('ABSENT','MATCH','INVALID');PLAINDEPTH_PROFILE=@('ABSENT','EMPTY','NONEMPTY','INVALID');PLAINDEPTH_CHAIN=@('ABSENT','COMPLETE','PARTIAL','INVALID','NOT_APPLICABLE');PARAMETERSHORT_DIRECTORY=@('ABSENT','VALID','INVALID');PARAMETERSHORT_SCRIPT=@('ABSENT','MATCH','INVALID');PARAMETERSHORT_ENTRY=@('ABSENT','MATCH','INVALID');PARAMETERSHORT_PROFILE=@('ABSENT','EMPTY','NONEMPTY','INVALID');PARAMETERSHORT_CHAIN=@('ABSENT','COMPLETE','PARTIAL','INVALID','NOT_APPLICABLE');PARAMETERDEPTH_DIRECTORY=@('ABSENT','VALID','INVALID');PARAMETERDEPTH_SCRIPT=@('ABSENT','MATCH','INVALID');PARAMETERDEPTH_ENTRY=@('ABSENT','MATCH','INVALID');PARAMETERDEPTH_PROFILE=@('ABSENT','EMPTY','NONEMPTY','INVALID');PARAMETERDEPTH_CHAIN=@('ABSENT','COMPLETE','PARTIAL','INVALID','NOT_APPLICABLE')}
+ $lines=@($p.Stderr.Replace("`r`n","`n") -split "`n");if($lines.Count -ne ($slots.Count+1) -or $lines[-1] -cne ''){return}
+ $accepted=@();foreach($slot in $slots.Keys){$found=@($lines|Where-Object {$line=$_;@($slots[$slot]|Where-Object {$line -ceq ('RETAINED_HOST_TIMEOUT_'+$slot+'_'+$_)}).Count -eq 1});if($found.Count -ne 1){return};$accepted+=$found[0]}
+ foreach($line in $accepted){Write-Output $line}
+}
 function Node-Control([string]$action){$script:allClean=$false;$argsList=@((Join-Path $PSScriptRoot 'retained-host-control.cjs'),$action,$owner.Path);if($action -ceq 'prepare'){$argsList+= (Join-Path $desktop '.platform-tools-input/platform-tools_r37.0.1-win.zip')};$p=Invoke-OwnedChild $node ([string[]]$argsList) 120000 @{};$script:allClean=Retired $p;if(-not $script:allClean -or $p.Status -cne 'SUCCESS' -or $p.ExitCode -ne 0){Show-Control $p};Require $p 'RETAINED_HOST_CONTROL_PASS'}
 function Show-Native($p){
  $status='INVALID';if($p.Status -cin @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT','TIMEOUT','CAPTURE_FAILED','LAUNCH_FAILED','ACCESS_DENIED','CLEANUP_FAILED')){$status=$p.Status};Write-Output ('RETAINED_HOST_PROCESS_'+$status)
@@ -57,6 +64,12 @@ try{
  }finally{foreach($key in @([Environment]::GetEnvironmentVariables('Process').Keys)){[Environment]::SetEnvironmentVariable([string]$key,$null,'Process')};foreach($key in $original.Keys){[Environment]::SetEnvironmentVariable([string]$key,[string]$original[$key],'Process')}}
  $allClean=Retired $native;Show-Native $native;$report.process=Evidence $native
  Write-Private (Join-Path $root 'launcher-capture.json') ([ordered]@{process=(Evidence $native);stdout=$native.Stdout;stderr=$native.Stderr})
+ # Diagnostic-only: known outer Job retirement permits bounded reads, never PASS or cleanup.
+ if($native.Status -ceq 'TIMEOUT' -and $null -eq $native.ExitCode -and $native.CleanupComplete -and -not $native.StdoutTruncated -and -not $native.StderrTruncated){
+  Assert-OwnedRun $owner
+  $timeoutWitness=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'retained-host-control.cjs'),'diagnose-timeout',$root)) 30000 @{}
+  Show-TimeoutWitness $timeoutWitness
+ }
  if($allClean){
   $allClean=$false;$diagnostic=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'retained-host-control.cjs'),'diagnose',$root)) 30000 @{};$allClean=Retired $diagnostic
   if($allClean -and $diagnostic.Status -ceq 'SUCCESS' -and $diagnostic.ExitCode -eq 0 -and $diagnostic.Stdout.Replace("`r`n","`n") -ceq "RETAINED_HOST_CONTROL_PASS`n"){
