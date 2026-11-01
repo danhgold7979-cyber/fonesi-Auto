@@ -1,6 +1,6 @@
 # PHASE-02 — ADB and device fleet
 
-**Revision/date:** 1.2-software-entry / 2026-11-01
+**Revision/date:** 1.3-bounded-native-evidence / 2026-11-01
 **Plan:** BOUNDED SOFTWARE ENTRY APPROVED · **Execution:** IN_PROGRESS · **Coding:** YES, reviewed bounded internal software slices
 **Development branch:** `phase-02`, created/verified 2026-11-01 02:37–02:38 UTC
 **Base:** reviewed Phase1 public `f8b155738e0ebbe404449579d4f4b60b911aed28`; no main merge
@@ -41,9 +41,9 @@ Contracts include device ID, explicit serial/transport ID, connection generation
 ## 4. Task packages
 
 Internal P2-01–P2-12 software portions are **IN_PROGRESS** within their recorded finite
-contracts; P2-13 actual wireless pairing remains NOT_STARTED. No complete canonical
+contracts; P2-13 actual Unicode round-trip remains NOT_STARTED. No complete canonical
 task has new acceptance. The official candidate version-only development job has a
-bounded PASS; isolated-server development refused an existing profile before launch.
+bounded PASS; the retained SOURCE app-local VERSION/EOF campaign now also passes24 native cases and8 managed groups with actual cleanup. [Accepted exact evidence and subcriteria mapping](../evidence/P2-retained-windows-campaign-2026-11-01.md) preserves PACKAGE/genuine-delivery/server/physical obligations. Isolated-server development refused an existing profile before launch.
 Actual device/physical/AVD/input/capture/Unicode/wireless acceptance tests remain NOT_RUN.
 [Fleet integration](../evidence/P2-fleet-facade-integration-2026-11-01.md),
 [selection/fault fixtures](../evidence/P2-selection-diagnostics-faults-software-2026-11-01.md)
@@ -93,13 +93,13 @@ Each test artifact records task/case ID, SHA, UTC, Windows/ADB version, pseudony
 
 Risks/stop conditions: identity collision → quarantine; Unicode unsupported → text capability blocked; ADB ownership conflict → do not terminate foreign process; missing hardware → BLOCKED; unapproved wireless → disabled. Name owners at approval.
 
-**Bounded software entry:** APPROVED · **Coding:** IN_PROGRESS · **Actual ADB/runtime/hardware tests:** NOT_RUN.
+**Bounded software entry:** APPROVED · **Coding:** IN_PROGRESS · **Actual runtime evidence:** bounded SOURCE VERSION/EOF PASS; server/device/hardware NOT_RUN/UNMET as recorded.
 
 [Current software checkpoint](../evidence/P2-01-07-software-foundation-2026-11-01.md) separates synthetic contract/state tests from actual binary/host/device evidence.
 
 | Date | Task | Commit/evidence | Actual result |
 |---|---|---|---|
-| — | — | — | NOT_STARTED |
+| 2026-11-01 | P2-01 / P2-02 partial runtime/lifetime criteria | public `c955d1ca`, CI41310721221, [strict evidence](../evidence/P2-retained-windows-campaign-2026-11-01.md) | SOURCE VERSION/EOF24/24 +managed8/8 PASS; no whole-task acceptance |
 
 ## 8. Change history
 | Date | Revision | Change | Authorization effect |

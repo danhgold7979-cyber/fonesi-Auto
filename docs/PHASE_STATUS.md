@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 13:18 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 13:27 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -12,40 +12,16 @@ FIRST+REOPEN campaign; [exact accepted evidence](evidence/P2-recipient-setup-nat
 does not cover genuine user consent, production HTTPS, server/devices or later custody source. The next [shared runtime custody slice](phases/P2-RECIPIENT-RUNTIME-CUSTODY-PROPOSAL.md)
 is source-only and grants no executable/server/device capability.
 
-Latest retained-host campaign: public `f1fdc71f` / CI41309744493 passes1060/109/233 and managed eight-group compilation, but actual SOURCE VERSION remains FAIL. CS1619 now reports **BUFFER_TOO_SMALL** with an empty compiler filename. The reviewed fixed `.host-session` layout candidate reduces current compiler profile222→186 while preserving UUID/ownership/retirement and default compiler behavior. [Current evidence](evidence/P2-retained-windows-campaign-2026-11-01.md) records the exact private-layout amendment; expected1061 and revised native VERSION/EOF are not yet run.
+Latest retained-host campaign is an accepted **bounded SOURCE VERSION/EOF PASS**: public `c955d1ca`, CI41310721221, source1061/109/233,24/24 native cases and8/8 managed groups. Exact app-local runtime/native parent+Job admission, VERSION observation, EOF/helper retirement and owned cleanup pass on the supported fixed-leaf layout. [Strict reports and canonical subcriteria reconciliation](evidence/P2-retained-windows-campaign-2026-11-01.md) distinguish this from PACKAGE/main production integration, genuine consent/HTTPS, server/device, physical and P106 obligations. Phase2 full-task count remains0/13; proven bounded facts are accepted, not left NOT_RUN.
 
 Current canonical source step: **P2-02 — ADB server lifecycle (2nd of13 task IDs)**,
 with P2-01 runtime custody. [Host-session source evidence](evidence/P2-host-session-adapter-2026-11-01.md)
 distinguishes live server custody from retired invocations and retains actual pending
 work across timeout. It installs no native provider. Accepted recipient campaign49/49
 checks are partial P2-01 evidence, not49 canonical criteria or full-task acceptance.
-[Retained helper/bridge source](evidence/P2-retained-native-helper-2026-11-01.md) now reuses
-the unchanged Windows interop API and adds bounded injected-byte framing. Actual
-Windows compile-only PASS is now observed on public `e5680a2f`, run41287763437:
-961 desktop /109 foundation /214 Python PASS, compiler SUCCESS with retirement and
-owned cleanup confirmed. The generated DLL was never loaded/invoked; no actual pipe
-reader/bootstrap/provider is installed. Unrelated native jobs were SKIPPED.
-[Exact compile evidence and retained failures](evidence/P2-retained-helper-compile-preparation-2026-11-01.md)
-distinguish this one user-approved hosted-test exception from the normal phase-batched
-publication cadence. P2-02 server runtime remains unverified; the existing-profile
-refusal is not bypassed and no new canonical task PASS is claimed.
+Historical [retained helper/bridge source](evidence/P2-retained-native-helper-2026-11-01.md) and [compile-only evidence](evidence/P2-retained-helper-compile-preparation-2026-11-01.md) remain tied to their old two-source bytes/public `e5680a2f`; they do not substitute for the later actual four-source/pipe campaign. The user has since authorized necessary important checkpoint publication, superseding the earlier phase-only cadence.
 
-Current local batch adds the [retained VERSION transport source](evidence/P2-retained-host-integration-source-2026-11-01.md):
-opt-in outer-Job/native-parent binding, private continuous C# reader, fixed PowerShell
-bootstrap and main-only factory, with closed SOURCE/PACKAGE assets. Main does not
-activate it. Complete122-file source inventory passed as the explicitly documented
-stitched checkpoint (remaining151 tests plus earlier passed batches); no new full
-aggregate count or native PASS is inferred. The user approved the
-[single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
-and necessary important checkpoint publication. After a test-only Windows CRLF repair,
-public `239d5894d255163dc11a4a1aba1e81791322968b` / CI41306175483 passes1047/109/233
-and instrumented four-source compilation/eight managed groups. Supported short owned
-layout now reaches actual bootstrap ENVIRONMENT/CONTEXT/ASSETS/COMPILE_BEGIN; Add-Type
-throws at COMPILE before native admission/VERSION. The caught error remains unclassified.
-A fixed atomic compiler-error diagnostic is being prepared; no guessed reference, flag,
-policy or deadline changes. Product UUID/runtime/hash grammar remains unchanged; old
-long-depth fixtures stay historical and were not rerun. Native VERSION/EOF and canonical
-P2-02 acceptance remain pending; no server/device/profile adoption.
+The [retained VERSION transport](evidence/P2-retained-host-integration-source-2026-11-01.md) now has accepted actual SOURCE evidence on public `c955d1ca`: opt-in outer-Job/native-parent binding, private C# reader, fixed PowerShell bootstrap, main-only factory and VERSION/EOF/owned cleanup. Main production UI does not activate it yet; closed PACKAGE assets are source-reviewed but actual PACKAGE invocation remains pending. Earlier1047/1055/1058/1060 native failures and compiler/path diagnostics are historical in the [campaign ledger](evidence/P2-retained-windows-campaign-2026-11-01.md). The supported fixed-leaf layout passed1061/109/233 and24 native cases; full P2-02 server acceptance remains UNMET, with no server/device/profile adoption.
 
 ## 1. Status definitions
 

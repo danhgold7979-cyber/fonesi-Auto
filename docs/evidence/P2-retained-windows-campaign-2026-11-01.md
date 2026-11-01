@@ -1,6 +1,8 @@
-# Retained Windows campaign — managed PASS, native VERSION deadline under diagnosis
+# Retained Windows campaign — bounded SOURCE VERSION/EOF PASS
 
-2026-11-01 09:57 UTC. User explicitly approved the Auto `a19406f` Windows campaign
+**Current closure:** 2026-11-01 13:27 UTC, accepted bounded SOURCE VERSION/EOF PASS; see final closure and exact report samples below. Earlier failure/diagnostic sections remain historical.
+
+2026-11-01 09:57 UTC preparation record. User explicitly approved the Auto `a19406f` Windows campaign
 and necessary important checkpoint publication. Coordinator Coder Bin authorized
 one bounded campaign after exact independent runner review. The
 [finite campaign contract](../phases/P2-RETAINED-WINDOWS-CAMPAIGN.md) describes the
@@ -583,3 +585,27 @@ Frozen fixed-leaf correction SHA256 values:
 - `desktop/src/main/adb-host-factory.ts`: `debc2e0d32b3486082e785334827084da4447e972070e323e6da8c74b51cb1f6`.
 - `desktop/verification/retained-host-control.cjs`: `30fef7dcd9774e5b1bfebb2c9128c701f1455c7aa99e815aee5ea5b2a4c8122f`.
 - `desktop/verification/retained-pipe-startup.cjs`: `696e3f11d811c5b3e02a4b5d345a5a51db4f45602bdcb5107554d92e0cf1619a`.
+
+
+## Accepted bounded SOURCE VERSION/EOF closure — 2026-11-01 13:27 UTC
+
+Coordinator Coder Bin accepts the independently reconstructed bounded result at public **c955d1ca5e5e99de37de5480f9ba4775e630ff00**, equivalent local **a7fd70de390294829db9bfe1a7c9b218c290d0b4**, exact tree **cccd766d93dfcacabb9d0e8966bfb8cea856f190**, [CI41310721221](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41310721221). Source1061/1061, foundation109/109 and Python233/233 pass with no skipped cases. The managed and retained native jobs pass; three unrelated native jobs are correctly SKIPPED.
+
+- [Managed report](samples/P2-retained-managed-pass.json): artifact13085406901,414 bytes, SHA256 `41e93f3cef944512e6d48d2ebebe526f7c56615c7d66a3aab1e542d177b82a0d`. Actual four-source compiler and eight managed fixture groups pass, both processes retired/untruncated, source and cleanup predicates true.
+- [Native report](samples/P2-retained-source-version-pass.json): artifact13085307730,1045 bytes, SHA256 `ed4b3c193bd25d45f384c3cd01adc5e52e822289e43064ab854d34099297bf8d`. Exact canonical duplicate-aware validator reconstructs these bytes; all11 bootstrap and13 observation cases true, SUCCESS/0/retired/untruncated, original archive/source unchanged, directory cleanup true, failure null.
+- Independent reviewer read the one retained source/native log and reconstructed both report schemas through exact committed validators without another fetch or test campaign. Reports contain no private paths, identifiers, captures or raw process streams.
+
+Actual default factory/PowerShell/Console pipe/native provider executed the fixed absolute app-local `adb version`. Hash-admitted runtime, native parent/Job receipt binding, correlated VERSION observation, invocation retirement, actual EOF/helper exit0/stdio retirement, owned helper removal, main close, settled journal/released lease and final owned-directory cleanup are established for this supported SOURCE layout. The shortened leaf therefore resolves the observed compatibility failure on this environment; no universal compiler-path guarantee or exact closed-source buffer attribution follows.
+
+### Canonical subcriteria reconciliation (not new denominators)
+
+| Original requirement | Accepted bounded evidence | Remaining acceptance obligation |
+|---|---|---|
+| P2-01 trusted manifest, exact app-local path/hash/version and no PATH fallback | Exact candidate physical admission and real SOURCE invocation now pass, using recipient-local archive provisioning under injected consent | Actual packaged application invocation; genuine consent/HTTPS delivery and release/license obligations remain separate |
+| P2-01 missing/tampered/wrong binary refusal and rollback | Existing reviewed source/owned-file negative and provisioning-ledger tests remain carried-forward evidence | Do not claim every binary rollback/host-architecture/packaged-runtime negative was repeated in this campaign |
+| P2-02 own-process tracking, bounded lifetime/output and cleanup | Actual VERSION child + retained helper/outer Job lifetime and EOF cleanup pass; eight managed protocol groups are supplemental evidence | Actual server START/HEALTH/CLOSE, collision/death/hung-server matrix remains UNMET; existing-profile refusal remains intact |
+| P2-03…P2-13 device targeting, metadata, actors, input/capture/Unicode/faults | Existing pure/source evidence remains unchanged | No actual USB/phone/AVD/wireless/server/device evidence is added by `version` |
+
+This is **24/24 native campaign cases plus8/8 managed fixture groups**, not32 canonical criteria or whole-task acceptance. Phase2 remains0/13 complete canonical tasks; Phase1 bounded technical10/11, global10/154, formal0 and P106 cross-user UNMET remain unchanged. Production main integration, PACKAGE, genuine recipient consent/HTTPS and device/server paths are not promoted by this development-only result.
+
+One redundant observer predicate still checked only legacy `host-session*` names. The accepted cleanup is independently established by the bound factory cleanup, journal/release gates and fixed-leaf-aware hostReceipt inspection/cleanup. Align that redundant observer check in the next source checkpoint, without rewriting this historical report or rerunning this unchanged campaign solely for the redundant predicate.
