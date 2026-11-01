@@ -52,10 +52,21 @@ async function fixture(run, { installed = false } = {}) {
       };
       // Synthetic metadata substitution only; production code and exact14 physical verifier run.
       const candidateUrl = url(
-        'export const PLATFORM_TOOLS_CANDIDATE=' + JSON.stringify(candidate) + ';',
+        'export const PLATFORM_TOOLS_CANDIDATE=' +
+          JSON.stringify(candidate) +
+          '; export const PLATFORM_TOOLS_PRIOR_36_CANDIDATE = PLATFORM_TOOLS_CANDIDATE;',
       );
       function compile(name, mocks) {
         let s = source(name);
+        if (name === 'platform-tools-catalog') {
+          const start = s.indexOf('const KNOWN:'),
+            end = s.indexOf('const INSTALL_TARGET_SHA256');
+          assert.ok(start > 0 && end > start);
+          s =
+            s.slice(0, start) +
+            'const KNOWN=[{candidate:PLATFORM_TOOLS_CANDIDATE,activationAllowed:true,launchAllowed:true}];\n' +
+            s.slice(end);
+        }
         for (const [from, to] of Object.entries(mocks)) {
           assert.ok(s.includes("'" + from + "'"));
           s = s.replaceAll("'" + from + "'", JSON.stringify(to));

@@ -159,9 +159,22 @@ test('download uses only transformed build-owned install target URL and exact by
     new URL('../src/main/platform-tools-catalog.ts', import.meta.url),
     'utf8',
   );
+  const start = catalog.indexOf('const KNOWN:'),
+    end = catalog.indexOf('const INSTALL_TARGET_SHA256');
+  assert.ok(start > 0 && end > start);
+  catalog =
+    catalog.slice(0, start) +
+    'const KNOWN=[{candidate:PLATFORM_TOOLS_CANDIDATE,activationAllowed:true,launchAllowed:true}];\n' +
+    catalog.slice(end);
   catalog = catalog.replace(
     "'./platform-tools-candidate.ts'",
-    JSON.stringify(data('export const PLATFORM_TOOLS_CANDIDATE = ' + JSON.stringify(target) + ';')),
+    JSON.stringify(
+      data(
+        'export const PLATFORM_TOOLS_CANDIDATE = ' +
+          JSON.stringify(target) +
+          '; export const PLATFORM_TOOLS_PRIOR_36_CANDIDATE=PLATFORM_TOOLS_CANDIDATE;',
+      ),
+    ),
   );
   const source = readFileSync(
     new URL('../src/main/platform-tools-download.ts', import.meta.url),

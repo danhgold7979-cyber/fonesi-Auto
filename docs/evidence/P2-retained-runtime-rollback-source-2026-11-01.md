@@ -45,3 +45,9 @@ No uninterrupted1155 local PASS is claimed. **1155 desktop tests are expected** 
 ## Remaining acceptance
 
 P2-01 remains IN_PROGRESS: this closes the single-pin implementation restriction in source, but the production catalog still has no distinct eligible prior release. A second official candidate needs exact provenance/bytes/inventory/NOTICE review before adoption; real two-release rollback and updated native/compiler evidence remain pending. The accepted packaged positive is not erased, and consent/HTTPS/untouched-launcher exclusions are not invented as additional canonical rollback requirements. No server/profile/device/P106 or full-phase/formal acceptance is added. Amendment03 atomicity remains confirmed immutable settlement selecting verified bytes, not filesystem-wide atomic replacement or a false rollback of uncertain writes.
+
+## Exact hosted source result — 16:36 UTC
+
+The reviewed 65-file source checkpoint is local `ca60baddd89747f647ef97defc9c09b24da74e9e`, public `882fb0b129e90e9cab7959b2c63e3ed9918831fc`, identical tree `58999a4d93ec39315514032254c516d8b39309a1`. CI41326960595 source job124908811854 passed actual **1155/1155 desktop**, **109/109 foundation** (zero fail/cancel/skip/todo) and **263 Python/OK**. The exact public head is printed in the retained log. Every native job was skipped as intended; this is no current C#/PowerShell execution or real rollback proof.
+
+Publication transport initially stalled on the approximately980KiB inline tree request and was interrupted without a result or denial. Read-only reconciliation found the expected tree absent and branch unchanged. The same committed bytes were then uploaded as65 individually Git-SHA-verified blobs; returned tree equality, expected-parent/nonforce ref update and read-back were verified. No source or authorization predicate was changed for transport recovery. The separate36.0.0 metadata proposal was excluded from this public tree.

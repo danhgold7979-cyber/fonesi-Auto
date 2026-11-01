@@ -1,6 +1,9 @@
 // Build-owned byte metadata and eligibility, never recipient consent or execution authority.
 import { createHash } from 'node:crypto';
-import { PLATFORM_TOOLS_CANDIDATE } from './platform-tools-candidate.ts';
+import {
+  PLATFORM_TOOLS_CANDIDATE,
+  PLATFORM_TOOLS_PRIOR_36_CANDIDATE,
+} from './platform-tools-candidate.ts';
 
 export type PlatformToolsCandidate = Readonly<{
   schema: 1;
@@ -32,7 +35,10 @@ const KNOWN: readonly Readonly<{
   candidate: PlatformToolsCandidate;
   activationAllowed: boolean;
   launchAllowed: boolean;
-}>[] = [{ candidate: PLATFORM_TOOLS_CANDIDATE, activationAllowed: true, launchAllowed: true }];
+}>[] = [
+  { candidate: PLATFORM_TOOLS_CANDIDATE, activationAllowed: true, launchAllowed: true },
+  { candidate: PLATFORM_TOOLS_PRIOR_36_CANDIDATE, activationAllowed: true, launchAllowed: true },
+];
 const INSTALL_TARGET_SHA256 = PLATFORM_TOOLS_CANDIDATE.archive.sha256;
 const MAX = 128 * 1024 * 1024;
 const NAMES = [

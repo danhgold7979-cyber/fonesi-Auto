@@ -50,6 +50,7 @@ const SOURCES = Object.freeze([
   'verification/fleet-ui-contract.cjs',
   'verification/retained-host-contract.cjs',
   'verification/persistence-launch-init-probe.cjs',
+  'verification/retained-rollback-contract.cjs',
   'verification/persistence-launch-e2e-control.cjs',
   'verification/persistence-restore-contract.cjs',
   'verification/package-owned-files.cjs',

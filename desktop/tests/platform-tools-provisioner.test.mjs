@@ -104,7 +104,7 @@ async function fixtureModules(f, archive = f.bytes, timerModule = null, known = 
         ...f.candidate,
         archive: { ...f.candidate.archive, sha256: sha(archive) },
       }) +
-      ';',
+      '; export const PLATFORM_TOOLS_PRIOR_36_CANDIDATE = PLATFORM_TOOLS_CANDIDATE;',
   );
   const source = (name) =>
     readFileSync(new URL('../src/main/' + name + '.ts', import.meta.url), 'utf8');
@@ -120,20 +120,20 @@ async function fixtureModules(f, archive = f.bytes, timerModule = null, known = 
         ';\n' +
         s;
     }
-    if (name === 'platform-tools-catalog' && known) {
-      const marker =
-        /\[\s*\{\s*candidate: PLATFORM_TOOLS_CANDIDATE,\s*activationAllowed: true,\s*launchAllowed: true,?\s*\},?\s*\]/;
-      assert.match(s, marker);
-      s = s.replace(
-        marker,
-        JSON.stringify(
-          known.map((x) => ({
-            candidate: x.candidate,
-            activationAllowed: x.activationAllowed ?? true,
-            launchAllowed: x.launchAllowed ?? true,
-          })),
-        ),
-      );
+    if (name === 'platform-tools-catalog') {
+      const start = s.indexOf('const KNOWN:'),
+        end = s.indexOf('const INSTALL_TARGET_SHA256');
+      assert.ok(start > 0 && end > start);
+      const rows = known
+        ? JSON.stringify(
+            known.map((x) => ({
+              candidate: x.candidate,
+              activationAllowed: x.activationAllowed ?? true,
+              launchAllowed: x.launchAllowed ?? true,
+            })),
+          )
+        : '[{candidate:PLATFORM_TOOLS_CANDIDATE,activationAllowed:true,launchAllowed:true}]';
+      s = s.slice(0, start) + 'const KNOWN = ' + rows + ';\n' + s.slice(end);
     }
     for (const [from, to] of Object.entries(mocks)) {
       assert.ok(s.includes("'" + from + "'"));

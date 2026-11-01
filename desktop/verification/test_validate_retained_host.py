@@ -315,5 +315,44 @@ class ManagedEvidence(unittest.TestCase):
         self.assertIn('RETAINED_MANAGED_FIXTURE_PASS', source)
         self.assertIn('RETAINED_MANAGED_FIXTURE_FAIL', source)
 
+class ManagedCurrentEvidence(unittest.TestCase):
+    def current(self):
+        return {**managed_sample(), 'version': 2, 'groupsPassed': 10,
+                'inputHashes': dict(validator.MANAGED_V2_HASHES)}
+
+    def test_current_requires_ten_groups_and_exact_hashes_historical_remains_eight(self):
+        value = self.current()
+        self.assertEqual(validator.managed_output(managed_text(value)), value)
+        self.assertEqual(validator.validate_managed(managed_sample())['groupsPassed'], 8)
+        for change in ({'groupsPassed': 8}, {'inputHashes': {}}, {'version': 1}):
+            with self.assertRaises(ValueError):
+                validator.validate_managed({**value, **change})
+        for key in validator.MANAGED_V2_HASHES:
+            bad = self.current()
+            bad['inputHashes'][key] = '0' * 64
+            with self.assertRaises(ValueError):
+                validator.validate_managed(bad)
+        bad = self.current()
+        bad['inputHashes']['private/path'] = 'a'*64
+        with self.assertRaises(ValueError):
+            validator.validate_managed(bad)
+
+    def test_current_failures_do_not_need_unobserved_hashes_or_fabricated_execution(self):
+        value = {**self.current(), 'inputHashes': {}, 'compileProcess': None,
+                 'fixtureProcess': None, 'groupsPassed': 0, 'sourceUnchanged': False,
+                 'directoryCleanup': False, 'passed': False}
+        self.assertFalse(validator.managed_output(managed_text(value, ['RETAINED_MANAGED_STAGE_ADMISSION']))['passed'])
+
+    def test_current_fixed_asset_hashes_match_reviewed_source(self):
+        import hashlib
+        paths = ('native/IsolatedAdbServer.cs', 'native/RetainedAdbSession.cs',
+                 'native/RetainedAdbProtocol.cs', 'native/RetainedHostAdmission.cs',
+                 'tests/fixtures/RetainedAdbProtocolFixture.cs', '../tools/phase-00/HostProbeNative.cs',
+                 'scripts/retained-managed-fixture.mjs', 'verification/Invoke-RetainedManagedFixture.ps1',
+                 'verification/WindowsBoundary.psm1', 'verification/OwnedFiles.psm1')
+        base = Path(__file__).resolve().parents[1]
+        for (key, expected), relative in zip(validator.MANAGED_V2_HASHES.items(), paths):
+            self.assertEqual(hashlib.sha256((base/relative).read_bytes()).hexdigest(), expected, key)
+
 if __name__ == '__main__':
     unittest.main()

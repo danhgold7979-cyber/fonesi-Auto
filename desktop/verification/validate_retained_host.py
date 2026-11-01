@@ -141,14 +141,26 @@ def publish(base):
 MANAGED_SCOPE = 'RETAINED_PROTOCOL_MANAGED_FIXTURE_ONLY'
 COMPILER_CODES = ('CS0122', 'CS0052', 'CS0051', 'CS0117', 'CS1061', 'CS0246', 'CS0103', 'CS1002', 'OTHER')
 MANAGED_STAGES = ('ADMISSION', 'COMPILE', 'FIXTURE', 'CLEANUP')
+MANAGED_V2_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': 'c22e40441fb6bc9bd7d1b1b1aaced656572c3ded8c2666d006449dd8b2f45470', 'protocol': '187637ea62b9455ad1bb0fd6730c7a8ac7a0ed86b906277c1407fed17905a9dc', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'fixture': '17471cdc8fe506dda87ba0f598615c202d2857e9fbe85d449745a2d9c904dad4', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': '3fa9cbfcc7106239b4001bcf4d6c09495c86f47bdc22cdcb48080a62ab57d4f3', 'wrapper': 'f382bf579b186749c6662b3f268dd8b262838f2f5b6fb932144c535856a2c396', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
 
 
 def validate_managed(value):
-    exact_record(value, ('version', 'scope', 'compileProcess', 'fixtureProcess', 'groupsPassed',
-                         'compilerDiagnostics', 'sourceUnchanged', 'directoryCleanup', 'passed'))
-    if (type(value['version']) is not int or value['version'] != 1 or
+    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2):
+        reject()
+    version = value['version']
+    keys = ('version', 'scope', 'compileProcess', 'fixtureProcess', 'groupsPassed', 'compilerDiagnostics', 'sourceUnchanged', 'directoryCleanup', 'passed')
+    exact_record(value, keys + (('inputHashes',) if version == 2 else ()))
+    groups = 8 if version == 1 else 10
+    hashes = {}
+    if version == 2:
+        hashes = value['inputHashes']
+        if type(hashes) is not dict or any(k not in MANAGED_V2_HASHES or type(v) is not str or v != MANAGED_V2_HASHES[k] for k, v in hashes.items()):
+            reject()
+        if hashes and tuple(hashes) != tuple(MANAGED_V2_HASHES):
+            reject()
+    if (type(value['version']) is not int or
             value['scope'] != MANAGED_SCOPE or type(value['groupsPassed']) is not int or
-            value['groupsPassed'] not in (0, 8)):
+            value['groupsPassed'] not in (0, groups)):
         reject()
     for key in ('sourceUnchanged', 'directoryCleanup', 'passed'):
         if type(value[key]) is not bool:
@@ -172,13 +184,14 @@ def validate_managed(value):
                     row['cleanupComplete'] and not row['stdoutTruncated'] and not row['stderrTruncated'])
     passed = bool(successful(processes['compileProcess'], ('SUCCESS', 'EMPTY_OUTPUT')) and
                   successful(processes['fixtureProcess'], ('SUCCESS',)) and
-                  value['groupsPassed'] == 8 and value['sourceUnchanged'] and
+                  value['groupsPassed'] == groups and (version == 1 or hashes == MANAGED_V2_HASHES) and value['sourceUnchanged'] and
                   value['directoryCleanup'] and not codes)
     if value['passed'] != passed:
         reject()
-    return {'version': 1, 'scope': MANAGED_SCOPE, **processes,
+    return {'version': version, 'scope': MANAGED_SCOPE, **processes,
             'groupsPassed': value['groupsPassed'], 'compilerDiagnostics': list(codes),
             'sourceUnchanged': value['sourceUnchanged'],
+            **({'inputHashes': dict(hashes)} if version == 2 else {}),
             'directoryCleanup': value['directoryCleanup'], 'passed': passed}
 
 

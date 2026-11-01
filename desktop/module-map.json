@@ -1912,7 +1912,8 @@
           "createHash": "value"
         },
         "./platform-tools-candidate.ts": {
-          "PLATFORM_TOOLS_CANDIDATE": "value"
+          "PLATFORM_TOOLS_CANDIDATE": "value",
+          "PLATFORM_TOOLS_PRIOR_36_CANDIDATE": "value"
         }
       }
     }

@@ -66,13 +66,28 @@ try {
     retainedRoot;
   if (retained) {
     retainedRoot = require('./retained-host-contract.cjs').rootForLaunch(launch);
-    const proof = read(path.join(retainedRoot, 'copy.json'));
-    if (proof.version === 2 && proof.mode === 'PACKAGE_VERSION') packageMode = true;
-    else if (
-      !(proof.version === 1 && proof.mode === undefined) &&
-      !(proof.version === 2 && proof.mode === 'MAIN_VERSION')
-    )
-      throw Error('PACKAGE_CONTROL');
+    let rollback = false;
+    try {
+      const stat = fs.lstatSync(path.join(retainedRoot, 'campaign.json'));
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1)
+        throw Error('PACKAGE_CONTROL');
+      rollback = true;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (rollback) {
+      const selected = require('./retained-rollback-contract.cjs').stageForLaunch(launch);
+      if (selected.root !== retainedRoot) throw Error('PACKAGE_CONTROL');
+      packageMode = selected.packageMode;
+    } else {
+      const proof = read(path.join(retainedRoot, 'copy.json'));
+      if (proof.version === 2 && proof.mode === 'PACKAGE_VERSION') packageMode = true;
+      else if (
+        !(proof.version === 1 && proof.mode === undefined) &&
+        !(proof.version === 2 && proof.mode === 'MAIN_VERSION')
+      )
+        throw Error('PACKAGE_CONTROL');
+    }
   }
   if (packageMode) {
     if (control.version !== 3) throw Error('PACKAGE_CONTROL');

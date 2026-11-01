@@ -26,7 +26,7 @@ const success = () => ({
   stderr: '',
 });
 const before = (text, a, b) => assert.ok(text.indexOf(a) >= 0 && text.indexOf(a) < text.indexOf(b));
-test('managed evidence requires exact eight-group marker, actual zero exit and retirement', () => {
+test('managed evidence requires exact ten-group marker, actual zero exit and retirement', () => {
   assert.equal(managedProcessPassed(success(), true), true);
   assert.equal(managedProcessPassed({ ...success(), stdout: MANAGED_MARKER + '\n' }, true), true);
   for (const patch of [
@@ -36,6 +36,7 @@ test('managed evidence requires exact eight-group marker, actual zero exit and r
     { cleanupComplete: false },
     { stdoutTruncated: true },
     { stderrTruncated: true },
+    { stdout: 'RETAINED_MANAGED_GROUPS_8\n' },
     { stdout: MANAGED_MARKER },
     { stdout: MANAGED_MARKER + '\n\n' },
     { stdout: 'private-canary\n' + MANAGED_MARKER + '\n' },
@@ -58,14 +59,15 @@ test('managed evidence requires exact eight-group marker, actual zero exit and r
   assert.equal(managedProcessPassed(bad, true), false);
   assert.equal(called, 0);
 });
-test('generated fixed entry calls only the unchanged managed fixture and demands eight groups', () => {
+test('generated fixed entry calls only the unchanged managed fixture and demands eight protocol and two version groups', () => {
   const entry = /\$entry=@'\n([\s\S]*?)\n'@/.exec(runner)?.[1];
   assert.ok(entry);
   assert.match(
     entry,
     /args\.Length != 0 \|\| Fonesi\.Tests\.RetainedAdbProtocolFixture\.RunAll\(\) != 8/,
   );
-  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_8"\)/);
+  assert.match(entry, /RunVersionExpectations\(\) != 2/);
+  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_10"\)/);
   assert.match(
     entry,
     /catch \{ Console\.Error\.WriteLine\("RETAINED_MANAGED_FIXTURE_FAILED"\); return 1;/,

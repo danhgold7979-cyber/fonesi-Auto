@@ -261,11 +261,27 @@ test('initializer probe resolves original packaged filename only from exact PACK
       launch = path.join(f.root, 'first-use', 'Fonesi-Auto-' + id, 'launch-' + id);
     fs.mkdirSync(launch, { recursive: true });
     const controlFile = path.join(launch, 'provision-control.json');
-    for (const fault of ['none', 'mode', 'root', 'downgrade', 'source']) {
+    for (const fault of [
+      'none',
+      'mode',
+      'root',
+      'downgrade',
+      'source',
+      'rollback-package',
+      'rollback-seed',
+      'rollback-downgrade',
+      'rollback-root',
+    ]) {
+      const rollback = fault.startsWith('rollback-');
+      const campaignFile = path.join(f.root, 'campaign.json');
+      if (rollback) fs.writeFileSync(campaignFile, JSON.stringify({ version: 1 }));
+      else if (fs.existsSync(campaignFile)) fs.unlinkSync(campaignFile);
       fs.writeFileSync(
         controlFile,
         JSON.stringify({
-          version: ['downgrade', 'source'].includes(fault) ? 2 : 3,
+          version: ['downgrade', 'source', 'rollback-seed', 'rollback-downgrade'].includes(fault)
+            ? 2
+            : 3,
           root: path.dirname(launch),
           stage: 'provision',
           packageRoot: fault === 'root' ? f.original : f.extracted,
@@ -313,6 +329,17 @@ test('initializer probe resolves original packaged filename only from exact PACK
                   return f.root;
                 },
               };
+            if (name === './retained-rollback-contract.cjs')
+              return {
+                stageForLaunch(value) {
+                  assert.equal(value, launch);
+                  assert.equal(rollback, true);
+                  return {
+                    root: fault === 'rollback-root' ? f.original : f.root,
+                    packageMode: fault !== 'rollback-seed',
+                  };
+                },
+              };
             if (name === './main-runtime-version-package.cjs')
               return {
                 admitPackage(root) {
@@ -325,7 +352,10 @@ test('initializer probe resolves original packaged filename only from exact PACK
               selected++;
               return {};
             }
-            if (name === '../launch/persistence-initialize.cjs' && fault === 'source') {
+            if (
+              name === '../launch/persistence-initialize.cjs' &&
+              ['source', 'rollback-seed'].includes(fault)
+            ) {
               sourceSelected++;
               return {};
             }
@@ -334,9 +364,12 @@ test('initializer probe resolves original packaged filename only from exact PACK
           },
         },
       );
-      assert.equal(selected, fault === 'none' ? 1 : 0);
-      assert.equal(sourceSelected, fault === 'source' ? 1 : 0);
-      assert.equal(exited, !['none', 'source'].includes(fault));
+      assert.equal(selected, ['none', 'rollback-package'].includes(fault) ? 1 : 0);
+      assert.equal(sourceSelected, ['source', 'rollback-seed'].includes(fault) ? 1 : 0);
+      assert.equal(
+        exited,
+        !['none', 'source', 'rollback-package', 'rollback-seed'].includes(fault),
+      );
     }
   } finally {
     f.close();

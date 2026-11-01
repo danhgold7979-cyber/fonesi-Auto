@@ -113,3 +113,118 @@ for (const row of CANDIDATE.files) Object.freeze(row);
 Object.freeze(CANDIDATE.files);
 Object.freeze(CANDIDATE.archive);
 export const PLATFORM_TOOLS_CANDIDATE = Object.freeze(CANDIDATE);
+
+// Reviewed prior metadata only; never the current INSTALL target.
+const PRIOR_36_CANDIDATE = {
+  schema: 1,
+  release: '36.0.0',
+  archive: {
+    url: 'https://dl.google.com/android/repository/platform-tools_r36.0.0-win.zip',
+    bytes: 7138784,
+    sha256: '12c2841f354e92a0eb2fd7bf6f0f9bf8538abce7bd6b060ac8349d6f6a61107c',
+  },
+  files: [
+    {
+      path: 'AdbWinApi.dll',
+      bytes: 108128,
+      sha256: '9a56e72fe1372cb722a80c00b79dcecf2b37165884e470ed05f00c668c0043b0',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'AdbWinUsbApi.dll',
+      bytes: 73312,
+      sha256: '5e77ccb2f25cd3a97553745adf1cd28a5fe8137cf64613b7fef9c6f92ff91f37',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'NOTICE.txt',
+      bytes: 1089730,
+      sha256: 'b319ee2dc88f5d38b0921b0349bf6f7a1f7b30453ecef2180a74989503d7f704',
+      peMachine: null,
+      peMagic: null,
+    },
+    {
+      path: 'adb.exe',
+      bytes: 6641760,
+      sha256: '1e1c2280b90b3f01ad84cd8df4858b1b1995012814f3ca8893bcc3ba3848edec',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'etc1tool.exe',
+      bytes: 454240,
+      sha256: 'e0b3ae98dffbe02766861ce7fb539d8dde8c5e2d5addb5f41fbdbd55fde3dede',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'fastboot.exe',
+      bytes: 2050144,
+      sha256: '04a4105ecbd9407e1dd65d6e7301b62ae96fdbd64ece3ce8cddb8059193abbeb',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'hprof-conv.exe',
+      bytes: 54368,
+      sha256: '6ce5a2a4e890e7f5c72f7deb5ddfabf4d48c5aabb4e0b951b8083416d63679dd',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'libwinpthread-1.dll',
+      bytes: 242960,
+      sha256: '055f5a8693720186e21bfd35f68aead1510f1a7d104f8cd8485c0ed6bcb42a94',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'make_f2fs.exe',
+      bytes: 487008,
+      sha256: 'b7311675c22980fead6f2e79a6b2a7652f7114cf76a4c52b88d24efb9640ef8f',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'make_f2fs_casefold.exe',
+      bytes: 487008,
+      sha256: '839ce0abd71771b2d7edb86a219ce22756b4f062dc54db5c06caf51a784da569',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'mke2fs.conf',
+      bytes: 1157,
+      sha256: 'ad58a58dcdd24d85055814ca9cac67db89d4e67c434e96774bdce0d0a007d067',
+      peMachine: null,
+      peMagic: null,
+    },
+    {
+      path: 'mke2fs.exe',
+      bytes: 759392,
+      sha256: 'e471dd11b4afa217ed05f520c408f22340001b83f39647a541fca6f37bb34c13',
+      peMachine: 332,
+      peMagic: 267,
+    },
+    {
+      path: 'source.properties',
+      bytes: 38,
+      sha256: '382f8b27c4af692501671a83e725217629c45883cfedeb29a1a3fd8e5b191677',
+      peMachine: null,
+      peMagic: null,
+    },
+    {
+      path: 'sqlite3.exe',
+      bytes: 2924640,
+      sha256: 'b2e3241ff4cee0cd9b6cf70ae8cf5cd8bbc0b43e86cb8174407800b1bc435320',
+      peMachine: 332,
+      peMagic: 267,
+    },
+  ],
+} as const;
+for (const row of PRIOR_36_CANDIDATE.files) Object.freeze(row);
+Object.freeze(PRIOR_36_CANDIDATE.files);
+Object.freeze(PRIOR_36_CANDIDATE.archive);
+export const PLATFORM_TOOLS_PRIOR_36_CANDIDATE = Object.freeze(PRIOR_36_CANDIDATE);

@@ -1,9 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdtemp, realpath, readdir, rmdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { createPlatformToolsProvisioner } from '../src/main/platform-tools-provisioner.ts';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
-import { PLATFORM_TOOLS_CANDIDATE } from '../src/main/platform-tools-candidate.ts';
+import {
+  PLATFORM_TOOLS_CANDIDATE,
+  PLATFORM_TOOLS_PRIOR_36_CANDIDATE,
+} from '../src/main/platform-tools-candidate.ts';
 import {
   PLATFORM_TOOLS_INSTALL_TARGET,
   PLATFORM_TOOLS_KNOWN_CANDIDATES,
@@ -48,13 +54,17 @@ function synthetic(release, digit, flags = {}) {
     ...flags,
   };
 }
-test('production catalog retains exact sole pin canonical bytes and denies manufactured handles', () => {
-  assert.equal(PLATFORM_TOOLS_KNOWN_CANDIDATES.length, 1);
+test('production catalog retains exact current-target canonical bytes and denies manufactured handles', () => {
+  assert.equal(PLATFORM_TOOLS_KNOWN_CANDIDATES.length, 2);
   assert.equal(
     JSON.stringify(PLATFORM_TOOLS_INSTALL_TARGET.candidate),
     JSON.stringify(PLATFORM_TOOLS_CANDIDATE),
   );
   assert.equal(PLATFORM_TOOLS_INSTALL_TARGET.manifestSha256, hash(PLATFORM_TOOLS_CANDIDATE));
+  assert.equal(
+    hash(PLATFORM_TOOLS_CANDIDATE),
+    'c25bfa88262b14a61a41c3ed4434a6b84bb66575f070e4bb3204fa1cbd67f54b',
+  );
   assert.equal(
     resolvePlatformToolsCandidate(PLATFORM_TOOLS_CANDIDATE.archive.sha256),
     PLATFORM_TOOLS_INSTALL_TARGET,
@@ -97,4 +107,82 @@ test('catalog rejects unsupported target, duplicate history, malformed release a
     ],
   ])
     await assert.rejects(catalog(entries, target), /RECOVERY_REQUIRED/);
+});
+
+test('reviewed prior36 metadata exactly matches canonical measured inventory without changing current target', () => {
+  const raw = readFileSync(
+    new URL('../verification/platform-tools-prior-36-candidate.json', import.meta.url),
+  );
+  assert.equal(raw.length, 2276);
+  assert.equal(
+    createHash('sha256').update(raw).digest('hex'),
+    'dce9a38e3cb81111112690118ec842bce9f634e666517dc2fd4a02042fda098c',
+  );
+  assert.equal(raw.toString('utf8'), JSON.stringify(PLATFORM_TOOLS_PRIOR_36_CANDIDATE));
+  const prior = resolvePlatformToolsCandidate(
+    '12c2841f354e92a0eb2fd7bf6f0f9bf8538abce7bd6b060ac8349d6f6a61107c',
+  );
+  assert.equal(prior.candidate.release, '36.0.0');
+  assert.equal(prior.candidate.archive.bytes, 7138784);
+  assert.equal(
+    prior.manifestSha256,
+    'dce9a38e3cb81111112690118ec842bce9f634e666517dc2fd4a02042fda098c',
+  );
+  assert.equal(
+    prior.candidate.files.reduce((sum, row) => sum + row.bytes, 0),
+    15373885,
+  );
+  assert.equal(
+    prior.candidate.files.filter((row) => row.peMachine === 332 && row.peMagic === 267).length,
+    11,
+  );
+  assert.equal(prior.activationAllowed, true);
+  assert.equal(prior.launchAllowed, true);
+  assertPlatformToolsCandidate(prior);
+  assert.throws(
+    () => assertPlatformToolsCandidate({ ...prior, candidate: { ...prior.candidate } }),
+    /RECOVERY_REQUIRED/,
+  );
+  assert.equal(
+    resolvePlatformToolsCandidate(
+      '12c2841f354e92a0eb2fd7bf6f0f9bf8538abce7bd6b060ac8349d6f6a61107d',
+    ),
+    null,
+  );
+  assert.ok(Object.isFrozen(PLATFORM_TOOLS_PRIOR_36_CANDIDATE));
+  assert.ok(Object.isFrozen(PLATFORM_TOOLS_PRIOR_36_CANDIDATE.archive));
+  assert.ok(Object.isFrozen(PLATFORM_TOOLS_PRIOR_36_CANDIDATE.files));
+  assert.ok(PLATFORM_TOOLS_PRIOR_36_CANDIDATE.files.every(Object.isFrozen));
+  assert.notEqual(prior, PLATFORM_TOOLS_INSTALL_TARGET);
+  assert.equal(PLATFORM_TOOLS_INSTALL_TARGET.candidate.release, '37.0.1');
+});
+
+test('known prior metadata alone creates neither installed runtime nor rollback authority', async () => {
+  const base = await realpath(new URL('../.test-output', import.meta.url));
+  const root = await mkdtemp(join(base, 'catalog-empty-')),
+    storeId = randomUUID();
+  const core = createPlatformToolsProvisioner({
+    dataRoot: root,
+    storeId,
+    assertOwnedSync() {},
+    assertIdleSync() {},
+    assertDataLocation(p) {
+      assert.equal(p, root);
+    },
+    clock: () => 1000,
+    newId: randomUUID,
+    recipient: { read: () => null, isCurrent: () => false },
+  });
+  try {
+    const status = await core.status();
+    assert.equal(status.status, 'NOT_PROVISIONED');
+    assert.equal(status.activeVersion, null);
+    assert.equal(status.previousVersion, null);
+    assert.equal(status.rollbackAvailable, false);
+    assert.equal((await core.run({}, 0, 'ROLLBACK')).code, 'TERMS_REQUIRED');
+    assert.deepEqual(await readdir(root), []);
+  } finally {
+    assert.equal(await core.close(), 'RETIRED');
+    await rmdir(root);
+  }
 });
