@@ -43,7 +43,7 @@ Contracts include device ID, explicit serial/transport ID, connection generation
 Internal P2-01–P2-12 software portions are **IN_PROGRESS** within their recorded finite
 contracts; P2-13 actual Unicode round-trip remains NOT_STARTED. No complete canonical
 task has new acceptance. The official candidate version-only development job has a
-bounded PASS; the retained SOURCE app-local VERSION/EOF campaign now also passes24 native cases and8 managed groups with actual cleanup. [Accepted exact evidence and subcriteria mapping](../evidence/P2-retained-windows-campaign-2026-11-01.md) preserves PACKAGE/genuine-delivery/server/physical obligations. Isolated-server development refused an existing profile before launch.
+bounded PASS; the retained SOURCE app-local VERSION/EOF campaign now also passes24 native cases and8 managed groups with actual cleanup. [Accepted exact evidence and subcriteria mapping](../evidence/P2-retained-windows-campaign-2026-11-01.md) preserves genuine-delivery/server/physical obligations; the separately [accepted instrumented PACKAGE Help VERSION campaign](../evidence/P2-package-runtime-version-native-2026-11-01.md) now establishes the packaged invocation positive criterion. Whole-task rollback implementation remains incomplete: the current one-pin path cannot establish a distinct prior supported runtime. Isolated-server development refused an existing profile before launch.
 Actual device/physical/AVD/input/capture/Unicode/wireless acceptance tests remain NOT_RUN.
 [Fleet integration](../evidence/P2-fleet-facade-integration-2026-11-01.md),
 [selection/fault fixtures](../evidence/P2-selection-diagnostics-faults-software-2026-11-01.md)
@@ -101,6 +101,7 @@ Risks/stop conditions: identity collision → quarantine; Unicode unsupported �
 |---|---|---|---|
 | 2026-11-01 | P2-01 / P2-02 partial runtime/lifetime criteria | public `c955d1ca`, CI41310721221, [strict evidence](../evidence/P2-retained-windows-campaign-2026-11-01.md) | SOURCE VERSION/EOF24/24 +managed8/8 PASS; no whole-task acceptance |
 | 2026-11-01 | P2-01 / P2-02 main-owned invocation/audit subcriteria | public `dbed02c4`, CI41316512133, [strict main/Help evidence](../evidence/P2-main-runtime-version-native-2026-11-01.md) | SOURCE actual Help/IPC/service VERSION11 bootstrap+14 main PASS; managed reused, PACKAGE/server/device excluded |
+| 2026-11-01 | P2-01 packaged verified app-local invocation positive criterion | public `b279d692`, CI41320763809, [strict PACKAGE evidence](../evidence/P2-package-runtime-version-native-2026-11-01.md) | Instrumented packaged actual Help/IPC/service VERSION11 bootstrap+14 main PASS; independent PATH, integrity/EOF/cleanup; whole-task retained-runtime rollback implementation remains incomplete |
 
 ## 8. Change history
 | Date | Revision | Change | Authorization effect |

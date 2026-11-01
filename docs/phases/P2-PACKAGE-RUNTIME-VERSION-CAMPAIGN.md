@@ -1,6 +1,6 @@
-# PACKAGE main/Help VERSION — finite source-entry contract
+# PACKAGE main/Help VERSION — reviewed contract and bounded execution
 
-2026-11-01 14:53 UTC. Finite source-entry contract independently reviewed CLEAR at design SHA `d7be1dfbb482f14867c44e9e6c47109fa0ceae4a3f2d2689b953ded72c0ce1e6`; adapter source implemented under existing ordinary source delegation. This document does not authorize or claim a PACKAGE native run. SOURCE main/Help campaign `dbed02c4`, run `41316512133`, reached terminal SUCCESS with a strict report containing all 11 bootstrap and 14 observation cases true; root accepted those bounded SOURCE subcriteria at 14:36 UTC. Its success is not evidence for different package bytes.
+2026-11-01 14:53 UTC. Finite source-entry contract independently reviewed CLEAR at design SHA `d7be1dfbb482f14867c44e9e6c47109fa0ceae4a3f2d2689b953ded72c0ce1e6`; adapter source implemented under existing ordinary source delegation. Historical source-entry wording below is retained; the exact PACKAGE campaign subsequently passed and was accepted at15:28 UTC, as recorded in the linked evidence. SOURCE main/Help campaign `dbed02c4`, run `41316512133`, reached terminal SUCCESS with a strict report containing all 11 bootstrap and 14 observation cases true; root accepted those bounded SOURCE subcriteria at 14:36 UTC. Its success is not evidence for different package bytes.
 
 ## 1. Scope and prerequisite
 
@@ -88,3 +88,8 @@ The exclusive canonical `package-binding.json` has exactly eleven ordered keys: 
 Supervisor-selected `PACKAGE_VERSION` proof, actual PACKAGE journal/header, version3 initializer control and admitted extracted root must agree. The derived main retains its original packaged `app/build/main.cjs` filename for dependency resolution. Schema4 compiled validators and the schema7 encoder are loaded from that same admitted package. Source-owned verification parsers/cleanup inspectors remain additional checks, not substituted production dependencies or a source-free harness claim.
 
 Final implementation evidence and source-test attribution are recorded in [the PACKAGE evidence checkpoint](../evidence/P2-package-runtime-version-native-2026-11-01.md). Root recorded conditional bounded execution disposition at14:55 UTC, contingent on final exact20-file/10-hash independent review CLEAR. Actual PACKAGE execution remains NOT_RUN in this source checkpoint.
+
+
+## 9. Actual bounded result
+
+The exact reviewed adapter plus physical-filesystem correction completed public `b279d692`, CI41320763809 with1130/109/263 source and strict packaged11 bootstrap+14 main PASS. Independent exact-byte review and coordinator acceptance occurred at15:28 UTC. [Actual report and original P2-01 reconciliation](../evidence/P2-package-runtime-version-native-2026-11-01.md) preserve instrumentation/reused-managed and all excluded effects; historical NOT_RUN statements describe their dated source checkpoints, not the current result.

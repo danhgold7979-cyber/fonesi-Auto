@@ -1,6 +1,8 @@
-# PACKAGE main/Help VERSION — adapter source prepared, native NOT_RUN
+# PACKAGE main/Help VERSION — bounded actual evidence PASS
 
-2026-11-01 14:53 UTC. Canonical scope: **P2-01 packaged-Windows app-local VERSION invocation**. The prior [accepted SOURCE main/Help evidence](P2-main-runtime-version-native-2026-11-01.md) remains tied to public `dbed02c4`, CI41316512133 and its exact1126-byte report; it is not PACKAGE proof. No full P2 task or formal acceptance count changes.
+Current disposition: bounded PACKAGE main/Help VERSION/EOF evidence independently verified and accepted at15:28 UTC. The preparation/failure sections below retain their historical dates; the actual result and original-criterion mapping are recorded at the end.
+
+2026-11-01 14:53 UTC source checkpoint. Canonical scope: **P2-01 packaged-Windows app-local VERSION invocation**. The prior [accepted SOURCE main/Help evidence](P2-main-runtime-version-native-2026-11-01.md) remains tied to public `dbed02c4`, CI41316512133 and its exact1126-byte report; it is not PACKAGE proof. No full P2 task or formal acceptance count changes.
 
 ## Scope and implementation
 
@@ -19,7 +21,7 @@ One actual Help Verify, bounded explicit reads, literal native VERSION, EOF reti
 - Independent review found a PACKAGE-proof/downgraded-control path that could select checkout initialization. The final adapter now selects expected mode from the owned supervisor proof before control-version admission. The causal downgraded-version negative performs no initializer load; an explicit historical SOURCE proof/control still selects its original source initializer. One targeted test passes, including the source-positive extension; no count increase or native rerun.
 - During test authoring, the new audit VM initially lacked a dynamic-import loader, then exposed cross-realm plain-object validation; both were fixture-only failures. Final causal check passes with the explicit native VM loader and JSON realm bridge. No product predicate changed.
 
-## Execution status and limits
+## Historical execution status at source freeze and limits
 
 **Actual PACKAGE Windows execution: NOT_RUN.** Root recorded a bounded execution disposition at14:55 UTC, conditional on final independent exact20-file/10-hash review CLEAR: one `[package-version]` campaign, existing ownership/audit/retirement/cleanup, no security/default-policy change. Invocation remains NOT_RUN in this source checkpoint. No unrelated SOURCE/fleet/recipient/managed campaign is requested. This will test an instrumented packaged application, not untouched top-level Launch.ps1, a signed installer or an existing-user upgrade. Genuine recipient consent, production HTTPS, redistribution approval, server/device/P106 and unsupported deep-path obligations remain unchanged. P2 full tasks0/13; formal acceptance0.
 
@@ -58,3 +60,24 @@ Source tracing identifies a real physical-filesystem mismatch: production packag
 Affected helper tests **8/8 PASS**, including actual physical synthetic ASAR bytes with poisoned virtual filesystem access and missing-original-fs zero-fallback refusal. Synthetic package admission remains explicitly synthetic; these tests do not claim a native Electron run. Warning-level affected quality passes. Product src/native/launch, compiler sources, permissions, deadlines, cleanup and evidence acceptance are unchanged. Expected next hosted **1130/109/263**, not a new aggregate. The same bounded PACKAGE retry is pending; prior failed evidence remains historical.
 
 Revised helper SHA256: `181edd593e0e46f73a6e173d1d18dcdff86f7ad8c12e6312c1d47434fb739987`. The other nine original frozen runner hashes above are unchanged; the earlier helper hash remains the exact first-run source identity.
+
+
+## Accepted actual PACKAGE result — 15:28 UTC
+
+Local `d8ec25052e815376063f9a0a725608e1bbb7053c` was published tree-equivalently as `b279d692c5d338eb6ed8f75b43e3569bb22afa0c`, tree `a4b52ea0590896c88051a902d029f3af5da5b193`. [CI41320763809](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41320763809) completed source and the sole requested PACKAGE job successfully. Source job124890257927 logs **1130/1130 desktop + source marker,109/109 foundation with zero fail/cancel/skip,263 Python/OK**. Unrelated native jobs were SKIPPED, not rerun.
+
+Native job124890827883 emitted actual process SUCCESS and strict publication PASS. Artifact13089128374 is892-byte ZIP SHA256 `7c0c6afccfe6e4eab3e7298cf683e10b3dfd470acc4a89a461850b8f4bf99116`, containing only `validated.json`. The [retained exact report](samples/P2-package-main-version-pass.json) is1468 bytes/no trailing LF, SHA256 `be56a47b1c2afa69d98942c46879b2233777e3ce01a7e4c58e845bd274bc5247`. Author and independent reviewer reconstruct canonical bytes through the exact committed validator/import closure: all11 bootstrap and14 main predicates true, SUCCESS/0/retired/untruncated, original archive/source/package unchanged, directory cleanup true, failure null. Exact package source head/tree agree with the tested commit; ZIP471038593 bytes SHA`fefa2f91a5833eeeb1265dcd870674d90c2324a729740a45f39b459708447c14`, manifest SHA`a38aa7d376d9036a1760092ab77359014551b13d9936e31c389f712825927abd`.
+
+Coordinator Coder Bin accepted the precise bounded subcriterion at15:28 UTC after independent strict audit. It is actual packaged Help→preload→IPC→main service→default factory literal VERSION, exact installation/audit binding, EOF retirement and owned cleanup; not a synthetic service result. Packaged initializer, main/dependencies, schema4 validators and schema7 encoder are resolved from the admitted extracted package. System32-only PATH and exact app-local native admission prevent reliance on a global Node/ADB executable. The immutable package retains its hash-bound files; external instrumentation remains disclosed. Managed evidence is explicitly REUSED, not a new compile result.
+
+### Original P2-01 reconciliation
+
+- **Positive packaged invocation criterion:** PASS for the exact instrumented internal Windows package above: verified app-local ADB invoked independently of ambient PATH.
+- **Manifest version/origin/hash/architecture and app-local selection:** existing exact official pin, physical PE/hash admission and provenance are exercised; recipient-use acceptance and redistribution rights remain distinct, not a fabricated legacy license boolean.
+- **Missing/tampered/wrong-architecture refusal and current-installation race fencing:** existing source/owned-file/recipient evidence is retained. This successful package campaign does not itself execute those negative variants; independent review confirms genuine wrong-PE, missing/tamper/link refusal and installation-race tests as layered evidence, not actual packaged negative variants or a substitute for rollback capability.
+- **Prior verified binary rollback: remaining implementation gap.** The production provisioner constructs a one-candidate ledger, treats repeated current-pin installation as idempotent, and requires a prior digest for rollback. That path cannot establish a distinct prior supported runtime. The positive rollback test currently exercises the lower-level ledger with two synthetic accepted candidates; it is not full provisioner/files/issuer rollback. A bounded trusted multi-candidate/retained-runtime composition is required before claiming this original clause complete. No global SDK changes are performed.
+
+Independent whole-task review confirms P2-01 remains incomplete because the provisioner/files/custody/factory and trusted issuer do not yet support a distinct retained candidate and usable rollback. This is an original implementation requirement, not a new acceptance condition. Whole-task/formal counts therefore remain unchanged. Genuine human consent/production HTTPS, untouched top-level Launch.ps1/signed-installer, existing-user upgrade, server/device/P106 and arbitrary deep-path support are not established by this campaign. Operational permission exclusions are not silently redefined as new canonical requirements.
+
+
+Next coherent original-scope work: bounded trusted catalog-aware retained-runtime upgrade/rollback across the existing provisioner/files/custody/factory and trusted invocation entry, with actual owned-file A→B→A/reopen and missing/tampered prior/stale/busy/uncertain negatives. Exact genuine candidate pins must precede production admission; synthetic multi-entry composition cannot become an official binary claim. No server/profile workaround or unrelated positive campaign replay is required by this source step.
