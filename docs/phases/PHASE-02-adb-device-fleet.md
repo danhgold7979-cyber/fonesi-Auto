@@ -100,6 +100,7 @@ Risks/stop conditions: identity collision â†’ quarantine; Unicode unsupported â†
 | Date | Task | Commit/evidence | Actual result |
 |---|---|---|---|
 | 2026-11-01 | P2-01 / P2-02 partial runtime/lifetime criteria | public `c955d1ca`, CI41310721221, [strict evidence](../evidence/P2-retained-windows-campaign-2026-11-01.md) | SOURCE VERSION/EOF24/24 +managed8/8 PASS; no whole-task acceptance |
+| 2026-11-01 | P2-01 / P2-02 main-owned invocation/audit subcriteria | public `dbed02c4`, CI41316512133, [strict main/Help evidence](../evidence/P2-main-runtime-version-native-2026-11-01.md) | SOURCE actual Help/IPC/service VERSION11 bootstrap+14 main PASS; managed reused, PACKAGE/server/device excluded |
 
 ## 8. Change history
 | Date | Revision | Change | Authorization effect |
