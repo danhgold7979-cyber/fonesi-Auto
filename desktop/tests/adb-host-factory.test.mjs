@@ -11,6 +11,9 @@ import {
   realpathSync,
   readdirSync,
   renameSync,
+  linkSync,
+  symlinkSync,
+  existsSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -54,6 +57,8 @@ function fixture(extra = {}) {
     join(system, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
     'synthetic fixed OS executable',
   );
+  const systemExe = join(system, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  if (extra.systemHardlink) linkSync(systemExe, join(base, 'os-servicing-link'));
   const entry = {
     root: data,
     parentToken: id(2),
@@ -212,7 +217,7 @@ function fixture(extra = {}) {
       return child;
     },
   };
-  const buildFactory = () =>
+  const buildFactory = (override = {}) =>
     createHostFactory(
       {
         entry,
@@ -221,11 +226,12 @@ function fixture(extra = {}) {
         runtimeCustody: custody,
         assertOwnedSync() {
           if (!owned) throw Error('private ownership');
+          extra.ownerCallback?.({ base, launch, systemExe });
         },
         now: () => 1000,
         diagnosticId: () => id(n++),
       },
-      bindings,
+      { ...bindings, ...override },
     );
   const factory = buildFactory();
   const cap = factory.grant(id(7), () => {
@@ -238,6 +244,8 @@ function fixture(extra = {}) {
     launch,
     receipt,
     entry,
+    systemExe,
+    system,
     factory,
     buildFactory,
     cap,
@@ -442,5 +450,66 @@ test('factory fences exact launch marker and directory identity before helper cr
     } finally {
       f.cleanup();
     }
+  }
+});
+
+test('fixed system executable allows servicing hardlinks while owned payload hardlinks remain rejected', async () => {
+  const f = fixture({ systemHardlink: true });
+  try {
+    assert.equal((await f.factory.execute(f.cap, f.request())).outcome, 'OBSERVED');
+    assert.equal(f.spawns, 1);
+    assert.equal(await f.factory.close(), 'RETIRED');
+    linkSync(join(f.launch, 'host-parent.json'), join(f.base, 'owned-extra-link'));
+    assert.throws(
+      () => readHostContext(f.entry, f.launch, f.desktop, 100),
+      /HOST_CONTEXT_REJECTED/,
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+test('last ownership callback cannot replace the fixed OS executable before spawn', async () => {
+  let changed = false,
+    afterBootstrap = 0;
+  const f = fixture({
+    ownerCallback({ base, launch, systemExe }) {
+      const session = readdirSync(launch).find((n) => n.startsWith('host-session-'));
+      if (
+        !changed &&
+        session &&
+        existsSync(join(launch, session, 'bootstrap.json')) &&
+        ++afterBootstrap === 4
+      ) {
+        changed = true;
+        renameSync(systemExe, join(base, 'old-system-exe'));
+        put(systemExe, 'replacement OS executable');
+      }
+    },
+  });
+  try {
+    assert.notEqual((await f.factory.execute(f.cap, f.request())).outcome, 'OBSERVED');
+    assert.equal(changed, true);
+    assert.equal(afterBootstrap, 4);
+    assert.equal(f.spawns, 0);
+    await f.factory.close();
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('fixed OS path still rejects noncanonical spelling, directory executable and junction alias', async () => {
+  const f = fixture();
+  try {
+    assert.throws(() => f.buildFactory({ systemRoot: f.system + '/.' }), /HOST_FACTORY_REJECTED/);
+    const alias = join(f.base, 'system-alias');
+    symlinkSync(f.system, alias, 'junction');
+    assert.throws(() => f.buildFactory({ systemRoot: alias }), /HOST_FACTORY_REJECTED/);
+    renameSync(f.systemExe, join(f.base, 'retained-system-file'));
+    mkdirSync(f.systemExe);
+    assert.throws(() => f.buildFactory(), /HOST_FACTORY_REJECTED/);
+    assert.equal(f.spawns, 0);
+    await f.factory.close();
+  } finally {
+    f.cleanup();
   }
 });

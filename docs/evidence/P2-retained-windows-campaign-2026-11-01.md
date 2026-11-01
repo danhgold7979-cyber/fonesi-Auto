@@ -10,7 +10,8 @@ custody, not a completed task/phase or a new acceptance denominator.
 ## Immutable product versus new verification
 
 Product commit `a19406fb780aeb4a4c6297ab78988f9528be5411`, tree
-`05a82ff565c7e687dd87d4df5ccf531e33117662`, is unchanged by this harness batch.
+`05a82ff565c7e687dd87d4df5ccf531e33117662`, was unchanged by the initial harness/diagnostic batches. The later narrow OS-file
+admission correction below is an explicit factory-only production delta from that base.
 The new files are verification runners, fixed schemas/publishers/tests and workflow
 wiring. The final published commit/tree and actual run will be recorded after publication.
 Public base before this batch is `e5680a2f8934a747e6fd45bada7340b0e3331f0f`.
@@ -191,3 +192,44 @@ observer `58f2e3e2289cf7b095d401f5bd5738b51efc16aa652b0d0211d3fc52af72fb51`,
 outer `fe1987b1301508b5cb144a3f8b1111ea3038080a86bd71a685c62703c61db883`.
 Product a194 and managed/compiler sources remain unchanged. This is the same bounded
 VERSION campaign diagnostic retry, not server/device authority or canonical completion.
+
+## Observed OS system-file incompatibility and narrow correction — 10:39 UTC
+
+Run41297798926/public `16297a9ca0daf8836a104441d68a8d1ea03bbda0` passes
+1010/109/232 source tests. The actual fixed diagnostic is SITE_02 with bound caller
+createHostFactory: regular YES, reparse NO, single-link NO, canonical YES. The frozen
+source maps this to the first fixed system PowerShell file gate, before context or
+helper admission. This demonstrates that the owned-file single-link restriction was
+incorrectly applied to the Windows-serviced OS executable. No server/profile workaround
+is involved. Current filesystem facts remain distinct from atomic load/signature proof.
+
+Managed artifact13080410671 and native artifact13080505288 are byte-identical to the
+preceding reviewed414-byte PASS and392-byte FAIL respectively (same SHA256 values
+above). No native VERSION/retirement success is inferred from this diagnosis.
+
+The production correction is limited to `src/main/adb-host-factory.ts` and its exact
+module-map edges: a private validator for the already fixed System32 PowerShell path
+requires canonical regular/non-reparse file and bounded size but permits system-file
+hardlinks. It captures dev/ino/size/mtime and rechecks after the final ownership callback,
+immediately before spawn, followed only by internal state fences. `hostPlain` remains
+unchanged for every owned record, asset, runtime and cleanup path. Native C# sources,
+Job/parent admission, VERSION-only policy, private argv/env and retirement remain unchanged.
+Factory SHA256 `696fdb792bd9a499183c344a66f45351817b6afda6834953f74ee3dc36857457`;
+module map `185344799eb05e48f5cd8731b97d725a478d5880d8f0cbfb7bb3d42bd92a7e42`.
+
+Actual owned-file/injected-process factory tests12/12 pass: fixed system hardlink
+positive, owned receipt hardlink refusal, last callback replacement/no spawn, noncanonical
+spelling, directory and junction-alias refusal. Strict TypeScript and fresh verified
+build pass. First build correctly refused the undeclared two filesystem imports;
+the exact private module-map edges were then added (no broader role or new module).
+Observer/control19 unaffected cases pass on the refreshed build; its one diagnostic
+case now exercises actual compiled hostPlain via one test-only in-memory export rather
+than expecting the corrected system gate to fail. That affected case passes after
+removing a V8 function-alias mismatch; no actual native behavior is simulated as proof.
+The final callback regression was then tightened to the fourth owner check after complete
+bootstrap publication (three currentRuntime checks plus the last explicit owned check);
+that affected1/1 passes with exact count4/no spawn. Three changed code/test files pass
+warning-level quality. Existing1010/109/232 results
+are carried evidence, not a new full run; next expected1013 remains pending. This is
+the same approved bounded VERSION campaign corrective retry, with this exact revised
+factory explicitly replacing the frozen a194 factory for the next native proof.

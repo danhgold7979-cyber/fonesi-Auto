@@ -344,10 +344,17 @@ test('diagnostics never invoke getters or echo hostile error objects', () => {
   );
   assert.equal(reason(Error('private path')), 'UNCLASSIFIED');
 });
-test('fixed context diagnostics classify actual compiled system-file rejection without exposing private facts', () => {
+test('fixed context diagnostics classify compiled owned-file refusal without exposing private facts', () => {
   const file = path.resolve(__dirname, '../build/adb-host-factory.cjs');
-  const source = fs.readFileSync(file, 'utf8'),
+  const source =
+      fs.readFileSync(file, 'utf8') +
+      '\nmodule.exports.probe = function createHostFactory(path) { hostPlain(path); };\n',
     digest = hash(source);
+  const Module = require('node:module');
+  const probe = new Module(file, module);
+  probe.filename = file;
+  probe.paths = Module._nodeModulePaths(path.dirname(file));
+  probe._compile(source, file);
   const root = fs.realpathSync.native(
     fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'private-context-')),
   );
@@ -358,25 +365,8 @@ test('fixed context diagnostics classify actual compiled system-file rejection w
   try {
     let thrown;
     try {
-      require(file).createHostFactory(
-        {
-          entry: {},
-          launchRoot: root,
-          desktopRoot: root,
-          runtimeCustody: {},
-          assertOwnedSync() {},
-          now: () => 1,
-          diagnosticId: () => id(1),
-        },
-        {
-          platform: 'win32',
-          parentPid: 100,
-          systemRoot: root,
-          spawn() {
-            throw Error('MUST_NOT_SPAWN');
-          },
-        },
-      );
+      const check = probe.exports.probe;
+      check(exe);
     } catch (error) {
       thrown = error;
     }

@@ -2,6 +2,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { lstatSync, realpathSync } from 'node:fs';
 import { createHostAdapter } from './adb-host-adapter.ts';
 import { createHostBridge } from './adb-host-bridge.ts';
 import type {
@@ -14,7 +15,6 @@ import {
   HOST_ASSETS,
   hostHash,
   hostUuid,
-  hostPlain,
   hostNames,
   hostWrite,
   readHostContext,
@@ -39,6 +39,20 @@ const realBindings = (): Bindings => ({
 });
 function fail(): never {
   throw Error('HOST_FACTORY_REJECTED');
+}
+// Windows servicing may hardlink this fixed OS executable. Owned files still use hostPlain.
+function systemExecutable(path: string) {
+  const s = lstatSync(path);
+  if (
+    resolve(path) !== path ||
+    !s.isFile() ||
+    s.isSymbolicLink() ||
+    realpathSync.native(path) !== path ||
+    s.size < 1 ||
+    s.size > 512 * 1024 * 1024
+  )
+    fail();
+  return Object.freeze({ dev: s.dev, ino: s.ino, size: s.size, mtimeMs: s.mtimeMs });
 }
 const observationKey = (o: RuntimeReadObservation) =>
   JSON.stringify([o.release, o.archiveSha256, o.manifestSha256, o.installationRevision, o.adbPath]);
@@ -66,7 +80,7 @@ export function createHostFactory(
     systemRoot = bindings.systemRoot;
   if (bindings.platform !== 'win32' || resolve(systemRoot) !== systemRoot) fail();
   const powershell = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  hostPlain(powershell);
+  const systemIdentity = systemExecutable(powershell);
   owned();
   const context = readHostContext(entry, launchRoot, desktopRoot, parentPid),
     sessionId = randomUUID();
@@ -206,8 +220,15 @@ export function createHostFactory(
       hostHash(bootstrap),
     ];
     currentRuntime(o);
-    hostPlain(powershell);
     owned();
+    const currentSystem = systemExecutable(powershell);
+    if (
+      currentSystem.dev !== systemIdentity.dev ||
+      currentSystem.ino !== systemIdentity.ino ||
+      currentSystem.size !== systemIdentity.size ||
+      currentSystem.mtimeMs !== systemIdentity.mtimeMs
+    )
+      fail();
     if (stopped || broken) fail();
     child = start(powershell, args, {
       shell: false,

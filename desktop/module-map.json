@@ -1744,12 +1744,15 @@
           "HOST_ASSETS": "value",
           "hostHash": "value",
           "hostUuid": "value",
-          "hostPlain": "value",
           "hostWrite": "value",
           "readHostContext": "value",
           "createHostRoot": "value",
           "cleanupHostRoot": "value",
           "hostNames": "value"
+        },
+        "node:fs": {
+          "lstatSync": "value",
+          "realpathSync": "value"
         }
       }
     }

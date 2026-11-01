@@ -69,7 +69,11 @@ is derived by custody, never a request field. Preserve ledger/runtime read holde
 actual attempt AND bridge I/O retirement, including transport failures.
 
 Resolve exact Windows System32 WindowsPowerShell/v1.0/powershell.exe and validate its
-canonical non-reparse path; no PATH lookup. Fixed flags: -NoLogo -NoProfile -NonInteractive
+canonical non-reparse regular-file path; no PATH lookup. Windows-serviced system
+files may have multiple hardlinks: the fixed OS executable is not an owned payload.
+Capture its dev/ino/size/mtime identity and recheck after the final ownership callback
+immediately before spawn. All owned records/assets keep their single-link rule. This
+is path/identity checking, not atomic executable-handle binding or signature proof. Fixed flags: -NoLogo -NoProfile -NonInteractive
 -File <bound bootstrap.ps1> <bound private bootstrap record> <exact record SHA256>.
 The separate fixed hash argument binds the exact canonical main-produced bytes before
 PowerShell parses the record; it is not authentication against a hostile local editor. No shell=true, command text,
