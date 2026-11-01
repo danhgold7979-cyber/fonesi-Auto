@@ -196,3 +196,28 @@ test('final supplied admission cannot revoke external ownership and still commit
   assert.equal(r.result.code, 'OWNER_REVOKED');
   assert.equal(f.read().meta.revision, 0);
 });
+
+test('optional final internal lane fence follows both external callbacks and retains internal close checks', async () => {
+  const calls = [];
+  const f = fixture({
+    assertOwnedSync() {
+      calls.push('owned');
+    },
+  });
+  const result = await f.coordinator.withLane(async (lane) => {
+    lane.assertCurrent(
+      () => calls.push('admit'),
+      () => calls.push('final'),
+    );
+    assert.deepEqual(calls, ['owned', 'admit', 'owned', 'final']);
+    assert.throws(
+      () =>
+        lane.assertCurrent(undefined, () => {
+          void f.coordinator.close();
+        }),
+      /OWNER_REVOKED/,
+    );
+    return 'closed';
+  });
+  assert.equal(result, 'closed');
+});

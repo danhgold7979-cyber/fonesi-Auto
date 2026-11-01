@@ -79,12 +79,13 @@ export class DurableUncertain extends Error {
 }
 export type DurableLane = Readonly<{
   read(): DurableSnapshot;
-  assertCurrent(admit?: () => void): void;
+  assertCurrent(admit?: () => void, finalInternal?: () => void): void;
   step<T>(
     operation: DurableOperation,
     expectedRevision: number,
     prepare: (context: DurableContext) => DurablePlan<T>,
     admit?: () => void,
+    finalInternal?: () => void,
   ): Promise<DurableStepResult<T>>;
 }>;
 const uuid = (v: unknown): v is string =>
@@ -133,7 +134,7 @@ export function createDurableCoordinator(
       return 'DEGRADED';
     }
   }
-  function assert(token: object, admit?: () => void) {
+  function assert(token: object, admit?: () => void, finalInternal?: () => void) {
     if (closed || activeToken !== token) throw new DurableFault('OWNER_REVOKED');
     if (uncertain) throw new DurableFault('RECOVERY_REQUIRED');
     try {
@@ -147,6 +148,10 @@ export function createDurableCoordinator(
     } catch {
       throw new DurableFault('OWNER_REVOKED');
     }
+    if (closed || activeToken !== token) throw new DurableFault('OWNER_REVOKED');
+    if (uncertain) throw new DurableFault('RECOVERY_REQUIRED');
+    // Trusted callback-free observation fence: no external callback follows it.
+    finalInternal?.();
     if (closed || activeToken !== token) throw new DurableFault('OWNER_REVOKED');
     if (uncertain) throw new DurableFault('RECOVERY_REQUIRED');
   }
@@ -175,6 +180,7 @@ export function createDurableCoordinator(
     expectedRevision: number,
     prepare: (ctx: DurableContext) => DurablePlan<T>,
     admit?: () => void,
+    finalInternal?: () => void,
   ): Promise<DurableStepResult<T>> {
     let operationId: string | null = null,
       diagnosticId: string | null = null,
@@ -182,7 +188,7 @@ export function createDurableCoordinator(
       commitStarted = false;
     let mutationStarted: (() => boolean) | undefined;
     try {
-      assert(token, admit);
+      assert(token, admit, finalInternal);
       if (
         !DURABLE_OPERATIONS.includes(operation) ||
         !epoch(expectedRevision) ||
@@ -208,7 +214,7 @@ export function createDurableCoordinator(
       mutationStarted = plan.mutationStarted?.bind(plan);
       const effect = plan.effect?.bind(plan),
         delta = plan.delta.bind(plan);
-      assert(token, admit);
+      assert(token, admit, finalInternal);
       if (
         (await log({
           operation,
@@ -221,12 +227,12 @@ export function createDurableCoordinator(
         })) !== 'AVAILABLE'
       )
         return { ok: false, result: denial('AUDIT_UNAVAILABLE', operationId, diagnosticId) };
-      assert(token, admit);
+      assert(token, admit, finalInternal);
       if (read(token).meta.revision !== expectedRevision) throw new DurableFault('STALE_REVISION');
-      assert(token, admit);
+      assert(token, admit, finalInternal);
       effectStarted = effect !== undefined;
       const value = await effect?.();
-      assert(token, admit);
+      assert(token, admit, finalInternal);
       const current = read(token);
       if (current.meta.revision !== expectedRevision) throw new DurableFault('STALE_REVISION');
       const next = snapshotDurableDelta(delta(value, current));
@@ -244,9 +250,9 @@ export function createDurableCoordinator(
                 : 'CAPTURE')
       )
         throw new DurableFault('INVALID_REQUEST');
-      assert(token, admit);
+      assert(token, admit, finalInternal);
       commitStarted = true;
-      const committed = commit(expectedRevision, next, () => assert(token, admit));
+      const committed = commit(expectedRevision, next, () => assert(token, admit, finalInternal));
       commitStarted = false;
       if (!committed.ok) {
         if (committed.code === 'OUTCOME_UNKNOWN') throw new DurableUncertain();
@@ -348,13 +354,15 @@ export function createDurableCoordinator(
       activeToken = token;
       const lane: DurableLane = Object.freeze({
         read: () => read(token),
-        assertCurrent: (admit?: () => void) => assert(token, admit),
+        assertCurrent: (admit?: () => void, finalInternal?: () => void) =>
+          assert(token, admit, finalInternal),
         step: <T>(
           operation: DurableOperation,
           expectedRevision: number,
           prepare: (ctx: DurableContext) => DurablePlan<T>,
           admit?: () => void,
-        ) => step(token, operation, expectedRevision, prepare, admit),
+          finalInternal?: () => void,
+        ) => step(token, operation, expectedRevision, prepare, admit, finalInternal),
       });
       const pending = Promise.resolve()
         .then(() => work(lane))

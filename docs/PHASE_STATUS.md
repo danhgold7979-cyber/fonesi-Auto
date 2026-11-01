@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 18:59 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 19:15 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 **P2-01 TECHNICAL_PASS / DEPENDENCIES_PENDING**, accepted18:06 UTC after independent exact four-stage rollback proof: CI41333874497/publica68e6a62, source1195/109/274 and current managed10 PASS; genuine36→37→rollback36→reopen36 with all64 stage +11 bootstrap predicates and owned cleanup PASS. [Original-criterion audit](evidence/P2-01-canonical-criterion-audit-2026-11-01.md). Phase2 technical1/13; overall11/154≈7.14%; formal accepted0. Next original task is **P2-02 — owned ADB server lifecycle (task2 of13)**; actual server eligibility remains constrained by the preserved absent-profile guard.
 
@@ -11,6 +11,8 @@ Current [four-stage rollback evidence](evidence/P2-retained-rollback-windows-cam
 Reviewed metadata: [exact36.0.0 retained prior](evidence/P2-prior-360-metadata-2026-11-01.md) is admitted alongside unchanged37.0.1 INSTALL target. Official bytes/NOTICE/provenance limitations remain documented. The current accepted campaign now verifies both genuine releases and prior-runtime restoration; metadata alone still grants no installed runtime or rollback authority.
 
 Current active requirement: **P2-02 — ADB server lifecycle**. The [private retained server integration](evidence/P2-retained-server-source-2026-11-01.md) has reviewed source and actual Windows current four-C# compilation plus19 fake-provider managed groups PASS at publicd93b70aa/CI41338918419. Actual hosted source is1218/109/277 (earlier1219 was an estimate). Strict1197-byte managed-v3 report is retained; independent exact-byte audit PASS and bounded coordinator adoption recorded18:59. VERSION_ONLY remains default, SERVER_ONLY is private/unactivated, and actual native server/profile execution remains UNMET. First capture-limited source failure and its test-only CRLF correction remain historical. No second accepted task: P2 technical1/13. Read-only18:58 environment inventory still identifies no authorized Auto Windows host with proven genuinely absent native .android; no profile workaround is proposed.
+
+Current independent source work: **P2-03 — discovery by serial/transport (task3 of13)**. The [private ingestion dependency](evidence/P2-discovery-ingestion-source-2026-11-01.md) composes bounded parsing with actual audited SQLite reconciliation, real durable CAS and callback-free epoch fences; source review is CLEAR and the complete local144-file software aggregate passes1243/1243; hosted1243/109/277 remains pending. Provider provenance remains explicitly SYNTHETIC_TEST and Fleet rejects it; no fake native observations, main activation or physical-phone claim. This continues useful source implementation without bypassing P2-02's actual fresh-profile requirement.
 
 P2-01 remains accepted: P2-01 exact app-local delivery/invocation and retained-runtime restoration now pass their adopted technical contract. The next real server start/health/close proof requires a genuinely eligible owned Windows profile; prior existing `.android` refusal is not bypassed. No server/device capability is implied by VERSION or rollback acceptance.
 

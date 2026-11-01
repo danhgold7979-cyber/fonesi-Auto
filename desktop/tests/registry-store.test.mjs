@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { FoundationDatabase } from '../src/main/foundation-database.ts';
-import { createDurableCoordinator } from '../src/main/durable-coordinator.ts';
+import { createDurableCoordinator, DurableFault } from '../src/main/durable-coordinator.ts';
 import { createRegistryStore } from '../src/main/registry-store.ts';
 import { isRegistrySnapshot, isCurrentBinding } from '../src/main/transport-registry.ts';
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -51,7 +51,7 @@ async function fixture(options = {}) {
     const nextId = () => id(n++),
       events = [];
     const coordinator = createDurableCoordinator({
-      db,
+      db: options.wrapDb ? options.wrapDb(db) : db,
       assertOwnedSync: () => {},
       clock: () => 1000,
       newId: nextId,
@@ -341,5 +341,104 @@ test('external owner loss and reentrant owner callback close hide synchronous re
     assert.equal(store.snapshot(), null);
   } finally {
     await g.close();
+  }
+});
+
+test('actual SQLite final COMMIT owner callback cannot revoke observation after admission and publish a mutation', async () => {
+  let withinCommit = false,
+    arm = false,
+    revoked = false,
+    finalSeen = false;
+  const f = await fixture({
+    wrapDb(db) {
+      return {
+        readDurable: () => db.readDurable(),
+        commitDurable(revision, delta, admit) {
+          return db.commitDurable(revision, delta, () => {
+            withinCommit = true;
+            try {
+              admit();
+            } finally {
+              withinCommit = false;
+            }
+          });
+        },
+      };
+    },
+    assertOwnedSync() {
+      if (withinCommit && arm) revoked = true;
+    },
+  });
+  try {
+    assert.equal((await f.store.startup()).outcome, 'COMMITTED');
+    const ledger = f.db.readDurable(),
+      fingerprint = f.db.fingerprint(),
+      original = f.store.snapshot();
+    const result = await f.store.reconcile(
+      1,
+      observation(1, 'SYNTHETIC_TEST'),
+      () => {
+        if (revoked) throw new DurableFault('OWNER_REVOKED');
+        if (withinCommit) arm = true;
+      },
+      () => {
+        if (withinCommit) finalSeen = true;
+        if (revoked) throw new DurableFault('OWNER_REVOKED');
+      },
+    );
+    assert.equal(finalSeen, true);
+    assert.equal(revoked, true);
+    assert.equal(result.outcome, 'NOT_COMMITTED');
+    assert.equal(result.code, 'OWNER_REVOKED');
+    assert.deepEqual(f.db.readDurable(), ledger);
+    assert.equal(f.db.fingerprint(), fingerprint);
+    assert.equal(f.store.snapshot(), original);
+    assert.equal(original.sequence, null);
+    assert.equal(f.events.at(-1).code, 'OWNER_REVOKED');
+  } finally {
+    await f.close();
+  }
+});
+
+test('confirmed SQLite commit remains COMMITTED when RESULT or last publication owner revokes observation', async () => {
+  for (const cause of ['RESULT', 'PUBLICATION']) {
+    let resultAudit = false,
+      arm = false,
+      revoked = false;
+    const f = await fixture({
+      audit: async (e) => {
+        if (e.operation === 'RECONCILE' && e.phase === 'RESULT') {
+          resultAudit = true;
+          if (cause === 'RESULT') revoked = true;
+        }
+        return 'AVAILABLE';
+      },
+      assertOwnedSync() {
+        if (resultAudit && arm) revoked = true;
+      },
+    });
+    try {
+      await f.store.startup();
+      const result = await f.store.reconcile(
+        1,
+        observation(1, 'SYNTHETIC_TEST'),
+        () => {
+          if (resultAudit) arm = true;
+        },
+        () => {
+          if (revoked) throw new DurableFault('OWNER_REVOKED');
+        },
+      );
+      assert.equal(result.outcome, 'COMMITTED');
+      assert.equal(result.revision, 2);
+      assert.equal(result.auditHealth, 'AVAILABLE');
+      assert.equal(revoked, true);
+      assert.equal(f.db.readDurable().meta.revision, 2);
+      assert.equal(f.db.readDurable().devices.length, 1);
+      assert.equal(f.db.readDurable().bindings[0].source, 'SYNTHETIC_TEST');
+      assert.equal(f.store.snapshot(), null);
+    } finally {
+      await f.close();
+    }
   }
 });

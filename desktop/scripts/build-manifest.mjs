@@ -69,6 +69,7 @@ export const inputs = [
   'src/persistence-proof.ts',
   'src/backup-container-contract.ts',
   'src/main/adb-discovery.ts',
+  'src/main/adb-discovery-service.ts',
   'src/main/adb-metadata.ts',
   'src/runtime-version-contract.ts',
   'src/runtime-version-audit-contract.ts',

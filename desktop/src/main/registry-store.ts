@@ -23,7 +23,7 @@ const budget = Object.freeze({
   maxEvidence: 4096,
   maxClaims: 256,
 });
-const denial = (): DurableMutationResult =>
+const denial = (): Extract<DurableMutationResult, { outcome: 'NOT_COMMITTED' }> =>
   Object.freeze({
     ok: false,
     outcome: 'NOT_COMMITTED',
@@ -218,9 +218,27 @@ export function createRegistryStore(
     async reconcile(
       expectedDurableRevision: number,
       observation: unknown,
+      assertObservationCurrent?: () => void,
+      finalInternal?: () => void,
     ): Promise<DurableMutationResult> {
+      if (
+        (assertObservationCurrent !== undefined &&
+          typeof assertObservationCurrent !== 'function') ||
+        (finalInternal !== undefined && typeof finalInternal !== 'function')
+      )
+        return Object.freeze({ ...denial(), code: 'INVALID_REQUEST' });
+      const observationAdmission = assertObservationCurrent,
+        observationFence = finalInternal;
       const original = current();
       if (!original) return denial();
+      const finalFence =
+        observationFence === undefined
+          ? undefined
+          : () => {
+              observationFence();
+              if (stopped) throw new DurableFault('OWNER_REVOKED');
+              if (runtime !== original) throw new DurableFault('STALE_REVISION');
+            };
       // Pure reconciler snapshots all descriptors before any asynchronous lane admission.
       const reconciled = reconcileRegistry(original, observation, { nextId, budget });
       if (!reconciled.ok)
@@ -245,12 +263,17 @@ export function createRegistryStore(
           },
           () => {
             admit();
+            observationAdmission?.();
             if (runtime !== original) throw new DurableFault('STALE_REVISION');
           },
+          finalFence,
         );
         if (result.ok) {
           try {
-            lane.assertCurrent(admit);
+            lane.assertCurrent(() => {
+              admit();
+              observationAdmission?.();
+            }, finalFence);
             runtime = candidate;
             ledger = result.snapshot;
           } catch {

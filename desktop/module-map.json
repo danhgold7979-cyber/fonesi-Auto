@@ -1930,6 +1930,26 @@
           "createHostFactory": "type"
         }
       }
+    },
+    "main/adb-discovery-service.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-discovery.ts": {
+          "parseAdbDiscovery": "value",
+          "AdbDiscoveryRow": "type"
+        },
+        "./transport-registry.ts": {
+          "isRegistrySnapshot": "value",
+          "RegistrySnapshot": "type"
+        },
+        "./durable-coordinator.ts": {
+          "DurableFault": "value",
+          "DurableMutationResult": "type"
+        },
+        "./registry-store.ts": {
+          "RegistryStore": "type"
+        }
+      }
     }
   }
 }

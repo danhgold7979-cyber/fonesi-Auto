@@ -1,6 +1,7 @@
 // Fixed reviewed inventory: no glob discovery, shell expansion or concurrent children.
 export const TEST_FILES = Object.freeze([
   'tests/adb-composition.test.mjs',
+  'tests/adb-discovery-service.test.mjs',
   'tests/adb-discovery.test.mjs',
   'tests/adb-host-adapter.test.mjs',
   'tests/adb-host-bridge.test.mjs',
