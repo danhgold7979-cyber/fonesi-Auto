@@ -27,7 +27,7 @@ const success = () => ({
   stderr: '',
 });
 const before = (text, a, b) => assert.ok(text.indexOf(a) >= 0 && text.indexOf(a) < text.indexOf(b));
-test('managed evidence requires exact twenty-seven-group marker, actual zero exit and retirement', () => {
+test('managed evidence requires exact thirty-nine-group marker, actual zero exit and retirement', () => {
   assert.equal(managedProcessPassed(success(), true), true);
   assert.equal(managedProcessPassed({ ...success(), stdout: MANAGED_MARKER + '\n' }, true), true);
   for (const patch of [
@@ -62,7 +62,7 @@ test('managed evidence requires exact twenty-seven-group marker, actual zero exi
   assert.equal(managedProcessPassed(bad, true), false);
   assert.equal(called, 0);
 });
-test('generated fixed entry calls only the managed fixture and demands eight protocol, two version, nine server and eight discovery groups', () => {
+test('generated fixed entry calls only the managed fixture and demands eight protocol, two version, nine server, eight discovery and twelve metadata groups', () => {
   const entry = /\$entry=@'\n([\s\S]*?)\n'@/.exec(runner)?.[1];
   assert.ok(entry);
   assert.match(
@@ -72,7 +72,8 @@ test('generated fixed entry calls only the managed fixture and demands eight pro
   assert.match(entry, /RunVersionExpectations\(\) != 2/);
   assert.match(entry, /RunServer\(\) != 9/);
   assert.match(entry, /RunDiscovery\(\) != 8/);
-  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_27"\)/);
+  assert.match(entry, /RunMetadata\(\) != 12/);
+  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_39"\)/);
   assert.match(
     entry,
     /catch \{ Console\.Error\.WriteLine\("RETAINED_MANAGED_FIXTURE_FAILED"\); return 1;/,
@@ -147,15 +148,15 @@ const workflow = readFileSync(
   'utf8',
 ).replaceAll('\r\n', '\n');
 const serverGate =
-  "    if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_discovery_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[discovery-managed]')))";
+  "    if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_metadata_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[metadata-managed]')))";
 function managedOnlyJob(raw) {
   const text = raw.replaceAll('\r\n', '\n');
   assert.match(
     text,
-    / {6}run_discovery_managed:\n {8}description: '[^\n]+'\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
+    / {6}run_metadata_managed:\n {8}description: '[^\n]+'\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
   );
   const job = text
-    .split('  owned-discovery-managed-development:\n')[1]
+    .split('  owned-metadata-managed-development:\n')[1]
     ?.split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
   assert.ok(job);
   assert.ok(job.includes('\n' + serverGate + '\n'));
@@ -172,8 +173,8 @@ test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects 
       '    if: true',
       '',
       serverGate.replace('refs/heads/phase-02', 'refs/heads/main'),
-      serverGate.replace('[discovery-managed]', '[retained-rollback]'),
-      serverGate.replace('inputs.run_discovery_managed == true', 'inputs.run_adb_server == true'),
+      serverGate.replace('[metadata-managed]', '[retained-rollback]'),
+      serverGate.replace('inputs.run_metadata_managed == true', 'inputs.run_adb_server == true'),
     ]) {
       const changed = text.replaceAll('\r\n', '\n').replace(serverGate, replacement);
       assert.notEqual(changed, text.replaceAll('\r\n', '\n'));
@@ -184,10 +185,10 @@ test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects 
     assert.throws(() => managedOnlyJob(changedDefault));
   }
 });
-test('managed-only job has no native campaign or archive actions and publishes only strict version4 JSON', () => {
+test('managed-only job has no native campaign or archive actions and publishes only strict version5 JSON', () => {
   const job = managedOnlyJob(workflow);
   assert.match(job, /Invoke-RetainedManagedFixture\.ps1\)/);
-  assert.match(job, /validate_retained_host\.py managed-discovery 2>&1/);
+  assert.match(job, /validate_retained_host\.py managed-metadata 2>&1/);
   assert.match(job, /steps\.retained_managed_validation\.outputs\.written == 'true'/);
   assert.equal((job.match(/uses: actions\/upload-artifact@/g) || []).length, 1);
   assert.match(job, /path: desktop\/retained-managed-validated\.json\n/);
@@ -200,4 +201,8 @@ test('managed-only job has no native campaign or archive actions and publishes o
     .split('  owned-retained-rollback-development:\n')[1]
     .split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
   assert.match(old, /\n {4}if: false && /);
+  const discovery = workflow
+    .split('  owned-discovery-managed-development:\n')[1]
+    ?.split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
+  assert.match(discovery, /\n {4}if: false && /);
 });

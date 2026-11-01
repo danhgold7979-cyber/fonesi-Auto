@@ -1246,6 +1246,15 @@
           "displayCurrent": "value",
           "snapshotDeviceInputRequest": "value",
           "DeviceInputRequest": "type"
+        },
+        "./metadata-query-contract.ts": {
+          "snapshotMetadataQueryRequest": "value",
+          "snapshotMetadataQueryFacts": "value",
+          "snapshotQueryRetirement": "value",
+          "validMetadataTransportId": "value",
+          "MetadataQueryRequest": "type",
+          "MetadataQueryFacts": "type",
+          "MetadataQueryHandle": "type"
         }
       }
     },
@@ -1711,6 +1720,15 @@
     "main/adb-host-adapter.ts": {
       "role": "main-adapter",
       "imports": {
+        "./metadata-query-contract.ts": {
+          "snapshotMetadataQueryFacts": "value",
+          "validMetadataDeadline": "value",
+          "validMetadataField": "value",
+          "validMetadataTransportId": "value",
+          "MetadataQueryFacts": "type",
+          "MetadataQueryField": "type",
+          "MetadataQueryHandle": "type"
+        },
         "./adb-host-lifecycle.ts": {
           "createHostLifecycle": "value",
           "snapshotHostTransportFacts": "value",
@@ -1730,14 +1748,22 @@
     "main/adb-host-bridge.ts": {
       "role": "main-adapter",
       "imports": {
+        "./metadata-query-contract.ts": {
+          "snapshotMetadataQueryFacts": "value",
+          "validMetadataDeadline": "value",
+          "validMetadataField": "value",
+          "validMetadataTransportId": "value",
+          "MetadataQueryFacts": "type",
+          "MetadataQueryField": "type"
+        },
         "./adb-host-lifecycle.ts": {
           "snapshotHostTransportFacts": "value",
           "HostTransportFacts": "type"
         },
         "./adb-host-adapter.ts": {
-          "HostNativeProvider": "type",
           "snapshotHostAcquisitionFacts": "value",
-          "HostAcquisitionFacts": "type"
+          "HostAcquisitionFacts": "type",
+          "HostNativeProvider": "type"
         },
         "./platform-tools-runtime-custody.ts": {
           "RuntimeReadObservation": "type"
@@ -1797,6 +1823,9 @@
         "./adb-host-adapter.ts": {
           "createHostAdapter": "value"
         },
+        "./adb-host-lifecycle.ts": {
+          "HostCapability": "type"
+        },
         "./adb-host-bridge.ts": {
           "createHostBridge": "value"
         },
@@ -1820,9 +1849,6 @@
           "createHostRoot": "value",
           "assertHostPathBudget": "value",
           "cleanupHostRoot": "value"
-        },
-        "./adb-host-lifecycle.ts": {
-          "HostCapability": "type"
         }
       }
     },
@@ -1958,11 +1984,22 @@
           "HostState": "type"
         },
         "./adb-host-factory.ts": {
-          "createHostFactory": "type",
-          "isRealHostFactory": "value"
+          "isRealHostFactory": "value",
+          "createHostFactory": "type"
         },
         "./adb-discovery.ts": {
           "parseAdbServerDiscovery": "value"
+        },
+        "./metadata-query-contract.ts": {
+          "validMetadataField": "value",
+          "validMetadataDeadline": "value",
+          "validMetadataTransportId": "value",
+          "snapshotMetadataQueryFacts": "value",
+          "snapshotQueryRetirement": "value",
+          "MetadataQueryField": "type",
+          "MetadataQueryFacts": "type",
+          "MetadataQueryHandle": "type",
+          "QueryRetirement": "type"
         }
       }
     },
@@ -1971,8 +2008,8 @@
       "imports": {
         "./adb-discovery.ts": {
           "parseAdbDiscovery": "value",
-          "AdbDiscoveryRow": "type",
-          "parseAdbServerDiscovery": "value"
+          "parseAdbServerDiscovery": "value",
+          "AdbDiscoveryRow": "type"
         },
         "./transport-registry.ts": {
           "isRegistrySnapshot": "value",
@@ -1983,7 +2020,15 @@
           "DurableMutationResult": "type"
         },
         "./registry-store.ts": {
+          "inspectRegistryProjection": "value",
           "RegistryStore": "type"
+        },
+        "./metadata-query-contract.ts": {
+          "validMetadataField": "value",
+          "validMetadataDeadline": "value",
+          "validMetadataTransportId": "value",
+          "MetadataQueryField": "type",
+          "MetadataQueryHandle": "type"
         },
         "./adb-server-service.ts": {
           "inspectOwnedDiscoveryProvider": "value",
@@ -2099,6 +2144,44 @@
         "./transport-registry.ts": {
           "isRegistrySnapshot": "value",
           "RegistrySnapshot": "type"
+        }
+      }
+    },
+    "main/metadata-query-contract.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-discovery.ts": {
+          "validAdbSerial": "value"
+        }
+      }
+    },
+    "main/owned-transport-metadata.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "./adb-discovery-service.ts": {
+          "inspectOwnedMetadataTarget": "value",
+          "OwnedMetadataTarget": "type"
+        },
+        "./device-actor.ts": {
+          "createDeviceActor": "value",
+          "DeviceQueueBudget": "type",
+          "ActorResult": "type",
+          "ActorCode": "type"
+        },
+        "./metadata-query-contract.ts": {
+          "METADATA_QUERY_FIELDS": "value",
+          "validMetadataField": "value",
+          "validMetadataDeadline": "value",
+          "MetadataQueryField": "type",
+          "MetadataQueryRequest": "type"
+        },
+        "./adb-metadata.ts": {
+          "parseAdbMetadata": "value",
+          "staleMetadata": "value",
+          "MetadataResult": "type"
         }
       }
     }

@@ -1,3 +1,11 @@
+import {
+  snapshotMetadataQueryFacts,
+  validMetadataDeadline,
+  validMetadataField,
+  validMetadataTransportId,
+  type MetadataQueryFacts,
+  type MetadataQueryField,
+} from './metadata-query-contract.ts';
 /** Private injected byte transport only. No spawn, bootstrap issuer or production wiring. */
 import { snapshotHostTransportFacts, type HostTransportFacts } from './adb-host-lifecycle.ts';
 import {
@@ -7,7 +15,7 @@ import {
 } from './adb-host-adapter.ts';
 import type { RuntimeReadObservation } from './platform-tools-runtime-custody.ts';
 export const HOST_FRAME_LIMIT = 65536;
-const operations = ['VERSION', 'START', 'HEALTH', 'RETIRE', 'DISCOVER'] as const;
+const operations = ['VERSION', 'START', 'HEALTH', 'RETIRE', 'DISCOVER', 'METADATA'] as const;
 type Operation = (typeof operations)[number];
 const errors = [
   'ADMISSION_REJECTED',
@@ -103,12 +111,16 @@ function json(raw: string): unknown {
   return out;
 }
 type Response = Readonly<{
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   sessionId: string;
   requestId: number;
   attemptId: string;
   operation: Operation;
-  result: HostTransportFacts | HostAcquisitionFacts | Readonly<{ code: string }>;
+  result:
+    | HostTransportFacts
+    | HostAcquisitionFacts
+    | MetadataQueryFacts
+    | Readonly<{ code: string }>;
 }>;
 export function parseHostFrame(bytes: Uint8Array): Response | null {
   try {
@@ -131,7 +143,7 @@ export function parseHostFrame(bytes: Uint8Array): Response | null {
       'result',
     ]);
     if (
-      v.version !== (v.operation === 'DISCOVER' ? 2 : 1) ||
+      v.version !== (v.operation === 'METADATA' ? 3 : v.operation === 'DISCOVER' ? 2 : 1) ||
       !uuid(v.sessionId) ||
       !uuid(v.attemptId) ||
       typeof v.requestId !== 'number' ||
@@ -141,17 +153,19 @@ export function parseHostFrame(bytes: Uint8Array): Response | null {
     )
       return null;
     let result: Response['result'] | null =
-      v.operation === 'DISCOVER'
-        ? snapshotHostAcquisitionFacts(v.result)
-        : snapshotHostTransportFacts(v.result);
-    if (v.operation === 'DISCOVER' && !result) return null;
+      v.operation === 'METADATA'
+        ? snapshotMetadataQueryFacts(v.result)
+        : v.operation === 'DISCOVER'
+          ? snapshotHostAcquisitionFacts(v.result)
+          : snapshotHostTransportFacts(v.result);
+    if ((v.operation === 'DISCOVER' || v.operation === 'METADATA') && !result) return null;
     if (!result) {
       const e = record(v.result, ['code']);
       if (!errors.includes(e.code as (typeof errors)[number])) return null;
       result = Object.freeze({ code: e.code as string });
     }
     return Object.freeze({
-      version: v.version as 1 | 2,
+      version: v.version as 1 | 2 | 3,
       sessionId: v.sessionId,
       requestId: v.requestId,
       attemptId: v.attemptId,
@@ -181,7 +195,7 @@ type Pending = {
   attempt: Attempt;
   operation: Operation;
   deadlineUtc: number | undefined;
-  resolve(f: HostTransportFacts | HostAcquisitionFacts): void;
+  resolve(f: HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts): void;
   reject(e: Error): void;
   writeDone: boolean;
   response: Response | null;
@@ -233,10 +247,10 @@ export function createHostBridge(
     if (!p.writeDone || !p.response || pending.get(id) !== p) return;
     pending.delete(id);
     const result = p.response.result;
-    if (p.operation === 'DISCOVER') {
+    if (p.operation === 'DISCOVER' || p.operation === 'METADATA') {
       if (
         !('kind' in result) ||
-        result.kind !== 'ACQUISITION' ||
+        result.kind !== (p.operation === 'METADATA' ? 'METADATA_QUERY' : 'ACQUISITION') ||
         (result.observedAtUtc !== null &&
           (p.deadlineUtc === undefined || result.observedAtUtc > p.deadlineUtc))
       ) {
@@ -248,7 +262,7 @@ export function createHostBridge(
       p.resolve(result);
       return; // Query retirement never changes foreground terminal state.
     }
-    if ('kind' in result && result.kind === 'ACQUISITION') {
+    if ('kind' in result && (result.kind === 'ACQUISITION' || result.kind === 'METADATA_QUERY')) {
       breakChannel();
       p.reject(failure());
       return;
@@ -323,18 +337,27 @@ export function createHostBridge(
     operation: Operation,
     runtime?: RuntimeReadObservation,
     deadlineUtc?: number,
-  ): Promise<HostTransportFacts | HostAcquisitionFacts> {
+    metadata?: Readonly<{ transportId: string; field: MetadataQueryField }>,
+  ): Promise<HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts> {
     try {
       const a = exact(token);
       if (operation !== 'RETIRE' && (closed || a.stopping)) throw failure();
       if (
-        (operation === 'HEALTH' || operation === 'DISCOVER') &&
+        (operation === 'HEALTH' || operation === 'DISCOVER' || operation === 'METADATA') &&
         (a.kind !== 'FOREGROUND' || a.terminal)
       )
         throw failure();
       if (
-        operation === 'DISCOVER' &&
+        (operation === 'DISCOVER' || operation === 'METADATA') &&
         (!Number.isSafeInteger(deadlineUtc) || (deadlineUtc as number) < 0 || a.queries >= 128)
+      )
+        throw failure();
+      if (
+        operation === 'METADATA' &&
+        (!validMetadataDeadline(deadlineUtc) ||
+          !metadata ||
+          !validMetadataTransportId(metadata.transportId) ||
+          !validMetadataField(metadata.field))
       )
         throw failure();
       if (
@@ -378,35 +401,37 @@ export function createHostBridge(
       }
       const id = ++next;
       const frame = new TextEncoder().encode(
-        `${JSON.stringify(operation === 'DISCOVER' ? { version: 2, sessionId, requestId: id, attemptId: a.id, operation, deadlineUtc } : { version: 1, sessionId, requestId: id, attemptId: a.id, operation })}\n`,
+        `${JSON.stringify(operation === 'METADATA' ? { version: 3, sessionId, requestId: id, attemptId: a.id, operation, field: metadata?.field, transportId: metadata?.transportId, deadlineUtc } : operation === 'DISCOVER' ? { version: 2, sessionId, requestId: id, attemptId: a.id, operation, deadlineUtc } : { version: 1, sessionId, requestId: id, attemptId: a.id, operation })}\n`,
       );
       if (operation === 'RETIRE') a.stopping = true;
       a.handed = true;
-      if (operation === 'DISCOVER') a.queries++;
+      if (operation === 'DISCOVER' || operation === 'METADATA') a.queries++;
       else a.terminal = false;
-      return new Promise<HostTransportFacts | HostAcquisitionFacts>((resolve, reject) => {
-        const p: Pending = {
-          attempt: a,
-          operation,
-          deadlineUtc,
-          resolve,
-          reject,
-          writeDone: false,
-          response: null,
-        };
-        pending.set(id, p);
-        try {
-          Promise.resolve(write(frame)).then(
-            () => {
-              p.writeDone = true;
-              finish(id, p);
-            },
-            () => breakChannel(),
-          );
-        } catch {
-          breakChannel();
-        }
-      });
+      return new Promise<HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts>(
+        (resolve, reject) => {
+          const p: Pending = {
+            attempt: a,
+            operation,
+            deadlineUtc,
+            resolve,
+            reject,
+            writeDone: false,
+            response: null,
+          };
+          pending.set(id, p);
+          try {
+            Promise.resolve(write(frame)).then(
+              () => {
+                p.writeDone = true;
+                finish(id, p);
+              },
+              () => breakChannel(),
+            );
+          } catch {
+            breakChannel();
+          }
+        },
+      );
     } catch {
       return Promise.reject(failure());
     }
@@ -448,6 +473,16 @@ export function createHostBridge(
       send(token, 'START', runtime) as Promise<HostTransportFacts>,
     health: (token: object) => send(token, 'HEALTH') as Promise<HostTransportFacts>,
     retire: (token: object) => send(token, 'RETIRE') as Promise<HostTransportFacts>,
+    metadata: (
+      token: object,
+      transportId: string,
+      field: MetadataQueryField,
+      deadlineUtc: number,
+    ) =>
+      send(token, 'METADATA', undefined, deadlineUtc, {
+        transportId,
+        field,
+      }) as Promise<MetadataQueryFacts>,
     discover: (token: object, deadlineUtc: number) =>
       send(token, 'DISCOVER', undefined, deadlineUtc) as Promise<HostAcquisitionFacts>,
   });

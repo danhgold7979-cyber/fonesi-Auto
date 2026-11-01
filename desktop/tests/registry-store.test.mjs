@@ -442,3 +442,38 @@ test('confirmed SQLite commit remains COMMITTED when RESULT or last publication 
     }
   }
 });
+
+test('private projection witness binds actual store ledger epoch and invalidates without callbacks', async () => {
+  const { inspectRegistryProjection } = await import('../src/main/registry-store.ts');
+  let calls = 0;
+  const f = await fixture({
+    assertOwnedSync() {
+      calls++;
+    },
+  });
+  try {
+    assert.equal(inspectRegistryProjection({}, null), null);
+    await f.store.startup();
+    await f.store.reconcile(1, observation());
+    const projection = f.store.snapshot();
+    const witness = inspectRegistryProjection(f.store, projection);
+    assert.ok(witness);
+    assert.equal(witness.hostEpoch, f.db.readDurable().meta.host_epoch);
+    assert.equal(witness.durableRevision, f.db.readDurable().meta.revision);
+    const before = calls;
+    assert.equal(witness.finalCurrent(), true);
+    assert.equal(calls, before);
+    assert.equal(inspectRegistryProjection({ ...f.store }, projection), null);
+    assert.equal(inspectRegistryProjection(f.store, { ...projection }), null);
+    await f.store.reconcile(2, observation(2));
+    assert.equal(witness.finalCurrent(), false);
+    const next = inspectRegistryProjection(f.store, f.store.snapshot());
+    assert.ok(next);
+    f.store.close();
+    const closedCalls = calls;
+    assert.equal(next.finalCurrent(), false);
+    assert.equal(calls, closedCalls);
+  } finally {
+    await f.close();
+  }
+});

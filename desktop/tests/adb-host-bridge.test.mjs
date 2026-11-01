@@ -454,3 +454,119 @@ test('acquisition response waits its write callback and refuses cross-version or
   assert.equal(f.bridge.closed, true);
   await assert.rejects(p.discover(t, 2000));
 });
+
+const metadataFacts = () => ({
+  version: 1,
+  kind: 'METADATA_QUERY',
+  status: 'COMPLETE',
+  code: 'OK',
+  dispatched: true,
+  operationRetired: true,
+  stdoutBase64: 'bW9kZWw=',
+  stderrBase64: '',
+  remoteExitCode: 0,
+  observedAtUtc: 1000,
+});
+const metadataResponse = (r, result = metadataFacts()) => ({
+  version: 3,
+  sessionId: r.sessionId,
+  requestId: r.requestId,
+  attemptId: r.attemptId,
+  operation: 'METADATA',
+  result,
+});
+test('metadata v3 binds exact field/transport and shares the discovery request counter and 128 cap', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const start = p.startForeground(t, {});
+  await tick();
+  f.receive(frame(response(f.writes[0], live)));
+  await start;
+  for (let i = 0; i < 128; i++) {
+    const meta = i % 2 === 0,
+      q = meta ? p.metadata(t, '18446744073709551615', 'MODEL', 2000) : p.discover(t, 2000);
+    await tick();
+    const r = f.writes.at(-1);
+    assert.equal(r.requestId, i + 2);
+    if (meta) {
+      assert.deepEqual(Object.keys(r), [
+        'version',
+        'sessionId',
+        'requestId',
+        'attemptId',
+        'operation',
+        'field',
+        'transportId',
+        'deadlineUtc',
+      ]);
+      assert.equal(r.transportId, '18446744073709551615');
+      f.receive(frame(metadataResponse(r)));
+    } else f.receive(frame(queryResponse(r)));
+    await q;
+  }
+  await assert.rejects(p.metadata(t, '1', 'MODEL', 2000));
+  assert.equal(f.writes.length, 129);
+  assert.throws(() => p.reserveAttempt('FOREGROUND'));
+});
+test('metadata v3 rejects cross-version facts and noncanonical selector before write', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const start = p.startForeground(t, {});
+  await tick();
+  f.receive(frame(response(f.writes[0], live)));
+  await start;
+  for (const [tid, field, deadline] of [
+    ['1\n', 'MODEL', 2000],
+    ['1', 'MODEL;id', 2000],
+    ['1', 'MODEL', 8640000000000001],
+  ])
+    await assert.rejects(p.metadata(t, tid, field, deadline));
+  assert.equal(f.writes.length, 1);
+  const q = p.metadata(t, '1', 'MODEL', 2000);
+  await tick();
+  const r = metadataResponse(f.writes.at(-1));
+  assert.equal(parseHostFrame(frame({ ...r, version: 2 })), null);
+  f.receive(frame({ ...r, version: 2 }));
+  await assert.rejects(q);
+  assert.equal(f.bridge.closed, true);
+});
+test('metadata response is withheld until actual request write completion', async () => {
+  let receive, done;
+  const writes = [];
+  const f = fixture({
+    transport: {
+      subscribe(c) {
+        receive = c;
+      },
+      write(bytes) {
+        const r = JSON.parse(Buffer.from(bytes));
+        writes.push(r);
+        return r.operation === 'METADATA'
+          ? new Promise((resolve) => {
+              done = resolve;
+            })
+          : Promise.resolve();
+      },
+      requestCleanup() {},
+    },
+  });
+  const p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND'),
+    start = p.startForeground(t, {});
+  await tick();
+  receive(frame(response(writes[0], live)));
+  await start;
+  let settled = false;
+  const q = p.metadata(t, '1', 'MODEL', 2000).then((v) => {
+    settled = true;
+    return v;
+  });
+  await tick();
+  receive(frame(metadataResponse(writes[1])));
+  await tick();
+  assert.equal(settled, false);
+  done();
+  assert.equal((await q).remoteExitCode, 0);
+});

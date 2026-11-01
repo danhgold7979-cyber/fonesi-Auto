@@ -1,4 +1,4 @@
-// Fixed private VERSION_ONLY / SERVER_ONLY reader. Compile with unchanged IsolatedAdbServer/RetainedAdbSession.
+// Fixed private VERSION_ONLY / SERVER_ONLY reader. Compile with exact pinned IsolatedAdbServer/RetainedAdbSession sources.
 // Source implementation and managed-fixture seam, not evidence of native execution.
 using System;
 using System.Collections.Generic;
@@ -20,6 +20,7 @@ namespace Fonesi.Development.Server
         static readonly Regex Uuid = new Regex("\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z", RegexOptions.CultureInvariant);
         static readonly Regex RequestPattern = new Regex("\\A\\{\"version\":1,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"(VERSION|START|HEALTH|RETIRE)\"\\}\\n\\z", RegexOptions.CultureInvariant);
         static readonly Regex DiscoveryPattern = new Regex("\\A\\{\"version\":2,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"DISCOVER\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
+        static readonly Regex MetadataPattern = new Regex("\\A\\{\"version\":3,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"METADATA\",\"field\":\"(MODEL|MANUFACTURER|OS|SDK|LOCALE|RESOLUTION|DENSITY|BATTERY|STORAGE)\",\"transportId\":\"([1-9][0-9]{0,19})\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
         static readonly string[] Errors = { "ADMISSION_REJECTED", "BINARY_CHANGED", "PROFILE_REJECTED", "ENDPOINT_REJECTED", "BUSY", "CLOSED", "NATIVE_FAILED", "UNRETIRED" };
         public interface IProvider
         {
@@ -28,6 +29,7 @@ namespace Fonesi.Development.Server
             IDictionary<string, object> StartForeground(object attempt);
             IDictionary<string, object> Health(object attempt);
             IDictionary<string, object> Discover(object attempt, long deadlineUtc);
+            IDictionary<string, object> Metadata(object attempt, string transportId, string field, long deadlineUtc);
             IDictionary<string, object> Retire(object attempt);
         }
         public sealed class NativeProvider : IProvider
@@ -45,12 +47,14 @@ namespace Fonesi.Development.Server
             { return provider.Health(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
             public IDictionary<string, object> Discover(object attempt, long deadlineUtc)
             { return provider.Discover(attempt as IsolatedAdbServer.RetainedProvider.Attempt, deadlineUtc).Snapshot(); }
+            public IDictionary<string, object> Metadata(object attempt,string transportId,string field,long deadlineUtc)
+            {return provider.Metadata(attempt as IsolatedAdbServer.RetainedProvider.Attempt,transportId,field,deadlineUtc).Snapshot();}
             public IDictionary<string, object> Retire(object attempt)
             { return provider.Retire(attempt as IsolatedAdbServer.RetainedProvider.Attempt).Snapshot(); }
         }
         public sealed class Request
         {
-            public readonly string SessionId, AttemptId, Operation;
+            public readonly string SessionId, AttemptId, Operation, Field, TransportId;
             public readonly long RequestId, DeadlineUtc;
             public readonly int Version;
             internal readonly long AdmittedUtc; readonly Stopwatch budget=Stopwatch.StartNew();
@@ -60,12 +64,23 @@ namespace Fonesi.Development.Server
             { SessionId = session; RequestId = request; AttemptId = attempt; Operation = operation; Version=1; DeadlineUtc=0; }
             internal Request(string session,long request,string attempt,long deadline,long admitted)
             { SessionId=session;RequestId=request;AttemptId=attempt;Operation="DISCOVER";Version=2;DeadlineUtc=deadline;AdmittedUtc=admitted; }
+            internal Request(string session,long request,string attempt,string field,string transportId,long deadline,long admitted)
+            {SessionId=session;RequestId=request;AttemptId=attempt;Operation="METADATA";Field=field;TransportId=transportId;Version=3;DeadlineUtc=deadline;AdmittedUtc=admitted;}
         }
         public static Request Parse(byte[] frame, string sessionId, long previousRequestId)
         {
             if (frame == null || frame.Length < 2 || frame.Length > FrameLimit || sessionId == null || !Uuid.IsMatch(sessionId)) return null;
             for (int n = 0; n < frame.Length; n++) if (frame[n] > 127 || frame[n] == 13 || (frame[n] == 10 && n != frame.Length - 1)) return null;
             string text=Encoding.ASCII.GetString(frame);Match discovery=DiscoveryPattern.Match(text);long request,deadline;
+            Match metadata=MetadataPattern.Match(text);
+            if(metadata.Success){
+                long now=(DateTime.UtcNow.Ticks-621355968000000000L)/10000;
+                if(metadata.Groups[1].Value!=sessionId||!Uuid.IsMatch(metadata.Groups[3].Value)||
+                   !Int64.TryParse(metadata.Groups[2].Value,NumberStyles.None,CultureInfo.InvariantCulture,out request)||request<=previousRequestId||request>SafeInteger||
+                   !IsolatedAdbServer.RetainedProvider.MetadataTransport(metadata.Groups[5].Value)||
+                   !Int64.TryParse(metadata.Groups[6].Value,NumberStyles.None,CultureInfo.InvariantCulture,out deadline)||deadline>8640000000000000L||deadline<=now||deadline-now>30000)return null;
+                return new Request(sessionId,request,metadata.Groups[3].Value,metadata.Groups[4].Value,metadata.Groups[5].Value,deadline,now);
+            }
             if(discovery.Success){
                 long now=(DateTime.UtcNow.Ticks-621355968000000000L)/10000;
                 if(discovery.Groups[1].Value!=sessionId||!Uuid.IsMatch(discovery.Groups[3].Value)||
@@ -89,7 +104,7 @@ namespace Fonesi.Development.Server
             internal readonly string id; internal readonly object token;
             internal Thread ordinary, cleanup;
             internal bool terminal, cleanupIssued, retiring, publicationStarted, live;
-            internal int healthCalls, discoveryCalls;
+            internal int healthCalls, discoveryCalls, queryRetirementGeneration;
             internal int frames;
             internal long ordinaryStarted, cleanupStarted;
             internal Attempt(string id, object token) { this.id = id; this.token = token; }
@@ -101,9 +116,10 @@ namespace Fonesi.Development.Server
         }
         sealed class Facts
         {
-            internal readonly string json; internal readonly bool terminal, live;
+            internal readonly string json; internal readonly bool terminal, live, queryUnknown;
             internal Facts(string json, bool terminal) : this(json, terminal, false) { }
-            internal Facts(string json, bool terminal, bool live) { this.json = json; this.terminal = terminal; this.live = live; }
+            internal Facts(string json, bool terminal, bool live) : this(json,terminal,live,false) { }
+            internal Facts(string json,bool terminal,bool live,bool queryUnknown){this.json=json;this.terminal=terminal;this.live=live;this.queryUnknown=queryUnknown;}
         }
         static bool SessionExit(object value)
         {
@@ -172,10 +188,35 @@ namespace Fonesi.Development.Server
                 if(status=="UNRETIRED"){if(code!="UNRETIRED"||retired)throw new InvalidDataException();}
                 else if(status!="FAILED"||!retired||Array.IndexOf(new string[]{"ADMISSION_REJECTED","BUSY","CLOSED","DEADLINE","DISCOVERY_REJECTED","NATIVE_FAILED"},code)<0)throw new InvalidDataException();
             }
-            return new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\""+status+"\",\"code\":\""+code+"\",\"dispatched\":"+(dispatched?"true":"false")+",\"operationRetired\":"+(retired?"true":"false")+",\"payloadBase64\":"+encoded+",\"observedAtUtc\":"+time+"}",false,status=="COMPLETE");
+            return new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\""+status+"\",\"code\":\""+code+"\",\"dispatched\":"+(dispatched?"true":"false")+",\"operationRetired\":"+(retired?"true":"false")+",\"payloadBase64\":"+encoded+",\"observedAtUtc\":"+time+"}",false,status=="COMPLETE",status=="UNRETIRED");
         }
         static Facts AcquisitionFailure(string code)
         { return new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\"FAILED\",\"code\":\""+code+"\",\"dispatched\":false,\"operationRetired\":true,\"payloadBase64\":null,\"observedAtUtc\":null}",false); }
+        static Facts MetadataSnapshot(IDictionary<string,object> input,Request request)
+        {
+            string[] keys={"version","kind","status","code","dispatched","operationRetired","stdoutBase64","stderrBase64","remoteExitCode","observedAtUtc"};
+            Dictionary<string,object> v=new Dictionary<string,object>();if(input==null)throw new InvalidDataException();
+            foreach(KeyValuePair<string,object> pair in input){if(v.Count==10||v.ContainsKey(pair.Key))throw new InvalidDataException();v.Add(pair.Key,pair.Value);}
+            if(v.Count!=10)throw new InvalidDataException();foreach(string key in keys)if(!v.ContainsKey(key))throw new InvalidDataException();
+            if(!(v["version"] is int)||(int)v["version"]!=1||!(v["kind"] is string)||(string)v["kind"]!="METADATA_QUERY"||!(v["status"] is string)||!(v["code"] is string)||!(v["dispatched"] is bool)||!(v["operationRetired"] is bool))throw new InvalidDataException();
+            string status=(string)v["status"],code=(string)v["code"],stdout=v["stdoutBase64"] as string,stderr=v["stderrBase64"] as string;
+            bool dispatched=(bool)v["dispatched"],retired=(bool)v["operationRetired"];string output="null",error="null",exit="null",time="null";
+            if(status=="COMPLETE"){
+                if(code!="OK"||!dispatched||!retired||stdout==null||stderr==null||stdout.Length+stderr.Length>43696||!(v["remoteExitCode"] is int)||(int)v["remoteExitCode"]<0||(int)v["remoteExitCode"]>255||!(v["observedAtUtc"] is long))throw new InvalidDataException();
+                long observed=(long)v["observedAtUtc"];if(observed<request.AdmittedUtc||observed>request.DeadlineUtc||observed>8640000000000000L)throw new InvalidDataException();
+                byte[] a=Convert.FromBase64String(stdout),b=Convert.FromBase64String(stderr);if(a.Length+b.Length>32768||Convert.ToBase64String(a)!=stdout||Convert.ToBase64String(b)!=stderr)throw new InvalidDataException();
+                foreach(byte[] bytes in new byte[][]{a,b}){string text=new UTF8Encoding(false,true).GetString(bytes);if(text.IndexOf('\0')>=0||(text.Length>0&&text[0]=='\ufeff'))throw new InvalidDataException();}
+                output="\""+stdout+"\"";error="\""+stderr+"\"";exit=((int)v["remoteExitCode"]).ToString(CultureInfo.InvariantCulture);time=observed.ToString(CultureInfo.InvariantCulture);
+            }else{
+                if(v["stdoutBase64"]!=null||v["stderrBase64"]!=null||v["remoteExitCode"]!=null||v["observedAtUtc"]!=null)throw new InvalidDataException();
+                if(status=="UNRETIRED"){if(code!="UNRETIRED"||retired)throw new InvalidDataException();}
+                else if(status!="FAILED"||!retired||Array.IndexOf(new string[]{"ADMISSION_REJECTED","BUSY","CLOSED","DEADLINE","METADATA_REJECTED","NATIVE_FAILED"},code)<0)throw new InvalidDataException();
+            }
+            string json="{\"version\":1,\"kind\":\"METADATA_QUERY\",\"status\":\""+status+"\",\"code\":\""+code+"\",\"dispatched\":"+(dispatched?"true":"false")+",\"operationRetired\":"+(retired?"true":"false")+",\"stdoutBase64\":"+output+",\"stderrBase64\":"+error+",\"remoteExitCode\":"+exit+",\"observedAtUtc\":"+time+"}";
+            return new Facts(json,false,status=="COMPLETE",status=="UNRETIRED");
+        }
+        static Facts MetadataFailure(string code,bool unknown)
+        {return new Facts("{\"version\":1,\"kind\":\"METADATA_QUERY\",\"status\":\""+(unknown?"UNRETIRED":"FAILED")+"\",\"code\":\""+code+"\",\"dispatched\":"+(unknown?"true":"false")+",\"operationRetired\":"+(unknown?"false":"true")+",\"stdoutBase64\":null,\"stderrBase64\":null,\"remoteExitCode\":null,\"observedAtUtc\":null}",false,false,unknown);}
         sealed class Reader
         {
             readonly bool diagnostics, server;
@@ -225,22 +266,23 @@ namespace Fonesi.Development.Server
                     outstanding++; if (attempt != null) attempt.frames++; queue.Enqueue(new Frame(bytes, attempt)); Monitor.PulseAll(gate);
                 }
             }
-            void Worker(Attempt attempt, Request request, bool cleanup)
+            void Worker(Attempt attempt, Request request, bool cleanup, int cleanupGeneration = 0)
             {
-                if(!cleanup&&request.Operation=="DISCOVER") { DiscoveryWorker(attempt,request);return; }
+                if(!cleanup&&(request.Operation=="DISCOVER"||request.Operation=="METADATA")) { DiscoveryWorker(attempt,request);return; }
                 Facts facts;
                 try { Progress(ProgressSlot.PROVIDER_ENTERED); facts = Snapshot(cleanup ? provider.Retire(attempt.token) : !server ? provider.Version(attempt.token) : request.Operation == "START" ? provider.StartForeground(attempt.token) : provider.Health(attempt.token), server, cleanup ? "RETIRE" : request.Operation); }
                 catch { facts = new Facts("{\"code\":\"UNRETIRED\"}", false); lock (gate) { attempt.terminal = false; Stop("PROVIDER_FAILED"); } }
-                lock (gate) { attempt.terminal = facts.terminal; attempt.live = facts.live && !attempt.retiring; if (!facts.terminal && cleanup) Stop("UNRETIRED"); }
+                lock (gate) { attempt.terminal = facts.terminal && (!cleanup || cleanupGeneration == attempt.queryRetirementGeneration); attempt.live = facts.live && !attempt.retiring; if(cleanup && cleanupGeneration != attempt.queryRetirementGeneration)attempt.cleanupIssued=false; if (!facts.terminal && cleanup) Stop("UNRETIRED"); }
                 if (request != null) Enqueue(request, attempt, facts);
                 lock (gate) { Monitor.PulseAll(gate); }
             }
             void DiscoveryWorker(Attempt attempt,Request request)
             {
-                Facts facts;bool good=false;
-                try{long effective;if(!request.DiscoveryDeadline(out effective))facts=AcquisitionFailure("DEADLINE");else{Progress(ProgressSlot.PROVIDER_ENTERED);facts=AcquisitionSnapshot(provider.Discover(attempt.token,effective),request);good=facts.live;}}
-                catch{facts=new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\"UNRETIRED\",\"code\":\"UNRETIRED\",\"dispatched\":true,\"operationRetired\":false,\"payloadBase64\":null,\"observedAtUtc\":null}",false);}
-                // Query completion is never assigned to attempt.terminal or session custody.
+                Facts facts;bool good=false;bool metadata=request.Operation=="METADATA";
+                try{long effective;if(!request.DiscoveryDeadline(out effective))facts=metadata?MetadataFailure("DEADLINE",false):AcquisitionFailure("DEADLINE");else{Progress(ProgressSlot.PROVIDER_ENTERED);facts=metadata?MetadataSnapshot(provider.Metadata(attempt.token,request.TransportId,request.Field,effective),request):AcquisitionSnapshot(provider.Discover(attempt.token,effective),request);good=facts.live;}}
+                catch{facts=metadata?MetadataFailure("UNRETIRED",true):new Facts("{\"version\":1,\"kind\":\"ACQUISITION\",\"status\":\"UNRETIRED\",\"code\":\"UNRETIRED\",\"dispatched\":true,\"operationRetired\":false,\"payloadBase64\":null,\"observedAtUtc\":null}",false,false,true);}
+                // Query completion never grants terminal custody; late unknown invalidates an older cleanup witness.
+                if(facts.queryUnknown)lock(gate){attempt.queryRetirementGeneration++;attempt.terminal=false;attempt.cleanupIssued=false;}
                 Enqueue(request,attempt,facts);
                 lock(gate){if(!good)Stop("PROVIDER_FAILED");Monitor.PulseAll(gate);}
             }
@@ -249,7 +291,8 @@ namespace Fonesi.Development.Server
                 lock (gate) {
                     if (!Done(attempt.cleanup) || (request == null && attempt.cleanupIssued)) { if (request != null) Stop("PROTOCOL_FAILED"); return; }
                     attempt.cleanupIssued = true; attempt.retiring = true; attempt.cleanupStarted = elapsed.ElapsedMilliseconds;
-                    attempt.cleanup = new Thread(delegate() { Worker(attempt, request, true); }); attempt.cleanup.IsBackground = true; attempt.cleanup.Start();
+                    int cleanupGeneration=attempt.queryRetirementGeneration;
+                    attempt.cleanup = new Thread(delegate() { Worker(attempt, request, true, cleanupGeneration); }); attempt.cleanup.IsBackground = true; attempt.cleanup.Start();
                 }
             }
             bool ParentAlive() { try { return parentAlive(); } catch { return false; } }
@@ -330,9 +373,9 @@ namespace Fonesi.Development.Server
                             Cleanup(attempt, request); return;
                         }
                         if (attempt.retiring || attempt.terminal) { Stop("PROTOCOL_FAILED"); return; }
-                        bool discovery=request.Operation=="DISCOVER";
+                        bool discovery=request.Operation=="DISCOVER"||request.Operation=="METADATA";
                         if (!attempt.live || !Done(attempt.ordinary) || !Done(attempt.cleanup) || outstanding != 0 || attempt.frames != 0 || (discovery ? attempt.discoveryCalls >= 128 : attempt.healthCalls >= 128)) {
-                            Enqueue(request, attempt, discovery ? AcquisitionFailure("BUSY") : new Facts("{\"code\":\"BUSY\"}", false)); if(discovery)Stop("PROVIDER_FAILED"); return;
+                            Enqueue(request, attempt, discovery ? (request.Operation=="METADATA"?MetadataFailure("BUSY",false):AcquisitionFailure("BUSY")) : new Facts("{\"code\":\"BUSY\"}", false)); if(discovery)Stop("PROVIDER_FAILED"); return;
                         }
                         if(discovery)attempt.discoveryCalls++;else attempt.healthCalls++;
                         attempt.ordinaryStarted = elapsed.ElapsedMilliseconds;

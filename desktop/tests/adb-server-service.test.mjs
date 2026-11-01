@@ -121,6 +121,10 @@ function fixture(extra = {}) {
         grant: adapter.grant,
         execute: adapter.execute,
         snapshot: adapter.snapshot,
+        acquireMetadata(cap, request) {
+          calls.push('metadata');
+          return extra.metadata(cap, request);
+        },
         acquireDiscovery(cap, request) {
           calls.push('discover');
           return extra.acquire(cap, request);
@@ -627,5 +631,232 @@ test('transformed-only discovery cap128 and malformed byte payloads cannot gain 
     } finally {
       await g.service.close();
     }
+  }
+});
+
+const metadataFacts = (extra = {}) =>
+  Object.freeze({
+    version: 1,
+    kind: 'METADATA_QUERY',
+    status: 'COMPLETE',
+    code: 'OK',
+    dispatched: true,
+    operationRetired: true,
+    stdoutBase64: Buffer.from('Model\n').toString('base64'),
+    stderrBase64: '',
+    remoteExitCode: 0,
+    observedAtUtc: 1000,
+    ...extra,
+  });
+const metadataHandle = (value = metadataFacts()) =>
+  Object.freeze({
+    handoff: 'QUERY',
+    result: Promise.resolve(value),
+    retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+  });
+const metadataRequest = (record, n = 1) =>
+  Object.freeze({
+    requestId: id(900 + n),
+    epoch: record.epoch,
+    sequence: n,
+    transportId: '1',
+    field: 'MODEL',
+    deadlineUtc: 31000,
+  });
+test('metadata shares the discovery lane and retains the foreground on known remote nonzero', async () => {
+  const module = await transformedService(),
+    gate = deferred();
+  const f = fixture({
+    createService: module.createAdbServerService,
+    metadata: () =>
+      Object.freeze({
+        handoff: 'QUERY',
+        result: Promise.resolve(metadataFacts({ remoteExitCode: 7 })),
+        retirement: gate.promise,
+      }),
+  });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    const h = record.beginMetadata(metadataRequest(record));
+    await tick();
+    const busy = record.beginMetadata(metadataRequest(record, 2));
+    assert.equal(busy.handoff, 'LOCAL_REFUSAL');
+    assert.equal((await busy.result).code, 'BUSY');
+    assert.equal((await record.begin(query(record)).result).outcome, 'FAILED');
+    assert.equal(f.calls.filter((x) => x === 'metadata').length, 1);
+    assert.equal(f.closes(), 0);
+    gate.resolve(Object.freeze({ status: 'RETIRED' }));
+    assert.equal((await h.result).remoteExitCode, 7);
+    assert.equal((await h.retirement).status, 'RETIRED');
+    assert.equal(record.revoked, false);
+    assert.equal(f.held(), true);
+  } finally {
+    gate.resolve(Object.freeze({ status: 'RETIRED' }));
+    await f.service.close();
+  }
+});
+test('wire metadata BUSY is not a local refusal and forces cleanup', async () => {
+  const module = await transformedService();
+  const f = fixture({
+    createService: module.createAdbServerService,
+    metadata: () =>
+      metadataHandle(
+        metadataFacts({
+          status: 'FAILED',
+          code: 'BUSY',
+          dispatched: false,
+          stdoutBase64: null,
+          stderrBase64: null,
+          remoteExitCode: null,
+          observedAtUtc: null,
+        }),
+      ),
+  });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    const h = record.beginMetadata(metadataRequest(record));
+    assert.equal(h.handoff, 'QUERY');
+    assert.equal((await h.result).code, 'BUSY');
+    assert.equal((await h.retirement).status, 'RETIRED');
+    assert.equal(record.revoked, true);
+    assert.ok(f.closes() > 0);
+  } finally {
+    await f.service.close();
+  }
+});
+test('failed metadata starts cleanup before delayed actual query retirement', async () => {
+  const module = await transformedService(),
+    gate = deferred();
+  const f = fixture({
+    createService: module.createAdbServerService,
+    metadata: () =>
+      Object.freeze({
+        handoff: 'QUERY',
+        result: Promise.resolve(
+          metadataFacts({
+            status: 'FAILED',
+            code: 'NATIVE_FAILED',
+            stdoutBase64: null,
+            stderrBase64: null,
+            remoteExitCode: null,
+            observedAtUtc: null,
+          }),
+        ),
+        retirement: gate.promise,
+      }),
+  });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    const h = record.beginMetadata(metadataRequest(record));
+    await tick();
+    assert.ok(f.closes() > 0);
+    assert.equal(record.revoked, true);
+    let done = false;
+    h.retirement.then(() => {
+      done = true;
+    });
+    await tick();
+    assert.equal(done, false);
+    gate.resolve(Object.freeze({ status: 'RETIRED' }));
+    await h.result;
+    await h.retirement;
+  } finally {
+    gate.resolve(Object.freeze({ status: 'RETIRED' }));
+    await f.service.close();
+  }
+});
+
+test('metadata and discovery share one total128 query budget', async () => {
+  const module = await transformedService();
+  const f = fixture({
+    createService: module.createAdbServerService,
+    acquire: () => acquired(),
+    metadata: () => metadataHandle(),
+  });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    for (let n = 1; n <= 127; n++) {
+      const h = record.begin(
+        Object.freeze({
+          requestId: id(1000 + n),
+          epoch: record.epoch,
+          sequence: n,
+          deadlineUtc: 31000,
+        }),
+      );
+      assert.equal((await h.result).outcome, 'COMPLETE');
+      await h.retirement;
+    }
+    const final = record.beginMetadata(metadataRequest(record));
+    assert.equal((await final.result).status, 'COMPLETE');
+    await final.retirement;
+    const exhausted = record.beginMetadata(metadataRequest(record, 2));
+    assert.equal((await exhausted.result).status, 'FAILED');
+    await exhausted.retirement;
+    assert.equal(f.calls.filter((x) => x === 'discover').length, 127);
+    assert.equal(f.calls.filter((x) => x === 'metadata').length, 1);
+  } finally {
+    await f.service.close();
+  }
+});
+
+test('unattachable metadata handle retains uncertain service lane despite factory cleanup', async (t) => {
+  const module = await transformedService();
+  const hostile = Promise.resolve(metadataFacts());
+  Object.defineProperty(hostile, 'then', {
+    value: () => assert.fail('hostile then must not execute'),
+  });
+  const f = fixture({
+    createService: module.createAdbServerService,
+    metadata: () =>
+      Object.freeze({
+        handoff: 'QUERY',
+        result: hostile,
+        retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+      }),
+  });
+  await f.service.start();
+  const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+  const h = record.beginMetadata(metadataRequest(record));
+  assert.equal((await h.result).status, 'FAILED');
+  assert.equal((await h.retirement).status, 'UNRETIRED');
+  assert.equal(record.revoked, true);
+  assert.ok(f.closes() > 0);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const close = f.service.close();
+  t.mock.timers.tick(120000);
+  assert.equal((await close).status, 'UNRETIRED');
+  assert.equal(f.service.retired, false);
+  t.mock.timers.reset();
+});
+
+test('metadata reserves ordinary lane before hostile descriptor inspection can reenter', async () => {
+  const module = await transformedService();
+  const f = fixture({
+    createService: module.createAdbServerService,
+    metadata: () => metadataHandle(),
+  });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    let nested;
+    const hostile = new Proxy(metadataRequest(record), {
+      ownKeys(target) {
+        nested = record.beginMetadata(metadataRequest(record, 2));
+        return Reflect.ownKeys(target);
+      },
+    });
+    const outer = record.beginMetadata(hostile);
+    assert.equal(nested.handoff, 'LOCAL_REFUSAL');
+    assert.equal((await nested.result).code, 'BUSY');
+    assert.equal((await outer.result).status, 'COMPLETE');
+    await outer.retirement;
+    assert.equal(f.calls.filter((x) => x === 'metadata').length, 1);
+  } finally {
+    await f.service.close();
   }
 });

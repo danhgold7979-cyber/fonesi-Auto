@@ -42,7 +42,7 @@ function before(text, left, right) {
 test('reviewed native custody helpers and fixed provider adapter have no new interop and dispatch only existing native methods', () => {
   for (const [name, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
-    ['RetainedAdbSession.cs', 'd192f132cd7c4463ae2e3cd65d75f34b95ae10cdfab92dfb1eb61d3b60446d4f'],
+    ['RetainedAdbSession.cs', 'be62300592244f1474fa340101976cb86ad5ed5c6734b98b28dc545d6b00ce71'],
   ])
     assert.equal(
       createHash('sha256')
@@ -162,7 +162,10 @@ test('VERSION_ONLY gate and synchronous exact reservation precede ordinary worke
     source,
     /attempt\.terminal && Done\(attempt\.ordinary\) && Done\(attempt\.cleanup\) && attempt\.frames == 0/,
   );
-  assert.match(source, /new Thread\(delegate\(\) \{ Worker\(attempt, request, true\); \}\)/);
+  assert.match(
+    source,
+    /new Thread\(delegate\(\) \{ Worker\(attempt, request, true, cleanupGeneration\); \}\)/,
+  );
 });
 test('writer flush and all actual worker joins remain required before sole clean return; timeouts never cancel', () => {
   before(
@@ -171,7 +174,10 @@ test('writer flush and all actual worker joins remain required before sole clean
     'outstanding--;',
   );
   assert.match(source, /thread\.Join\(0\)/);
-  assert.match(source, /attempt.terminal = facts.terminal;/);
+  assert.match(
+    source,
+    /attempt.terminal = facts.terminal && \(!cleanup \|\| cleanupGeneration == attempt.queryRetirementGeneration\);/,
+  );
   assert.doesNotMatch(source, /if \(facts.terminal\) attempt.terminal = true/);
   assert.match(source, /attempt.terminal = false; Stop\("PROVIDER_FAILED"\)/);
   assert.match(source, /retired && \(dispatched \? v\["exitCode"\] != null/);
@@ -284,7 +290,7 @@ test('SERVER_ONLY scope retains live SESSION identity, bounded health and cleanu
   assert.match(bootstrap, /\$adapter,\$admission.Liveness\(\),\$true,\$b.operationSet/);
 });
 
-test('discovery v2 is separately bounded and never writes session terminal state', () => {
+test('discovery v2 is separately bounded and never grants session terminal state', () => {
   const patternLiteral = /DiscoveryPattern = new Regex\(("(?:\\.|[^"\\])*")/.exec(source);
   assert.ok(patternLiteral);
   const expression = new RegExp(
@@ -308,14 +314,14 @@ test('discovery v2 is separately bounded and never writes session terminal state
     source.indexOf('void DiscoveryWorker('),
     source.indexOf('void Cleanup('),
   );
-  assert.doesNotMatch(worker, /attempt\.terminal\s*=/);
+  assert.doesNotMatch(worker, /attempt\.terminal\s*=\s*true/);
   assert.match(worker, /provider.Discover\(attempt.token,effective\)/);
   assert.match(source, /payload.Length>43692/);
   assert.match(source, /bytes.Length>32768\|\|Convert.ToBase64String\(bytes\)!=payload/);
   assert.match(source, /request.Version.ToString/);
   const discovery = fixture.slice(
     fixture.indexOf('public static int RunDiscovery()'),
-    fixture.indexOf('public static int RunAll()'),
+    fixture.indexOf('static byte[] MetadataFrame('),
   );
   assert.equal((discovery.match(/groups\+\+/g) ?? []).length, 8);
   assert.match(
@@ -325,4 +331,95 @@ test('discovery v2 is separately bounded and never writes session terminal state
   assert.match(fixture, /DiscoveryWorkRetired\(false,true,true,connect.Task\)/);
   assert.match(fixture, /GetField\("outstanding",Flags\)/);
   assert.match(fixture, /ordinary.Join\(0\)/);
+});
+
+test('metadata v3 is exact ordered enum grammar, separate typed facts and bounded worst-case serialized frame', () => {
+  const literal = /MetadataPattern = new Regex\(("(?:\\.|[^"\\])*")/.exec(source);
+  assert.ok(literal);
+  const expression = new RegExp(
+    JSON.parse(literal[1]).replace('\\A', '^').replace('\\z', '$(?![\\s\\S])'),
+  );
+  const request = {
+    version: 3,
+    sessionId: id(1),
+    requestId: 2,
+    attemptId: id(2),
+    operation: 'METADATA',
+    field: 'MODEL',
+    transportId: '1',
+    deadlineUtc: 30000,
+  };
+  const frame = JSON.stringify(request) + '\n';
+  assert.ok(expression.test(frame));
+  for (const invalid of [
+    frame.replace('MODEL', 'MODEL x'),
+    frame.replace('"1"', '"01"'),
+    frame.replace('"version":3', '"version":3,"version":3'),
+    frame.replace('30000', '-0'),
+    frame + '\n',
+  ])
+    assert.equal(expression.test(invalid), false);
+  assert.match(source, /deadline>8640000000000000L/);
+  assert.match(source, /MetadataTransport\(metadata.Groups\[5\].Value\)/);
+  const result = {
+    version: 1,
+    kind: 'METADATA_QUERY',
+    status: 'COMPLETE',
+    code: 'OK',
+    dispatched: true,
+    operationRetired: true,
+    stdoutBase64: Buffer.alloc(1, 120).toString('base64'),
+    stderrBase64: Buffer.alloc(32767, 121).toString('base64'),
+    remoteExitCode: 255,
+    observedAtUtc: 8640000000000000,
+  };
+  assert.equal(result.stdoutBase64.length + result.stderrBase64.length, 43696);
+  const response =
+    JSON.stringify({
+      version: 3,
+      sessionId: id(1),
+      requestId: Number.MAX_SAFE_INTEGER,
+      attemptId: id(2),
+      operation: 'METADATA',
+      result,
+    }) + '\n';
+  assert.ok(Buffer.byteLength(response) < 65536);
+  assert.match(source, /stdout.Length\+stderr.Length>43696/);
+  assert.match(source, /a.Length\+b.Length>32768/);
+  assert.match(source, /bytes.Length > FrameLimit \|\| outstanding >= OutputLimit/);
+  assert.match(source, /request.Operation=="DISCOVER"\|\|request.Operation=="METADATA"/);
+});
+
+test('metadata managed groups cover actual codec, shared cap, cleanup races and output saturation without native construction', () => {
+  const groups = fixture.slice(
+    fixture.indexOf('public static int RunMetadata()'),
+    fixture.indexOf('public static int RunAll()'),
+  );
+  assert.equal((groups.match(/groups\+\+/g) ?? []).length, 12);
+  for (const token of [
+    'DecodeMetadata(',
+    'RejectMetadata(',
+    'n<128',
+    'p.metadataCalls==64&&p.discoveryCalls==64',
+    'p.retires==2',
+    'OUTPUT_FAILED',
+    'lines[1].Length<65536',
+  ])
+    assert.ok(groups.includes(token), token);
+  assert.match(
+    fixture,
+    /RetainedProvider.ReadMetadata\(channel,new IsolatedAdbServer.RetainedProvider.DiscoveryBudget/,
+  );
+  assert.doesNotMatch(
+    fixture,
+    /new Socket\(|new IsolatedAdbServer\.RetainedProvider\(|new RetainedAdbProtocol.NativeProvider\(/,
+  );
+  assert.match(
+    source,
+    /attempt.queryRetirementGeneration\+\+;attempt.terminal=false;attempt.cleanupIssued=false/,
+  );
+  assert.match(source, /cleanupGeneration == attempt.queryRetirementGeneration/);
+  assert.equal((source.match(/status=="COMPLETE",status=="UNRETIRED"/g) ?? []).length, 2);
+  assert.match(fixture, /new string\[\]\{"METADATA","DISCOVER","THROW","MALFORMED"\}/);
+  assert.match(source, /if\(discovery\)Stop\("PROVIDER_FAILED"\)/);
 });

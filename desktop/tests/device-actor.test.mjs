@@ -529,3 +529,297 @@ test('display callback cannot retire the registry binding and still dispatch or 
     assert.equal(r.outcome, retireAt >= 4 ? 'DISPATCHED_UNCONFIRMED' : 'NOT_DISPATCHED');
   }
 });
+const queryFacts = (extra = {}) =>
+  Object.freeze({
+    version: 1,
+    kind: 'METADATA_QUERY',
+    status: 'COMPLETE',
+    code: 'OK',
+    dispatched: true,
+    operationRetired: true,
+    stdoutBase64: Buffer.from('Synthetic\n').toString('base64'),
+    stderrBase64: '',
+    remoteExitCode: 0,
+    observedAtUtc: Date.now(),
+    ...extra,
+  });
+const queryRequest = (f, n = 500, extra = {}) => {
+  const old = f.req(n);
+  delete old.operation;
+  return { ...old, version: 3, kind: 'METADATA_QUERY', transportId: '7', field: 'MODEL', ...extra };
+};
+const queryHandle = (
+  facts = queryFacts(),
+  retirement = Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+  handoff = 'QUERY',
+) => Object.freeze({ handoff, result: Promise.resolve(facts), retirement });
+test('v3 uses honest query facts and immutable transport pair, never process dispatcher', async () => {
+  let calls = 0;
+  const f = fixture({
+    metadata: {
+      transportId: '7',
+      localBusy: () => false,
+      dispatch: () => {
+        calls++;
+        return queryHandle();
+      },
+      observe: () => true,
+      finalCurrent: () => true,
+    },
+  });
+  assert.equal(
+    (await f.actor.execute(f.cap, queryRequest(f, 500, { transportId: '8' }))).code,
+    'STALE_BINDING',
+  );
+  assert.equal(calls, 0);
+  assert.equal((await f.actor.execute(f.cap, queryRequest(f))).outcome, 'OBSERVED');
+  assert.equal(calls, 1);
+  assert.equal(f.count(), 0);
+  assert.equal(await f.actor.shutdown(), true);
+});
+test('v3 snapshots result at its own settlement and awaits separate retirement', async () => {
+  const retire = deferred();
+  const raw = { ...queryFacts() };
+  let seen;
+  const f = fixture({
+    metadata: {
+      transportId: '7',
+      localBusy: () => false,
+      dispatch: () => {
+        raw.observedAtUtc = Date.now();
+        return queryHandle(raw, retire.promise);
+      },
+      observe: (_r, v) => {
+        seen = v;
+        return true;
+      },
+      finalCurrent: () => true,
+    },
+  });
+  let done = false;
+  const pending = f.actor.execute(f.cap, queryRequest(f)).then((r) => {
+    done = true;
+    return r;
+  });
+  await new Promise((r) => setImmediate(r));
+  raw.remoteExitCode = 9;
+  assert.equal(done, false);
+  assert.equal(f.budget.pending(), 1);
+  retire.resolve({ status: 'RETIRED' });
+  assert.equal((await pending).outcome, 'OBSERVED');
+  assert.equal(seen.remoteExitCode, 0);
+  await f.actor.shutdown();
+});
+test('v3 timeout returns promptly but retains real query and shared reservation until settlement', async () => {
+  const facts = deferred(),
+    retire = deferred();
+  let dispatched = 0;
+  const f = fixture({
+    now: () => 1000,
+    metadata: {
+      transportId: '7',
+      localBusy: () => false,
+      dispatch: () => {
+        dispatched++;
+        return { handoff: 'QUERY', result: facts.promise, retirement: retire.promise };
+      },
+      observe: () => true,
+      finalCurrent: () => true,
+    },
+  });
+  const result = await f.actor.execute(f.cap, queryRequest(f, 500, { deadlineUtc: 1020 }));
+  assert.equal(dispatched, 1);
+  assert.equal(result.outcome, 'OUTCOME_UNKNOWN');
+  assert.equal(f.actor.snapshot().active, true);
+  assert.equal(f.budget.pending(), 1);
+  assert.equal(await f.actor.shutdown(), false);
+  facts.resolve(queryFacts({ observedAtUtc: 1000 }));
+  retire.resolve({ status: 'RETIRED' });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(f.budget.pending(), 0);
+  assert.equal(f.actor.snapshot().uncertain, true);
+});
+test('v3 local refusal stays undispatched; malformed local and hostile attachment retain uncertainty', async () => {
+  const failure = {
+    version: 1,
+    kind: 'METADATA_QUERY',
+    status: 'FAILED',
+    code: 'BUSY',
+    dispatched: false,
+    operationRetired: true,
+    stdoutBase64: null,
+    stderrBase64: null,
+    remoteExitCode: null,
+    observedAtUtc: null,
+  };
+  const good = fixture({
+    metadata: {
+      transportId: '7',
+      localBusy: () => false,
+      dispatch: () => queryHandle(failure, undefined, 'LOCAL_REFUSAL'),
+      observe: () => true,
+      finalCurrent: () => true,
+    },
+  });
+  assert.equal((await good.actor.execute(good.cap, queryRequest(good))).code, 'BUSY');
+  assert.equal(await good.actor.shutdown(), true);
+  for (const broken of ['local', 'promise']) {
+    const p = Promise.resolve(queryFacts());
+    if (broken === 'promise')
+      Object.defineProperty(p, 'then', {
+        get() {
+          throw Error('private');
+        },
+      });
+    const f = fixture({
+      metadata: {
+        transportId: '7',
+        localBusy: () => false,
+        dispatch: () => ({
+          handoff: broken === 'local' ? 'LOCAL_REFUSAL' : 'QUERY',
+          result: p,
+          retirement: Promise.resolve({ status: 'RETIRED' }),
+        }),
+        observe: () => true,
+        finalCurrent: () => true,
+      },
+    });
+    assert.equal((await f.actor.execute(f.cap, queryRequest(f))).outcome, 'OUTCOME_UNKNOWN');
+    assert.equal(await f.actor.shutdown(), false);
+    assert.equal(f.budget.pending(), 1);
+  }
+});
+test('v3 remote failure and last observer custody invalidation never publish success', async () => {
+  for (const mode of ['exit', 'stderr', 'revoke']) {
+    let valid = true;
+    const f = fixture({
+      metadata: {
+        transportId: '7',
+        localBusy: () => false,
+        dispatch: () =>
+          queryHandle(
+            queryFacts(
+              mode === 'exit'
+                ? { remoteExitCode: 1 }
+                : mode === 'stderr'
+                  ? { stderrBase64: Buffer.from('error').toString('base64') }
+                  : {},
+            ),
+          ),
+        observe: () => {
+          if (mode === 'revoke') valid = false;
+          return true;
+        },
+        finalCurrent: () => valid,
+      },
+    });
+    assert.notEqual((await f.actor.execute(f.cap, queryRequest(f))).outcome, 'OBSERVED');
+    await f.actor.shutdown();
+  }
+});
+test('v3 localBusy refuses before inspection-sensitive current and never weakens OBSERVE fence', async () => {
+  let busy = true,
+    valid = false,
+    calls = 0;
+  const f = fixture({
+    current: () => {
+      if (busy) throw Error('inspection');
+      return true;
+    },
+    metadata: {
+      transportId: '7',
+      localBusy: () => busy,
+      finalCurrent: () => valid,
+      dispatch: () => {
+        calls++;
+        return queryHandle();
+      },
+      observe: () => true,
+    },
+  });
+  assert.equal((await f.actor.execute(f.cap, queryRequest(f))).code, 'BUSY');
+  assert.equal(calls, 0);
+  busy = false;
+  valid = true;
+  assert.equal((await f.actor.execute(f.cap, queryRequest(f, 501))).outcome, 'OBSERVED');
+  await f.actor.shutdown();
+  const retired = deferred();
+  let observedBusy = false;
+  const g = fixture({
+    metadata: {
+      transportId: '7',
+      localBusy: () => observedBusy,
+      finalCurrent: () => !observedBusy,
+      dispatch: () => queryHandle(queryFacts(), retired.promise),
+      observe: () => true,
+    },
+  });
+  const pending = g.actor.execute(g.cap, queryRequest(g));
+  observedBusy = true;
+  retired.resolve({ status: 'RETIRED' });
+  assert.notEqual((await pending).outcome, 'OBSERVED');
+  await g.actor.shutdown();
+});
+test('v3 retired socket without remote completion is sticky unknown after actual dispatched failure', async () => {
+  const failed = {
+    version: 1,
+    kind: 'METADATA_QUERY',
+    status: 'FAILED',
+    code: 'NATIVE_FAILED',
+    dispatched: true,
+    operationRetired: true,
+    stdoutBase64: null,
+    stderrBase64: null,
+    remoteExitCode: null,
+    observedAtUtc: null,
+  };
+  const f = fixture({
+    metadata: {
+      transportId: '7',
+      localBusy: () => false,
+      dispatch: () => queryHandle(failed),
+      observe: () => true,
+      finalCurrent: () => true,
+    },
+  });
+  assert.equal((await f.actor.execute(f.cap, queryRequest(f))).outcome, 'OUTCOME_UNKNOWN');
+  assert.equal(f.actor.snapshot().uncertain, true);
+  assert.equal(f.budget.pending(), 0);
+  assert.equal(await f.actor.shutdown(), false);
+});
+test('v3 proven local refusal maps only closed local codes without converting native QUERY facts', async () => {
+  for (const [code, expected] of [
+    ['BUSY', 'BUSY'],
+    ['CLOSED', 'CLOSED'],
+    ['DEADLINE', 'DEADLINE_EXCEEDED'],
+    ['ADMISSION_REJECTED', 'STALE_BINDING'],
+    ['NATIVE_FAILED', 'OUTCOME_UNKNOWN'],
+    ['METADATA_REJECTED', 'OUTCOME_UNKNOWN'],
+  ]) {
+    const facts = {
+      version: 1,
+      kind: 'METADATA_QUERY',
+      status: 'FAILED',
+      code,
+      dispatched: false,
+      operationRetired: true,
+      stdoutBase64: null,
+      stderrBase64: null,
+      remoteExitCode: null,
+      observedAtUtc: null,
+    };
+    const f = fixture({
+      metadata: {
+        transportId: '7',
+        localBusy: () => false,
+        dispatch: () => queryHandle(facts, undefined, 'LOCAL_REFUSAL'),
+        observe: () => true,
+        finalCurrent: () => true,
+      },
+    });
+    const r = await f.actor.execute(f.cap, queryRequest(f));
+    assert.equal(r.code, expected);
+    assert.equal(r.outcome, expected === 'OUTCOME_UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'NOT_DISPATCHED');
+    await f.actor.shutdown();
+  }
+});

@@ -435,10 +435,6 @@ class ManagedDiscoveryEvidence(unittest.TestCase):
             bad['inputHashes'][key] = '0' * 64
             with self.assertRaises(ValueError):
                 validator.validate_managed(bad)
-        base = Path(__file__).resolve().parents[1]
-        import hashlib
-        paths = ('native/IsolatedAdbServer.cs','native/RetainedAdbSession.cs','native/RetainedAdbProtocol.cs','native/RetainedHostAdmission.cs','tests/fixtures/RetainedAdbProtocolFixture.cs','../tools/phase-00/HostProbeNative.cs','scripts/retained-managed-fixture.mjs','verification/Invoke-RetainedManagedFixture.ps1','verification/WindowsBoundary.psm1','verification/OwnedFiles.psm1')
-        self.assertEqual([hashlib.sha256((base/p).read_bytes()).hexdigest() for p in paths],list(validator.MANAGED_V4_HASHES.values()))
 
     def test_current_discovery_publisher_exclusively_requires_v4(self):
         for value in (managed_sample(), ManagedCurrentEvidence().current(), ManagedServerEvidence().current(), self.current()):
@@ -452,6 +448,51 @@ class ManagedDiscoveryEvidence(unittest.TestCase):
                     self.assertTrue(validator.managed(base, False, True))
                     self.assertEqual(validator.parse((base/'retained-managed-validated.json').read_bytes()),value)
                     with self.assertRaises(FileExistsError): validator.managed(base, False, True)
+
+    def test_current_failure_remains_truthful_without_compilation_or_hash_fabrication(self):
+        value={**self.current(),'inputHashes':{},'compileProcess':None,'fixtureProcess':None,'groupsPassed':0,'sourceUnchanged':False,'directoryCleanup':False,'passed':False}
+        self.assertFalse(validator.managed_output(managed_text(value,['RETAINED_MANAGED_STAGE_ADMISSION']))['passed'])
+
+class ManagedMetadataEvidence(unittest.TestCase):
+    def current(self):
+        return {**managed_sample(), 'version': 5, 'groupsPassed': 39,
+                'inputHashes': dict(validator.MANAGED_V5_HASHES)}
+
+    def test_current_thirtynine_requires_exact_hashes_and_never_relabels_historical(self):
+        value = self.current()
+        self.assertEqual(validator.managed_output(managed_text(value)), value)
+        for version, groups, pins in ((1, 8, None), (2, 10, validator.MANAGED_V2_HASHES), (3, 19, validator.MANAGED_V3_HASHES), (4, 27, validator.MANAGED_V4_HASHES)):
+            old = {**managed_sample(), 'version': version, 'groupsPassed': groups}
+            if pins is not None:
+                old['inputHashes'] = dict(pins)
+            self.assertTrue(validator.validate_managed(old)['passed'])
+            with self.assertRaises(ValueError):
+                validator.validate_managed({**old, 'version': 5})
+        for groups in (8, 10, 19, 27, 38, 40):
+            with self.assertRaises(ValueError):
+                validator.validate_managed({**value, 'groupsPassed': groups})
+        for key in validator.MANAGED_V5_HASHES:
+            bad = self.current()
+            bad['inputHashes'][key] = '0' * 64
+            with self.assertRaises(ValueError):
+                validator.validate_managed(bad)
+        base = Path(__file__).resolve().parents[1]
+        import hashlib
+        paths = ('native/IsolatedAdbServer.cs','native/RetainedAdbSession.cs','native/RetainedAdbProtocol.cs','native/RetainedHostAdmission.cs','tests/fixtures/RetainedAdbProtocolFixture.cs','../tools/phase-00/HostProbeNative.cs','scripts/retained-managed-fixture.mjs','verification/Invoke-RetainedManagedFixture.ps1','verification/WindowsBoundary.psm1','verification/OwnedFiles.psm1')
+        self.assertEqual([hashlib.sha256((base/p).read_bytes()).hexdigest() for p in paths],list(validator.MANAGED_V5_HASHES.values()))
+
+    def test_current_metadata_publisher_exclusively_requires_v5(self):
+        for value in (managed_sample(), ManagedCurrentEvidence().current(), ManagedServerEvidence().current(), ManagedDiscoveryEvidence().current(), self.current()):
+            with tempfile.TemporaryDirectory() as directory:
+                base=Path(directory).resolve()
+                (base/'.retained-managed-output.txt').write_bytes(managed_text(value))
+                if value['version'] != 5:
+                    with self.assertRaises(ValueError): validator.managed(base, False, False, True)
+                    self.assertFalse((base/'retained-managed-validated.json').exists())
+                else:
+                    self.assertTrue(validator.managed(base, False, False, True))
+                    self.assertEqual(validator.parse((base/'retained-managed-validated.json').read_bytes()),value)
+                    with self.assertRaises(FileExistsError): validator.managed(base, False, False, True)
 
     def test_current_failure_remains_truthful_without_compilation_or_hash_fabrication(self):
         value={**self.current(),'inputHashes':{},'compileProcess':None,'fixtureProcess':None,'groupsPassed':0,'sourceUnchanged':False,'directoryCleanup':False,'passed':False}

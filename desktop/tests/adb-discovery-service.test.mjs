@@ -842,6 +842,25 @@ test('explicit test-transformed native admission composes actual SQLite and flee
           state = 'STOPPED';
           return 'RETIRED';
         },
+        acquireMetadata: () =>
+          Object.freeze({
+            handoff: 'QUERY',
+            result: Promise.resolve(
+              Object.freeze({
+                version: 1,
+                kind: 'METADATA_QUERY',
+                status: 'COMPLETE',
+                code: 'OK',
+                dispatched: true,
+                operationRetired: true,
+                stdoutBase64: Buffer.from('Synthetic Model\n').toString('base64'),
+                stderrBase64: '',
+                remoteExitCode: 0,
+                observedAtUtc: 1000,
+              }),
+            ),
+            retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+          }),
         acquireDiscovery: () =>
           Object.freeze({
             result: Promise.resolve(
@@ -879,6 +898,24 @@ test('explicit test-transformed native admission composes actual SQLite and flee
     assert.equal(result.source, 'ADB_DISCOVERY');
     assert.equal(result.projectionCurrent, true);
     assert.equal(ingestion.snapshot().devices[0].verification, 'PROVISIONAL');
+    const deviceId = ingestion.snapshot().devices[0].deviceId;
+    const ticket = ingestion.metadataTarget(deviceId);
+    assert.ok(ticket);
+    assert.equal(ingestion.metadataTarget(deviceId), ticket);
+    assert.equal(ingestModule.inspectOwnedMetadataTarget({ ...ticket }), null);
+    const target = ingestModule.inspectOwnedMetadataTarget(ticket);
+    assert.equal(target.target.hostEpoch, f.db.readDurable().meta.host_epoch);
+    assert.equal(target.finalCurrent(), true);
+    const metadata = target.begin('MODEL', 1100);
+    assert.equal(metadata.handoff, 'QUERY');
+    assert.equal((await metadata.result).remoteExitCode, 0);
+    assert.equal((await metadata.retirement).status, 'RETIRED');
+    assert.equal((await ingestion.refresh(f.db.readDurable().meta.revision)).outcome, 'COMMITTED');
+    assert.equal(target.finalCurrent(), false);
+    const replacement = ingestion.metadataTarget(deviceId);
+    assert.ok(replacement);
+    assert.notEqual(replacement, ticket);
+
     fleet = createFleetService({
       registry: () => ingestion.snapshot(),
       availability: () => ingestion.availability(),
@@ -931,16 +968,26 @@ test('full transformed ingestion respects pending actual HEALTH lane and callbac
   const serverUrl = moduleUrl(serverSource, serverPath),
     serverModule = await import(serverUrl);
   const ingestPath = new URL('../src/main/adb-discovery-service.ts', import.meta.url);
-  const ingestModule = await import(
+  const ingestUrl = moduleUrl(
+    readFileSync(ingestPath, 'utf8').replace(
+      "'./adb-server-service.ts'",
+      JSON.stringify(serverUrl),
+    ),
+    ingestPath,
+  );
+  const ingestModule = await import(ingestUrl);
+  const ownerPath = new URL('../src/main/owned-transport-metadata.ts', import.meta.url);
+  // Explicit fixed-clock transform; issuer lookup is the actual shared sealed WeakMap.
+  const ownerModule = await import(
     moduleUrl(
-      readFileSync(ingestPath, 'utf8').replace(
-        "'./adb-server-service.ts'",
-        JSON.stringify(serverUrl),
-      ),
-      ingestPath,
+      readFileSync(ownerPath, 'utf8')
+        .replace("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
+        .replace('const systemClock = Date.now,', 'const systemClock = () => 1000,'),
+      ownerPath,
     )
   );
-  for (const mode of ['HEALTH', 'CUSTODY']) {
+  const { createDeviceQueueBudget } = await import('../src/main/device-actor.ts');
+  for (const mode of ['HEALTH', 'CUSTODY', 'METADATA_BUSY']) {
     let inspection = false,
       blockInspection = false;
     const inspectionGate = deferred();
@@ -1075,6 +1122,26 @@ test('full transformed ingestion respects pending actual HEALTH lane and callbac
           closes++;
           return adapter.close();
         },
+        acquireMetadata() {
+          return Object.freeze({
+            handoff: 'QUERY',
+            result: Promise.resolve(
+              Object.freeze({
+                version: 1,
+                kind: 'METADATA_QUERY',
+                status: 'COMPLETE',
+                code: 'OK',
+                dispatched: true,
+                operationRetired: true,
+                stdoutBase64: Buffer.from('Model\n').toString('base64'),
+                stderrBase64: '',
+                remoteExitCode: 0,
+                observedAtUtc: 1000,
+              }),
+            ),
+            retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+          });
+        },
         acquireDiscovery() {
           discovered++;
           return Object.freeze({
@@ -1086,7 +1153,10 @@ test('full transformed ingestion respects pending actual HEALTH lane and callbac
                 code: 'OK',
                 dispatched: true,
                 operationRetired: true,
-                payloadBase64: '',
+                payloadBase64:
+                  mode === 'METADATA_BUSY'
+                    ? Buffer.from('synthetic device transport_id:1\n').toString('base64')
+                    : '',
                 observedAtUtc: 1000,
               }),
             ),
@@ -1095,7 +1165,7 @@ test('full transformed ingestion respects pending actual HEALTH lane and callbac
         },
       }),
     });
-    let ingestion;
+    let ingestion, metadataOwner;
     try {
       await server.start();
       const provider = server.discoveryProvider();
@@ -1107,7 +1177,42 @@ test('full transformed ingestion respects pending actual HEALTH lane and callbac
         clock: () => 1000,
         newId: () => id(n++),
       });
-      if (mode === 'HEALTH') {
+      if (mode === 'METADATA_BUSY') {
+        assert.equal((await ingestion.refresh(1)).outcome, 'COMMITTED');
+        const ticket = ingestion.metadataTarget(ingestion.snapshot().devices[0].deviceId);
+        const target = ingestModule.inspectOwnedMetadataTarget(ticket);
+        metadataOwner = ownerModule.createOwnedTransportMetadataOwner({
+          target: ticket,
+          budget: createDeviceQueueBudget(),
+        });
+        assert.ok(target);
+        blockInspection = true;
+        const pending = server.health();
+        await new Promise((r) => setImmediate(r));
+        assert.equal(inspection, true);
+        assert.equal(target.localBusy(), true);
+        assert.equal(target.finalCurrent(), false);
+        const busy = await metadataOwner.read('MODEL', 1100);
+        assert.equal(busy.actor.outcome, 'NOT_DISPATCHED');
+        assert.equal(busy.actor.code, 'BUSY');
+        assert.equal(busy.observation, null);
+        assert.equal(metadataOwner.snapshot().state, 'ACTIVE');
+        assert.equal(closes, 0);
+        assert.equal(serverModule.inspectOwnedDiscoveryProvider(provider).revoked, false);
+        inspectionGate.resolve();
+        health.resolve(facts('HEALTHY'));
+        await pending;
+        assert.equal(target.localBusy(), false);
+        assert.equal(target.finalCurrent(), true);
+        const query = await metadataOwner.read('MODEL', 1100);
+        assert.equal(query.actor.outcome, 'OBSERVED');
+        assert.equal(query.observation.metadata.stale, false);
+        valid = false;
+        assert.equal(target.finalCurrent(), false);
+        const revoked = await metadataOwner.read('MODEL', 1100);
+        assert.equal(revoked.observation, null);
+        assert.equal(metadataOwner.snapshot().observations.MODEL.metadata.stale, true);
+      } else if (mode === 'HEALTH') {
         blockInspection = true;
         const pending = server.health();
         await new Promise((r) => setImmediate(r));
@@ -1135,9 +1240,25 @@ test('full transformed ingestion respects pending actual HEALTH lane and callbac
     } finally {
       inspectionGate.resolve();
       health.resolve(facts('HEALTHY'));
+      await metadataOwner?.close();
       await ingestion?.close();
       await server.close();
       await f.close();
     }
+  }
+});
+
+test('synthetic committed SQLite projection cannot issue native metadata targets', async () => {
+  const f = await setup();
+  try {
+    assert.equal((await f.service.refresh(1)).outcome, 'COMMITTED');
+    const projection = f.service.snapshot();
+    assert.equal(projection.source, 'SYNTHETIC_TEST');
+    for (const device of projection.devices)
+      assert.equal(f.service.metadataTarget(device.deviceId), null);
+    const { inspectOwnedMetadataTarget } = await import('../src/main/adb-discovery-service.ts');
+    assert.equal(inspectOwnedMetadataTarget(Object.freeze({ ownedMetadataTarget: true })), null);
+  } finally {
+    await f.cleanup();
   }
 });

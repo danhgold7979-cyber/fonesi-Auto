@@ -730,3 +730,86 @@ test('late unretired, malformed or rejected acquisition invalidates early cleanu
     assert.equal(f.released(), 1);
   }
 });
+
+const metadataFacts = () => ({
+  version: 1,
+  kind: 'METADATA_QUERY',
+  status: 'COMPLETE',
+  code: 'OK',
+  dispatched: true,
+  operationRetired: true,
+  stdoutBase64: 'bW9kZWw=',
+  stderrBase64: '',
+  remoteExitCode: 0,
+  observedAtUtc: 1000,
+});
+test('metadata shares exact foreground custody and ordinary lane without process-result coercion', async () => {
+  const pending = deferred();
+  let calls = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      metadata(_attempt, tid, field, deadline) {
+        calls++;
+        assert.deepEqual([tid, field, deadline], ['2', 'MODEL', 2000]);
+        return pending.promise;
+      },
+    },
+  });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const request = { transportId: '2', field: 'MODEL', deadlineUtc: 2000 },
+    h = f.adapter.acquireMetadata(f.cap, request);
+  assert.equal(h.handoff, 'QUERY');
+  request.transportId = '3';
+  await tick();
+  assert.equal(calls, 1);
+  assert.throws(() =>
+    f.adapter.acquireMetadata(f.cap, { transportId: '2', field: 'MODEL', deadlineUtc: 2000 }),
+  );
+  assert.equal(f.held(), true);
+  pending.resolve({ ...metadataFacts(), remoteExitCode: 7 });
+  assert.equal((await h.result).remoteExitCode, 7);
+  assert.deepEqual(await h.retirement, { status: 'RETIRED' });
+  assert.equal(f.held(), true);
+  assert.equal(await f.adapter.close(), 'RETIRED');
+  assert.equal(f.released(), 1);
+});
+test('metadata late unretired completion invalidates early cleanup and requires fresh confirmation', async () => {
+  const pending = deferred();
+  let retires = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      metadata: () => pending.promise,
+      retire: async () => {
+        retires++;
+        return retires === 1 ? dead() : live('HEALTHY');
+      },
+    },
+  });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const h = f.adapter.acquireMetadata(f.cap, {
+    transportId: '1',
+    field: 'MODEL',
+    deadlineUtc: 2000,
+  });
+  await tick();
+  const closing = f.adapter.close();
+  await tick();
+  assert.equal(retires, 1);
+  pending.resolve({
+    ...metadataFacts(),
+    status: 'UNRETIRED',
+    code: 'UNRETIRED',
+    operationRetired: false,
+    stdoutBase64: null,
+    stderrBase64: null,
+    remoteExitCode: null,
+    observedAtUtc: null,
+  });
+  await h.result;
+  assert.deepEqual(await h.retirement, { status: 'UNRETIRED' });
+  assert.equal(await closing, 'UNRETIRED');
+  assert.equal(retires, 2);
+  assert.equal(f.released(), 0);
+});

@@ -1,3 +1,12 @@
+import {
+  snapshotMetadataQueryFacts,
+  validMetadataDeadline,
+  validMetadataField,
+  validMetadataTransportId,
+  type MetadataQueryFacts,
+  type MetadataQueryField,
+  type MetadataQueryHandle,
+} from './metadata-query-contract.ts';
 /** Private injected-provider adapter. No native provider or execution issuer is wired in main. */
 import { createHostLifecycle, snapshotHostTransportFacts } from './adb-host-lifecycle.ts';
 import type { HostCapability, HostResult, HostTransportFacts } from './adb-host-lifecycle.ts';
@@ -112,6 +121,12 @@ export interface HostNativeProvider {
   health(attempt: object): Promise<HostTransportFacts>;
   retire(attempt: object): Promise<HostTransportFacts>;
   discover?(attempt: object, deadlineUtc: number): Promise<HostAcquisitionFacts>;
+  metadata?(
+    attempt: object,
+    transportId: string,
+    field: MetadataQueryField,
+    deadlineUtc: number,
+  ): Promise<MetadataQueryFacts>;
 }
 type Attempt = {
   capability: HostCapability;
@@ -151,7 +166,8 @@ export function createHostAdapter(
     start = provider.startForeground.bind(provider),
     health = provider.health.bind(provider),
     retire = provider.retire.bind(provider),
-    discover = provider.discover?.bind(provider);
+    discover = provider.discover?.bind(provider),
+    metadata = provider.metadata?.bind(provider);
   const capabilities = new WeakMap<object, { ownerId: string; admit(): void }>();
   const attempts = new WeakSet<object>();
   const works = new Set<Promise<unknown>>();
@@ -176,6 +192,7 @@ export function createHostAdapter(
       const value = diagnostic();
       if (uuid(value)) id = value;
     } catch {}
+
     return Object.freeze({
       outcome: 'NOT_DISPATCHED',
       code: id === null ? 'INTERNAL_FAILURE' : code,
@@ -312,6 +329,165 @@ export function createHostAdapter(
       return invoke(a, () => retire(a.token));
     },
   });
+  function acquireQuery(
+    cap: HostCapability,
+    raw: unknown,
+    kind: 'DISCOVER' | 'METADATA',
+  ): HostAcquisitionHandle | MetadataQueryHandle {
+    if (
+      operationSet !== 'SERVER_ONLY' ||
+      closed ||
+      uncertain ||
+      busy ||
+      works.size ||
+      releasing ||
+      !(kind === 'METADATA' ? metadata : discover)
+    )
+      throw Error('HOST_DISCOVERY_REJECTED');
+    // Same ordinary lane as execute; reserve before any injected callback.
+    busy = true;
+    executionDone = new Promise<void>((resolve) => {
+      finishExecution = resolve;
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let queryAttempt: Attempt | null = null;
+    let expire: (reason: Error) => void;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      expire = reject;
+    });
+    let deadlineUtc: unknown;
+    let transportId: unknown;
+    let field: unknown;
+    let validRequest = false;
+    try {
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        const d = Object.getOwnPropertyDescriptors(raw);
+        if (
+          Reflect.ownKeys(d).length === (kind === 'METADATA' ? 3 : 1) &&
+          d.deadlineUtc &&
+          'value' in d.deadlineUtc &&
+          d.deadlineUtc.enumerable
+        ) {
+          deadlineUtc = d.deadlineUtc.value;
+          if (kind === 'METADATA') {
+            transportId =
+              d.transportId && 'value' in d.transportId && d.transportId.enumerable
+                ? d.transportId.value
+                : null;
+            field = d.field && 'value' in d.field && d.field.enumerable ? d.field.value : null;
+          }
+          validRequest =
+            kind !== 'METADATA' ||
+            (validMetadataTransportId(transportId) &&
+              validMetadataField(field) &&
+              validMetadataDeadline(deadlineUtc));
+        }
+      }
+    } catch {
+      /* Refuse descriptor traps without losing the reserved lane. */
+    }
+    const work = Promise.resolve().then(async () => {
+      if (!validRequest || typeof deadlineUtc !== 'number') throw Error('HOST_DISCOVERY_REJECTED');
+      const started = clock();
+      if (
+        !Number.isSafeInteger(started) ||
+        started < 0 ||
+        !Number.isSafeInteger(deadlineUtc) ||
+        Object.is(deadlineUtc, -0) ||
+        deadlineUtc < started ||
+        deadlineUtc - started > 30000
+      )
+        throw Error('HOST_DISCOVERY_REJECTED');
+      timer = setTimeout(() => {
+        uncertain = true;
+        expire(Error('HOST_DISCOVERY_DEADLINE'));
+      }, deadlineUtc - started);
+      const grant = cap && typeof cap === 'object' ? capabilities.get(cap) : undefined;
+      if (!grant || !read || !observation) throw Error('HOST_DISCOVERY_REJECTED');
+      current(cap, grant.ownerId);
+      const a = attempt,
+        token = read;
+      if (
+        a?.kind !== 'FOREGROUND' ||
+        a.capability !== cap ||
+        a.terminal ||
+        a.queries >= 128 ||
+        engine.snapshot().state !== 'READY'
+      )
+        throw Error('HOST_DISCOVERY_REJECTED');
+      const admission = await custody.revalidateRead(token);
+      if (!admission.ok || admission.token !== token) throw Error('HOST_DISCOVERY_REJECTED');
+      observation = admission.observation;
+      current(cap, grant.ownerId);
+      if (attempt !== a || a.terminal || read !== token) throw Error('HOST_DISCOVERY_REJECTED');
+      a.queries++;
+      queryAttempt = a;
+      const facts =
+        kind === 'METADATA'
+          ? snapshotMetadataQueryFacts(
+              await metadata?.(
+                a.token,
+                transportId as string,
+                field as MetadataQueryField,
+                deadlineUtc,
+              ),
+            )
+          : snapshotHostAcquisitionFacts(await discover?.(a.token, deadlineUtc));
+      if (!facts) throw Error('HOST_DISCOVERY_REJECTED');
+      if (facts.status !== 'COMPLETE') {
+        if (!facts.operationRetired) a.terminal = false;
+        uncertain = true;
+        return facts;
+      }
+      const ended = clock();
+      if (
+        !Number.isSafeInteger(ended) ||
+        ended < started ||
+        ended > deadlineUtc ||
+        facts.observedAtUtc === null ||
+        facts.observedAtUtc < started ||
+        facts.observedAtUtc > ended ||
+        (a.observedUtc !== null && facts.observedAtUtc < a.observedUtc)
+      )
+        throw Error('HOST_DISCOVERY_REJECTED');
+      current(cap, grant.ownerId);
+      custody.assertRead(token);
+      if (closed || uncertain || attempt !== a || a.terminal || read !== token)
+        throw Error('HOST_DISCOVERY_REJECTED');
+      a.observedUtc = facts.observedAtUtc;
+      return facts;
+    });
+    works.add(work);
+    const settled = work
+      .catch((error) => {
+        if (queryAttempt) queryAttempt.terminal = false;
+        throw error;
+      })
+      .finally(() => {
+        if (timer !== undefined) clearTimeout(timer);
+        works.delete(work);
+        busy = false;
+        finishExecution?.();
+        finishExecution = null;
+        void releaseIfRetired();
+      });
+    const result = Promise.race([settled, deadline]);
+    // Query settlement never marks the foreground attempt terminal.
+    const retirement = settled.then(
+      (value) =>
+        Object.freeze({
+          status: value.operationRetired ? ('RETIRED' as const) : ('UNRETIRED' as const),
+        }),
+      () => {
+        uncertain = true;
+        return Object.freeze({ status: 'UNRETIRED' as const });
+      },
+    );
+    return kind === 'METADATA'
+      ? (Object.freeze({ handoff: 'QUERY' as const, result, retirement }) as MetadataQueryHandle)
+      : (Object.freeze({ result, retirement }) as HostAcquisitionHandle);
+  }
+
   return Object.freeze({
     snapshot: engine.snapshot,
     grant(ownerId: string, admit: () => void): HostCapability {
@@ -368,134 +544,10 @@ export function createHostAdapter(
       }
     },
     acquireDiscovery(cap: HostCapability, raw: unknown): HostAcquisitionHandle {
-      if (
-        operationSet !== 'SERVER_ONLY' ||
-        closed ||
-        uncertain ||
-        busy ||
-        works.size ||
-        releasing ||
-        !discover
-      )
-        throw Error('HOST_DISCOVERY_REJECTED');
-      // Same ordinary lane as execute; reserve before any injected callback.
-      busy = true;
-      executionDone = new Promise<void>((resolve) => {
-        finishExecution = resolve;
-      });
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let queryAttempt: Attempt | null = null;
-      let expire: (reason: Error) => void;
-      const deadline = new Promise<never>((_resolve, reject) => {
-        expire = reject;
-      });
-      let deadlineUtc: unknown;
-      let validRequest = false;
-      try {
-        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-          const d = Object.getOwnPropertyDescriptors(raw);
-          if (
-            Reflect.ownKeys(d).length === 1 &&
-            d.deadlineUtc &&
-            'value' in d.deadlineUtc &&
-            d.deadlineUtc.enumerable
-          ) {
-            deadlineUtc = d.deadlineUtc.value;
-            validRequest = true;
-          }
-        }
-      } catch {
-        /* Refuse descriptor traps without losing the reserved lane. */
-      }
-      const work = Promise.resolve().then(async () => {
-        if (!validRequest || typeof deadlineUtc !== 'number')
-          throw Error('HOST_DISCOVERY_REJECTED');
-        const started = clock();
-        if (
-          !Number.isSafeInteger(started) ||
-          started < 0 ||
-          !Number.isSafeInteger(deadlineUtc) ||
-          Object.is(deadlineUtc, -0) ||
-          deadlineUtc < started ||
-          deadlineUtc - started > 30000
-        )
-          throw Error('HOST_DISCOVERY_REJECTED');
-        timer = setTimeout(() => {
-          uncertain = true;
-          expire(Error('HOST_DISCOVERY_DEADLINE'));
-        }, deadlineUtc - started);
-        const grant = cap && typeof cap === 'object' ? capabilities.get(cap) : undefined;
-        if (!grant || !read || !observation) throw Error('HOST_DISCOVERY_REJECTED');
-        current(cap, grant.ownerId);
-        const a = attempt,
-          token = read;
-        if (
-          a?.kind !== 'FOREGROUND' ||
-          a.capability !== cap ||
-          a.terminal ||
-          a.queries >= 128 ||
-          engine.snapshot().state !== 'READY'
-        )
-          throw Error('HOST_DISCOVERY_REJECTED');
-        const admission = await custody.revalidateRead(token);
-        if (!admission.ok || admission.token !== token) throw Error('HOST_DISCOVERY_REJECTED');
-        observation = admission.observation;
-        current(cap, grant.ownerId);
-        if (attempt !== a || a.terminal || read !== token) throw Error('HOST_DISCOVERY_REJECTED');
-        a.queries++;
-        queryAttempt = a;
-        const facts = snapshotHostAcquisitionFacts(await discover(a.token, deadlineUtc));
-        if (!facts) throw Error('HOST_DISCOVERY_REJECTED');
-        if (facts.status !== 'COMPLETE') {
-          if (!facts.operationRetired) a.terminal = false;
-          uncertain = true;
-          return facts;
-        }
-        const ended = clock();
-        if (
-          !Number.isSafeInteger(ended) ||
-          ended < started ||
-          ended > deadlineUtc ||
-          facts.observedAtUtc === null ||
-          facts.observedAtUtc < started ||
-          facts.observedAtUtc > ended ||
-          (a.observedUtc !== null && facts.observedAtUtc < a.observedUtc)
-        )
-          throw Error('HOST_DISCOVERY_REJECTED');
-        current(cap, grant.ownerId);
-        custody.assertRead(token);
-        if (closed || uncertain || attempt !== a || a.terminal || read !== token)
-          throw Error('HOST_DISCOVERY_REJECTED');
-        a.observedUtc = facts.observedAtUtc;
-        return facts;
-      });
-      works.add(work);
-      const settled = work
-        .catch((error) => {
-          if (queryAttempt) queryAttempt.terminal = false;
-          throw error;
-        })
-        .finally(() => {
-          if (timer !== undefined) clearTimeout(timer);
-          works.delete(work);
-          busy = false;
-          finishExecution?.();
-          finishExecution = null;
-          void releaseIfRetired();
-        });
-      const result = Promise.race([settled, deadline]);
-      // Query settlement never marks the foreground attempt terminal.
-      const retirement = settled.then(
-        (value) =>
-          Object.freeze({
-            status: value.operationRetired ? ('RETIRED' as const) : ('UNRETIRED' as const),
-          }),
-        () => {
-          uncertain = true;
-          return Object.freeze({ status: 'UNRETIRED' as const });
-        },
-      );
-      return Object.freeze({ result, retirement });
+      return acquireQuery(cap, raw, 'DISCOVER') as HostAcquisitionHandle;
+    },
+    acquireMetadata(cap: HostCapability, raw: unknown): MetadataQueryHandle {
+      return acquireQuery(cap, raw, 'METADATA') as MetadataQueryHandle;
     },
     close(): Promise<'RETIRED' | 'UNRETIRED'> {
       if (closing) return closing;

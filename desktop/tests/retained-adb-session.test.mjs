@@ -282,7 +282,7 @@ test('discovery framing uses fixed service, absolute bounded I/O and retained co
   before(codec, 'if(length>32768)', 'new byte[length]');
   assert.match(codec, /trailing!=0/);
   assert.match(codec, /new UTF8Encoding\(false,true\)/);
-  const query = body('public AcquisitionReply Discover(');
+  const query = body('QueryReply Query(');
   before(query, 'a.acquisition=q;', 'Task.Factory.FromAsync');
   assert.match(query, /q.socket.BeginConnect,q.socket.EndConnect,IPAddress.Loopback,a.port/);
   assert.match(query, /q.connect.GetAwaiter\(\).GetResult\(\)/);
@@ -292,4 +292,56 @@ test('discovery framing uses fixed service, absolute bounded I/O and retained co
   const retire = body('Reply RetireObserved(');
   before(retire, 'CloseAcquisition(a,deadline,10000)', 'while (!workersSettled)');
   assert.match(retire, /a.workers == 0 && AcquisitionSettled\(a,deadline,10000\)/);
+});
+
+test('metadata fixed table and shell-v2 codec share acquisition lifetime without command interpolation or local exit fiction', () => {
+  const mapping = body('internal static string MetadataCommand(');
+  const pairs = [...mapping.matchAll(/case "([A-Z]+)":return "([^"]+)";/g)].map((m) => [
+    m[1],
+    m[2],
+  ]);
+  assert.deepEqual(pairs, [
+    ['MODEL', 'getprop ro.product.model'],
+    ['MANUFACTURER', 'getprop ro.product.manufacturer'],
+    ['OS', 'getprop ro.build.version.release'],
+    ['SDK', 'getprop ro.build.version.sdk'],
+    ['LOCALE', 'getprop persist.sys.locale'],
+    ['RESOLUTION', 'cmd window size'],
+    ['DENSITY', 'cmd window density'],
+    ['BATTERY', 'dumpsys battery'],
+    ['STORAGE', 'df -k /data'],
+  ]);
+  const codec = body('internal static MetadataBytes ReadMetadata(');
+  before(
+    codec,
+    'MetadataService(channel,budget,"host:transport-id:"+transportId)',
+    'beforeShell()',
+  );
+  before(codec, 'beforeShell()', 'MetadataService(channel,budget,"shell,v2,raw:"+command)');
+  before(codec, 'length>32768', 'new byte[(int)length]');
+  assert.match(codec, /packets<256/);
+  assert.match(codec, /length>32768-total/);
+  assert.match(codec, /kind==3&&length!=1/);
+  assert.match(codec, /trailing!=0/);
+  assert.match(codec, /MetadataText\(output\);MetadataText\(error\)/);
+  assert.match(codec, /new MetadataBytes\(output,error,payload\[0\]\)/);
+  const query = body('QueryReply Query(');
+  assert.match(query, /a.discoveryCalls>=128/);
+  assert.match(query, /if\(field==null\)payload=ReadDevicesList/);
+  assert.match(query, /else metadata=ReadMetadata/);
+  assert.match(
+    query,
+    /delegate\(\)\{Admission\(\);SameProfile\(a\);if\(Stopping\(a\)\|\|!Live\(a\)/,
+  );
+  assert.match(query, /while\(!CloseAcquisition\(a\)\)/);
+  assert.match(query, /while\(!AcquisitionClosed\(q\)\)/);
+  assert.equal(
+    (
+      source.match(
+        /new Socket\(AddressFamily.InterNetwork,SocketType.Stream,ProtocolType.Tcp\)/g,
+      ) ?? []
+    ).length,
+    1,
+  );
+  assert.doesNotMatch(codec, /Process|Socket|File\.|Profile|kill|shell,v1/);
 });

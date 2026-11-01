@@ -3,6 +3,35 @@ import { snapshotHostRequest } from './adb-host-lifecycle.ts';
 import type { HostRequest, HostResult, HostState } from './adb-host-lifecycle.ts';
 import { isRealHostFactory, type createHostFactory } from './adb-host-factory.ts';
 import { parseAdbServerDiscovery } from './adb-discovery.ts';
+import {
+  validMetadataField,
+  validMetadataDeadline,
+  validMetadataTransportId,
+  snapshotMetadataQueryFacts,
+  snapshotQueryRetirement,
+  type MetadataQueryField,
+  type MetadataQueryFacts,
+  type MetadataQueryHandle,
+  type QueryRetirement,
+} from './metadata-query-contract.ts';
+const nativePromise = Promise;
+const nativePromisePrototype = Promise.prototype;
+const nativeThen = Promise.prototype.then;
+const nativeSpecies = Object.getOwnPropertyDescriptor(Promise, Symbol.species)?.get;
+function metadataPromise(value: unknown): value is Promise<unknown> {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    Object.getPrototypeOf(value) === nativePromisePrototype &&
+    !Object.getOwnPropertyDescriptor(value, 'then') &&
+    !Object.getOwnPropertyDescriptor(value, 'constructor') &&
+    Object.getOwnPropertyDescriptor(nativePromisePrototype, 'then')?.value === nativeThen &&
+    Object.getOwnPropertyDescriptor(nativePromisePrototype, 'constructor')?.value ===
+      nativePromise &&
+    Object.getOwnPropertyDescriptor(nativePromise, Symbol.species)?.get === nativeSpecies &&
+    !('value' in (Object.getOwnPropertyDescriptor(nativePromise, Symbol.species) ?? {}))
+  );
+}
 type Health = 'AVAILABLE' | 'DEGRADED';
 type Factory = Pick<
   ReturnType<typeof createHostFactory>,
@@ -14,6 +43,7 @@ type Factory = Pick<
   | 'assertCurrentSession'
   | 'assertRetiredSession'
   | 'acquireDiscovery'
+  | 'acquireMetadata'
   | 'assertDiscoveryEpochCurrent'
   | 'discoveryEpochWitness'
 >;
@@ -33,12 +63,22 @@ export type OwnedDiscoveryRequest = Readonly<{
   sequence: number;
   deadlineUtc: number;
 }>;
+export type OwnedMetadataRequest = Readonly<{
+  requestId: string;
+  epoch: object;
+  sequence: number;
+  transportId: string;
+  field: MetadataQueryField;
+  deadlineUtc: number;
+}>;
 type OwnedProviderRecord = Readonly<{
   epoch: object;
   revoked: boolean;
   source: 'ADB_DISCOVERY';
   current(): void;
   finalCurrent(): boolean;
+  localBusy(): boolean;
+  beginMetadata(request: OwnedMetadataRequest): MetadataQueryHandle;
   begin(
     request: OwnedDiscoveryRequest,
   ): Readonly<{ result: Promise<unknown>; retirement: Promise<unknown> }>;
@@ -366,6 +406,33 @@ export function createAdbServerService(
         retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
       });
     const acquire = factory.acquireDiscovery.bind(factory);
+    const acquireMetadata = factory.acquireMetadata?.bind(factory);
+    let metadataSequence = 0;
+    const metadataIds = new Set<string>();
+    function metadataFailure(
+      code: MetadataQueryFacts['code'] = 'NATIVE_FAILED',
+      dispatched = false,
+    ): MetadataQueryFacts {
+      return Object.freeze({
+        version: 1,
+        kind: 'METADATA_QUERY',
+        status: 'FAILED',
+        code,
+        dispatched,
+        operationRetired: true,
+        stdoutBase64: null,
+        stderrBase64: null,
+        remoteExitCode: null,
+        observedAtUtc: null,
+      });
+    }
+    function metadataRefusal(code: MetadataQueryFacts['code']): MetadataQueryHandle {
+      return Object.freeze({
+        handoff: 'LOCAL_REFUSAL',
+        result: Promise.resolve(metadataFailure(code)),
+        retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
+      });
+    }
     const assertEpochCurrent = factory.assertDiscoveryEpochCurrent.bind(factory);
     const epochWitness = factory.discoveryEpochWitness();
     const currentEpoch = (requireIdleProof = false) => {
@@ -388,7 +455,190 @@ export function createAdbServerService(
         return discoveryRevoked || closed;
       },
       current: currentEpoch,
+      localBusy: () => active !== null && !closed && !discoveryRevoked,
       finalCurrent: () => !discoveryRevoked && !closed && epochWitness.valid,
+      beginMetadata(input: OwnedMetadataRequest): MetadataQueryHandle {
+        if (active) return metadataRefusal('BUSY');
+        if (closed || discoveryRevoked || !acquireMetadata) return metadataRefusal('CLOSED');
+        let release = () => {};
+        const reserved = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        active = reserved;
+        const localRefusal = () => {
+          if (active === reserved) active = null;
+          release();
+          return metadataRefusal('ADMISSION_REJECTED');
+        };
+        let request: OwnedMetadataRequest;
+        try {
+          const d = Object.getOwnPropertyDescriptors(input);
+          const keys = ['requestId', 'epoch', 'sequence', 'transportId', 'field', 'deadlineUtc'];
+          if (
+            ![Object.prototype, null].includes(Object.getPrototypeOf(input)) ||
+            !Object.isFrozen(input) ||
+            Reflect.ownKeys(d).length !== keys.length ||
+            keys.some((k) => !d[k] || !('value' in d[k]) || !d[k].enumerable) ||
+            !uuid(d.requestId?.value) ||
+            d.requestId?.value.length !== 36 ||
+            metadataIds.has(d.requestId?.value) ||
+            metadataIds.size >= 65536 ||
+            d.epoch?.value !== epoch ||
+            typeof d.sequence?.value !== 'number' ||
+            !Number.isSafeInteger(d.sequence?.value) ||
+            d.sequence?.value <= metadataSequence ||
+            d.sequence?.value > 65536 ||
+            !validMetadataTransportId(d.transportId?.value) ||
+            !validMetadataField(d.field?.value) ||
+            !validMetadataDeadline(d.deadlineUtc?.value)
+          )
+            return localRefusal();
+          request = Object.freeze(
+            Object.fromEntries(keys.map((k) => [k, d[k]?.value])),
+          ) as OwnedMetadataRequest;
+        } catch {
+          return localRefusal();
+        }
+        metadataSequence = request.sequence;
+        metadataIds.add(request.requestId);
+        let resolveResult!: (facts: MetadataQueryFacts) => void;
+        let resolveRetirement!: (retirement: QueryRetirement) => void;
+        const result = new Promise<MetadataQueryFacts>((resolve) => {
+          resolveResult = resolve;
+        });
+        const retirement = new Promise<QueryRetirement>((resolve) => {
+          resolveRetirement = resolve;
+        });
+        void Promise.resolve().then(async () => {
+          const attached: Promise<unknown>[] = [];
+          let obligationsSettled = false;
+          let invoked = false,
+            cleanupWork: Promise<boolean> | null = null;
+          const cleanup = () => {
+            discoveryRevoked = true;
+            if (!cleanupWork) {
+              try {
+                cleanupWork = Promise.resolve(retire()).then(
+                  (status) => status === 'RETIRED' && factory.retired,
+                  () => false,
+                );
+              } catch {
+                cleanupWork = Promise.resolve(false);
+              }
+            }
+            return cleanupWork;
+          };
+          let response: MetadataQueryFacts | null = null;
+          try {
+            currentEpoch(true);
+            const start = now();
+            if (
+              request.deadlineUtc <= start ||
+              request.deadlineUtc - start > 30000 ||
+              discoveryCalls >= 128
+            )
+              throw Error('ADMISSION_REJECTED');
+            currentEpoch(true);
+            discoveryCalls++;
+            invoked = true;
+            const handle = acquireMetadata(
+              grant,
+              Object.freeze({
+                transportId: request.transportId,
+                field: request.field,
+                deadlineUtc: request.deadlineUtc,
+              }),
+            );
+            const descriptors = Object.getOwnPropertyDescriptors(handle);
+            if (
+              Reflect.ownKeys(descriptors).length !== 3 ||
+              ['handoff', 'result', 'retirement'].some(
+                (k) => !descriptors[k] || !('value' in descriptors[k]),
+              ) ||
+              descriptors.handoff?.value !== 'QUERY' ||
+              !metadataPromise(descriptors.result?.value) ||
+              !metadataPromise(descriptors.retirement?.value)
+            )
+              throw Error('METADATA_REJECTED');
+            const resultWork = nativeThen.call(
+              descriptors.result?.value,
+              (raw: unknown) => {
+                const facts = snapshotMetadataQueryFacts(raw);
+                if (facts?.status !== 'COMPLETE') void cleanup();
+                return facts;
+              },
+              () => {
+                void cleanup();
+                return null;
+              },
+            ) as Promise<MetadataQueryFacts | null>;
+            attached.push(resultWork);
+            const retirementWork = nativeThen.call(
+              descriptors.retirement?.value,
+              (raw: unknown) => {
+                const facts = snapshotQueryRetirement(raw);
+                if (facts?.status !== 'RETIRED') void cleanup();
+                return facts;
+              },
+              () => {
+                void cleanup();
+                return null;
+              },
+            ) as Promise<QueryRetirement | null>;
+            attached.push(retirementWork);
+            const [facts, retired] = await Promise.all([resultWork, retirementWork]);
+            obligationsSettled = true;
+            response = facts;
+            if (
+              !facts ||
+              !retired ||
+              retired.status !== 'RETIRED' ||
+              !facts.operationRetired ||
+              facts.status !== 'COMPLETE'
+            )
+              throw Error('METADATA_REJECTED');
+            const completed = now();
+            if (
+              facts.observedAtUtc === null ||
+              facts.observedAtUtc < start ||
+              facts.observedAtUtc > completed ||
+              facts.observedAtUtc > request.deadlineUtc
+            )
+              throw Error('METADATA_REJECTED');
+            currentEpoch(true);
+            if (
+              closed ||
+              discoveryRevoked ||
+              (lastClock ?? completed) >= request.deadlineUtc ||
+              !epochWitness.valid
+            )
+              throw Error('EPOCH_REVOKED');
+            resolveResult(facts);
+            resolveRetirement(Object.freeze({ status: 'RETIRED' }));
+          } catch {
+            const cleanupPending = cleanup();
+            await Promise.allSettled(attached);
+            const cleaned = await cleanupPending;
+            resolveResult(
+              response && response.status !== 'COMPLETE'
+                ? response
+                : metadataFailure('NATIVE_FAILED', invoked),
+            );
+            resolveRetirement(
+              Object.freeze({
+                status: cleaned && (!invoked || obligationsSettled) ? 'RETIRED' : 'UNRETIRED',
+              }),
+            );
+          } finally {
+            if (!invoked || obligationsSettled) {
+              active = null;
+              release();
+            }
+            // Unobservable query obligations remain retained; server close cannot claim clean.
+          }
+        });
+        return Object.freeze({ handoff: 'QUERY', result, retirement });
+      },
       begin(input: OwnedDiscoveryRequest) {
         let request: OwnedDiscoveryRequest;
         try {

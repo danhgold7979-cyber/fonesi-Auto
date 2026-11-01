@@ -125,6 +125,24 @@ function reconciliation(ctx: DurableContext, next: RegistrySnapshot): DurableDel
     identityEvidence: { insert: newEvidence },
   };
 }
+export type RegistryProjectionWitness = Readonly<{
+  snapshot: RegistrySnapshot;
+  hostEpoch: number;
+  durableRevision: number;
+  finalCurrent(): boolean;
+}>;
+const projectionInspectors = new WeakMap<
+  object,
+  (expected: unknown) => RegistryProjectionWitness | null
+>();
+export function inspectRegistryProjection(
+  store: unknown,
+  expectedProjection: unknown,
+): RegistryProjectionWitness | null {
+  if (!store || typeof store !== 'object') return null;
+  const inspect = projectionInspectors.get(store);
+  return inspect ? inspect(expectedProjection) : null;
+}
 export function createRegistryStore(
   options: Readonly<{
     coordinator: DurableCoordinator;
@@ -158,7 +176,7 @@ export function createRegistryStore(
       return null;
     }
   }
-  return Object.freeze({
+  const store = Object.freeze({
     async startup(): Promise<DurableMutationResult> {
       if (runtime || stopped) return denial();
       return withLane(async (lane) => {
@@ -344,5 +362,34 @@ export function createRegistryStore(
       ledger = null;
     },
   });
+  projectionInspectors.set(store, (expected) => {
+    try {
+      admit();
+      const capturedRuntime = runtime,
+        capturedLedger = ledger;
+      if (
+        !capturedRuntime ||
+        expected !== capturedRuntime ||
+        !capturedLedger ||
+        capturedLedger.meta.host_epoch < 1 ||
+        !coordinator.available ||
+        stopped
+      )
+        return null;
+      return Object.freeze({
+        snapshot: capturedRuntime,
+        hostEpoch: capturedLedger.meta.host_epoch,
+        durableRevision: capturedLedger.meta.revision,
+        finalCurrent: () =>
+          !stopped &&
+          coordinator.available &&
+          runtime === capturedRuntime &&
+          ledger === capturedLedger,
+      });
+    } catch {
+      return null;
+    }
+  });
+  return store;
 }
 export type RegistryStore = ReturnType<typeof createRegistryStore>;

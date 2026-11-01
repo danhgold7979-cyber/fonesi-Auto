@@ -5,6 +5,32 @@ import {
   snapshotDeviceInputRequest,
   type DeviceInputRequest,
 } from './input-contract.ts';
+import {
+  snapshotMetadataQueryRequest,
+  snapshotMetadataQueryFacts,
+  snapshotQueryRetirement,
+  validMetadataTransportId,
+  type MetadataQueryRequest,
+  type MetadataQueryFacts,
+  type MetadataQueryHandle,
+} from './metadata-query-contract.ts';
+const NativePromise = Promise,
+  promisePrototype = Promise.prototype,
+  promiseThen = Promise.prototype.then;
+const promiseSpecies = Object.getOwnPropertyDescriptor(Promise, Symbol.species)?.get;
+function queryPromise(value: unknown): value is Promise<unknown> {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    Object.getPrototypeOf(value) === promisePrototype &&
+    !Object.getOwnPropertyDescriptor(value, 'then') &&
+    !Object.getOwnPropertyDescriptor(value, 'constructor') &&
+    Object.getOwnPropertyDescriptor(promisePrototype, 'then')?.value === promiseThen &&
+    Object.getOwnPropertyDescriptor(promisePrototype, 'constructor')?.value === NativePromise &&
+    Object.getOwnPropertyDescriptor(NativePromise, Symbol.species)?.get === promiseSpecies &&
+    !('value' in (Object.getOwnPropertyDescriptor(NativePromise, Symbol.species) ?? {}))
+  );
+}
 export type DeviceBinding = Readonly<{
   deviceId: string;
   bindingId: string;
@@ -32,7 +58,7 @@ export type DeviceMetadataRequest = DeviceBinding &
     operation: MetadataOperation;
     deadlineUtc: number;
   }>;
-export type DeviceRequest = DeviceMetadataRequest | DeviceInputRequest;
+export type DeviceRequest = DeviceMetadataRequest | DeviceInputRequest | MetadataQueryRequest;
 export type ActorCode =
   | 'OK'
   | 'INVALID_REQUEST'
@@ -101,6 +127,8 @@ function binding(value: unknown): DeviceBinding | null {
   return Object.freeze(v) as DeviceBinding;
 }
 function request(value: unknown): DeviceRequest | null {
+  const metadata = snapshotMetadataQueryRequest(value);
+  if (metadata) return metadata;
   const input = snapshotDeviceInputRequest(value);
   if (input) return input;
   const v = record(value, [
@@ -189,7 +217,15 @@ export function createDeviceQueueBudget() {
 }
 export type DeviceQueueBudget = ReturnType<typeof createDeviceQueueBudget>;
 export type ActorCapability = Readonly<{ ownerId: string }>;
+export type ActorMetadataConfig = Readonly<{
+  transportId: string;
+  dispatch(request: MetadataQueryRequest): MetadataQueryHandle;
+  observe(request: MetadataQueryRequest, facts: MetadataQueryFacts): boolean;
+  finalCurrent(): boolean;
+  localBusy(): boolean;
+}>;
 export type ActorOptions = Readonly<{
+  metadata?: ActorMetadataConfig;
   binding: DeviceBinding;
   budget: DeviceQueueBudget;
   now: () => number;
@@ -197,8 +233,8 @@ export type ActorOptions = Readonly<{
   current: (binding: DeviceBinding) => boolean;
   binaryAvailable: () => boolean;
   currentDisplay?: (binding: DeviceBinding) => unknown;
-  dispatch: (request: DeviceRequest) => Promise<unknown>;
-  observe: (request: DeviceRequest, stdout: string) => boolean;
+  dispatch: (request: DeviceMetadataRequest | DeviceInputRequest) => Promise<unknown>;
+  observe: (request: DeviceMetadataRequest | DeviceInputRequest, stdout: string) => boolean;
 }>;
 type Pending = {
   request: DeviceRequest;
@@ -213,6 +249,22 @@ export function createDeviceActor(options: ActorOptions) {
   const registered = budgets.get(options.budget);
   if (!registered || registered.has(target.deviceId)) throw new Error('ACTOR_ALREADY_OWNED');
   const { now, assertOwned, current, binaryAvailable, dispatch, observe, budget } = options;
+  const metadataDescriptor = Object.getOwnPropertyDescriptor(options, 'metadata');
+  if (metadataDescriptor && (!('value' in metadataDescriptor) || !metadataDescriptor.enumerable))
+    throw Error('ACTOR_OPTIONS');
+  const metadataValue = metadataDescriptor?.value;
+  const md =
+    metadataValue === undefined
+      ? null
+      : record(metadataValue, ['transportId', 'dispatch', 'observe', 'finalCurrent', 'localBusy']);
+  if (
+    metadataValue !== undefined &&
+    (!md ||
+      !validMetadataTransportId(md.transportId) ||
+      [md.dispatch, md.observe, md.finalCurrent, md.localBusy].some((f) => typeof f !== 'function'))
+  )
+    throw Error('ACTOR_OPTIONS');
+  const metadata = md ? (Object.freeze(md) as ActorMetadataConfig) : null;
   const currentDisplay = options.currentDisplay ?? (() => null);
   if (
     [now, assertOwned, current, binaryAvailable, dispatch, observe, currentDisplay].some(
@@ -245,6 +297,7 @@ export function createDeviceActor(options: ActorOptions) {
     if (!cap || typeof cap !== 'object' || owner !== cap || cap.ownerId !== r.ownerId || draining)
       return 'OWNER_REVOKED';
     try {
+      if (r.version === 3 && phase === 'DISPATCH' && metadata?.localBusy() === true) return 'BUSY';
       if (assertOwned() !== true) return 'OWNER_REVOKED';
       if (
         r.deviceId !== target.deviceId ||
@@ -255,14 +308,19 @@ export function createDeviceActor(options: ActorOptions) {
       )
         return 'STALE_BINDING';
       const time = clock();
-      if (r.deadlineUtc <= time || r.deadlineUtc - time > 120000) return 'DEADLINE_EXCEEDED';
+      if (r.deadlineUtc <= time || r.deadlineUtc - time > (r.version === 3 ? 30000 : 120000))
+        return 'DEADLINE_EXCEEDED';
       if (r.version === 2) {
         if (r.operation.kind === 'TEXT') return 'UNICODE_UNAVAILABLE';
         if (!displayCurrent(r, r.display === null ? null : currentDisplay(target), time, phase))
           return 'STALE_DISPLAY';
       }
+      if (r.version === 3 && (!metadata || r.transportId !== metadata.transportId))
+        return 'STALE_BINDING';
       if (binaryAvailable() !== true) return 'BINARY_UNAVAILABLE';
       if (r.version === 2 && current(target) !== true) return 'STALE_BINDING';
+      if (r.version === 3 && phase === 'DISPATCH' && metadata?.localBusy() === true) return 'BUSY';
+      if (r.version === 3 && metadata?.finalCurrent() !== true) return 'STALE_BINDING';
       if (closed || draining || uncertain || owner !== cap) return 'OWNER_REVOKED';
     } catch {
       return 'OWNER_REVOKED';
@@ -282,6 +340,7 @@ export function createDeviceActor(options: ActorOptions) {
     const r = item.request;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let settled = false;
+    let queryRetired = true;
     const finish = (value: ActorResult) => {
       if (!settled) {
         settled = true;
@@ -312,6 +371,113 @@ export function createDeviceActor(options: ActorOptions) {
       }
       if (remaining <= 0) {
         finish(result(r, 'DEADLINE_EXCEEDED'));
+        return;
+      }
+      if (r.version === 3) {
+        if (
+          !metadata ||
+          r.transportId !== metadata.transportId ||
+          metadata.finalCurrent() !== true
+        ) {
+          finish(result(r, 'STALE_BINDING'));
+          return;
+        }
+        const start = lastTime;
+        queryRetired = false;
+        const failUnknown = () => {
+          uncertain = true;
+          settleQueued('OUTCOME_UNKNOWN');
+          finish(result(r, 'OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN'));
+          for (const resolve of idle.splice(0)) resolve();
+        };
+        timer = setTimeout(failUnknown, Math.min(30000, remaining));
+        try {
+          const handle = record(metadata.dispatch(r), ['handoff', 'result', 'retirement']);
+          if (
+            !handle ||
+            !['LOCAL_REFUSAL', 'QUERY'].includes(handle.handoff as string) ||
+            !queryPromise(handle.result) ||
+            !queryPromise(handle.retirement)
+          )
+            throw Error();
+          const factWork = Reflect.apply(promiseThen, handle.result, [
+            (raw: unknown) => {
+              const facts = snapshotMetadataQueryFacts(raw);
+              const time = clock();
+              return facts &&
+                time >= start &&
+                facts.observedAtUtc !== null &&
+                (facts.observedAtUtc < start ||
+                  facts.observedAtUtc > time ||
+                  facts.observedAtUtc > r.deadlineUtc)
+                ? null
+                : facts;
+            },
+            () => null,
+          ]) as Promise<MetadataQueryFacts | null>;
+          const retireWork = Reflect.apply(promiseThen, handle.retirement, [
+            (raw: unknown) => snapshotQueryRetirement(raw),
+            () => null,
+          ]) as Promise<ReturnType<typeof snapshotQueryRetirement>>;
+          const [facts, retirement] = await Promise.all([factWork, retireWork]);
+          if (!facts || retirement?.status !== 'RETIRED' || !facts.operationRetired) {
+            failUnknown();
+            return;
+          }
+          if (handle.handoff === 'LOCAL_REFUSAL') {
+            if (facts.status !== 'FAILED' || facts.dispatched) {
+              failUnknown();
+              return;
+            }
+            const localCode: ActorCode | null =
+              facts.code === 'BUSY'
+                ? 'BUSY'
+                : facts.code === 'CLOSED'
+                  ? 'CLOSED'
+                  : facts.code === 'DEADLINE'
+                    ? 'DEADLINE_EXCEEDED'
+                    : facts.code === 'ADMISSION_REJECTED'
+                      ? 'STALE_BINDING'
+                      : null;
+            if (localCode === null) {
+              failUnknown();
+              return;
+            }
+            queryRetired = true;
+            if (!settled) finish(result(r, localCode));
+            return;
+          }
+          queryRetired = true;
+          if (facts.status === 'FAILED' && facts.dispatched) {
+            failUnknown();
+            return;
+          }
+          if (settled) return;
+          const denied = admission(item.cap, r, 'OBSERVE');
+          if (denied) {
+            finish(result(r, denied, 'DISPATCHED_UNCONFIRMED'));
+            return;
+          }
+          if (
+            facts.status !== 'COMPLETE' ||
+            facts.remoteExitCode !== 0 ||
+            facts.stderrBase64 !== ''
+          ) {
+            finish(result(r, 'TRANSPORT_FAILED', 'DISPATCHED_UNCONFIRMED'));
+            return;
+          }
+          const valid = metadata.observe(r, facts) === true;
+          const final = admission(item.cap, r, 'OBSERVE');
+          finish(
+            final
+              ? result(r, final, 'DISPATCHED_UNCONFIRMED')
+              : valid
+                ? result(r, 'OK', 'OBSERVED')
+                : result(r, 'OBSERVATION_REJECTED', 'DISPATCHED_UNCONFIRMED'),
+          );
+        } catch {
+          failUnknown();
+        }
         return;
       }
       // Invocation is synchronous after the last admission; no await/retry gap.
@@ -359,10 +525,12 @@ export function createDeviceActor(options: ActorOptions) {
       finish(result(r, 'OUTCOME_UNKNOWN', 'OUTCOME_UNKNOWN'));
     } finally {
       if (timer !== undefined) clearTimeout(timer);
-      budget.release(item.reservation);
-      active = null;
-      pump();
-      notifyIdle();
+      if (queryRetired) {
+        budget.release(item.reservation);
+        active = null;
+        pump();
+        notifyIdle();
+      }
     }
   }
   function pump(): void {
