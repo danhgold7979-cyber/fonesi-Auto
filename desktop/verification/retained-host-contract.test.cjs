@@ -252,7 +252,7 @@ async function simulatedObserver(wrongParent = false) {
   };
   sandbox.require.main = {};
   vm.runInNewContext(fs.readFileSync(observer, 'utf8'), sandbox, { filename: observer });
-  module.exports.runObserver();
+  // Entry must start under Electron's dynamic-import semantics, without a manual call.
   try {
     const result = await finished;
     return {
@@ -269,6 +269,30 @@ async function simulatedObserver(wrongParent = false) {
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
+test('actual CJS entry starts through dynamic import, not require.main', () => {
+  const { spawnSync } = require('node:child_process');
+  const { pathToFileURL } = require('node:url');
+  const script = `import Module from 'node:module';
+const original = Module._load;
+const sentinel = new Error('ENTRY_STARTED');
+Module._load = function(id, ...args) {
+  if (id === 'electron') throw sentinel;
+  return original.call(this, id, ...args);
+};
+try { await import(${JSON.stringify(pathToFileURL(observer).href)}); process.exitCode = 2; }
+catch (error) { process.exitCode = error === sentinel ? 0 : 3; }`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    shell: false,
+    encoding: 'utf8',
+    timeout: 5000,
+    maxBuffer: 4096,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.signal, null);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, '');
+});
 test('actual observer control flow uses captured same-main custody and one VERSION then EOF close with injected facts', async () => {
   const r = await simulatedObserver();
   assert.equal(r.code, 0);
@@ -345,6 +369,8 @@ test('campaign is default-off, source-dependent and keeps managed success before
     assert.match(job, /steps.retained_managed_validation.outputs.written == 'true'/);
     assert.match(job, /steps.retained_host_validation.outputs.written == 'true'/);
     assert.doesNotMatch(job, /path:.*(?:\.exe|\.dll|\.zip|\*\*)/);
+    assert.match(job, /path: desktop\/retained-managed-validated\.json/);
+    assert.doesNotMatch(job, /include-hidden-files: true/);
   };
   for (const fixture of [raw, raw.replaceAll('\r\n', '\n').replaceAll('\n', '\r\n')]) {
     check(fixture);

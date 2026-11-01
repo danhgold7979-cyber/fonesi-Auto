@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 10:02 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 10:17 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -33,17 +33,18 @@ opt-in outer-Job/native-parent binding, private continuous C# reader, fixed Powe
 bootstrap and main-only factory, with closed SOURCE/PACKAGE assets. Main does not
 activate it. Complete122-file source inventory passed as the explicitly documented
 stitched checkpoint (remaining151 tests plus earlier passed batches); no new full
-aggregate count or native PASS is inferred. New C#/PowerShell/real private-pipe path
-remains NOT_COMPILED/NOT_EXECUTED. Prior Windows compile-only evidence applies only to
-its exact old helper/session sources. The user has now approved the [single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
-and restored necessary important checkpoint publication. Its new managed/native results
-remain NOT_RUN until actual evidence; local reviewed checkpoints remain allowed. No canonical task/phase count changes.
-
-First campaign publication `cd3974c0`, CI41295458202, stopped at one Windows CRLF
-negative-fixture assertion in the new workflow test (batch15:49/50); all managed/native
-steps were SKIPPED. The concrete test-only framing repair passes its affected check;
-runner/product/workflow predicates remain unchanged. Same bounded retry is pending,
-not a Windows runtime PASS. See the exact campaign evidence above.
+aggregate count or native PASS is inferred. The user approved the
+[single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
+and necessary important checkpoint publication. After a test-only Windows CRLF repair,
+public `bb6df17e` / CI41295880761 passed1008/109/232 source checks. Actual four-source
+C# compilation and all eight managed groups passed, with strict publisher PASS; the
+managed artifact upload excluded its dot-prefixed filename and is being corrected to
+one exact nonhidden sanitized JSON file. Actual SOURCE VERSION/EOF timed out after240s,
+so it remains unproved. The observer's require.main guard is incompatible with pinned
+Electron's dynamic-import entry loading; the real dynamic-import regression and entry
+fix pass affected19 Node/18 Python tests. Product/native authority and pass predicates
+are unchanged; the same bounded campaign retry is pending. Existing-profile server,
+hardware/P106 and formal gates remain unchanged; no canonical task count is increased.
 
 ## 1. Status definitions
 

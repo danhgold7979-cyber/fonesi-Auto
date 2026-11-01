@@ -489,7 +489,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: retained-managed-development-evidence
-          path: desktop/.retained-managed-validated.json
+          path: desktop/retained-managed-validated.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload only strict fixed-field retained VERSION evidence

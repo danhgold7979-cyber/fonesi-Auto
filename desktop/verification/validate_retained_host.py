@@ -217,7 +217,7 @@ def managed(base):
     if not 0 < file.lstat().st_size <= 16384:
         reject()
     value = managed_output(_read_owned(base, file.name))
-    _write_new(base, '.retained-managed-validated.json', value)
+    _write_new(base, 'retained-managed-validated.json', value)
     return value['passed']
 
 

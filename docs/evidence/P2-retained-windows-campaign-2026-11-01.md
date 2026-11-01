@@ -1,4 +1,4 @@
-# Retained Windows campaign — prepared, actual execution pending
+# Retained Windows campaign — managed PASS, native timeout under repair
 
 2026-11-01 09:57 UTC. User explicitly approved the Auto `a19406f` Windows campaign
 and necessary important checkpoint publication. Coordinator Coder Bin authorized
@@ -85,7 +85,8 @@ fleet/recipient opt-ins remain off for this campaign.
 
 ## Current result
 
-**Actual new Windows compilation, eight managed groups, native VERSION/EOF: NOT_RUN.**
+**Current: actual four-source Windows compilation and eight managed groups PASS in logs;
+managed artifact delivery failed. Actual SOURCE VERSION/EOF timed out: not PASS.**
 Existing-profile server gate remains UNMET; no adoption, deletion, redirect or identity
 workaround. Hardware, P106 cross-user, canonical P2 full-task counts and formal
 acceptance remain unchanged. Failed or partial actual results must be retained honestly.
@@ -109,3 +110,40 @@ and always-on refusal predicates remain unchanged. Affected1/1 and warning-level
 quality pass. All eight runner/contract/workflow hashes above are unchanged.
 This necessary test repair is within the approved same campaign, not a new native
 scope or an unchanged blind rerun. Actual managed/VERSION evidence remains pending.
+
+## Actual managed result and native entry repair — 10:17 UTC
+
+Public `bb6df17eb46a483f7a53c73b0095188f7f874234`, tree
+`e91569f63388ad65168940d605d7d20e448d3c67`, run41295880761 passed the
+complete Windows source suite1008/109/232. Native job124816936200 actually compiled
+the four production C# sources and executed all eight managed groups; its strict
+publisher emitted VALIDATION_PASS. The sanitized managed JSON was not delivered:
+upload-artifact excludes dot-prefixed files by default. The exact publisher/output
+path now uses `retained-managed-validated.json`; no hidden-file inclusion is enabled.
+
+The following SOURCE launch reached the outer240s timeout. Artifact13078469660 has
+390 bytes, SHA256 `94c61e0838064cd0b3548732c1a6519b2d3241e85eefffe2c73eb688ca75b277`:
+TIMEOUT/null exit, outer cleanupComplete true, bootstrap/observation null,
+directoryCleanup false, NATIVE_FAILED. This is not VERSION or application cleanup PASS.
+
+A concrete entry-dispatch defect is reproduced: the exact
+[Electron45.1.0 default app](https://github.com/electron/electron/blob/v45.1.0/default_app/main.ts#L130-L140)
+dynamically imports the supplied CJS entry. `require.main === module` is false there,
+so the observer's old conditional never starts its deadline or derived main. A real
+Node dynamic import of the unchanged observer confirmed no Electron import/observer
+start. The verification entry now starts after exporting its context-binding hook,
+matching existing verification entry behavior; Node module caching preserves the
+subsequent derived-main binding. This source-proven mismatch explains the observed
+silent timeout, but the next actual Windows result remains pending.
+
+The new causal test dynamically imports the actual observer in a child process and
+intercepts Electron before any native effect. Existing injected control-flow tests
+now start via entry evaluation with a distinct require.main, without manually calling
+runObserver. Affected Node19/19, Python18/18 and warning-level formatting/lint PASS;
+no duplicate full aggregate. Product a194 bytes, native containment, deadlines,
+retirement, publication schema and all PASS predicates remain unchanged. Current
+repair hashes: observer `fc0f7b5d3a464666230d4e39b2cebe3eebe41763b66ec675bfd31753213c7ad1`,
+validator `a6fc68ec5889070ab3b230f27678c36456cb8b7b7819c07a20d95cb14eb4be0f`,
+workflow `70897d4d4e29480ab3cef031a114f45834ac3688e0130a98f404dd187783962d`.
+Expected next source total1009 is not yet observed. Server/device/P106/formal gates
+and canonical acceptance counts remain unchanged.

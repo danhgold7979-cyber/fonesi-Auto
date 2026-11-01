@@ -323,4 +323,6 @@ function runObserver() {
   }
 }
 module.exports = { bindContext, runObserver };
-if (require.main === module) runObserver();
+// Electron default_app imports this CJS entry; it is not require.main.
+// Export before starting so the derived main can bind through the module cache.
+runObserver();

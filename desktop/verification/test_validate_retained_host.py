@@ -275,8 +275,10 @@ class ManagedEvidence(unittest.TestCase):
             base = Path(directory).resolve()
             (base / '.retained-managed-output.txt').write_bytes(managed_text(managed_sample()))
             self.assertTrue(validator.managed(base))
-            result = validator.parse((base / '.retained-managed-validated.json').read_bytes())
+            result = validator.parse((base / 'retained-managed-validated.json').read_bytes())
             self.assertEqual(result, managed_sample())
+            self.assertEqual([p.name for p in base.iterdir() if not p.name.startswith('.')],
+                             ['retained-managed-validated.json'])
             with self.assertRaises(FileExistsError):
                 validator.managed(base)
 
