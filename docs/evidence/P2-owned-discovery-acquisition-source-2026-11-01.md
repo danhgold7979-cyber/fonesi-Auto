@@ -1,6 +1,6 @@
 # P2-03 — owned discovery acquisition source and managed gate
 
-**SOURCE IMPLEMENTED / LOCAL SOFTWARE1268/1268 PASS — managed27 and actual socket/server/device execution NOT_RUN.**
+**SOURCE / HOSTED SOFTWARE1268/109/280 / CURRENT COMPILE + MANAGED27 PASS — actual socket/server/device execution NOT_RUN.**
 
 This is the original P2-03 discovery-to-durable-registry dependency, following
 [hosted ingestion source](P2-discovery-ingestion-source-2026-11-01.md) and the
@@ -101,3 +101,34 @@ unreviewed additional campaign is implied.
 | `desktop/module-map.json` | `9776417e164ccbd607146e1591cedccd5c2e51a91c0cdf4cb97398c2c20a80f7` |
 
 Independent consolidated implementation and managed-envelope source review closed19:49 after bounded-lock, local-contention and final-custody corrections. The parent owns the sole aggregate; the reviewer did not rerun tests/builds/native execution. Final32-file staged/hash/docs closure completed19:51: all15 documented source hashes, all10 managed-v4 pins, retained historical tables, links and whitespace independently verified. The reviewer recommends only the already-authorized single compile/27-controlled-group campaign.
+
+
+## Actual Windows managed-only closure — 20:00 UTC
+
+CI41344155270 completed SUCCESS on public
+`9a0700b48253100877bbd1c2385883ba938da68f`, local
+`e3db87266cdb3e2a863589ca357dd6dc369309c2`, exact tree
+`c7933f679c8d270945641963920b8cbd9845f5e2`. Source job124960273116 logs actual
+1268/1268 desktop + DESKTOP_SOURCE_CHECK_PASS,109/109 foundation with no
+failure/cancellation/skip/todo, and Python280/OK. All unrelated native jobs were
+SKIPPED. This supersedes the pending hosted counts above for these exact bytes,
+without rewriting the earlier local failures or overlapping affected evidence.
+
+Managed job124960967053 compiled the exact current four production C# sources and
+fixed fixture, then passed27 controlled groups. The delivered
+[canonical report](samples/P2-owned-discovery-managed27-pass.json) is1197 bytes,
+SHA256 `1d24c19e9d6a1e78cd48c176c9a4c5abc3da251796ea9c7bc95b7a5a07dc2595`.
+Both compiler and fixture are SUCCESS/exit0/retired/untruncated, compilerDiagnostics
+is empty, sourceUnchanged and directoryCleanup are true, all ten exact input hashes
+match, and strict passed is true. Artifact13099045228 contains only this report;
+ZIP882 bytes, SHA256
+`20d05957a02689312f8d60a6e95fba772478cdf866c78869c0ba470ef03c7c28`.
+
+The parent downloaded/logged once and strictly reconstructed the bytes; independent
+20:01 audit extracted the seven-module validator closure (six dependencies) from the
+exact committed local source, repeated duplicate-aware canonical reconstruction,
+matched all ten committed hashes and read the retained source/managed logs. No
+additional test/build/native execution or second fetch was performed for review.
+This accepts current compilation and controlled managed27 behavior only. It does
+not establish a real query socket, eligible Windows profile, native server lifetime,
+physical device, public/main activation or P2-02/P2-03 technical acceptance.
