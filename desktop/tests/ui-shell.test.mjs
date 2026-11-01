@@ -553,3 +553,14 @@ test('main-observed selection and active focus await confirmed props without imp
   assert.equal(requests.length, 2);
   assert.equal(m.find('workspace').props.children.props.selectedDeviceId, 'test-1');
 });
+
+test('Help describes bounded verified retained-launch recovery without obsolete P110 denial', () => {
+  const m = mount();
+  m.find('open-help').props.onClick();
+  const notice = m.all((n) => n.props?.className === 'notice')[0];
+  const text = [notice.props.children].flat(Infinity).join('');
+  assert.match(text, /xác minh đúng lần chạy đã kết thúc/);
+  assert.match(text, /khóa không rõ nguồn gốc bị từ chối/);
+  assert.match(text, /Không tự xóa khóa hay đặt lại khóa mã hóa/);
+  assert.doesNotMatch(text, /chưa có lệnh|Handoff P1-10/);
+});

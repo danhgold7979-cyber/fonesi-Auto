@@ -211,6 +211,11 @@ test('ordinary source pushes cannot invoke development binaries; version and ser
   }
   assert.throws(() => assertManualGates(workflow.replace(/default: false/g, 'default: true')));
   assert.throws(() =>
-    assertManualGates(workflow.replace("github.event_name == 'workflow_dispatch' && ", '')),
+    assertManualGates(
+      workflow.replace(
+        "if: github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
+        'if: (inputs.run_adb_version || inputs.run_adb_server)',
+      ),
+    ),
   );
 });

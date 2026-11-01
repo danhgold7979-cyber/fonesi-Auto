@@ -1,4 +1,5 @@
 import { createPlatformToolsProvisioner } from './platform-tools-provisioner.ts';
+import type { PlatformToolsRuntimeCustody } from './platform-tools-runtime-custody.ts';
 import type { RecipientDecision } from './platform-tools-provisioner.ts';
 import { createPlatformToolsDownload } from './platform-tools-download.ts';
 import type { SetupNativeResult } from './platform-tools-setup-native.ts';
@@ -16,7 +17,7 @@ export function createPlatformToolsSetupService(
     dataRoot: string;
     storeId: string;
     assertOwnedSync: () => void;
-    assertIdleSync: () => void;
+    custody: PlatformToolsRuntimeCustody;
     assertDataLocation: (path: string) => void;
     clock: () => number;
     newId: () => string;
@@ -26,10 +27,27 @@ export function createPlatformToolsSetupService(
   }>,
 ) {
   const owned = options.assertOwnedSync.bind(options),
-    idle = options.assertIdleSync.bind(options),
+    custody = options.custody,
     next = options.newId.bind(options),
     audit = options.audit.bind(options),
     interact = options.native.interact.bind(options.native);
+  let setupToken: object | null = null;
+  const idle = () => {
+    if (setupToken === null) throw Error('OWNER_REVOKED');
+    custody.assertSetup(setupToken);
+  };
+  function reserve() {
+    const result = custody.reserveSetup();
+    if (!result.ok) return result.code;
+    setupToken = result.token;
+    return null;
+  }
+  function releaseIfRetired() {
+    if (setupToken !== null && pending === null && !reserving && core.retired) {
+      const result = custody.releaseSetup(setupToken, true);
+      if (result.ok) setupToken = null;
+    }
+  }
   const ids = new Set<string>();
   let reservationDone: Promise<void> = Promise.resolve();
   let releaseReservation: (() => void) | null = null;
@@ -60,6 +78,7 @@ export function createPlatformToolsSetupService(
   }
   const core = createPlatformToolsProvisioner({
     ...options,
+    assertIdleSync: idle,
     recipient: {
       read: (g) => validGrant(g)?.decision ?? null,
       isCurrent: (g, id) => validGrant(g)?.decision.decisionId === id,
@@ -81,10 +100,10 @@ export function createPlatformToolsSetupService(
   function admit(current: () => boolean) {
     if (stopped || current() !== true) throw Error('OWNER_REVOKED');
     owned();
-    idle();
+    if (setupToken !== null) idle();
     if (stopped || current() !== true) throw Error('OWNER_REVOKED');
     owned();
-    idle();
+    if (setupToken !== null) idle();
     if (stopped) throw Error('OWNER_REVOKED');
   }
   function publish(
@@ -215,24 +234,37 @@ export function createPlatformToolsSetupService(
   return Object.freeze({
     async initialize() {
       if (initialized || pending || reserving || stopped) throw Error('INVALID_REQUEST');
-      owned();
-      idle();
-      const s = await core.status();
-      owned();
-      idle();
-      if (stopped) throw Error('OWNER_REVOKED');
-      snapshot = Object.freeze({
-        ...snapshot,
-        installationRevision: s.revision,
-        state:
-          s.status === 'VERIFIED_LOCAL'
-            ? 'VERIFIED_LOCAL'
-            : s.status === 'RECOVERY_REQUIRED'
-              ? 'OUTCOME_UNKNOWN'
-              : 'UNAVAILABLE',
-        code: s.status === 'RECOVERY_REQUIRED' ? 'RECOVERY_REQUIRED' : null,
+      const refusal = reserve();
+      if (refusal !== null) throw Error(refusal);
+      reserving = true;
+      reservationDone = new Promise<void>((resolve) => {
+        releaseReservation = resolve;
       });
-      initialized = true;
+      try {
+        owned();
+        idle();
+        const s = await core.status();
+        owned();
+        idle();
+        if (stopped) throw Error('OWNER_REVOKED');
+        snapshot = Object.freeze({
+          ...snapshot,
+          installationRevision: s.revision,
+          state:
+            s.status === 'VERIFIED_LOCAL'
+              ? 'VERIFIED_LOCAL'
+              : s.status === 'RECOVERY_REQUIRED'
+                ? 'OUTCOME_UNKNOWN'
+                : 'UNAVAILABLE',
+          code: s.status === 'RECOVERY_REQUIRED' ? 'RECOVERY_REQUIRED' : null,
+        });
+        initialized = true;
+      } finally {
+        reserving = false;
+        releaseReservation?.();
+        releaseReservation = null;
+        releaseIfRetired();
+      }
     },
     async execute(input: SetupRequest, current: () => boolean): Promise<string> {
       const request = snapshotSetupRequest(input);
@@ -277,6 +309,14 @@ export function createPlatformToolsSetupService(
         return setupError(request.requestId, 'STALE_REVISION', diagnosticId, 'DEGRADED');
       if (snapshot.state === 'OUTCOME_UNKNOWN')
         return setupError(request.requestId, 'RECOVERY_REQUIRED', diagnosticId, 'DEGRADED');
+      const custodyRefusal = reserve();
+      if (custodyRefusal !== null)
+        return setupError(
+          request.requestId,
+          custodyRefusal === 'BUSY' ? 'BUSY' : 'OWNER_REVOKED',
+          diagnosticId,
+          'DEGRADED',
+        );
       reserving = true;
       reservationDone = new Promise<void>((resolve) => {
         releaseReservation = resolve;
@@ -312,9 +352,11 @@ export function createPlatformToolsSetupService(
         void task.then(
           () => {
             if (pending === task) pending = null;
+            releaseIfRetired();
           },
           () => {
             if (pending === task) pending = null;
+            releaseIfRetired();
           },
         );
         const resultHealth = await log({
@@ -343,6 +385,7 @@ export function createPlatformToolsSetupService(
         reserving = false;
         releaseReservation?.();
         releaseReservation = null;
+        releaseIfRetired();
       }
     },
     shutdown() {
@@ -353,12 +396,16 @@ export function createPlatformToolsSetupService(
       closing = (async () => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          return await Promise.race([
+          const result = await Promise.race([
             Promise.all([native, coreClosing, reservationDone]).then(([, r]) => r),
             new Promise<'UNRETIRED'>((resolve) => {
               timer = setTimeout(() => resolve('UNRETIRED'), 120000);
             }),
           ]);
+          releaseIfRetired();
+          if (result === 'UNRETIRED' && setupToken !== null)
+            custody.releaseSetup(setupToken, false);
+          return result;
         } finally {
           if (timer !== undefined) clearTimeout(timer);
         }
@@ -366,6 +413,7 @@ export function createPlatformToolsSetupService(
       return closing;
     },
     get retired() {
+      releaseIfRetired();
       return pending === null && !reserving && core.retired;
     },
   });

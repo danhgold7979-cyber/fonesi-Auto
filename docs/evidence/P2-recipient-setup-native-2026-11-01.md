@@ -1,14 +1,14 @@
-# Recipient setup SOURCE native campaign — prepared, not executed
+# Recipient setup SOURCE native campaign — bounded native evidence accepted
 
-Date: 2026-11-01. Status: source/envelope independently reviewed; actual Windows result
-NOT_RUN. No canonical task, device capability or formal acceptance change.
+Date: 2026-11-01. Status: bounded actual Windows FIRST+REOPEN evidence accepted at06:11 UTC,
+with independent strict/visual review. No canonical task, device capability or formal acceptance change.
 
 ## Approved preparation
 
 Coordinator Coder Bin approved source preparation at05:37 UTC against the reviewed
 [finite proposal](../phases/P2-RECIPIENT-SETUP-NATIVE-PROPOSAL.md), pre-adoption
 SHA256 `89728229ad576bce3d360b447771012b78cb09ecaae0b412d2ea285845d70e95`.
-Actual hosted execution still needs coordinator approval for this frozen envelope.
+Historical preparation record: exact hosted execution was approved at06:05; accepted result below.
 The prior application checkpoint remains local `9cfb65d82ce82f005278ecf51da29920ee65472e`,
 tree `083353a88d13755444bd65ebab9c5cdf02811cf5`: two identical create-tree attempts were
 rejected before execution for explicit public-disclosure authorization. No remote tree,
@@ -16,7 +16,44 @@ commit, branch update or new CI is claimed. The second attempt followed material
 repository verification and authenticated user-history evidence; no alternate route was used.
 This verification source is a separate checkpoint and does not alter that36-file payload.
 
-## Evidence to be collected
+## Accepted bounded native result — 2026-11-01 06:11 UTC
+
+Coordinator Coder Bin accepted the exact immutable local935add3 campaign, published as
+`f1fe3212e680d672b511983223fc5728d177d2de`, tree
+`d072169975cfeabd5d0ee3093d868036ffe77dd1`, Windows CI `41279477173` SUCCESS.
+Source checks901 desktop /109 foundation /214 Python passed; unrelated fleet/ADB jobs
+were skipped. The preceding36-file source publication was separately approved and
+published as611c56e0, source CI41279086636 passed883/109/205. The denied attempts above
+are historical, not current publication blockers for these two exact checkpoints.
+
+[Exact sanitized report](samples/P2-recipient-setup-native-pass.json):2285 UTF-8 bytes,
+no trailing newline, SHA256 `2c9bfda1a7d2d04dda3fc8d562fe5e3b79fa3cf5b92b1d39648f2ef2b3c549c2`,
+artifact13073200266. Independent duplicate-aware reconstruction with the exact committed
+validator and dependency closure passed. Bootstrap11 cases in each of FIRST/REOPEN,
+FIRST20 and REOPEN7 cases all true; both processes SUCCESS0/retired/untruncated,
+source/archive unchanged, owned cleanup true, failure null.
+
+Two original1024×768 PNGs, artifact13073240046, independently passed hash/CRC/size/privacy
+checks and visual review: Light94042 bytes/SHA256
+`f34377684187066028fc289ba6be0e0cc8056caf76747cf5e3c26e3e9b8fd2a8`;
+Dark88160 bytes/SHA256
+`b2cc16fe4066af415acdbe8a79083a4fd9a1b2fa8a4b776fb8fe71c5a8cec5e7`.
+Help shows VERIFIED_LOCAL while fleet remains BINARY_UNAVAILABLE. No blocking layout
+regression was observed. Basic button styling and mixed English diagnostic labels remain
+explicit polish debt, not a release-quality claim or authority to redesign V9.
+
+This is injected native-consent/local-archive SOURCE evidence, not genuine user consent,
+production HTTPS delivery, ADB/server/device execution, installed-package acceptance,
+existing-user upgrade or capture-crash proof. New shared custody source795083d was not
+in this runtime tree. Canonical task counts/formal0/P106 UNMET remain unchanged.
+
+A subsequent narrow Help-copy correction removes the obsolete statement that P110
+retained-lock recovery does not exist. The actual supported path requires exact retired
+launch/ownership evidence and refuses unknown locks; it never authorizes manual unlock
+or key reset. This later text is source-tested separately, not retroactively attributed
+to the two accepted images. No geometry/CSS/control behavior changes accompany it.
+
+## Original evidence plan
 
 One actual SOURCE launch, using the established exact four audited launcher substitutions,
 executes the real main/preload/React setup and production native adapter. Native answers
@@ -47,8 +84,8 @@ job extraction included following jobs and the ADB fetch count was global. Both 
 their exact job sections while retaining all prior opt-in and publication predicates.
 Quality296-file check, syntax/YAML parsing and diff checks passed. No duplicate application
 aggregate was run; the previous application source stitched checkpoint is retained.
-Expected next full hosted inventory is901 desktop /109 unchanged foundation /214 Python;
-these are expectations, not yet hosted results.
+At source preparation, expected hosted inventory was901 desktop /109 unchanged foundation /214 Python;
+the exact later Windows result is recorded above.
 
 Independent review used source reads and affected causal checks, not a duplicate aggregate:
 actual SQLite first/reopen tuples, immutable profile witness, exact schema4 observation,

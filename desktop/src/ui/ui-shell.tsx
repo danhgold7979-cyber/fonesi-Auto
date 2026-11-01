@@ -709,8 +709,9 @@ export function UiShell(p: ShellProps) {
               </p>
               <div className="notice">
                 Khôi phục dữ liệu chỉ qua thao tác bảo trì được xác nhận vào vùng cách ly mới.
-                Launcher chưa có lệnh phục hồi khóa giữ lại sau lần mở lỗi; không xóa khóa hay đặt
-                lại khóa mã hóa. Handoff P1-10 còn bắt buộc.
+                Launcher chỉ phục hồi khóa giữ lại khi xác minh đúng lần chạy đã kết thúc và quyền
+                sở hữu; khóa không rõ nguồn gốc bị từ chối. Không tự xóa khóa hay đặt lại khóa mã
+                hóa.
               </div>
               {p.settings}
             </>

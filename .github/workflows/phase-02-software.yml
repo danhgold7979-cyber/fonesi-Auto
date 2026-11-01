@@ -2,6 +2,11 @@ name: Phase 02 software and pinned development ADB boundaries
 on:
   workflow_dispatch:
     inputs:
+      run_retained_compile:
+        description: 'Compile retained helper library only; never load or invoke it'
+        required: false
+        type: boolean
+        default: false
       run_adb_version:
         description: 'Explicit reviewed version-only development check'
         required: false
@@ -65,6 +70,11 @@ jobs:
       - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
         run: |
           node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retained helper compile only without assembly execution
+        if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[retained-compile]')))
+        run: |
+          node desktop/scripts/compile-retained-helper.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Named Windows development environment and foundation fixtures
         run: |

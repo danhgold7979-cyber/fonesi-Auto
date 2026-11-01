@@ -1,3 +1,4 @@
+import { createPlatformToolsRuntimeCustody } from './main/platform-tools-runtime-custody.ts';
 import { installPlatformToolsSetupBridge } from './platform-tools-setup-bridge.js';
 import {
   createPlatformToolsSetupService,
@@ -403,6 +404,15 @@ try {
             requireWindow();
           },
         );
+        const runtimeCustody = createPlatformToolsRuntimeCustody({
+          dataRoot: ownedPersistence.root,
+          storeId: ownedPersistence.storeId,
+          assertOwnedSync: () => {
+            if (closing || resourcesDisposed) throw Error('OWNER_REVOKED');
+            assertPreparedPersistenceLease(ownedEntry);
+          },
+          assertDataLocation: persistenceDataGuard(ownedEntry.packageRoot),
+        });
         platformToolsService = createPlatformToolsSetupService({
           dataRoot: ownedPersistence.root,
           storeId: ownedPersistence.storeId,
@@ -410,10 +420,7 @@ try {
             if (closing || resourcesDisposed) throw Error('OWNER_REVOKED');
             assertPreparedPersistenceLease(ownedEntry);
           },
-          // No production server/host dispatcher exists in this slice. Nothing can acquire server custody.
-          assertIdleSync: () => {
-            if (closing) throw Error('OWNER_REVOKED');
-          },
+          custody: runtimeCustody,
           assertDataLocation: persistenceDataGuard(ownedEntry.packageRoot),
           clock: () => Date.now(),
           newId: () => randomUUID(),
@@ -426,7 +433,11 @@ try {
           await setup.initialize();
           return {
             shutdown: async () => {
-              if ((await setup.shutdown()) !== 'RETIRED') throw Error('PLATFORM_TOOLS_UNRETIRED');
+              const serviceRetirement = setup.shutdown();
+              const custodyRetirement = runtimeCustody.close();
+              const results = await Promise.all([serviceRetirement, custodyRetirement]);
+              if (results.some((result) => result !== 'RETIRED'))
+                throw Error('PLATFORM_TOOLS_UNRETIRED');
             },
           };
         });

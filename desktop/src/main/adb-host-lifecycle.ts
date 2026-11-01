@@ -33,16 +33,26 @@ export type HostResult = Readonly<{
   code: HostCode;
   diagnosticId: string | null;
 }>;
-export type HostObservation = 'VERSION' | 'STARTED' | 'HEALTHY' | 'STOPPED' | 'DISCOVERY';
-/** Observation means adapter-validated operation output, not merely exit zero.
- * processRetired describes the bounded invocation/Job, not server endpoint custody. */
-export type HostTransportFacts = Readonly<{
-  dispatched: boolean;
-  processRetired: boolean;
-  exitCode: number | null;
-  endpointOwned: boolean;
-  observation: HostObservation | null;
-}>;
+export type HostObservation = 'VERSION' | 'STARTED' | 'HEALTHY' | 'STOPPED';
+/** Versioned supplied facts; session custody is never invocation retirement. */
+export type HostTransportFacts =
+  | Readonly<{
+      version: 2;
+      kind: 'INVOCATION';
+      dispatched: boolean;
+      processRetired: boolean;
+      exitCode: number | null;
+      observation: 'VERSION' | null;
+    }>
+  | Readonly<{
+      version: 2;
+      kind: 'SESSION';
+      dispatched: boolean;
+      jobState: 'LIVE' | 'RETIRED' | 'UNKNOWN';
+      exitCode: number | null;
+      endpointState: 'OWNED' | 'ABSENT' | 'UNKNOWN';
+      observation: 'STARTED' | 'HEALTHY' | 'STOPPED' | null;
+    }>;
 export interface HostOptions {
   transport(request: HostRequest, endpoint: object): Promise<HostTransportFacts>;
   endpoint: object;
@@ -59,12 +69,12 @@ const OPERATIONS: readonly HostOperation[] = [
   'SERVER_STOP',
   'DISCOVER',
 ];
-const OBSERVATIONS: Readonly<Record<HostOperation, HostObservation>> = {
+const OBSERVATIONS: Readonly<Record<HostOperation, HostObservation | null>> = {
   HOST_VERSION: 'VERSION',
   SERVER_START: 'STARTED',
   SERVER_HEALTH: 'HEALTHY',
   SERVER_STOP: 'STOPPED',
-  DISCOVER: 'DISCOVERY',
+  DISCOVER: null,
 };
 const uuid = (value: unknown): value is string =>
   typeof value === 'string' &&
@@ -112,33 +122,56 @@ export function snapshotHostRequest(raw: unknown): HostRequest | null {
     return null;
   return Object.freeze({ ...v }) as HostRequest;
 }
-function facts(raw: unknown): HostTransportFacts | null {
-  const v = fields(raw, [
-    'dispatched',
-    'processRetired',
-    'exitCode',
-    'endpointOwned',
-    'observation',
-  ]);
+export function snapshotHostTransportFacts(raw: unknown): HostTransportFacts | null {
+  let kind: unknown;
+  try {
+    kind = Object.getOwnPropertyDescriptor(raw, 'kind')?.value;
+  } catch {
+    return null;
+  }
+  const names =
+    kind === 'INVOCATION'
+      ? ['version', 'kind', 'dispatched', 'processRetired', 'exitCode', 'observation']
+      : kind === 'SESSION'
+        ? ['version', 'kind', 'dispatched', 'jobState', 'exitCode', 'endpointState', 'observation']
+        : null;
+  if (!names) return null;
+  const v = fields(raw, names);
   if (
-    !v ||
+    v?.version !== 2 ||
+    v.kind !== kind ||
     typeof v.dispatched !== 'boolean' ||
-    typeof v.processRetired !== 'boolean' ||
-    typeof v.endpointOwned !== 'boolean' ||
     !(
       v.exitCode === null ||
       (typeof v.exitCode === 'number' &&
         Number.isSafeInteger(v.exitCode) &&
+        !Object.is(v.exitCode, -0) &&
         v.exitCode >= -2147483648 &&
         v.exitCode <= 4294967295)
-    ) ||
-    !(
-      v.observation === null ||
-      Object.values(OBSERVATIONS).includes(v.observation as HostObservation)
     )
   )
     return null;
-  if (!v.dispatched && (v.exitCode !== null || v.observation !== null)) return null;
+  if (kind === 'INVOCATION') {
+    if (
+      typeof v.processRetired !== 'boolean' ||
+      !(v.observation === null || v.observation === 'VERSION')
+    )
+      return null;
+    if (!v.dispatched && (v.exitCode !== null || v.observation !== null)) return null;
+    if (!v.processRetired && v.exitCode !== null) return null;
+  } else {
+    if (
+      !['LIVE', 'RETIRED', 'UNKNOWN'].includes(v.jobState as string) ||
+      !['OWNED', 'ABSENT', 'UNKNOWN'].includes(v.endpointState as string) ||
+      !(
+        v.observation === null ||
+        ['STARTED', 'HEALTHY', 'STOPPED'].includes(v.observation as string)
+      )
+    )
+      return null;
+    if (v.jobState === 'LIVE' && v.exitCode !== null) return null;
+    if (!v.dispatched && v.observation !== null) return null;
+  }
   return Object.freeze({ ...v }) as HostTransportFacts;
 }
 export function createHostLifecycle(options: HostOptions) {
@@ -153,6 +186,7 @@ export function createHostLifecycle(options: HostOptions) {
   let state: HostState = 'STOPPED',
     closed = false,
     active: Promise<HostResult> | null = null;
+  let pendingTransport: Promise<HostTransportFacts> | null = null;
   const result = (outcome: HostResult['outcome'], code: HostCode, id: string | null): HostResult =>
     Object.freeze({ outcome, code, diagnosticId: id });
   const current = (cap: HostCapability, request: HostRequest) => {
@@ -160,6 +194,8 @@ export function createHostLifecycle(options: HostOptions) {
     if (!entry || entry.ownerId !== request.ownerId) throw Error('HOST_AUTHORITY');
     assertOwned();
     entry.admit();
+    assertOwned();
+    if (capabilities.get(cap) !== entry) throw Error('HOST_AUTHORITY');
   };
   function grant(ownerId: string, admit: () => void): HostCapability {
     if (closed || !uuid(ownerId) || typeof admit !== 'function') throw Error('HOST_AUTHORITY');
@@ -184,6 +220,7 @@ export function createHostLifecycle(options: HostOptions) {
     } catch {
       return result('NOT_DISPATCHED', 'BINARY_UNAVAILABLE', id);
     }
+    if (request.operation === 'DISCOVER') return result('NOT_DISPATCHED', 'NOT_READY', id);
     if (state === 'UNCERTAIN') return result('NOT_DISPATCHED', 'RECOVERY_REQUIRED', id);
     if (request.operation === 'SERVER_START' && state !== 'STOPPED')
       return result('NOT_DISPATCHED', 'BUSY', id);
@@ -210,8 +247,27 @@ export function createHostLifecycle(options: HostOptions) {
         state = previous;
         return result('NOT_DISPATCHED', 'DEADLINE', id);
       }
+      try {
+        current(cap, request);
+      } catch {
+        state = previous;
+        return result('NOT_DISPATCHED', 'NOT_AUTHORIZED', id);
+      }
+      if (closed) {
+        state = previous;
+        return result('NOT_DISPATCHED', 'CLOSED', id);
+      }
       // Calling the private adapter is dispatch handoff. Throws/timeouts never imply no effect.
       const work = Promise.resolve(transport(request, endpoint));
+      pendingTransport = work;
+      void work.then(
+        () => {
+          if (pendingTransport === work) pendingTransport = null;
+        },
+        () => {
+          if (pendingTransport === work) pendingTransport = null;
+        },
+      );
       const settled = await Promise.race([
         work,
         new Promise<typeof timeout>((resolve) => {
@@ -222,17 +278,20 @@ export function createHostLifecycle(options: HostOptions) {
         state = 'UNCERTAIN';
         return result('OUTCOME_UNKNOWN', 'DEADLINE', id);
       }
-      const observed = facts(settled);
-      if (!observed) {
+      const observed = snapshotHostTransportFacts(settled);
+      const expectedKind = request.operation === 'HOST_VERSION' ? 'INVOCATION' : 'SESSION';
+      if (!observed || observed.kind !== expectedKind) {
         state = 'UNCERTAIN';
         return result('OUTCOME_UNKNOWN', 'INVALID_OBSERVATION', id);
       }
-      if (!observed.processRetired) {
-        state = 'UNCERTAIN';
-        return result('OUTCOME_UNKNOWN', 'TRANSPORT_FAILED', id);
-      }
       if (!observed.dispatched) {
-        if (observed.endpointOwned !== (previous === 'READY')) {
+        const unchanged =
+          observed.kind === 'INVOCATION'
+            ? observed.processRetired
+            : previous === 'READY'
+              ? observed.jobState === 'LIVE' && observed.endpointState === 'OWNED'
+              : observed.jobState === 'RETIRED' && observed.endpointState === 'ABSENT';
+        if (!unchanged) {
           state = 'UNCERTAIN';
           return result('OUTCOME_UNKNOWN', 'CUSTODY_REJECTED', id);
         }
@@ -242,22 +301,35 @@ export function createHostLifecycle(options: HostOptions) {
       try {
         current(cap, request);
         const after = now();
+        if (closed) throw Error('HOST_CLOSED');
         if (!integer(after) || after < before || after >= request.deadlineUtc)
           throw Error('HOST_EXPIRED');
+        current(cap, request);
+        if (closed) throw Error('HOST_CLOSED');
       } catch {
         state = 'UNCERTAIN';
         return result('OUTCOME_UNKNOWN', 'NOT_AUTHORIZED', id);
       }
-      if (observed.exitCode !== 0 || observed.observation !== OBSERVATIONS[request.operation]) {
-        state = 'UNCERTAIN';
-        return result('DISPATCHED_UNCONFIRMED', 'INVALID_OBSERVATION', id);
-      }
-      const shouldOwn =
-        request.operation === 'SERVER_START' ||
-        (previous === 'READY' && request.operation !== 'SERVER_STOP');
-      if (observed.endpointOwned !== shouldOwn) {
+      const custody =
+        observed.kind === 'INVOCATION'
+          ? observed.processRetired
+          : request.operation === 'SERVER_STOP'
+            ? observed.jobState === 'RETIRED' &&
+              observed.exitCode !== null &&
+              observed.endpointState === 'ABSENT'
+            : observed.jobState === 'LIVE' &&
+              observed.exitCode === null &&
+              observed.endpointState === 'OWNED';
+      if (!custody) {
         state = 'UNCERTAIN';
         return result('OUTCOME_UNKNOWN', 'CUSTODY_REJECTED', id);
+      }
+      if (
+        (observed.kind === 'INVOCATION' && observed.exitCode !== 0) ||
+        observed.observation !== OBSERVATIONS[request.operation]
+      ) {
+        state = 'UNCERTAIN';
+        return result('DISPATCHED_UNCONFIRMED', 'INVALID_OBSERVATION', id);
       }
       state =
         request.operation === 'SERVER_START'
@@ -283,7 +355,7 @@ export function createHostLifecycle(options: HostOptions) {
     const request = snapshotHostRequest(raw);
     if (!request) return Promise.resolve(result('NOT_DISPATCHED', 'INVALID_REQUEST', id));
     if (closed) return Promise.resolve(result('NOT_DISPATCHED', 'CLOSED', id));
-    if (active) return Promise.resolve(result('NOT_DISPATCHED', 'BUSY', id));
+    if (active || pendingTransport) return Promise.resolve(result('NOT_DISPATCHED', 'BUSY', id));
     // Reserve the lane before running any injected callback (including reentrant ones).
     const work = Promise.resolve().then(() => run(cap, request, id));
     active = work;
@@ -303,6 +375,7 @@ export function createHostLifecycle(options: HostOptions) {
     closed = true;
     closing = (async () => {
       if (active) await active;
+      if (pendingTransport) await pendingTransport.catch(() => undefined);
       return Object.freeze({ state, ownedServerRetained: state !== 'STOPPED' });
     })();
     return closing;
@@ -311,6 +384,7 @@ export function createHostLifecycle(options: HostOptions) {
     grant,
     execute,
     shutdown,
-    snapshot: () => Object.freeze({ state, busy: active !== null, closed }),
+    snapshot: () =>
+      Object.freeze({ state, busy: active !== null || pendingTransport !== null, closed }),
   });
 }

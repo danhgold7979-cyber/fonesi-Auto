@@ -37,8 +37,8 @@ test('schema4 fleet UI requires exact manual or phase02 marker opt-in and preser
   for (const changed of [
     raw.replace(condition, 'true'),
     raw.replace(condition, condition.replace("github.event_name == 'workflow_dispatch' && ", '')),
-    raw.replace("github.ref == 'refs/heads/phase-02' && ", ''),
-    raw.replace("github.event_name == 'push' && ", ''),
+    raw.replace(condition, condition.replace("github.ref == 'refs/heads/phase-02' && ", '')),
+    raw.replace(condition, condition.replace("github.event_name == 'push' && ", '')),
     raw.replace("contains(github.event.head_commit.message, '[fleet-ui]')", 'true'),
     raw.replace('default: false', 'default: true').replace(/default: false/g, 'default: true'),
     raw.replace(

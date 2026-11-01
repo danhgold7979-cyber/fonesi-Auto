@@ -1,8 +1,29 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 05:30 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 06:51 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
+
+Current source: recipient integration public `611c56e0cd90761f51d7becf996c613ed3ad3e24`
+passed Windows source CI `41279086636` (883 desktop /109 foundation /205 Python; native skipped).
+The separately reviewed local-archive recipient campaign completed on public `f1fe3212e680d672b511983223fc5728d177d2de`,
+CI `41279477173` passed901/109/214 and the bounded injected-consent/local-archive
+FIRST+REOPEN campaign; [exact accepted evidence](evidence/P2-recipient-setup-native-2026-11-01.md)
+does not cover genuine user consent, production HTTPS, server/devices or later custody source. The next [shared runtime custody slice](phases/P2-RECIPIENT-RUNTIME-CUSTODY-PROPOSAL.md)
+is source-only and grants no executable/server/device capability.
+
+Current canonical source step: **P2-02 — ADB server lifecycle (2nd of13 task IDs)**,
+with P2-01 runtime custody. [Host-session source evidence](evidence/P2-host-session-adapter-2026-11-01.md)
+distinguishes live server custody from retired invocations and retains actual pending
+work across timeout. It installs no native provider. Accepted recipient campaign49/49
+checks are partial P2-01 evidence, not49 canonical criteria or full-task acceptance.
+[Retained helper/bridge source](evidence/P2-retained-native-helper-2026-11-01.md) now reuses
+the unchanged Windows interop API and adds bounded injected-byte framing. C# remains
+NOT_COMPILED/NOT_EXECUTED; no actual pipe reader/bootstrap/provider is installed.
+Affected tests are recorded separately; prior937 aggregate is carried forward, not rerun.
+[Compile-only preparation](evidence/P2-retained-helper-compile-preparation-2026-11-01.md)
+adds a default-off, fixed Windows compiler step without loading/invoking the DLL;
+actual compilation remains NOT_RUN pending admitted publication.
 
 ## 1. Status definitions
 
@@ -20,7 +41,7 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 
 ## 2. Current repository and plan-review state
 
-[Recipient setup integration](evidence/P2-recipient-setup-integration-2026-11-01.md) is now implemented under source review: genuine native consent flow, private grant, bounded download/core and existing Help status. Actual setup execution remains NOT_RUN; verified bytes do not activate server/device capability.
+[Recipient setup integration](evidence/P2-recipient-setup-integration-2026-11-01.md) is now implemented under source review: genuine native consent flow, private grant, bounded download/core and existing Help status. Bounded injected-consent/local-archive native evidence passed; genuine recipient/production HTTPS setup remains NOT_RUN, and verified bytes do not activate server/device capability.
 
 **Current execution: Phase2 bounded software foundation IN_PROGRESS on `phase-02`; formal acceptance pending.**
 Ten of eleven canonical task scopes have technical passes (10/11=90.9%;10/154=6.5% overall).

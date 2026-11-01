@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHostLifecycle, snapshotHostRequest } from '../src/main/adb-host-lifecycle.ts';
+import {
+  createHostLifecycle,
+  snapshotHostRequest,
+  snapshotHostTransportFacts,
+} from '../src/main/adb-host-lifecycle.ts';
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const request = (operation = 'HOST_VERSION', extra = {}) => ({
   version: 1,
@@ -11,13 +15,25 @@ const request = (operation = 'HOST_VERSION', extra = {}) => ({
   deadlineUtc: Date.now() + 1000,
   ...extra,
 });
-const facts = (observation = 'VERSION', endpointOwned = false) => ({
-  dispatched: true,
-  processRetired: true,
-  exitCode: 0,
-  endpointOwned,
-  observation,
-});
+const facts = (observation = 'VERSION', endpointOwned = false) =>
+  observation === 'VERSION'
+    ? {
+        version: 2,
+        kind: 'INVOCATION',
+        dispatched: true,
+        processRetired: true,
+        exitCode: 0,
+        observation,
+      }
+    : {
+        version: 2,
+        kind: 'SESSION',
+        dispatched: true,
+        jobState: observation === 'STOPPED' ? 'RETIRED' : 'LIVE',
+        exitCode: observation === 'STOPPED' ? 1460 : null,
+        endpointState: endpointOwned ? 'OWNED' : 'ABSENT',
+        observation,
+      };
 const deferred = () => {
   let resolve;
   const promise = new Promise((r) => {
@@ -130,13 +146,14 @@ test('null forged wrong-owner and revoked capabilities never dispatch', async ()
   assert.equal((await f.engine.execute(f.cap, request())).code, 'NOT_AUTHORIZED');
   assert.equal(f.calls.length, 0);
 });
-test('owned lifecycle starts, observes health/discovery, and stops only its private endpoint', async () => {
+test('owned lifecycle starts, observes health, refuses discovery, and stops only its private endpoint', async () => {
   const f = fixture();
   assert.equal((await f.engine.execute(f.cap, request('SERVER_STOP'))).code, 'NOT_READY');
-  for (const op of ['SERVER_START', 'SERVER_HEALTH', 'DISCOVER', 'SERVER_STOP'])
+  for (const op of ['SERVER_START', 'SERVER_HEALTH', 'SERVER_STOP'])
     assert.equal((await f.engine.execute(f.cap, request(op))).outcome, 'OBSERVED');
   assert.equal(f.engine.snapshot().state, 'STOPPED');
-  assert.equal(f.calls.length, 4);
+  assert.equal(f.calls.length, 3);
+  assert.equal((await f.engine.execute(f.cap, request('DISCOVER'))).code, 'NOT_READY');
   assert.ok(f.calls.every((c) => c.cap === f.endpoint));
 });
 test('single host lane rejects concurrent work and freezes caller request before awaits', async () => {
@@ -255,7 +272,7 @@ test('shutdown drains once, never implicitly kills server, and rejects future ad
   assert.equal((await f.engine.execute(f.cap, request())).code, 'CLOSED');
   wait.resolve(facts('STARTED', true));
   await run;
-  assert.deepEqual(await close, { state: 'READY', ownedServerRetained: true });
+  assert.deepEqual(await close, { state: 'UNCERTAIN', ownedServerRetained: true });
   assert.throws(() => f.engine.grant(id(3), () => {}));
   const g = fixture();
   const pending = g.engine.execute(g.cap, request());
@@ -287,4 +304,141 @@ test('clock regression and reentrant shutdown cannot extend admission or dispatc
   engine = g.engine;
   assert.equal((await g.engine.execute(g.cap, request())).code, 'CLOSED');
   assert.equal(g.calls.length, 0);
+});
+
+test('version2 facts reject legacy/unknown/discriminator changes without getter invocation', () => {
+  const legacy = {
+    dispatched: true,
+    processRetired: true,
+    exitCode: 0,
+    endpointOwned: false,
+    observation: 'VERSION',
+  };
+  for (const raw of [
+    legacy,
+    { ...facts(), version: 1 },
+    { ...facts(), kind: 'OTHER' },
+    { ...facts(), exitCode: -0 },
+    { ...facts('STARTED', true), exitCode: 0 },
+  ])
+    assert.equal(snapshotHostTransportFacts(raw), null);
+  let reads = 0;
+  const raw = facts();
+  Object.defineProperty(raw, 'kind', {
+    get() {
+      reads++;
+      return 'INVOCATION';
+    },
+    enumerable: true,
+  });
+  assert.equal(snapshotHostTransportFacts(raw), null);
+  assert.equal(reads, 0);
+  let count = 0;
+  const changing = new Proxy(facts(), {
+    getOwnPropertyDescriptor(target, key) {
+      if (key === 'kind')
+        return {
+          value: ++count === 1 ? 'INVOCATION' : 'SESSION',
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        };
+      return Reflect.getOwnPropertyDescriptor(target, key);
+    },
+  });
+  assert.equal(snapshotHostTransportFacts(changing), null);
+});
+test('pre-effect refusal preserves existing custody without a fabricated exit code', async () => {
+  for (const operation of ['HOST_VERSION', 'SERVER_START', 'SERVER_HEALTH', 'SERVER_STOP']) {
+    // A separately configured engine provides exact declined facts for each initial state.
+    let decline = false;
+    const g = fixture({
+      transport: async (r) =>
+        !decline
+          ? facts('STARTED', true)
+          : r.operation === 'HOST_VERSION'
+            ? { ...facts(), dispatched: false, exitCode: null, observation: null }
+            : {
+                ...facts(
+                  r.operation === 'SERVER_START' ? 'STOPPED' : 'HEALTHY',
+                  r.operation !== 'SERVER_START',
+                ),
+                dispatched: false,
+                exitCode: null,
+                observation: null,
+              },
+    });
+    if (['SERVER_HEALTH', 'SERVER_STOP'].includes(operation))
+      await g.engine.execute(g.cap, request('SERVER_START'));
+    decline = true;
+    assert.equal((await g.engine.execute(g.cap, request(operation))).outcome, 'NOT_DISPATCHED');
+    assert.equal(
+      g.engine.snapshot().state,
+      ['SERVER_HEALTH', 'SERVER_STOP'].includes(operation) ? 'READY' : 'STOPPED',
+    );
+  }
+});
+test('timeout retains underlying transport and shutdown cannot complete before late settlement', async () => {
+  const wait = deferred();
+  const f = fixture({ now: () => 1000, transport: () => wait.promise });
+  assert.equal(
+    (await f.engine.execute(f.cap, request('SERVER_START', { deadlineUtc: 1020 }))).code,
+    'DEADLINE',
+  );
+  assert.equal(f.engine.snapshot().busy, true);
+  assert.equal(
+    (await f.engine.execute(f.cap, request('HOST_VERSION', { deadlineUtc: 2000 }))).code,
+    'BUSY',
+  );
+  let done = false;
+  const closing = f.engine.shutdown().then((v) => {
+    done = true;
+    return v;
+  });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(done, false);
+  wait.resolve(facts('STARTED', true));
+  assert.deepEqual(await closing, { state: 'UNCERTAIN', ownedServerRetained: true });
+  assert.equal(f.engine.snapshot().busy, false);
+});
+
+test('clock and admission callbacks cannot revoke external ownership before dispatch or publication', async () => {
+  for (const phase of [2, 3]) {
+    let owned = true,
+      ticks = 0,
+      calls = 0;
+    const f = fixture({
+      assertOwnedSync() {
+        if (!owned) throw Error('private');
+      },
+      now() {
+        if (++ticks === phase) owned = false;
+        return 1000;
+      },
+      transport: async () => {
+        calls++;
+        return facts();
+      },
+    });
+    const result = await f.engine.execute(f.cap, request('HOST_VERSION', { deadlineUtc: 2000 }));
+    assert.equal(result.code, 'NOT_AUTHORIZED');
+    assert.notEqual(result.outcome, 'OBSERVED');
+    assert.equal(calls, phase === 2 ? 0 : 1);
+  }
+  let owned = true,
+    calls = 0;
+  const f = fixture({
+    assertOwnedSync() {
+      if (!owned) throw Error('private');
+    },
+    transport: async () => {
+      calls++;
+      return facts();
+    },
+  });
+  const cap = f.engine.grant(id(3), () => {
+    owned = false;
+  });
+  assert.equal((await f.engine.execute(cap, request())).code, 'NOT_AUTHORIZED');
+  assert.equal(calls, 0);
 });

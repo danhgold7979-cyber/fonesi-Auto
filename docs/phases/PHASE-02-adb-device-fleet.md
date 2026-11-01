@@ -14,6 +14,10 @@ is preserved, optional first ADB setup needs direct Google access or an exact re
 archive. [Private core evidence](../evidence/P2-recipient-provisioning-core-2026-11-01.md)
 is source-only, not production activation or full P2-01 acceptance.
 
+Current [runtime custody source evidence](../evidence/P2-runtime-custody-2026-11-01.md)
+adds shared setup/read exclusion and exact byte-only admission, not an executable or
+server capability. The canonical task definitions below remain unchanged.
+
 ## 1. Outcome and scope
 
 Deliver real fleet discovery, explicit device targeting, transport state, serialized input, captures and V9 device selection. Cover **P2-01…P2-13**, [master Phase 2](../04_MASTER_IMPLEMENTATION_PLAN.md), **AC-02** in [acceptance](../05_ACCEPTANCE_AND_RISKS.md), [architecture §2.3–2.5](../02_TECHNICAL_ARCHITECTURE.md), [device entities](../03_DATA_AND_WORKFLOWS.md), [V9 monitor/overview](../06_UI_V9_MAPPING.md), and [open decisions](../08_DECISIONS_AND_OPEN_ITEMS.md).

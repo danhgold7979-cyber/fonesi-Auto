@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, realpathSync, readdirSync, rmdirSync, lstatSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createPlatformToolsRuntimeCustody } from '../src/main/platform-tools-runtime-custody.ts';
 import { createPlatformToolsSetupService } from '../src/main/platform-tools-setup-service.ts';
 import { createPlatformToolsSetupNative } from '../src/main/platform-tools-setup-native.ts';
 const uuid = (n) => `${String(n).padStart(8, '0')}-1234-4234-8234-123456789abc`;
@@ -18,11 +19,17 @@ function fixture(extra = {}) {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'setup-service-')));
   let n = 1;
   const events = [];
+  const custody = createPlatformToolsRuntimeCustody({
+    dataRoot: root,
+    storeId: uuid(900),
+    assertOwnedSync: extra.assertOwnedSync ?? (() => {}),
+    assertDataLocation: extra.assertDataLocation ?? ((p) => assert.equal(p, root)),
+  });
   const service = createPlatformToolsSetupService({
     dataRoot: root,
     storeId: uuid(900),
     assertOwnedSync() {},
-    assertIdleSync() {},
+    custody,
     assertDataLocation(p) {
       assert.equal(p, root);
     },
@@ -39,8 +46,10 @@ function fixture(extra = {}) {
     root,
     service,
     events,
+    custody,
     async cleanup() {
       assert.equal(await service.shutdown(), 'RETIRED');
+      assert.equal(await custody.close(), 'RETIRED');
       assert.deepEqual(readdirSync(root), []);
       rmdirSync(root);
     },
@@ -342,5 +351,75 @@ test('stale request never opens native dialog and late REQUEST RESULT audit fail
   assert.equal(calls, 1);
   release({ ok: false, code: 'TERMS_DECLINED' });
   await tick();
+  await f.cleanup();
+});
+
+test('shared custody contention refuses setup before audit/native and retires exact holder', async () => {
+  const f = fixture();
+  await f.service.initialize();
+  const holder = f.custody.reserveSetup();
+  assert.equal(holder.ok, true);
+  const response = JSON.parse(await f.service.execute(request(), () => true));
+  assert.equal(response.code, 'BUSY');
+  assert.deepEqual(f.events, []);
+  assert.deepEqual(readdirSync(f.root), []);
+  assert.equal(f.custody.releaseSetup(holder.token, true).ok, true);
+  assert.equal(JSON.parse(await f.service.execute(request(), () => true)).outcome, 'PENDING');
+  await tick();
+  await f.cleanup();
+});
+
+test('native pending holds shared custody until real settlement during concurrent shutdown', async () => {
+  let finish;
+  const f = fixture({
+    native: {
+      interact: () =>
+        new Promise((r) => {
+          finish = r;
+        }),
+    },
+  });
+  await f.service.initialize();
+  await f.service.execute(request(), () => true);
+  assert.deepEqual(await f.custody.acquireRead(), { ok: false, code: 'BUSY' });
+  assert.deepEqual(f.custody.reserveSetup(), { ok: false, code: 'BUSY' });
+  const serviceClosing = f.service.shutdown();
+  let retired = false;
+  const custodyClosing = f.custody.close().then((r) => {
+    retired = true;
+    return r;
+  });
+  await tick();
+  assert.equal(retired, false);
+  finish({ ok: false, code: 'TERMS_DECLINED' });
+  assert.deepEqual(await Promise.all([serviceClosing, custodyClosing]), ['RETIRED', 'RETIRED']);
+  assert.equal(f.service.retired, true);
+  assert.equal(f.custody.retired, true);
+  assert.deepEqual(readdirSync(f.root), []);
+  rmdirSync(f.root);
+});
+
+test('completed native decline cannot release custody while REQUEST RESULT audit remains active', async () => {
+  let finish;
+  const f = fixture({
+    audit: (e) =>
+      e.operation === 'REQUEST' && e.phase === 'RESULT'
+        ? new Promise((r) => {
+            finish = r;
+          })
+        : Promise.resolve('AVAILABLE'),
+  });
+  await f.service.initialize();
+  const requestResult = f.service.execute(request(), () => true);
+  await tick();
+  assert.equal(f.service.retired, false);
+  assert.deepEqual(f.custody.reserveSetup(), { ok: false, code: 'BUSY' });
+  assert.deepEqual(await f.custody.acquireRead(), { ok: false, code: 'BUSY' });
+  finish('AVAILABLE');
+  assert.equal(JSON.parse(await requestResult).outcome, 'PENDING');
+  await tick();
+  const holder = f.custody.reserveSetup();
+  assert.equal(holder.ok, true);
+  assert.equal(f.custody.releaseSetup(holder.token, true).ok, true);
   await f.cleanup();
 });

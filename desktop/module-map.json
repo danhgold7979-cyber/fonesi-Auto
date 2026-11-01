@@ -258,6 +258,9 @@
           "securePreferences": "value",
           "installSessionPolicy": "value",
           "installWindowPolicy": "value"
+        },
+        "./main/platform-tools-runtime-custody.ts": {
+          "createPlatformToolsRuntimeCustody": "value"
         }
       }
     },
@@ -1582,6 +1585,9 @@
         },
         "../platform-tools-setup-audit-contract.ts": {
           "SetupAudit": "type"
+        },
+        "./platform-tools-runtime-custody.ts": {
+          "PlatformToolsRuntimeCustody": "type"
         }
       }
     },
@@ -1602,6 +1608,73 @@
         },
         "./platform-tools-candidate.ts": {
           "PLATFORM_TOOLS_CANDIDATE": "value"
+        }
+      }
+    },
+    "main/platform-tools-runtime-custody.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "join": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "./platform-tools-candidate.ts": {
+          "PLATFORM_TOOLS_CANDIDATE": "value"
+        },
+        "./platform-tools-provision-ledger.ts": {
+          "createPlatformToolsProvisionLedger": "value"
+        },
+        "./platform-tools-provision-files.ts": {
+          "createPlatformToolsProvisionFiles": "value"
+        }
+      }
+    },
+    "main/adb-host-plan.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-host-lifecycle.ts": {
+          "snapshotHostRequest": "value",
+          "HostRequest": "type"
+        }
+      }
+    },
+    "main/adb-host-adapter.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-host-lifecycle.ts": {
+          "createHostLifecycle": "value",
+          "snapshotHostTransportFacts": "value",
+          "HostCapability": "type",
+          "HostResult": "type",
+          "HostTransportFacts": "type"
+        },
+        "./adb-host-plan.ts": {
+          "compileHostPlan": "value"
+        },
+        "./platform-tools-runtime-custody.ts": {
+          "PlatformToolsRuntimeCustody": "type",
+          "RuntimeReadObservation": "type"
+        }
+      }
+    },
+    "main/adb-host-bridge.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-host-lifecycle.ts": {
+          "snapshotHostTransportFacts": "value",
+          "HostTransportFacts": "type"
+        },
+        "./adb-host-adapter.ts": {
+          "HostNativeProvider": "type"
+        },
+        "./platform-tools-runtime-custody.ts": {
+          "RuntimeReadObservation": "type"
         }
       }
     }

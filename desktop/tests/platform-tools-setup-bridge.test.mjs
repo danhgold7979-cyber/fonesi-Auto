@@ -1,3 +1,4 @@
+import { createPlatformToolsRuntimeCustody } from '../src/main/platform-tools-runtime-custody.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ViewSession } from '../src/view-session.ts';
@@ -159,7 +160,14 @@ test('actual reserved REQUEST with delayed audit result remains unknown after se
     dataRoot: root,
     storeId: '00000000-0000-4000-8000-000000000900',
     assertOwnedSync() {},
-    assertIdleSync() {},
+    custody: createPlatformToolsRuntimeCustody({
+      dataRoot: root,
+      storeId: '00000000-0000-4000-8000-000000000900',
+      assertOwnedSync() {},
+      assertDataLocation(p) {
+        assert.equal(p, root);
+      },
+    }),
     assertDataLocation(p) {
       assert.equal(p, root);
     },
