@@ -290,3 +290,16 @@ facts, no authority to touch runtime files or dispatch ADB. That remaining work 
 to helper/persistence lifetime and must settle before helper cleanup or a new Reserve.
 Any next VERSION still requires a fresh matching current runtime holder. No remote-I/O
 retirement claim is inferred from the parent receiving bytes.
+
+
+### Bounded progress diagnostics (2026-11-01)
+
+The actual bootstrap may enable nineteen fixed first-occurrence stderr progress slots:
+nine ordered bootstrap boundaries, four reader boundaries, six native boundaries.
+Native/reader completion ordering is concurrent, not a fabricated total sequence.
+The parent also records request-write callback completion. Exact known progress is
+compatible with clean exit; all unknown/duplicate/malformed/overflow/incomplete stderr
+and known failure markers refuse clean completion. Progress is not retirement evidence:
+RETIRE_END only means return, RESPONSE_FLUSH only means that Flush returned. Actual
+terminal facts and all helper/persistence retirement/cleanup conditions still apply.
+Default managed APIs remain silent and diagnostics expose no paths or caller values.

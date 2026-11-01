@@ -77,7 +77,7 @@ test('effectful launch preserves suspended assignment and shared stopping gates 
   assert.match(launch, /TakeDrain\(ref outputRead, 32768\)/);
 });
 test('retirement cannot emit terminal facts before workers, job, drains, endpoint and profile/root cleanup', () => {
-  const retire = body('Reply RetireCore(');
+  const retire = body('Reply RetireObserved(');
   before(retire, 'a.stopping = true', 'while (!workersSettled)');
   before(retire, 'workersSettled = a.workers == 0', 'TerminateJobObject');
   for (const proof of [
@@ -96,7 +96,7 @@ test('retirement cannot emit terminal facts before workers, job, drains, endpoin
 });
 test('profile reservation is native absent-only and partial/changed inventories do not authorize deletion', () => {
   const profile = body('void Profile('),
-    retire = body('Reply RetireCore(');
+    retire = body('Reply RetireObserved(');
   before(profile, 'NativeProfile()', 'ReserveAbsentProfile');
   before(profile, 'ReserveAbsentProfile', 'a.profileReserved = true');
   assert.match(profile, /FileMode.CreateNew/);
@@ -126,7 +126,7 @@ test('version and live-session observations use distinct retained facts and boun
 });
 
 test('retirement lock acquisition shares its finite budget and never blocks on Monitor.Wait reacquisition', () => {
-  const retire = body('Reply RetireCore(');
+  const retire = body('Reply RetireObserved(');
   before(retire, 'Stopwatch deadline = Stopwatch.StartNew()', 'RetirementLock(gate, deadline)');
   assert.match(retire, /RetirementLock\(cleanupGate, deadline\)/);
   assert.doesNotMatch(retire, /lock \(|Monitor.Wait/);
@@ -137,7 +137,7 @@ test('retirement lock acquisition shares its finite budget and never blocks on M
 });
 
 test('inherited destructive Drain.Join is attempted once; successful drains are skipped and uncertain drains remain retained', () => {
-  const retire = body('Reply RetireCore(');
+  const retire = body('Reply RetireObserved(');
   for (const name of ['stdout', 'stderr']) {
     assert.ok(retire.includes(`a.${name} != null && !a.${name}Joined`));
     before(
@@ -164,4 +164,23 @@ test('foreground failure exposes only fixed admission categories and unresolved 
     /Failure\(a.terminal \? failure : "UNRETIRED"\)/,
   );
   assert.doesNotMatch(source, /Failure\(error\.Message\)/);
+});
+
+test('native progress is bounded opt-in telemetry and preserves original retirement implementation', () => {
+  assert.match(
+    source,
+    /: this\(ownedRunRoot, ownerToken, verifiedExecutable, expectedExeSha256, false\)/,
+  );
+  assert.match(
+    source,
+    /enum ProgressSlot \{ ADMISSION, LAUNCH, LAUNCH_END, EXIT, RETIRE_BEGIN, RETIRE_END \}/,
+  );
+  assert.match(source, /if \(!diagnostics\) return/);
+  assert.match(source, /Interlocked.CompareExchange\(ref diagnosticSlots, before \| bit, before\)/);
+  assert.match(source, /if \(\(before & bit\) != 0\) return/);
+  assert.match(body('Reply RetireCore('), /try \{ return RetireObserved\(a\); \}/);
+  assert.match(body('Reply RetireCore('), /finally \{ Progress\(ProgressSlot.RETIRE_END\); \}/);
+  before(body('Reply VersionCore('), 'Progress(ProgressSlot.LAUNCH)', 'Launch(a)');
+  before(body('Reply VersionCore('), 'Launch(a)', 'Progress(ProgressSlot.LAUNCH_END)');
+  assert.match(body('Reply VersionCore('), /if \(observed\) Progress\(ProgressSlot.EXIT\)/);
 });

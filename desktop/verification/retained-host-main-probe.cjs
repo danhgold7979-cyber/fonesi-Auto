@@ -6,6 +6,7 @@ const fs = require('node:fs'),
 const { createHash, randomUUID } = require('node:crypto');
 const {
   DIAGNOSTICS,
+  progressDiagnostic,
   contextDiagnostic,
   reason,
   CASES,
@@ -125,6 +126,7 @@ function runObserver() {
     }
     const values = {
       ...contextFacts,
+      ...progressDiagnostic(e),
       REASON: reason(error),
       OUTCOME: hostResult?.outcome,
       CODE: hostResult?.code,

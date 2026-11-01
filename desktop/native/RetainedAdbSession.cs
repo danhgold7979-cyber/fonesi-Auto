@@ -15,6 +15,18 @@ namespace Fonesi.Development.Server
     {
         public sealed class RetainedProvider
         {
+            readonly bool diagnostics;
+            int diagnosticSlots;
+            enum ProgressSlot { ADMISSION, LAUNCH, LAUNCH_END, EXIT, RETIRE_BEGIN, RETIRE_END }
+            void Progress(ProgressSlot slot)
+            {
+                if (!diagnostics) return;
+                int bit = 1 << (int)slot, before;
+                do { before = Interlocked.CompareExchange(ref diagnosticSlots, 0, 0); if ((before & bit) != 0) return; }
+                while (Interlocked.CompareExchange(ref diagnosticSlots, before | bit, before) != before);
+                // Fixed first-occurrence telemetry only; never an authority or retirement proof.
+                try { Console.Error.WriteLine("HOST_NATIVE_PROGRESS_" + slot.ToString()); } catch { }
+            }
             readonly object gate = new object(), cleanupGate = new object();
             readonly string root, owner, executable, executableHash;
             long generation;
@@ -66,12 +78,14 @@ namespace Fonesi.Development.Server
                 return new Reply(f);
             }
             public RetainedProvider(string ownedRunRoot, string ownerToken, string verifiedExecutable, string expectedExeSha256)
+                : this(ownedRunRoot, ownerToken, verifiedExecutable, expectedExeSha256, false) { }
+            public RetainedProvider(string ownedRunRoot, string ownerToken, string verifiedExecutable, string expectedExeSha256, bool diagnostics)
             {
                 Guid parsed;
                 if (!Guid.TryParseExact(ownerToken, "D", out parsed) || parsed.ToString() != ownerToken ||
                     String.IsNullOrEmpty(ownedRunRoot) || String.IsNullOrEmpty(verifiedExecutable) ||
                     expectedExeSha256 == null || !System.Text.RegularExpressions.Regex.IsMatch(expectedExeSha256, "\\A[0-9a-f]{64}\\z")) throw new ArgumentException("ADMISSION_REJECTED");
-                root = ownedRunRoot; owner = ownerToken; executable = verifiedExecutable; executableHash = expectedExeSha256;
+                this.diagnostics = diagnostics; root = ownedRunRoot; owner = ownerToken; executable = verifiedExecutable; executableHash = expectedExeSha256;
             }
             bool Exact(State a) { return a != null && Object.ReferenceEquals(a.provider, this) && Object.ReferenceEquals(current, a) && a.generation == generation; }
             public Attempt Reserve(string kind)
@@ -172,9 +186,10 @@ namespace Fonesi.Development.Server
                 if (!Enter(a, "VERSION", true)) return Failure("BUSY");
                 bool observed = false;
                 try {
-                    Admission(); Launch(a); Stopwatch deadline = Stopwatch.StartNew();
+                    Progress(ProgressSlot.ADMISSION); Admission(); Progress(ProgressSlot.LAUNCH); Launch(a); Progress(ProgressSlot.LAUNCH_END); Stopwatch deadline = Stopwatch.StartNew();
                     while (!Stopping(a) && deadline.ElapsedMilliseconds < 30000 && WaitForSingleObject(a.process.hProcess, 0) == WAIT_TIMEOUT) Thread.Sleep(10);
                     observed = !Stopping(a) && WaitForSingleObject(a.process.hProcess, 0) == WAIT_OBJECT_0;
+                    if (observed) Progress(ProgressSlot.EXIT);
                 } catch { observed = false; } finally { Leave(a); }
                 Reply retired = RetireCore(a);
                 lock (gate) {
@@ -236,6 +251,12 @@ namespace Fonesi.Development.Server
             static bool RetirementLock(object value, Stopwatch deadline)
             { return Monitor.TryEnter(value, Math.Max(0, 10000 - (int)Math.Min(10000L, deadline.ElapsedMilliseconds))); }
             Reply RetireCore(State a)
+            {
+                Progress(ProgressSlot.RETIRE_BEGIN);
+                try { return RetireObserved(a); }
+                finally { Progress(ProgressSlot.RETIRE_END); }
+            }
+            Reply RetireObserved(State a)
             {
                 Stopwatch deadline = Stopwatch.StartNew();
                 if (!RetirementLock(gate, deadline)) return Failure("UNRETIRED");

@@ -101,6 +101,18 @@ namespace Fonesi.Development.Server
         }
         sealed class Reader
         {
+            readonly bool diagnostics;
+            int diagnosticSlots;
+            enum ProgressSlot { REQUEST_ACCEPTED, PROVIDER_ENTERED, RESPONSE_WRITE, RESPONSE_FLUSH }
+            void Progress(ProgressSlot slot)
+            {
+                if (!diagnostics) return;
+                int bit = 1 << (int)slot, before;
+                do { before = Interlocked.CompareExchange(ref diagnosticSlots, 0, 0); if ((before & bit) != 0) return; }
+                while (Interlocked.CompareExchange(ref diagnosticSlots, before | bit, before) != before);
+                // Fixed first-occurrence telemetry only; never an authority or retirement proof.
+                try { Console.Error.WriteLine("HOST_READER_PROGRESS_" + slot.ToString()); } catch { }
+            }
             readonly object gate = new object();
             readonly Stream input, output;
             readonly string session;
@@ -118,8 +130,8 @@ namespace Fonesi.Development.Server
             string failure;
             long closeStarted = -1, writeStarted = -1, lastRequest;
             int outstanding;
-            internal Reader(Stream input, Stream output, string session, IProvider provider, Func<bool> parentAlive)
-            { this.input = input; this.output = output; this.session = session; this.provider = provider; this.parentAlive = parentAlive; }
+            internal Reader(Stream input, Stream output, string session, IProvider provider, Func<bool> parentAlive, bool diagnostics)
+            { this.input = input; this.output = output; this.session = session; this.provider = provider; this.parentAlive = parentAlive; this.diagnostics = diagnostics; }
             void Stop(string code)
             {
                 lock (gate) { stopping = true; if (code != null && failure == null) failure = code; if (closeStarted < 0) closeStarted = elapsed.ElapsedMilliseconds; Monitor.PulseAll(gate); }
@@ -139,7 +151,7 @@ namespace Fonesi.Development.Server
             void Worker(Attempt attempt, Request request, bool cleanup)
             {
                 Facts facts;
-                try { facts = Snapshot(cleanup ? provider.Retire(attempt.token) : provider.Version(attempt.token)); }
+                try { Progress(ProgressSlot.PROVIDER_ENTERED); facts = Snapshot(cleanup ? provider.Retire(attempt.token) : provider.Version(attempt.token)); }
                 catch { facts = new Facts("{\"code\":\"UNRETIRED\"}", false); lock (gate) { attempt.terminal = false; Stop("PROVIDER_FAILED"); } }
                 lock (gate) { attempt.terminal = facts.terminal; if (!facts.terminal && cleanup) Stop("UNRETIRED"); }
                 if (request != null) Enqueue(request, attempt, facts);
@@ -189,6 +201,7 @@ namespace Fonesi.Development.Server
             {
                 // Fixed bootstrap scope; START/HEALTH rejected before Reserve or provider handoff.
                 if (request.Operation != "VERSION" && request.Operation != "RETIRE") { Stop("OPERATION_REJECTED"); return; }
+                Progress(ProgressSlot.REQUEST_ACCEPTED);
                 Attempt attempt;
                 lock (gate) {
                     if (stopping) return;
@@ -253,7 +266,7 @@ namespace Fonesi.Development.Server
                             frame = queue.Dequeue(); writeStarted = elapsed.ElapsedMilliseconds;
                             if (frame.attempt != null) frame.attempt.publicationStarted = true;
                         }
-                        output.Write(frame.bytes, 0, frame.bytes.Length); output.Flush();
+                        Progress(ProgressSlot.RESPONSE_WRITE); output.Write(frame.bytes, 0, frame.bytes.Length); output.Flush(); Progress(ProgressSlot.RESPONSE_FLUSH);
                         lock (gate) { writeStarted = -1; outstanding--; if (frame.attempt != null) frame.attempt.frames--; Monitor.PulseAll(gate); }
                     }
                 } catch { lock (gate) { writeFailed = true; } Stop("OUTPUT_FAILED"); }
@@ -284,10 +297,12 @@ namespace Fonesi.Development.Server
             }
         }
         public static RunResult Run(Stream input, Stream output, string sessionId, IProvider provider, Func<bool> parentAlive)
+        { return Run(input, output, sessionId, provider, parentAlive, false); }
+        public static RunResult Run(Stream input, Stream output, string sessionId, IProvider provider, Func<bool> parentAlive, bool diagnostics)
         {
             if (input == null || output == null || !input.CanRead || !output.CanWrite || sessionId == null || !Uuid.IsMatch(sessionId) || provider == null || parentAlive == null)
                 return new RunResult(false, "ADMISSION_REJECTED");
-            try { return new Reader(input, output, sessionId, provider, parentAlive).Run(); }
+            try { return new Reader(input, output, sessionId, provider, parentAlive, diagnostics).Run(); }
             catch { return new RunResult(false, "UNRETIRED"); }
         }
     }

@@ -32,6 +32,27 @@ const PHASES = Object.freeze([
   'CLOSE',
 ]);
 const SCOPE = 'HOSTED_RETAINED_VERSION_SOURCE_ONLY';
+const PROGRESS = Object.freeze([
+  'BOOTSTRAP_ENVIRONMENT',
+  'BOOTSTRAP_CONTEXT',
+  'BOOTSTRAP_ASSETS',
+  'BOOTSTRAP_COMPILE_BEGIN',
+  'BOOTSTRAP_COMPILE_END',
+  'BOOTSTRAP_PARENT_BEGIN',
+  'BOOTSTRAP_PARENT_END',
+  'BOOTSTRAP_READER',
+  'BOOTSTRAP_CLOSE',
+  'READER_REQUEST_ACCEPTED',
+  'READER_PROVIDER_ENTERED',
+  'READER_RESPONSE_WRITE',
+  'READER_RESPONSE_FLUSH',
+  'NATIVE_ADMISSION',
+  'NATIVE_LAUNCH',
+  'NATIVE_LAUNCH_END',
+  'NATIVE_EXIT',
+  'NATIVE_RETIRE_BEGIN',
+  'NATIVE_RETIRE_END',
+]);
 const DIAGNOSTICS = Object.freeze({
   REASON: Object.freeze([
     'RETAINED_HOST_CONTEXT',
@@ -112,7 +133,55 @@ const DIAGNOSTICS = Object.freeze({
   SYSTEMREPARSE: Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
   SYSTEMSINGLELINK: Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
   SYSTEMCANONICAL: Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
+  REQUESTWRITE: Object.freeze(['YES', 'NO', 'UNAVAILABLE']),
+  ...Object.fromEntries(
+    PROGRESS.map((name) => [`PROGRESS_${name}`, Object.freeze(['YES', 'NO', 'UNAVAILABLE'])]),
+  ),
 });
+// Diagnostic only. Exact observed progress never grants authority or changes acceptance.
+function progressDiagnostic(evidence) {
+  const out = Object.fromEntries(
+    ['REQUESTWRITE', ...PROGRESS.map((name) => `PROGRESS_${name}`)].map((name) => [
+      name,
+      'UNAVAILABLE',
+    ]),
+  );
+  try {
+    if (!evidence || typeof evidence !== 'object') return out;
+    const write = Object.getOwnPropertyDescriptor(evidence, 'requestWriteCompleted');
+    if (write && 'value' in write && typeof write.value === 'boolean')
+      out.REQUESTWRITE = write.value ? 'YES' : 'NO';
+    const d = Object.getOwnPropertyDescriptor(evidence, 'progress');
+    if (!d || !('value' in d) || !Array.isArray(d.value)) return out;
+    const length = Object.getOwnPropertyDescriptor(d.value, 'length');
+    if (
+      !length ||
+      !('value' in length) ||
+      !Number.isInteger(length.value) ||
+      length.value < 0 ||
+      length.value > PROGRESS.length ||
+      !Object.isFrozen(d.value)
+    )
+      return out;
+    const values = [];
+    for (let i = 0; i < length.value; i++) {
+      const item = Object.getOwnPropertyDescriptor(d.value, String(i));
+      if (
+        !item ||
+        !('value' in item) ||
+        !PROGRESS.includes(item.value) ||
+        values.includes(item.value)
+      )
+        return out;
+      values.push(item.value);
+    }
+    if (Reflect.ownKeys(d.value).length !== values.length + 1) return out;
+    for (const name of PROGRESS) out[`PROGRESS_${name}`] = values.includes(name) ? 'YES' : 'NO';
+  } catch {
+    /* unavailable diagnostic only */
+  }
+  return out;
+}
 function reason(error) {
   try {
     const d = error && Object.getOwnPropertyDescriptor(error, 'message');
@@ -243,6 +312,8 @@ function deriveMain(raw, observerPath) {
   return derived;
 }
 module.exports = {
+  PROGRESS,
+  progressDiagnostic,
   DIAGNOSTICS,
   contextDiagnostic,
   reason,

@@ -1,4 +1,4 @@
-# Retained Windows campaign — managed PASS, native context refusal under diagnosis
+# Retained Windows campaign — managed PASS, native VERSION deadline under diagnosis
 
 2026-11-01 09:57 UTC. User explicitly approved the Auto `a19406f` Windows campaign
 and necessary important checkpoint publication. Coordinator Coder Bin authorized
@@ -233,3 +233,56 @@ warning-level quality. Existing1010/109/232 results
 are carried evidence, not a new full run; next expected1013 remains pending. This is
 the same approved bounded VERSION campaign corrective retry, with this exact revised
 factory explicitly replacing the frozen a194 factory for the next native proof.
+
+## Actual helper start and bounded progress diagnosis — 10:53 UTC
+
+Public `6cea5c4aa3596f5a421fb429ad86a5f90a236550`, tree
+`b45bb9f3d4d606f38f6845247957570694b0ce9e`, run41298525594 passes1013/109/232.
+Managed artifact13079979760 is the same strict414-byte PASS/SHA41e93f3c… above.
+Native artifact13080860252 is the same392-byte NONZERO_EXIT/1 FAIL/SHAd87a7375… above.
+The fixed log now reaches VERSION with OUTCOME_UNKNOWN/DEADLINE, helper RUNNING,
+no exit and no bootstrap failure phase. Thus the system-path fix progressed beyond
+admission; actual VERSION/EOF still has no PASS. No deterministic new runtime cause
+is yet established, and the30s operation/outer deadlines are unchanged.
+
+The next coherent diagnostic batch changes the exact production bootstrap, protocol,
+native session and factory, rather than presenting old compiled bytes as current proof.
+Nine ordered bootstrap progress markers cover environment/context/assets/compile begin
+and end/parent begin and end/reader/close. Four reader and six native first-occurrence
+slots cover request/provider/response write/flush and admission/launch begin+end/exit/
+retirement begin+end. Concurrent native/cleanup slots have no invented total order.
+Each slot appears at most once per session, including across128 bounded requests.
+Default managed APIs remain silent; only the actual bootstrap explicitly enables
+fixed diagnostics. RETIRE_END means the method returned, not successful retirement.
+The parent separately records whether a request write callback completed. These are
+fixed diagnostic observations, never authority, native success or remote-flush inference.
+
+Only exact known progress lines may coexist with clean helper completion. Unknown,
+malformed, duplicate, oversized and unfinished stderr remains fail-closed, as do known
+bootstrap failures. Stream/line bounds, native terminal facts, actual child/stdout/stdin
+closure and owned cleanup predicates remain in force. The observer forwards only the
+19 fixed YES/NO/UNAVAILABLE slots and one write-completed slot under the existing bound
+retired-journal evidence path; no paths, values, raw errors or changed public report schema.
+
+Affected checks and exact final source hashes are recorded at the coherent freeze below.
+Prior1013/109/232 and managed native PASS apply to prior bytes only; updated C#/PowerShell/
+pipe execution is pending. No full local aggregate or unchanged native campaign is repeated.
+
+Final affected checks: factory15/15, child protocol/session/admission28/28 plus
+overlapping LAUNCH_END1/1, observer/control23/23 (including the final descriptor-only
+array-bound regression), strict TypeScript and fresh verified build PASS. The first
+manual build invocation omitted its required npm-version argument and correctly refused;
+corrected verified invocation passed. Eight changed JS/TS files pass warning-level
+quality after a test-only long-line formatter correction. These are affected checks,
+not a new whole-suite result. Existing managed fixtures gain a default-silent versus
+enabled fixed-slot subcase inside the same eight groups; actual execution is pending.
+
+Frozen diagnostic source SHA256 values:
+- `desktop/src/main/adb-host-factory.ts`: `d6c8fa753201d1f4c2ad8e2b0331fb9df45e1fe6785bc156db4188b6ef9f5025`.
+- `desktop/launch/Invoke-RetainedHost.ps1`: `55c98222fd03fb037a3693de3a10627400499df2f59a0538736e589f461edf26`.
+- `desktop/native/RetainedAdbProtocol.cs`: `187637ea62b9455ad1bb0fd6730c7a8ac7a0ed86b906277c1407fed17905a9dc`.
+- `desktop/native/RetainedAdbSession.cs`: `ee8081174a680e8ff43283ed8b43ffc789a47c46596bb2c13ae0ec7555274655`.
+- `desktop/verification/retained-host-contract.cjs`: `37620267f4cd14e50006a9c879dae6eb8c8cb05001a731bd48eaef93aeb9a0bb`.
+- `desktop/verification/retained-host-main-probe.cjs`: `90d6cbf2628321c9c04f0eac72955b8f6dbd86ba15eacbcd900d97bd62209c10`.
+- `desktop/verification/Invoke-RetainedHostCheck.ps1`: `7e03ed632948e83b8283a1c1eaf20f7da682b4c0e1b9076c1f6a69cfb8618289`.
+- `desktop/verification/Invoke-RetainedManagedFixture.ps1`: `7446fdb1c47aaa077b65dc30abca658762844ce19fa851a573476540653433d2`.

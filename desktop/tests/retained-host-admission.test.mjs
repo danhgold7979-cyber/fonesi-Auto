@@ -8,10 +8,10 @@ const launcher = readFileSync(new URL('../native/PersistenceProcess.cs', import.
 function before(text, a, b) {
   assert.ok(text.indexOf(a) >= 0 && text.indexOf(a) < text.indexOf(b), `${a} before ${b}`);
 }
-test('historical server/session sources remain exact compiled-reviewed bytes', () => {
+test('original server and current diagnostic session source pins remain exact', () => {
   for (const [file, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
-    ['RetainedAdbSession.cs', '542d86eca13a7a0bfd4ec58be21a55b1b81073f1cd60d80c0dc0431c8ff15638'],
+    ['RetainedAdbSession.cs', 'ee8081174a680e8ff43283ed8b43ffc789a47c46596bb2c13ae0ec7555274655'],
   ])
     assert.equal(
       createHash('sha256')

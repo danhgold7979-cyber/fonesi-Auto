@@ -57,7 +57,7 @@ try{
  $sources=@('native/IsolatedAdbServer.cs','native/RetainedAdbSession.cs','native/RetainedAdbProtocol.cs','native/RetainedHostAdmission.cs','tests/fixtures/RetainedAdbProtocolFixture.cs')|ForEach-Object{Join-Path $desktop $_}
  $bound=@($sources)+@($helper,(Join-Path $desktop 'scripts/retained-managed-fixture.mjs'),$PSCommandPath,(Join-Path $PSScriptRoot 'WindowsBoundary.psm1'),(Join-Path $PSScriptRoot 'OwnedFiles.psm1'))
  foreach($p in $bound){PlainFile $p 1048576;$sourceBefore[$p]=(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash}
- if($sourceBefore[$sources[0]] -ine '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7' -or $sourceBefore[$sources[1]] -ine '542d86eca13a7a0bfd4ec58be21a55b1b81073f1cd60d80c0dc0431c8ff15638'){throw 'SOURCE_CHANGED'}
+ if($sourceBefore[$sources[0]] -ine '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7' -or $sourceBefore[$sources[1]] -ine 'ee8081174a680e8ff43283ed8b43ffc789a47c46596bb2c13ae0ec7555274655'){throw 'SOURCE_CHANGED'}
  $parent=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\');Assert-PlainDirectory $parent
  $root=Join-Path $parent ('retained-managed-'+[guid]::NewGuid().ToString());[Fonesi.Phase00.NativeProbe]::ReserveDirectory($root)
  $token=[guid]::NewGuid().ToString();Write-New (Join-Path $root '.owner') $token

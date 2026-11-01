@@ -67,6 +67,20 @@ namespace Fonesi.Tests
                 p.versionResult=null;i.Feed(Frame(4,"RETIRE"));Wait(delegate{return o.count==4;});i.End();
                 Check(t.Join(5000)&&r.Clean&&p.reserves==2&&p.retires==2);
             }passed++;
+            // Fixed telemetry subcase: two requests still emit each slot once; old overload stays silent.
+            foreach(bool diagnostics in new bool[]{false,true}) {
+                TextWriter originalError=Console.Error;StringWriter error=new StringWriter();
+                try {
+                    Console.SetError(error);Provider p=new Provider();Input i=new Input();Output o=new Output();RetainedAdbProtocol.RunResult r=null;
+                    Thread t=new Thread(delegate(){r=diagnostics ? RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;},true) : RetainedAdbProtocol.Run(i,o,Session,p,delegate{return true;});});t.IsBackground=true;t.Start();
+                    i.Feed(Frame(1,"VERSION"));Wait(delegate{return o.count==1;});
+                    i.Feed(Encoding.ASCII.GetBytes(Encoding.ASCII.GetString(Frame(2,"VERSION")).Replace(Attempt,"33333333-3333-4333-8333-333333333333")));Wait(delegate{return o.count==2;});i.End();
+                    Check(t.Join(5000)&&r.Clean&&p.reserves==2);
+                    string[] lines=error.ToString().Replace("\r\n","\n").Split(new char[]{'\n'},StringSplitOptions.RemoveEmptyEntries);
+                    Check(lines.Length==(diagnostics?4:0));
+                    if(diagnostics){string[] expected=new string[]{"REQUEST_ACCEPTED","PROVIDER_ENTERED","RESPONSE_WRITE","RESPONSE_FLUSH"};for(int n=0;n<4;n++)Check(lines[n]=="HOST_READER_PROGRESS_"+expected[n]);}
+                } finally { Console.SetError(originalError); }
+            }
             return passed;
         }
     }

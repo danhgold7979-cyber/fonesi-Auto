@@ -3,6 +3,11 @@ param([Parameter(Mandatory=$true)][string]$BootstrapFile,[Parameter(Mandatory=$t
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
 $admission=$null;$phase='ENVIRONMENT'
+$progressSlots=@{}
+function Progress([string]$Slot) {
+    if($Slot -cnotin @('ENVIRONMENT','CONTEXT','ASSETS','COMPILE_BEGIN','COMPILE_END','PARENT_BEGIN','PARENT_END','READER','CLOSE')){Reject}
+    if(-not $progressSlots.ContainsKey($Slot)){$progressSlots[$Slot]=$true;try{[Console]::Error.WriteLine('HOST_BOOTSTRAP_PROGRESS_'+$Slot)}catch{}}
+}
 function Reject { throw 'HOST_BOOTSTRAP_REJECTED' }
 function Plain([string]$Path,[bool]$Directory=$false) {
     if(-not [IO.Path]::IsPathRooted($Path) -or [IO.Path]::GetFullPath($Path) -cne $Path){Reject}
@@ -31,9 +36,10 @@ function Parse([byte[]]$Bytes,[string[]]$Keys) {
     return $v
 }
 try {
+    Progress 'ENVIRONMENT'
     if($PSVersionTable.PSVersion.Major -ne 5 -or $BootstrapSha256 -cnotmatch '^[0-9a-f]{64}$'){Reject}
     $desktop=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-    $phase='CONTEXT'
+    $phase='CONTEXT';Progress 'CONTEXT'
     $raw=Read-Bounded $BootstrapFile 8192
     if((Digest $raw) -cne $BootstrapSha256){Reject}
     $b=Parse $raw @('version','operationSet','sessionId','launchId','storeId','ownerToken','parentReceiptSha256','readySha256','runRoot','adbPath','adbExeSha256','candidateArchiveSha256','candidateManifestSha256','installationRevision','assets')
@@ -52,21 +58,23 @@ try {
     if((Digest $parentRaw) -cne $b.parentReceiptSha256){Reject}
     $p=Parse $parentRaw @('version','launchId','storeId','ownerToken','readySha256','jobName','parentPid','parentCreationFileTime','parentImagePath','parentImageSha256')
     if($p.version -ne 1 -or $p.launchId -cne $b.launchId -or $p.storeId -cne $b.storeId -or $p.ownerToken -cne $b.ownerToken -or $p.readySha256 -cne $b.readySha256 -or $p.parentPid -lt 1 -or $p.parentPid -gt 4294967295 -or $p.parentCreationFileTime -cnotmatch '^[0-9a-f]{16}$'){Reject}
-    $phase='ASSETS'
+    $phase='ASSETS';Progress 'ASSETS'
     $names=@('launch/Invoke-RetainedHost.ps1','native/IsolatedAdbServer.cs','native/RetainedAdbSession.cs','native/RetainedAdbProtocol.cs','native/RetainedHostAdmission.cs')
     if((@($b.assets.PSObject.Properties.Name) -join '|') -cne ($names -join '|')){Reject}
     $paths=@();$total=0
     foreach($name in $names){$asset=Join-Path $desktop $name;$bytes=Read-Bounded $asset 1048576;$total+=$bytes.Length;if($total -gt 4194304 -or $b.assets.$name -cnotmatch '^[0-9a-f]{64}$' -or (Digest $bytes) -cne $b.assets.$name){Reject};if($name.EndsWith('.cs')){$paths+=,$asset}}
-    $phase='COMPILE'
+    $phase='COMPILE';Progress 'COMPILE_BEGIN'
     Add-Type -Path $paths -ReferencedAssemblies @('System.dll','System.Core.dll') -ErrorAction Stop
-    $phase='PARENT'
+    Progress 'COMPILE_END'
+    $phase='PARENT';Progress 'PARENT_BEGIN'
     $admission=[Fonesi.Development.Server.IsolatedAdbServer]::OpenParentAdmission([uint32]$p.parentPid,$p.parentCreationFileTime,$p.parentImagePath,$p.parentImageSha256,$p.jobName)
-    $provider=New-Object Fonesi.Development.Server.IsolatedAdbServer+RetainedProvider($b.runRoot,$b.ownerToken,$b.adbPath,$b.adbExeSha256)
+    Progress 'PARENT_END'
+    $provider=New-Object Fonesi.Development.Server.IsolatedAdbServer+RetainedProvider($b.runRoot,$b.ownerToken,$b.adbPath,$b.adbExeSha256,$true)
     $adapter=New-Object Fonesi.Development.Server.RetainedAdbProtocol+NativeProvider($provider)
-    $phase='READER'
-    $result=[Fonesi.Development.Server.RetainedAdbProtocol]::Run([Console]::OpenStandardInput(),[Console]::OpenStandardOutput(),$b.sessionId,$adapter,$admission.Liveness())
+    $phase='READER';Progress 'READER'
+    $result=[Fonesi.Development.Server.RetainedAdbProtocol]::Run([Console]::OpenStandardInput(),[Console]::OpenStandardOutput(),$b.sessionId,$adapter,$admission.Liveness(),$true)
     if(-not $result.Clean){Reject}
-    $phase='CLOSE'
+    $phase='CLOSE';Progress 'CLOSE'
     $admission.Dispose();$admission=$null
     exit 0
 } catch {

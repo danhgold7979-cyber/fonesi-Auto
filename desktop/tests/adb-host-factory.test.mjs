@@ -513,3 +513,71 @@ test('fixed OS path still rejects noncanonical spelling, directory executable an
     f.cleanup();
   }
 });
+
+const bootstrapProgress = [
+  'ENVIRONMENT',
+  'CONTEXT',
+  'ASSETS',
+  'COMPILE_BEGIN',
+  'COMPILE_END',
+  'PARENT_BEGIN',
+  'PARENT_END',
+  'READER',
+  'CLOSE',
+];
+const readerProgress = ['REQUEST_ACCEPTED', 'PROVIDER_ENTERED', 'RESPONSE_WRITE', 'RESPONSE_FLUSH'];
+const nativeProgress = ['ADMISSION', 'LAUNCH', 'LAUNCH_END', 'EXIT', 'RETIRE_BEGIN', 'RETIRE_END'];
+const progressLines = [
+  ...bootstrapProgress.slice(0, -1).map((x) => `HOST_BOOTSTRAP_PROGRESS_${x}`),
+  ...readerProgress.map((x) => `HOST_READER_PROGRESS_${x}`),
+  ...nativeProgress.map((x) => `HOST_NATIVE_PROGRESS_${x}`),
+  'HOST_BOOTSTRAP_PROGRESS_CLOSE',
+];
+test('exact bounded progress is diagnostic only and permits actual terminal cleanup', async () => {
+  const f = fixture({ stderr: progressLines.join('\r\n') + '\r\n' });
+  try {
+    assert.equal((await f.factory.execute(f.cap, f.request())).outcome, 'OBSERVED');
+    assert.equal(f.factory.evidence.requestWriteCompleted, true);
+    assert.equal(await f.factory.close(), 'RETIRED');
+    assert.equal(f.factory.evidence.progress.length, 19);
+    assert.ok(Object.isFrozen(f.factory.evidence.progress));
+  } finally {
+    f.cleanup();
+  }
+});
+test('unknown duplicate malformed overflow and incomplete stderr never authorize helper cleanup', async () => {
+  for (const stderr of [
+    'HOST_UNKNOWN_PROGRESS_PRIVATE\n',
+    'HOST_BOOTSTRAP_PROGRESS_CONTEXT\n',
+    'HOST_READER_PROGRESS_REQUEST_ACCEPTED\nHOST_READER_PROGRESS_REQUEST_ACCEPTED\n',
+    'HOST_NATIVE_PROGRESS_LAUNCH_END private\n',
+    'HOST_BOOTSTRAP_PROGRESS_ENVIRONMENT',
+    'x'.repeat(1025) + '\n',
+    'x'.repeat(65537),
+    'HOST_BOOTSTRAP_FAILED\n',
+    'HOST_BOOTSTRAP_PROGRESS_ENVIRONMENT\n\n',
+  ]) {
+    const f = fixture({ stderr });
+    try {
+      assert.equal((await f.factory.execute(f.cap, f.request())).outcome, 'OBSERVED');
+      assert.equal(await f.factory.close(), 'UNRETIRED');
+      assert.equal(f.factory.evidence.directoryCleanup, false);
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+test('native progress first-occurrence slots do not impose a false concurrent retirement ordering', async () => {
+  const f = fixture({
+    stderr: ['RETIRE_BEGIN', 'ADMISSION', 'LAUNCH', 'LAUNCH_END', 'RETIRE_END', 'EXIT']
+      .map((x) => `HOST_NATIVE_PROGRESS_${x}\n`)
+      .join(''),
+  });
+  try {
+    assert.equal((await f.factory.execute(f.cap, f.request())).outcome, 'OBSERVED');
+    assert.equal(await f.factory.close(), 'RETIRED');
+    assert.equal(f.factory.evidence.progress.length, 6);
+  } finally {
+    f.cleanup();
+  }
+});

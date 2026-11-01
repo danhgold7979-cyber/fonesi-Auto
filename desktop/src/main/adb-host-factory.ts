@@ -54,6 +54,29 @@ function systemExecutable(path: string) {
     fail();
   return Object.freeze({ dev: s.dev, ino: s.ino, size: s.size, mtimeMs: s.mtimeMs });
 }
+const BOOTSTRAP_PROGRESS = [
+  'ENVIRONMENT',
+  'CONTEXT',
+  'ASSETS',
+  'COMPILE_BEGIN',
+  'COMPILE_END',
+  'PARENT_BEGIN',
+  'PARENT_END',
+  'READER',
+  'CLOSE',
+] as const;
+const OTHER_PROGRESS = [
+  'READER_REQUEST_ACCEPTED',
+  'READER_PROVIDER_ENTERED',
+  'READER_RESPONSE_WRITE',
+  'READER_RESPONSE_FLUSH',
+  'NATIVE_ADMISSION',
+  'NATIVE_LAUNCH',
+  'NATIVE_LAUNCH_END',
+  'NATIVE_EXIT',
+  'NATIVE_RETIRE_BEGIN',
+  'NATIVE_RETIRE_END',
+] as const;
 const observationKey = (o: RuntimeReadObservation) =>
   JSON.stringify([o.release, o.archiveSha256, o.manifestSha256, o.installationRevision, o.adbPath]);
 export function createHostFactory(
@@ -102,6 +125,9 @@ export function createHostFactory(
   let diagnosticLine = '',
     helperPhase: string | null = null,
     phaseCount = 0;
+  const progress = new Set<string>();
+  let bootstrapProgress = 0,
+    requestWriteCompleted = false;
   let writes = 0,
     childResult: { code: number | null; signal: string | null } | null = null;
   let resolveChild: (() => void) | null = null;
@@ -247,21 +273,43 @@ export function createHostFactory(
     });
     child.stderr.on('data', (bytes: Buffer) => {
       stderrBytes += bytes.length;
-      if (stderrBytes > 65536) channelFailure();
+      if (stderrBytes > 65536) {
+        channelFailure();
+        return;
+      }
+      let rejected = false;
       for (const byte of bytes) {
         if (byte === 10) {
-          const match =
-            /^HOST_BOOTSTRAP_PHASE_(ENVIRONMENT|CONTEXT|ASSETS|COMPILE|PARENT|READER|CLOSE)\r?$/.exec(
-              diagnosticLine,
+          const line = diagnosticLine.endsWith('\r') ? diagnosticLine.slice(0, -1) : diagnosticLine;
+          const phase =
+            /^HOST_BOOTSTRAP_PHASE_(ENVIRONMENT|CONTEXT|ASSETS|COMPILE|PARENT|READER|CLOSE)$/.exec(
+              line,
             );
-          if (match) {
+          const marker = /^HOST_(BOOTSTRAP|READER|NATIVE)_PROGRESS_([A-Z_]+)$/.exec(line);
+          if (phase) {
             phaseCount++;
-            helperPhase = phaseCount === 1 ? (match[1] ?? null) : null;
-          }
+            helperPhase = phaseCount === 1 ? (phase[1] ?? null) : null;
+            rejected = true;
+          } else if (marker) {
+            const key = marker[1] + '_' + marker[2];
+            const bootstrapMarker = marker[1] === 'BOOTSTRAP';
+            const valid = bootstrapMarker
+              ? marker[2] === BOOTSTRAP_PROGRESS[bootstrapProgress]
+              : OTHER_PROGRESS.some((value) => value === key);
+            if (!valid || progress.has(key) || progress.size >= 19) rejected = true;
+            else {
+              progress.add(key);
+              if (bootstrapMarker) bootstrapProgress++;
+            }
+          } else rejected = true;
           diagnosticLine = '';
-        } else if (diagnosticLine.length < 1024)
-          diagnosticLine += byte < 128 ? String.fromCharCode(byte) : '?';
+        } else if (byte < 128 && diagnosticLine.length < 1024) {
+          diagnosticLine += String.fromCharCode(byte);
+        } else {
+          rejected = true;
+        }
       }
+      if (rejected) channelFailure();
     });
     child.on('error', channelFailure);
     child.stdout.on('error', channelFailure);
@@ -326,7 +374,10 @@ export function createHostFactory(
               if (error) {
                 channelFailure();
                 reject(Error('HOST_FACTORY_REJECTED'));
-              } else accept();
+              } else {
+                requestWriteCompleted = true;
+                accept();
+              }
             });
           } catch {
             channelFailure();
@@ -369,7 +420,7 @@ export function createHostFactory(
             a !== 'RETIRED' ||
             writes !== 0 ||
             (child &&
-              (childResult?.code !== 0 || childResult.signal !== null || stderrBytes !== 0)) ||
+              (childResult?.code !== 0 || childResult.signal !== null || diagnosticLine !== '')) ||
             broken
           )
             return 'UNRETIRED';
@@ -406,6 +457,8 @@ export function createHostFactory(
               ? 'RUNNING'
               : 'NOT_STARTED',
         phase: helperPhase,
+        progress: Object.freeze([...progress]),
+        requestWriteCompleted,
         exit: childResult ? (childResult.code === 0 ? 'ZERO' : 'NONZERO') : 'NONE',
         directoryCleanup: clean,
       });

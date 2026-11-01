@@ -42,7 +42,7 @@ function before(text, left, right) {
 test('unchanged native custody helpers and new fixed provider adapter have no new interop or server handoff', () => {
   for (const [name, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
-    ['RetainedAdbSession.cs', '542d86eca13a7a0bfd4ec58be21a55b1b81073f1cd60d80c0dc0431c8ff15638'],
+    ['RetainedAdbSession.cs', 'ee8081174a680e8ff43283ed8b43ffc789a47c46596bb2c13ae0ec7555274655'],
   ])
     assert.equal(
       createHash('sha256')
@@ -216,4 +216,30 @@ test('one deferred next ordinary request waits for native and output retirement 
   assert.match(fixture, /o.FlushRelease.Reset\(\)/);
   assert.match(fixture, /Check\(p.reserves==1&&t.IsAlive\)/);
   assert.match(fixture, /r.Clean&&p.reserves==2/);
+});
+
+test('diagnostics are opt-in fixed first-occurrence slots and managed fixture covers silent/default plus two requests', () => {
+  assert.match(source, /return Run\(input, output, sessionId, provider, parentAlive, false\)/);
+  assert.match(
+    source,
+    /enum ProgressSlot \{ REQUEST_ACCEPTED, PROVIDER_ENTERED, RESPONSE_WRITE, RESPONSE_FLUSH \}/,
+  );
+  assert.match(source, /if \(!diagnostics\) return/);
+  assert.match(source, /Interlocked.CompareExchange\(ref diagnosticSlots, before \| bit, before\)/);
+  assert.match(source, /if \(\(before & bit\) != 0\) return/);
+  assert.match(source, /Console.Error.WriteLine\("HOST_READER_PROGRESS_" \+ slot.ToString\(\)\)/);
+  assert.match(fixture, /foreach\(bool diagnostics in new bool\[\]\{false,true\}\)/);
+  assert.match(fixture, /lines.Length==\(diagnostics\?4:0\)/);
+  assert.match(fixture, /r.Clean&&p.reserves==2/);
+  const bootstrap = readFileSync(
+    new URL('../launch/Invoke-RetainedHost.ps1', import.meta.url),
+    'utf8',
+  );
+  assert.match(bootstrap, /\$adapter,\$admission.Liveness\(\),\$true/);
+  assert.match(
+    bootstrap,
+    /@\('ENVIRONMENT','CONTEXT','ASSETS','COMPILE_BEGIN','COMPILE_END','PARENT_BEGIN','PARENT_END','READER','CLOSE'\)/,
+  );
+  assert.match(bootstrap, /\$progressSlots.ContainsKey\(\$Slot\)/);
+  assert.match(bootstrap, /HOST_BOOTSTRAP_PROGRESS_/);
 });

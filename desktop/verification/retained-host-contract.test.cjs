@@ -10,6 +10,8 @@ const {
   CASES,
   SCOPE,
   DIAGNOSTICS,
+  PROGRESS,
+  progressDiagnostic,
   contextDiagnostic,
   deriveMain,
   validateResult,
@@ -26,7 +28,7 @@ test('exact derived main insertion preserves every original byte and binds actua
   assert.throws(() =>
     deriveMain(raw.replace('const setup = platformToolsService;', 'const setup = null;'), observer),
   );
-  assert.throws(() => deriveMain(raw, observer + '.other'));
+  assert.throws(() => deriveMain(raw, `${observer}.other`));
 });
 test('fixed result requires all13 true and rejects extras and type coercion', () => {
   const valid = {
@@ -62,12 +64,12 @@ function serviceSuccessTransition() {
   assert.deepEqual(snapshot, { state: 'VERIFIED_LOCAL', code: null, installationRevision: 1 });
   return snapshot;
 }
-async function simulatedObserver(wrongParent = false) {
+async function simulatedObserver(wrongParent = false, fault = null) {
   const root = fs.realpathSync.native(
       fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'retained-observer-')),
     ),
-    managed = path.join(root, 'first-use', 'Fonesi-Auto-' + id(1)),
-    launch = path.join(managed, 'launch-' + id(2)),
+    managed = path.join(root, 'first-use', `Fonesi-Auto-${id(1)}`),
+    launch = path.join(managed, `launch-${id(2)}`),
     profile = path.join(launch, 'profile');
   fs.mkdirSync(profile, { recursive: true });
   for (const p of [root, managed, launch]) fs.writeFileSync(path.join(p, '.owner'), id(3));
@@ -182,7 +184,9 @@ async function simulatedObserver(wrongParent = false) {
     async execute(_cap, r) {
       executed++;
       assert.equal(r.operation, 'HOST_VERSION');
-      return { outcome: 'OBSERVED', code: 'OK' };
+      return fault
+        ? { outcome: 'OUTCOME_UNKNOWN', code: 'DEADLINE' }
+        : { outcome: 'OBSERVED', code: 'OK' };
     },
     async close() {
       closed = true;
@@ -197,6 +201,7 @@ async function simulatedObserver(wrongParent = false) {
         phase: 'NONE',
         exit: closed ? 'ZERO' : 'NONE',
         directoryCleanup: closed,
+        ...(fault?.evidence ?? {}),
       };
     },
   };
@@ -302,7 +307,7 @@ catch (error) { process.exitCode = error === sentinel ? 0 : 3; }`;
 });
 test('actual observer control flow uses captured same-main custody and one VERSION then EOF close with injected facts', async () => {
   const r = await simulatedObserver();
-  assert.equal(r.code, 0);
+  assert.equal(r.code, 0, r.stderr.join(''));
   assert.equal(r.executed, 1);
   assert.equal(r.bound, true);
   assert.equal(validateResult(r.result).passed, true);
@@ -502,4 +507,106 @@ test('campaign is default-off, source-dependent and keeps managed success before
     assert.notEqual(always, normalized);
     assert.throws(() => check(always));
   }
+});
+
+test('complete progress vector uses only exact frozen evidence and never reads accessors', () => {
+  assert.equal(PROGRESS.length, 19);
+  const seen = Object.freeze(['BOOTSTRAP_ENVIRONMENT', 'READER_REQUEST_ACCEPTED', 'NATIVE_LAUNCH']);
+  const facts = progressDiagnostic({ progress: seen, requestWriteCompleted: true });
+  assert.equal(Object.keys(facts).length, 20);
+  assert.equal(facts.REQUESTWRITE, 'YES');
+  for (const name of PROGRESS)
+    assert.equal(facts[`PROGRESS_${name}`], seen.includes(name) ? 'YES' : 'NO');
+  assert.equal(
+    progressDiagnostic({ progress: Object.freeze([]), requestWriteCompleted: false }).REQUESTWRITE,
+    'NO',
+  );
+  for (const evidence of [
+    null,
+    {},
+    { progress: ['BOOTSTRAP_CONTEXT'] },
+    { progress: Object.freeze(['PRIVATE/PATH']) },
+    { progress: Object.freeze(['NATIVE_EXIT', 'NATIVE_EXIT']) },
+    {
+      get progress() {
+        throw Error('PRIVATE');
+      },
+    },
+  ]) {
+    assert.ok(
+      Object.entries(progressDiagnostic(evidence))
+        .filter(([k]) => k !== 'REQUESTWRITE')
+        .every(([, v]) => v === 'UNAVAILABLE'),
+    );
+  }
+  let touched = 0;
+  const array = [];
+  Object.defineProperty(array, '0', {
+    enumerable: true,
+    get() {
+      touched++;
+      return 'NATIVE_EXIT';
+    },
+  });
+  Object.freeze(array);
+  assert.ok(
+    Object.values(
+      progressDiagnostic({
+        progress: array,
+        get requestWriteCompleted() {
+          touched++;
+          return true;
+        },
+      }),
+    ).every((v) => v === 'UNAVAILABLE'),
+  );
+  assert.equal(touched, 0);
+  assert.deepEqual(
+    Object.keys(DIAGNOSTICS).filter((k) => k.startsWith('PROGRESS_')),
+    PROGRESS.map((name) => `PROGRESS_${name}`),
+  );
+});
+test('actual observer deadline failure emits each observed progress bit and request-write without raw values', async () => {
+  const seen = Object.freeze([
+    'BOOTSTRAP_ENVIRONMENT',
+    'BOOTSTRAP_CONTEXT',
+    'BOOTSTRAP_COMPILE_BEGIN',
+    'BOOTSTRAP_COMPILE_END',
+    'BOOTSTRAP_READER',
+    'READER_REQUEST_ACCEPTED',
+    'READER_PROVIDER_ENTERED',
+    'NATIVE_ADMISSION',
+  ]);
+  const result = await simulatedObserver(false, {
+    evidence: { progress: seen, requestWriteCompleted: true },
+  });
+  assert.equal(result.code, 1);
+  assert.equal(result.result, null);
+  assert.equal(result.executed, 1);
+  assert.equal(result.stderr.length, Object.keys(DIAGNOSTICS).length + 1);
+  for (const name of PROGRESS)
+    assert.ok(
+      result.stderr.includes(
+        `RETAINED_HOST_DIAGNOSTIC_PROGRESS_${name}_${seen.includes(name) ? 'YES' : 'NO'}\n`,
+      ),
+    );
+  assert.ok(result.stderr.includes('RETAINED_HOST_DIAGNOSTIC_REQUESTWRITE_YES\n'));
+  assert.ok(result.stderr.includes('RETAINED_HOST_DIAGNOSTIC_CODE_DEADLINE\n'));
+  assert.equal(result.stderr.at(-1), 'RETAINED_HOST_PHASE_VERSION\nRETAINED_HOST_FAILED\n');
+  assert.doesNotMatch(result.stderr.join(''), /retained-observer-|host-parent|official.zip/);
+});
+
+test('progress array Proxy get trap never runs: length is bounded via own data descriptor first', () => {
+  let reads = 0;
+  const array = new Proxy(Object.freeze(['NATIVE_ADMISSION']), {
+    get() {
+      reads++;
+      throw Error('PRIVATE');
+    },
+  });
+  const facts = progressDiagnostic({ progress: array, requestWriteCompleted: false });
+  assert.equal(reads, 0);
+  assert.equal(facts.PROGRESS_NATIVE_ADMISSION, 'YES');
+  assert.equal(facts.PROGRESS_NATIVE_LAUNCH, 'NO');
+  assert.equal(facts.REQUESTWRITE, 'NO');
 });

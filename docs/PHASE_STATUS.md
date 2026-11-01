@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 10:39 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 10:53 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -36,16 +36,16 @@ stitched checkpoint (remaining151 tests plus earlier passed batches); no new ful
 aggregate count or native PASS is inferred. The user approved the
 [single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
 and necessary important checkpoint publication. After a test-only Windows CRLF repair,
-public `16297a9c` / CI41297798926 passes1010/109/232 source checks. Actual four-source
-C# compilation/eight managed groups and delivered414-byte strict report pass. Native
-VERSION still fails before helper start: exact diagnostics identify the fixed system
-PowerShell file's multiple hardlinks, incorrectly rejected by an owned-file rule.
-The narrow factory correction now permits hardlinks ONLY for that fixed canonical
-regular/non-reparse OS executable, retains all owned single-link checks, and rechecks
-captured identity after the last owner callback before spawn. Factory12 tests, strict
-TypeScript, fresh verified build and affected observer/diagnostic checks pass; the exact
-revised product is native-pending. No server/device/profile workaround or canonical
-task acceptance is claimed. Same bounded campaign corrective retry is in preparation.
+public `6cea5c4aa3596f5a421fb429ad86a5f90a236550` / CI41298525594 passes1013/109/232
+source checks. Four-source C# compilation/eight managed groups and the delivered414-byte
+strict report pass. The fixed-system-file hardlink correction now reaches an actual
+running helper, but VERSION returns OUTCOME_UNKNOWN/DEADLINE after the unchanged30s
+operation budget. No native result or helper retirement is claimed. One bounded progress
+diagnostic batch distinguishes bootstrap compilation/parent admission, request delivery,
+native launch/exit/retirement and response write/flush. Exact fixed progress is not
+retirement authority; unknown/duplicate/malformed stderr remains a failure. No deadline,
+server/device/profile guard or canonical task acceptance is changed. Same bounded
+campaign retry is being prepared after affected source review.
 
 ## 1. Status definitions
 
