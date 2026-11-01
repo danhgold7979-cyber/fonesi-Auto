@@ -26,10 +26,10 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual one hundred six modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 106, runtimeInputs: 106 });
+test('actual one hundred nine modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 109, runtimeInputs: 109 });
 });
-test('metadata owners have no incoming production edge or main activation', () => {
+test('synthetic metadata stays unactivated and native owner has only the reviewed facade edge', () => {
   for (const [file, binding] of [
     ['transport-metadata', 'createSyntheticTransportMetadataOwner'],
     ['owned-transport-metadata', 'createOwnedTransportMetadataOwner'],
@@ -45,7 +45,9 @@ test('metadata owners have no incoming production edge or main activation', () =
         )
         .map(([name]) => name);
     assert.equal(map.modules[`main/${file}.ts`].role, 'main-adapter');
-    assert.deepEqual(incoming(map), []);
+    const expected =
+      file === 'owned-transport-metadata' ? ['main/discovery-session-service.ts'] : [];
+    assert.deepEqual(incoming(map), expected);
     const wrong = {
       ...map,
       modules: {
@@ -59,11 +61,11 @@ test('metadata owners have no incoming production edge or main activation', () =
         },
       },
     };
-    assert.deepEqual(incoming(wrong), ['main.ts']);
+    assert.deepEqual(incoming(wrong), ['main.ts', ...expected]);
   }
 });
-test('fleet stays in its exact role boundary and graph limit remains finite at one hundred six', async () => {
-  assert.equal(Object.keys(map.modules).length, 106);
+test('fleet stays in its exact role boundary and graph limit remains finite at one hundred nine', async () => {
+  assert.equal(Object.keys(map.modules).length, 109);
   await assert.rejects(
     () =>
       validateGraph(actual(), {
@@ -204,6 +206,7 @@ test('comments strings regex templates and actual JSX do not fabricate imports',
   assert.deepEqual(
     (await sourceImports(actual()['renderer.tsx'], 'tsx')).map((edge) => edge.specifier),
     [
+      './metadata-contract.js',
       './discovery-contract.js',
       './runtime-version-contract.js',
       './platform-tools-setup-contract.js',

@@ -1,3 +1,9 @@
+import {
+  METADATA_FIELDS,
+  parseMetadataResponse,
+  type MetadataField,
+  type MetadataSnapshot,
+} from './metadata-contract.js';
 import { parseDiscoveryResponse, type DiscoverySnapshot } from './discovery-contract.js';
 import {
   parseRuntimeVersionResponse,
@@ -13,6 +19,15 @@ import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
   interface Window {
+    metadata: Readonly<{
+      get: () => Promise<string>;
+      read: (
+        deviceId: unknown,
+        field: unknown,
+        revision: unknown,
+        registryRevision: unknown,
+      ) => Promise<string>;
+    }>;
     preferences: Readonly<{
       read: () => Promise<string>;
       update: (revision: number, patch: unknown) => Promise<string>;
@@ -65,7 +80,25 @@ function Diagnostic() {
   const [discoveryReconcile, setDiscoveryReconcile] = useState(true);
   const discoveryInFlight = useRef(false),
     discoveryStopInFlight = useRef(false);
+  const metadataGeneration = useRef<object>(Object.freeze({}));
+  const [metadata, setMetadata] = useState<MetadataSnapshot | null>(null);
+  const [metadataDevice, setMetadataDevice] = useState<string | null>(null);
+  const [metadataField, setMetadataField] = useState<MetadataField>('MODEL');
+  const [metadataStatus, setMetadataStatus] = useState(
+    'Chưa đọc bộ nhớ metadata; không tự truy vấn thiết bị.',
+  );
+  const [metadataPending, setMetadataPending] = useState(false);
+  const [metadataReconcile, setMetadataReconcile] = useState(true);
+  const metadataInFlight = useRef(false),
+    metadataHydrated = useRef(false);
+  const invalidateMetadata = useCallback(() => {
+    metadataGeneration.current = Object.freeze({});
+    setMetadata(null);
+    setMetadataReconcile(true);
+    setMetadataStatus('REFRESH_REQUIRED / Cần đọc lại trạng thái metadata; không tự thử lại.');
+  }, []);
   const invalidateFleet = useCallback(() => {
+    invalidateMetadata();
     fleetGeneration.current = Object.freeze({});
     setFleet(null);
     setFleetFailed(true);
@@ -73,7 +106,7 @@ function Diagnostic() {
     setFleetStatus(
       'LIVE_DISCOVERY_UNAVAILABLE / CACHED OBSERVATION CLEARED / EXPLICIT FLEET READ REQUIRED',
     );
-  }, []);
+  }, [invalidateMetadata]);
   const invalidateDiscovery = useCallback(() => {
     discoveryGeneration.current = Object.freeze({});
     setDiscovery(null);
@@ -296,6 +329,7 @@ function Diagnostic() {
         const response = parseFleetResponse(raw);
         if (!response?.ok) {
           if (response && !response.ok) observeRevocation(response.code);
+          invalidateMetadata();
           setFleet(null);
           setFleetFailed(true);
           setFleetReconcile(true);
@@ -304,6 +338,11 @@ function Diagnostic() {
           );
           return;
         }
+        if (
+          response.fleet.availability !== 'OBSERVED' ||
+          (fleet && fleet.registryRevision !== response.fleet.registryRevision)
+        )
+          invalidateMetadata();
         setFleet(response.fleet);
         setFleetFailed(false);
         setFleetReconcile(false);
@@ -312,6 +351,7 @@ function Diagnostic() {
         );
       } catch {
         if (generation !== fleetGeneration.current) return;
+        invalidateMetadata();
         setFleet(null);
         setFleetFailed(true);
         setFleetReconcile(true);
@@ -321,13 +361,105 @@ function Diagnostic() {
         setFleetPending(false);
       }
     },
-    [fleet, fleetReconcile, observeRevocation],
+    [fleet, fleetReconcile, observeRevocation, invalidateMetadata],
   );
   useEffect(() => {
     if (fleetHydrationStarted.current) return;
     fleetHydrationStarted.current = true;
     void fleetAction();
   }, [fleetAction]);
+  const metadataCandidate =
+    fleet?.availability === 'OBSERVED'
+      ? fleet.devices.find((device) => device.deviceId === metadataDevice)
+      : undefined;
+  const metadataAction = useCallback(
+    async (read = false) => {
+      if (metadataInFlight.current) return;
+      if (
+        read &&
+        (!metadata ||
+          metadataReconcile ||
+          !metadataCandidate ||
+          metadataCandidate.verification !== 'VERIFIED' ||
+          metadataCandidate.state !== 'DEVICE' ||
+          fleetReconcile ||
+          discovery?.state !== 'READY' ||
+          discoveryReconcile)
+      )
+        return;
+      metadataInFlight.current = true;
+      setMetadataPending(true);
+      if (read) {
+        metadataGeneration.current = Object.freeze({});
+        setMetadataReconcile(true);
+      }
+      const generation = metadataGeneration.current;
+      const candidate = metadataDevice;
+      try {
+        const raw = read
+          ? await window.metadata.read(
+              candidate,
+              metadataField,
+              metadata?.revision,
+              fleet?.registryRevision,
+            )
+          : await window.metadata.get();
+        if (generation !== metadataGeneration.current) return;
+        const response = parseMetadataResponse(raw);
+        if (!response) throw Error('INVALID_RESPONSE');
+        if (!response.ok) {
+          setMetadataReconcile(true);
+          setMetadata(null);
+          observeRevocation(response.code);
+          setMetadataStatus(
+            `${response.outcome} / ${response.code}. Đọc trạng thái để đối chiếu; không tự thử lại.`,
+          );
+          return;
+        }
+        if (
+          read &&
+          (response.snapshot.deviceId !== candidate || response.snapshot.field !== metadataField)
+        )
+          throw Error('INVALID_RESPONSE');
+        setMetadata(response.snapshot);
+        setMetadataReconcile(
+          response.outcome !== 'OBSERVED' ||
+            ['PENDING', 'OUTCOME_UNKNOWN', 'CLOSED'].includes(response.snapshot.state) ||
+            response.snapshot.lastOutcome === 'OUTCOME_UNKNOWN',
+        );
+        setMetadataStatus(
+          `${response.outcome} / ${response.snapshot.state} / ${response.snapshot.lastOutcome} / ${response.snapshot.code ?? 'OK'} / LOG ${response.loggingHealth}. Quan sát tại thời điểm ghi nhận, không giám sát liên tục; Read status để đối chiếu.`,
+        );
+      } catch {
+        if (generation !== metadataGeneration.current) return;
+        setMetadata(null);
+        setMetadataReconcile(true);
+        setMetadataStatus(
+          'OUTCOME_UNKNOWN / INTERNAL_FAILURE. Đọc trạng thái để đối chiếu; không tự thử lại.',
+        );
+      } finally {
+        metadataInFlight.current = false;
+        setMetadataPending(false);
+      }
+    },
+    [
+      metadata,
+      metadataReconcile,
+      metadataCandidate,
+      metadataDevice,
+      metadataField,
+      fleet,
+      fleetReconcile,
+      discovery,
+      discoveryReconcile,
+      observeRevocation,
+    ],
+  );
+  useEffect(() => {
+    if (metadataHydrated.current) return;
+    metadataHydrated.current = true;
+    void metadataAction();
+  }, [metadataAction]);
   const emptyRows = { devices: [], accounts: [], media: [], jobs: [] };
   const fleetUi: UiSnapshot = fleetFailed
     ? { status: 'ERROR', code: 'UNAVAILABLE', ...emptyRows }
@@ -691,6 +823,110 @@ function Diagnostic() {
             <p id="fleet-status" aria-live="polite">
               {fleetStatus}
             </p>
+          </section>
+          <section aria-label="Candidate metadata" id="metadata-panel">
+            <h3>Thông tin thiết bị / Read candidate field</h3>
+            <p>
+              Chọn một dòng Fleet hiện hành. PROVISIONAL không đủ điều kiện; metadata không xác minh
+              danh tính.
+            </p>
+            <fieldset className="pills">
+              <legend>Metadata candidates</legend>
+              {fleet?.availability === 'OBSERVED' && !fleetFailed ? (
+                fleet.devices.map((device) => (
+                  <button
+                    type="button"
+                    className="btn small"
+                    key={device.deviceId}
+                    id={`metadata-candidate-${device.deviceId}`}
+                    data-metadata-device={device.deviceId}
+                    aria-pressed={metadataDevice === device.deviceId}
+                    onClick={() => {
+                      metadataGeneration.current = Object.freeze({});
+                      setMetadataDevice(device.deviceId);
+                      setMetadataReconcile(true);
+                      setMetadataStatus(
+                        'Đã chọn ngữ cảnh; đọc trạng thái trước Read. Không có truy vấn tự động.',
+                      );
+                    }}
+                  >
+                    {device.label} / {device.verification} / {device.state}
+                  </button>
+                ))
+              ) : (
+                <p>UNAVAILABLE / Chưa có Fleet hiện hành.</p>
+              )}
+            </fieldset>
+            <label htmlFor="metadata-field">Trường thông tin</label>
+            <select
+              id="metadata-field"
+              value={metadataField}
+              onChange={(event) => {
+                const field = event.currentTarget.value;
+                if (METADATA_FIELDS.some((candidate) => candidate === field)) {
+                  metadataGeneration.current = Object.freeze({});
+                  setMetadataField(field as MetadataField);
+                  setMetadataReconcile(true);
+                }
+              }}
+            >
+              {METADATA_FIELDS.map((field) => (
+                <option key={field} value={field}>
+                  {field}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              id="metadata-get"
+              disabled={metadataPending}
+              onClick={() => {
+                void metadataAction();
+              }}
+            >
+              Read status / bộ nhớ metadata
+            </button>
+            <button
+              type="button"
+              id="metadata-read"
+              disabled={
+                metadataPending ||
+                metadataReconcile ||
+                !metadata ||
+                fleetReconcile ||
+                discoveryReconcile ||
+                discovery?.state !== 'READY' ||
+                metadataCandidate?.verification !== 'VERIFIED' ||
+                metadataCandidate?.state !== 'DEVICE'
+              }
+              onClick={() => {
+                void metadataAction(true);
+              }}
+            >
+              Read candidate field
+            </button>
+            <p id="metadata-status" aria-live="polite">
+              {metadataStatus}
+            </p>
+            {metadataCandidate?.verification === 'PROVISIONAL' && (
+              <p>POLICY_DENIED / PROVISIONAL: Read không khả dụng.</p>
+            )}
+            <dl id="metadata-observations">
+              {METADATA_FIELDS.map((field) => {
+                const observation =
+                  metadata?.deviceId === metadataDevice ? metadata.observations[field] : null;
+                return (
+                  <div key={field}>
+                    <dt>{field}</dt>
+                    <dd>
+                      {!observation
+                        ? 'UNAVAILABLE / chưa quan sát'
+                        : `${observation.stale ? 'STALE' : 'CAPTURED'} / UTC ms ${observation.observedUtc} / ${observation.source} / ${observation.available ? `${typeof observation.value === 'object' ? JSON.stringify(observation.value) : observation.value} ${observation.units}` : observation.reason}`}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
           </section>
           <button
             type="button"

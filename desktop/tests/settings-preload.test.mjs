@@ -1,3 +1,4 @@
+import * as metadataClient from '../src/metadata-client.ts';
 import * as discoveryClient from '../src/discovery-client.ts';
 import * as runtimeVersion from '../src/runtime-version-client.ts';
 import test from 'node:test';
@@ -42,6 +43,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
         };
       if (name === './preload-client.js') return clients;
       if (name === './settings-client.js') return preferences;
+      if (name === './metadata-client.js') return metadataClient;
       if (name === './discovery-client.js') return discoveryClient;
       if (name === './fleet-client.js') return fleet;
       if (name === './platform-tools-setup-client.js') return platformTools;
@@ -56,6 +58,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'discovery',
     'fleet',
     'foundation',
+    'metadata',
     'platformTools',
     'preferences',
   ]);
@@ -66,6 +69,8 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'restorePrevious',
     'update',
   ]);
+  assert.deepEqual(Object.keys(exposed.metadata).sort(), ['get', 'read']);
+  assert.ok(Object.isFrozen(exposed.metadata));
   assert.deepEqual(Object.keys(exposed.fleet).sort(), ['read', 'replaceSelection']);
   assert.deepEqual(Object.keys(exposed.platformTools).sort(), [
     'read',
@@ -85,11 +90,13 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     exposed.foundation.health(),
     exposed.foundation.settings(),
     ...Array.from({ length: 2 }, () => exposed.preferences.read()),
-    ...Array.from({ length: 2 }, () => exposed.fleet.read()),
+    exposed.fleet.read(),
+    exposed.metadata.get(),
     ...Array.from({ length: 1 }, () => exposed.platformTools.read()),
   ];
   assert.equal(JSON.parse(await exposed.preferences.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.fleet.read()).code, 'BUSY');
+  assert.equal(JSON.parse(await exposed.metadata.get()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.platformTools.read()).code, 'BUSY');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(invocations.length, 7);
@@ -102,6 +109,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   assert.deepEqual([...new Set(invocations.map((x) => x.channel))].sort(), [
     'auto:discovery:v1',
     'foundation:fleet:v1',
+    'foundation:metadata:v1',
     'foundation:platform-tools:v2',
     'foundation:preferences:v1',
     'foundation:request:v2',

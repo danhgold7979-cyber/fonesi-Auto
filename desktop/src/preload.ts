@@ -1,3 +1,4 @@
+import { createMetadataClient } from './metadata-client.js';
 import { createDiscoveryClient } from './discovery-client.js';
 import { createRuntimeVersionClient } from './runtime-version-client.js';
 import { createPlatformToolsSetupClient } from './platform-tools-setup-client.js';
@@ -47,14 +48,36 @@ const discovery = createDiscoveryClient(
   undefined,
   readiness,
 );
+const metadata = createMetadataClient(
+  (wire) => ipcRenderer.invoke('foundation:metadata:v1', wire),
+  budget,
+  undefined,
+  readiness,
+);
+contextBridge.exposeInMainWorld(
+  'metadata',
+  Object.freeze({
+    get: () => metadata.get(),
+    read: (deviceId: unknown, field: unknown, revision: unknown, registryRevision: unknown) =>
+      metadata.read(deviceId, field, revision, registryRevision),
+  }),
+);
 contextBridge.exposeInMainWorld(
   'discovery',
   Object.freeze({
     get: () => discovery.get(),
-    start: (revision: unknown, installationRevision: unknown) =>
-      discovery.start(revision, installationRevision),
-    refresh: (revision: unknown) => discovery.refresh(revision),
-    stop: () => discovery.stop(),
+    start: (revision: unknown, installationRevision: unknown) => {
+      metadata.invalidateObservation();
+      return discovery.start(revision, installationRevision);
+    },
+    refresh: (revision: unknown) => {
+      metadata.invalidateObservation();
+      return discovery.refresh(revision);
+    },
+    stop: () => {
+      metadata.invalidateObservation();
+      return discovery.stop();
+    },
   }),
 );
 contextBridge.exposeInMainWorld(
@@ -67,9 +90,11 @@ contextBridge.exposeInMainWorld(
     requestSetup: (revision: unknown) => {
       runtimeVersion.invalidateObservation();
       discovery.invalidateObservation();
+      metadata.invalidateObservation();
       return platformTools.requestSetup(revision).finally(() => {
         runtimeVersion.invalidateObservation();
         discovery.invalidateObservation();
+        metadata.invalidateObservation();
       });
     },
   }),
@@ -109,6 +134,7 @@ window.addEventListener(
     platformTools.dispose();
     runtimeVersion.dispose();
     discovery.dispose();
+    metadata.dispose();
   },
   { once: true },
 );

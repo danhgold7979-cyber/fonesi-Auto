@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ViewSession } from '../src/view-session.ts';
-import { installDiscoveryBridge, DISCOVERY_CHANNEL } from '../src/discovery-bridge.ts';
+import {
+  installDiscoveryBridge,
+  DISCOVERY_CHANNEL,
+  METADATA_CHANNEL,
+} from '../src/discovery-bridge.ts';
 import { discoverySuccess } from '../src/discovery-contract.ts';
 const sender = {},
   caller = {
@@ -30,7 +34,7 @@ const wire = (request = false) =>
     method: request ? 'discovery.start' : 'discovery.get',
     ...(request ? { expectedRevision: 0, expectedInstallationRevision: 1 } : {}),
   });
-function fixture(execute) {
+function fixture(execute, executeMetadata) {
   const v = new ViewSession(sender, caller.origin, caller.url);
   v.beginMainLoad(caller.url);
   assert.equal(v.finishInitial(caller), true);
@@ -39,7 +43,7 @@ function fixture(execute) {
     { handle: (k, f) => handlers.set(k, f), removeHandler: (k) => handlers.delete(k) },
     (e) => v.admit(e),
     (e) => v.admitCleanup(e),
-    () => ({ execute }),
+    () => ({ execute, executeMetadata }),
   );
   return { v, bridge, run: handlers.get(DISCOVERY_CHANNEL), handlers };
 }
@@ -124,6 +128,75 @@ test('exact Stop reaches reserved slot while seven ordinary channels pending; ma
   assert.equal(stops, 1);
   resolve();
   await Promise.all(pending);
+  assert.equal(f.v.outstanding, 0);
+  f.bridge.dispose();
+});
+
+const metadataWire = () => JSON.stringify({ version: 1, requestId: 'p1', method: 'metadata.get' });
+test('metadata bridge uses actual ordinary ViewSession admission and releases no extra cleanup slot', async () => {
+  let calls = 0;
+  const f = fixture(
+    async () => '',
+    async (_q, current) => {
+      calls++;
+      assert.equal(current(), true);
+      return 'fixed';
+    },
+  );
+  const run = f.handlers.get(METADATA_CHANNEL);
+  assert.equal(
+    JSON.parse(await run({ ...caller, isMainFrame: false }, metadataWire())).code,
+    'UNTRUSTED_SENDER',
+  );
+  assert.equal(JSON.parse(await run(caller, metadataWire(), null)).code, 'INVALID_SHAPE');
+  assert.equal(calls, 0);
+  assert.equal(f.v.outstanding, 0);
+  assert.equal(await run(caller, metadataWire()), 'fixed');
+  assert.equal(calls, 1);
+  assert.equal(f.v.outstanding, 0);
+  f.bridge.dispose();
+  assert.equal(f.handlers.size, 0);
+});
+test('metadata bridge retains actual RPC lease across renderer revoke and denies late reply', async () => {
+  let resolve;
+  const f = fixture(
+    async () => '',
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  const run = f.handlers.get(METADATA_CHANNEL),
+    pending = run(caller, metadataWire());
+  await new Promise((r) => setImmediate(r));
+  assert.equal(f.v.outstanding, 1);
+  f.v.revoke();
+  assert.equal(f.v.outstanding, 1);
+  resolve('late');
+  assert.equal(JSON.parse(await pending).code, 'SESSION_REVOKED');
+  assert.equal(f.v.outstanding, 0);
+  f.bridge.dispose();
+});
+
+test('metadata bridge thrown GET is NOT_STARTED while entered Read remains OUTCOME_UNKNOWN', async () => {
+  const f = fixture(
+    async () => '',
+    async () => {
+      throw Error('private');
+    },
+  );
+  const run = f.handlers.get(METADATA_CHANNEL);
+  assert.equal(JSON.parse(await run(caller, metadataWire())).outcome, 'NOT_STARTED');
+  const read = JSON.stringify({
+    version: 1,
+    requestId: 'p2',
+    method: 'metadata.read',
+    deviceId: id,
+    field: 'MODEL',
+    expectedRevision: 0,
+    expectedRegistryRevision: 1,
+  });
+  assert.equal(JSON.parse(await run(caller, read)).outcome, 'OUTCOME_UNKNOWN');
   assert.equal(f.v.outstanding, 0);
   f.bridge.dispose();
 });

@@ -4,6 +4,12 @@
     "renderer.tsx": {
       "role": "renderer",
       "imports": {
+        "./metadata-contract.js": {
+          "METADATA_FIELDS": "value",
+          "parseMetadataResponse": "value",
+          "MetadataField": "type",
+          "MetadataSnapshot": "type"
+        },
         "./discovery-contract.js": {
           "parseDiscoveryResponse": "value",
           "DiscoverySnapshot": "type"
@@ -45,6 +51,9 @@
     "preload.ts": {
       "role": "preload",
       "imports": {
+        "./metadata-client.js": {
+          "createMetadataClient": "value"
+        },
         "./discovery-client.js": {
           "createDiscoveryClient": "value"
         },
@@ -353,6 +362,10 @@
     "log-contract.ts": {
       "role": "contract",
       "imports": {
+        "./metadata-audit-contract.ts": {
+          "snapshotMetadataAudit": "value",
+          "MetadataAudit": "type"
+        },
         "./discovery-audit-contract.ts": {
           "validDiscoveryAuditTuple": "value",
           "DISCOVERY_AUDIT_FIELDS": "value",
@@ -545,7 +558,8 @@
           "DurableAuditFields": "type",
           "SetupAuditFields": "type",
           "RuntimeVersionAuditFields": "type",
-          "DiscoveryAuditFields": "type"
+          "DiscoveryAuditFields": "type",
+          "MetadataAuditFields": "type"
         }
       }
     },
@@ -2079,6 +2093,13 @@
         "./view-session.ts": {
           "Admission": "type"
         },
+        "./metadata-contract.ts": {
+          "METADATA_CODES": "value",
+          "parseMetadataRequest": "value",
+          "metadataError": "value",
+          "MetadataRequest": "type",
+          "MetadataCode": "type"
+        },
         "./discovery-contract.ts": {
           "DiscoveryRequest": "type",
           "parseDiscoveryRequest": "value",
@@ -2108,8 +2129,29 @@
           "ServerAudit": "type"
         },
         "./adb-discovery-service.ts": {
+          "inspectOwnedMetadataTarget": "value",
+          "OwnedMetadataTarget": "type",
           "createAdbDiscoveryService": "type",
           "DiscoveryReceipt": "type"
+        },
+        "./owned-transport-metadata.ts": {
+          "createOwnedTransportMetadataOwner": "value"
+        },
+        "./device-actor.ts": {
+          "createDeviceQueueBudget": "value"
+        },
+        "../metadata-contract.ts": {
+          "METADATA_FIELDS": "value",
+          "METADATA_CODES": "value",
+          "snapshotMetadataRequest": "value",
+          "metadataSuccess": "value",
+          "metadataError": "value",
+          "MetadataRequest": "type",
+          "MetadataSnapshot": "type",
+          "MetadataCode": "type"
+        },
+        "../metadata-audit-contract.ts": {
+          "MetadataAudit": "type"
         },
         "./platform-tools-runtime-custody.ts": {
           "PlatformToolsRuntimeCustody": "type"
@@ -2182,6 +2224,42 @@
           "parseAdbMetadata": "value",
           "staleMetadata": "value",
           "MetadataResult": "type"
+        }
+      }
+    },
+    "metadata-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "metadata-audit-contract.ts": {
+      "role": "contract",
+      "imports": {
+        "./metadata-contract.ts": {
+          "METADATA_CODES": "value",
+          "METADATA_FIELDS": "value",
+          "validMetadataRevision": "value",
+          "validMetadataUuid": "value",
+          "MetadataCode": "type",
+          "MetadataField": "type"
+        }
+      }
+    },
+    "metadata-client.ts": {
+      "role": "client",
+      "imports": {
+        "./invocation-budget.ts": {
+          "createInvocationBudget": "value",
+          "InvocationBudget": "type"
+        },
+        "./metadata-contract.ts": {
+          "parseMetadataRequest": "value",
+          "validMetadataRevision": "value",
+          "validMetadataDeviceId": "value",
+          "METADATA_FIELDS": "value",
+          "parseMetadataResponse": "value",
+          "metadataError": "value",
+          "MetadataRequest": "type",
+          "MetadataCode": "type"
         }
       }
     }

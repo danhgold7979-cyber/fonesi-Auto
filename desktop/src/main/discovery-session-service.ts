@@ -14,7 +14,25 @@ import {
   type OwnedDiscoveryProvider,
   type ServerAudit,
 } from './adb-server-service.ts';
-import type { createAdbDiscoveryService, DiscoveryReceipt } from './adb-discovery-service.ts';
+import {
+  inspectOwnedMetadataTarget,
+  type OwnedMetadataTarget,
+  type createAdbDiscoveryService,
+  type DiscoveryReceipt,
+} from './adb-discovery-service.ts';
+import { createOwnedTransportMetadataOwner } from './owned-transport-metadata.ts';
+import { createDeviceQueueBudget } from './device-actor.ts';
+import {
+  METADATA_FIELDS,
+  METADATA_CODES,
+  snapshotMetadataRequest,
+  metadataSuccess,
+  metadataError,
+  type MetadataRequest,
+  type MetadataSnapshot,
+  type MetadataCode,
+} from '../metadata-contract.ts';
+import type { MetadataAudit } from '../metadata-audit-contract.ts';
 import type { PlatformToolsRuntimeCustody } from './platform-tools-runtime-custody.ts';
 import type { RegistrySnapshot } from './transport-registry.ts';
 type Health = 'AVAILABLE' | 'DEGRADED';
@@ -34,6 +52,7 @@ export type DiscoverySessionOptions = Readonly<{
   clock(): number;
   newId(): string;
   audit(record: DiscoveryAudit): Promise<Health>;
+  metadataAudit?(record: MetadataAudit): Promise<Health>;
   policy(): Policy | null;
   readDurableRevision(): number;
   createServer(
@@ -56,6 +75,24 @@ const uuid = (v: unknown): v is string =>
   typeof v === 'string' &&
   v.length === 36 &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
+const metadataFaults = new WeakMap<object, MetadataCode>();
+class MetadataFault extends Error {
+  constructor(code: MetadataCode) {
+    super(code);
+    metadataFaults.set(this, code);
+  }
+}
+function metadataCode(e: unknown): MetadataCode {
+  if (e !== null && typeof e === 'object') {
+    const code = metadataFaults.get(e) ?? faults.get(e);
+    if (code && METADATA_CODES.some((v) => v === code)) return code as MetadataCode;
+  }
+  return 'INTERNAL_FAILURE';
+}
+function metadataActorCode(code: string): MetadataCode {
+  if (code === 'INVALID_REQUEST') return 'INVALID_SHAPE';
+  return METADATA_CODES.some((v) => v === code) ? (code as MetadataCode) : 'INTERNAL_FAILURE';
+}
 export function createDiscoverySessionService(options: DiscoverySessionOptions) {
   const custody = options.custody,
     owned = options.assertOwnedSync.bind(options),
@@ -98,6 +135,554 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     observedAtUtc: null,
     restartRequired: false,
   });
+  type MetadataOwner = ReturnType<typeof createOwnedTransportMetadataOwner>;
+  type MetadataProof = NonNullable<ReturnType<typeof inspectOwnedMetadataTarget>>;
+  const metadataBudget = createDeviceQueueBudget();
+  const metadataAudit = options.metadataAudit?.bind(options);
+  const metadataRequests = new Set<string>();
+  let metadataOwner: MetadataOwner | null = null,
+    metadataProof: MetadataProof | null = null,
+    metadataOwnerProjection: RegistrySnapshot | null = null,
+    consumedProjection: RegistrySnapshot | null = null;
+  const consumed = new Set<string>();
+  let metadataState: MetadataSnapshot = Object.freeze({
+    revision: 0,
+    state: 'EMPTY',
+    deviceId: null,
+    registryRevision: null,
+    operationId: null,
+    field: null,
+    lastOutcome: 'NONE',
+    code: null,
+    source: 'ADB_DISCOVERY',
+    evidence: 'NATIVE_METADATA_QUERY',
+    observations: Object.freeze(
+      Object.fromEntries(METADATA_FIELDS.map((f) => [f, null])),
+    ) as MetadataSnapshot['observations'],
+  });
+  function metadataStale(closed = false) {
+    const observations = Object.freeze(
+      Object.fromEntries(
+        METADATA_FIELDS.map((f) => {
+          const old = metadataState.observations[f];
+          return [f, old ? Object.freeze({ ...old, stale: true }) : null];
+        }),
+      ),
+    ) as MetadataSnapshot['observations'];
+    metadataState = Object.freeze({
+      ...metadataState,
+      observations,
+      state:
+        closed || metadataState.state === 'CLOSED'
+          ? 'CLOSED'
+          : metadataState.state === 'OUTCOME_UNKNOWN'
+            ? 'OUTCOME_UNKNOWN'
+            : 'STALE',
+    });
+  }
+  function metadataInternal(g: number, expected: RegistrySnapshot, proof: MetadataProof) {
+    internal(g);
+    if (projection !== expected || state.state !== 'READY' || !proof.finalCurrent())
+      throw new MetadataFault('STALE_BINDING');
+  }
+  function metadataFence(
+    g: number,
+    current: () => void,
+    expected: RegistrySnapshot,
+    proof: MetadataProof,
+    deadline: number,
+  ) {
+    fence(g, current);
+    const now = clock();
+    if (!Number.isSafeInteger(now) || now < 0 || now >= deadline)
+      throw new MetadataFault('DEADLINE_EXCEEDED');
+    metadataInternal(g, expected, proof);
+  }
+  async function metadataLog(record: MetadataAudit): Promise<Health> {
+    try {
+      return (await metadataAudit?.(Object.freeze({ ...record }))) === 'AVAILABLE'
+        ? 'AVAILABLE'
+        : 'DEGRADED';
+    } catch {
+      return 'DEGRADED';
+    }
+  }
+  function metadataFailure(
+    request: MetadataRequest,
+    code: MetadataCode,
+    diagnostic: string | null = null,
+    unknown = false,
+  ) {
+    return metadataError(
+      request.requestId,
+      code,
+      diagnostic,
+      'DEGRADED',
+      unknown ? 'OUTCOME_UNKNOWN' : 'NOT_STARTED',
+    );
+  }
+  function metadataReply(
+    request: MetadataRequest,
+    outcome: 'OBSERVED' | 'PENDING',
+    diagnostic: string | null,
+    health: Health,
+  ) {
+    return (
+      metadataSuccess(request.requestId, outcome, metadataState, diagnostic, health) ??
+      metadataFailure(request, 'INTERNAL_FAILURE', diagnostic, true)
+    );
+  }
+  async function metadataGet(request: MetadataRequest, current: () => boolean): Promise<string> {
+    let diagnostic: string | null = null,
+      written = false;
+    try {
+      // GET never invokes owned(), clock(), owner.snapshot(), or an ordinary target admission.
+      if (current() !== true || revoked) throw new MetadataFault('SESSION_REVOKED');
+      diagnostic = allocate();
+      if (current() !== true || revoked) throw new MetadataFault('SESSION_REVOKED');
+      if (
+        metadataProof &&
+        ((!metadataProof.localBusy() && !metadataProof.finalCurrent()) ||
+          projection !== metadataOwnerProjection)
+      )
+        metadataStale();
+      const captured = metadataState;
+      written = true;
+      const health = await metadataLog({
+        operation: 'GET',
+        stage: 'READ',
+        phase: 'RESULT',
+        diagnosticId: diagnostic,
+        operationId: null,
+        field: null,
+        expectedRevision: null,
+        resultingRevision: captured.revision,
+        outcome: 'OBSERVED',
+        code: 'OK',
+      });
+      if (current() !== true || revoked) throw new MetadataFault('SESSION_REVOKED');
+      if (metadataState !== captured) throw new MetadataFault('STALE_REVISION');
+      if (metadataProof && !metadataProof.localBusy() && !metadataProof.finalCurrent())
+        metadataStale();
+      return metadataReply(request, 'OBSERVED', diagnostic, health);
+    } catch (e) {
+      const code = metadataCode(e);
+      if (diagnostic && !written) {
+        written = true;
+        await metadataLog({
+          operation: 'GET',
+          stage: 'READ',
+          phase: 'RESULT',
+          diagnosticId: diagnostic,
+          operationId: null,
+          field: null,
+          expectedRevision: null,
+          resultingRevision: metadataState.revision,
+          outcome: 'FAILED',
+          code,
+        });
+      }
+      return metadataFailure(request, code, diagnostic);
+    }
+  }
+  async function metadataRun(
+    request: Extract<MetadataRequest, { method: 'metadata.read' }>,
+    current: () => void,
+    g: number,
+    expected: RegistrySnapshot,
+    proof: MetadataProof,
+    ticket: OwnedMetadataTarget,
+    deadline: number,
+    operationId: string,
+    baseRevision: number,
+    finish: () => void,
+    settled: { candidate: MetadataSnapshot | null },
+  ) {
+    let diagnostic: string | null = null,
+      resultWritten = false;
+    let resultCandidate: MetadataSnapshot | null = null;
+    let outcome: 'OBSERVED' | 'NOT_DISPATCHED' | 'DISPATCHED_UNCONFIRMED' | 'OUTCOME_UNKNOWN' =
+      'NOT_DISPATCHED';
+    let code: MetadataCode | 'OK' = 'INTERNAL_FAILURE';
+    try {
+      diagnostic = allocate();
+      metadataFence(g, current, expected, proof, deadline);
+      const fields = {
+        operation: 'READ' as const,
+        stage: 'EXECUTION' as const,
+        diagnosticId: diagnostic,
+        operationId,
+        field: request.field,
+        expectedRevision: baseRevision,
+      };
+      if (
+        (await metadataLog({
+          ...fields,
+          phase: 'INTENT',
+          resultingRevision: null,
+          outcome: 'INTENT',
+          code: 'OK',
+        })) !== 'AVAILABLE'
+      )
+        throw new MetadataFault('AUDIT_UNAVAILABLE');
+      metadataFence(g, current, expected, proof, deadline);
+      if (metadataOwnerProjection !== expected || metadataProof !== proof) {
+        const old = metadataOwner;
+        if (old && (!(await old.close()) || !old.retired))
+          throw new MetadataFault('OUTCOME_UNKNOWN');
+        metadataFence(g, current, expected, proof, deadline);
+        consumed.add(request.deviceId); // Reserve before construction; construction may fail after claiming.
+        const made = createOwnedTransportMetadataOwner({ target: ticket, budget: metadataBudget });
+        metadataOwner = made;
+        metadataProof = proof;
+        metadataOwnerProjection = expected;
+        metadataFence(g, current, expected, proof, deadline);
+      }
+      const owner = metadataOwner;
+      if (!owner) throw new MetadataFault('INTERNAL_FAILURE');
+      metadataFence(g, current, expected, proof, deadline);
+      const result = await owner.read(request.field, deadline);
+      outcome = result.actor.outcome;
+      code = result.actor.code === 'OK' ? 'OK' : metadataActorCode(result.actor.code);
+      // Capture the actual logical result before owner snapshot/audit callbacks can reenter.
+      // Until normalized observation capture completes this is historical, never fresh.
+      settled.candidate = Object.freeze({
+        ...metadataState,
+        revision: baseRevision + 2,
+        state: 'STALE',
+        lastOutcome: outcome,
+        code,
+        observations: Object.freeze(
+          Object.fromEntries(
+            METADATA_FIELDS.map((f) => {
+              const old = metadataState.observations[f];
+              return [f, old ? Object.freeze({ ...old, stale: true }) : null];
+            }),
+          ),
+        ) as MetadataSnapshot['observations'],
+      });
+      if (outcome === 'OUTCOME_UNKNOWN') uncertain = true;
+      // Capture only at result settlement, never in GET. Native owner preserves unavailable/stale fields.
+      const snapshot = owner.snapshot();
+      const observations = Object.freeze(
+        Object.fromEntries(
+          METADATA_FIELDS.map((f) => [f, snapshot.observations[f]?.metadata ?? null]),
+        ),
+      ) as MetadataSnapshot['observations'];
+      const candidate: MetadataSnapshot = Object.freeze({
+        ...metadataState,
+        revision: baseRevision + 2,
+        state:
+          outcome === 'OBSERVED'
+            ? 'READY'
+            : outcome === 'OUTCOME_UNKNOWN'
+              ? 'OUTCOME_UNKNOWN'
+              : 'FAILED',
+        lastOutcome: outcome,
+        code,
+        observations,
+      });
+      resultCandidate = candidate;
+      settled.candidate = candidate;
+      if (outcome === 'OUTCOME_UNKNOWN') {
+        if (generation === g && !cleanup) {
+          metadataState = candidate;
+          metadataStale();
+        }
+        void startCleanup();
+      }
+      resultWritten = true;
+      await metadataLog({
+        ...fields,
+        phase: 'RESULT',
+        resultingRevision: candidate.revision,
+        outcome,
+        code,
+      });
+      metadataFence(g, current, expected, proof, deadline);
+      if (metadataState.operationId !== operationId) return;
+      metadataState = candidate;
+    } catch (e) {
+      const failure = metadataCode(e);
+      if (failure === 'OUTCOME_UNKNOWN') outcome = 'OUTCOME_UNKNOWN';
+      // Do not rewrite a known actor outcome merely because publication was lost.
+      if (code === 'INTERNAL_FAILURE') code = failure;
+      if (diagnostic && !resultWritten) {
+        resultWritten = true;
+        await metadataLog({
+          operation: 'READ',
+          stage: 'EXECUTION',
+          phase: 'RESULT',
+          diagnosticId: diagnostic,
+          operationId,
+          field: request.field,
+          expectedRevision: baseRevision,
+          resultingRevision: baseRevision + 2,
+          outcome,
+          code,
+        });
+      }
+      if (generation === g && !revoked && !cleanup && metadataState.operationId === operationId) {
+        metadataState =
+          resultCandidate ??
+          Object.freeze({
+            ...metadataState,
+            revision: baseRevision + 2,
+            state: outcome === 'OUTCOME_UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'FAILED',
+            lastOutcome: outcome,
+            code,
+          });
+        if (
+          resultCandidate ||
+          failure === 'STALE_BINDING' ||
+          failure === 'SESSION_REVOKED' ||
+          failure === 'OWNER_REVOKED'
+        )
+          metadataStale();
+      }
+      if (outcome === 'OUTCOME_UNKNOWN') {
+        uncertain = true;
+        void startCleanup();
+      }
+    } finally {
+      if (cleanup && metadataOwner) {
+        try {
+          if (!(await metadataOwner.close())) uncertain = true;
+        } catch {
+          uncertain = true;
+        }
+      }
+      busy = false;
+      finish();
+    }
+  }
+  function metadataRead(
+    request: Extract<MetadataRequest, { method: 'metadata.read' }>,
+    current: () => void,
+  ): Promise<string> {
+    busy = true; // Before any authority, clock, allocator or logger callback.
+    const g = generation;
+    const settled: { candidate: MetadataSnapshot | null } = { candidate: null };
+    let deadline = 0,
+      timer: ReturnType<typeof setTimeout> | undefined,
+      finished = false,
+      pendingBase: number | null = null;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+    let timeout!: (value: string) => void;
+    const timed = new Promise<string>((resolve) => {
+      timeout = resolve;
+    });
+    const admission = (async () => {
+      let diagnostic: string | null = null,
+        operationId: string | null = null,
+        written = false,
+        launched = false;
+      try {
+        fence(g, current);
+        const now = clock();
+        if (!Number.isSafeInteger(now) || now < 0 || now > 8640000000000000 - 30000)
+          throw new MetadataFault('INTERNAL_FAILURE');
+        deadline = now + 30000;
+        timer = setTimeout(() => {
+          if (finished) return;
+          if (!settled.candidate || settled.candidate.lastOutcome === 'OUTCOME_UNKNOWN')
+            uncertain = true;
+          if (
+            generation === g &&
+            settled.candidate &&
+            metadataState.operationId === settled.candidate.operationId
+          )
+            metadataState = settled.candidate;
+          else if (
+            pendingBase !== null &&
+            generation === g &&
+            metadataState.lastOutcome === 'PENDING'
+          )
+            metadataState = Object.freeze({
+              ...metadataState,
+              revision: pendingBase + 2,
+              state: 'OUTCOME_UNKNOWN',
+              lastOutcome: 'OUTCOME_UNKNOWN',
+              code: 'OUTCOME_UNKNOWN',
+            });
+          metadataStale();
+          void startCleanup();
+          timeout(metadataFailure(request, 'OUTCOME_UNKNOWN', diagnostic, true));
+        }, 30000);
+        if (metadataRequests.size >= 128) throw new MetadataFault('LIMIT_EXCEEDED');
+        if (metadataRequests.has(request.requestId)) throw new MetadataFault('INVALID_SHAPE');
+        metadataRequests.add(request.requestId);
+        diagnostic = allocate();
+        fence(g, current);
+        if (request.expectedRevision !== metadataState.revision)
+          throw new MetadataFault('STALE_REVISION');
+        if (metadataState.revision > Number.MAX_SAFE_INTEGER - 2)
+          throw new MetadataFault('REVISION_EXHAUSTED');
+        const expected = projection;
+        if (!expected || !ingestion || !currentProjection(expected))
+          throw new MetadataFault('NOT_READY');
+        if (request.expectedRegistryRevision !== expected.revision)
+          throw new MetadataFault('STALE_REVISION');
+        const device = expected.devices.find((d) => d.deviceId === request.deviceId);
+        if (device?.state !== 'DEVICE' || device.verification !== 'VERIFIED')
+          throw new MetadataFault('POLICY_DENIED');
+        if (consumedProjection !== expected) {
+          consumedProjection = expected;
+          consumed.clear();
+        }
+        const same =
+          metadataOwnerProjection === expected &&
+          metadataProof?.target.deviceId === request.deviceId;
+        if (!same && consumed.has(request.deviceId)) throw new MetadataFault('REFRESH_REQUIRED');
+        const ticket = ingestion.metadataTarget(request.deviceId);
+        const proof = inspectOwnedMetadataTarget(ticket);
+        if (!ticket || !proof) throw new MetadataFault('REFRESH_REQUIRED');
+        metadataFence(g, current, expected, proof, deadline);
+        operationId = allocate();
+        metadataFence(g, current, expected, proof, deadline);
+        const baseRevision = metadataState.revision;
+        const fields = {
+          operation: 'READ' as const,
+          stage: 'REQUEST' as const,
+          diagnosticId: diagnostic,
+          operationId,
+          field: request.field,
+          expectedRevision: baseRevision,
+        };
+        if (
+          (await metadataLog({
+            ...fields,
+            phase: 'INTENT',
+            resultingRevision: null,
+            outcome: 'INTENT',
+            code: 'OK',
+          })) !== 'AVAILABLE'
+        )
+          throw new MetadataFault('AUDIT_UNAVAILABLE');
+        metadataFence(g, current, expected, proof, deadline);
+        pendingBase = baseRevision;
+        metadataState = Object.freeze({
+          ...metadataState,
+          revision: baseRevision + 1,
+          state: 'PENDING',
+          deviceId: request.deviceId,
+          registryRevision: expected.revision,
+          operationId,
+          field: request.field,
+          lastOutcome: 'PENDING',
+          code: null,
+          observations: same
+            ? metadataState.observations
+            : (Object.freeze(
+                Object.fromEntries(METADATA_FIELDS.map((f) => [f, null])),
+              ) as MetadataSnapshot['observations']),
+        });
+        written = true;
+        const health = await metadataLog({
+          ...fields,
+          phase: 'RESULT',
+          resultingRevision: baseRevision + 1,
+          outcome: 'PENDING',
+          code: 'OK',
+        });
+        metadataFence(g, current, expected, proof, deadline);
+        // Freeze the admitted acknowledgement before a synchronous continuation can settle it.
+        const pendingWire = metadataSuccess(
+          request.requestId,
+          'PENDING',
+          metadataState,
+          diagnostic,
+          health,
+        );
+        if (pendingWire === null) throw new MetadataFault('INTERNAL_FAILURE');
+        launched = true;
+        track(
+          metadataRun(
+            request,
+            current,
+            g,
+            expected,
+            proof,
+            ticket,
+            deadline,
+            operationId,
+            baseRevision,
+            finish,
+            settled,
+          ),
+        );
+        return pendingWire;
+      } catch (e) {
+        const code = metadataCode(e);
+        if (diagnostic && !written) {
+          written = true;
+          await metadataLog({
+            operation: 'READ',
+            stage: 'REQUEST',
+            phase: 'RESULT',
+            diagnosticId: diagnostic,
+            operationId,
+            field: request.field,
+            expectedRevision: request.expectedRevision,
+            resultingRevision: metadataState.revision,
+            outcome: 'FAILED',
+            code,
+          });
+        }
+        if (written && pendingBase !== null && operationId && !launched) {
+          // Accepted request, but no owner.read handoff: settle the reserved terminal revision.
+          const terminal: MetadataSnapshot = Object.freeze({
+            ...metadataState,
+            revision: pendingBase + 2,
+            state: 'FAILED',
+            lastOutcome: 'NOT_DISPATCHED',
+            code,
+          });
+          let terminalDiagnostic: string | null = null;
+          try {
+            terminalDiagnostic = allocate();
+          } catch {
+            /* Cleanup/publication never waits on ID capacity. */
+          }
+          if (terminalDiagnostic)
+            await metadataLog({
+              operation: 'READ',
+              stage: 'EXECUTION',
+              phase: 'RESULT',
+              diagnosticId: terminalDiagnostic,
+              operationId,
+              field: request.field,
+              expectedRevision: pendingBase,
+              resultingRevision: pendingBase + 2,
+              outcome: 'NOT_DISPATCHED',
+              code,
+            });
+          if (
+            generation === g &&
+            !cleanup &&
+            !revoked &&
+            metadataState.operationId === operationId
+          ) {
+            metadataState = terminal;
+            if (['STALE_BINDING', 'OWNER_REVOKED', 'SESSION_REVOKED'].includes(code))
+              metadataStale();
+          }
+        }
+        return metadataFailure(request, code, diagnostic, code === 'OUTCOME_UNKNOWN');
+      } finally {
+        if (!launched) {
+          busy = false;
+          finish();
+        }
+      }
+    })();
+    track(admission);
+    return Promise.race([admission, timed]);
+  }
   function track<T>(p: Promise<T>): Promise<T> {
     work.add(p);
     void p.then(
@@ -191,6 +776,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     );
   }
   function invalidate() {
+    metadataStale();
     projection = null;
     if (attempted) put({ observedAtUtc: null, restartRequired: true });
   }
@@ -249,7 +835,8 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     if (cleanup) return cleanup;
     generation++;
     invalidate();
-    cleanupResource = attempted || server !== null;
+    metadataStale(true);
+    cleanupResource = attempted || server !== null || metadataOwner !== null;
     cleanupSettled = false;
     let complete!: (status: 'RETIRED' | 'UNRETIRED') => void;
     const retained = new Promise<'RETIRED' | 'UNRETIRED'>((resolve) => {
@@ -257,6 +844,12 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     });
     cleanup = retained;
     // Latch before calling either external cleanup implementation.
+    let metadataClose: Promise<boolean> | undefined;
+    try {
+      metadataClose = metadataOwner?.close();
+    } catch {
+      uncertain = true;
+    }
     let serverClose: ReturnType<Server['close']> | undefined,
       ingestionClose: ReturnType<Ingestion['close']> | undefined,
       preemption = true;
@@ -282,7 +875,10 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
             const r = await ingestionClose;
             ok = ok && r.status === 'RETIRED' && ingestion?.retired === true;
           }
+          if (metadataClose) ok = (await metadataClose) && metadataOwner?.retired === true && ok;
           while (work.size) await Promise.allSettled([...work]);
+          if (metadataOwner && !metadataOwner.retired)
+            ok = (await metadataOwner.close()) && metadataOwner.retired && ok;
           // A synchronous constructor entered before Stop may return after its reentrant callback.
           if (server && !server.retired) {
             const r = await server.close();
@@ -901,6 +1497,20 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       busy = true;
       return track(ordinary(request, admittedCurrent, generation));
     },
+    executeMetadata(input: unknown, operationCurrent: () => boolean): Promise<string> {
+      const request = snapshotMetadataRequest(input);
+      if (!request || typeof operationCurrent !== 'function')
+        return Promise.resolve(metadataError(null, 'INVALID_SHAPE', null, 'DEGRADED'));
+      if (request.method === 'metadata.get') return track(metadataGet(request, operationCurrent));
+      if (revoked || cleanup) return Promise.resolve(metadataFailure(request, 'CLOSED'));
+      if (uncertain)
+        return Promise.resolve(metadataFailure(request, 'OUTCOME_UNKNOWN', null, true));
+      if (busy) return Promise.resolve(metadataFailure(request, 'BUSY'));
+      const current = () => {
+        if (operationCurrent() !== true) throw new MetadataFault('SESSION_REVOKED');
+      };
+      return metadataRead(request, current);
+    },
     revoke(): void {
       revoked = true;
       void stopInternal();
@@ -931,6 +1541,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
         work.size === 0 &&
         !uncertain &&
         (!server || server.retired) &&
+        (!metadataOwner || metadataOwner.retired) &&
         (!ingestion || ingestion.retired)
       );
     },

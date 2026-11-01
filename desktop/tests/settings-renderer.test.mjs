@@ -1,3 +1,4 @@
+import * as metadataContract from '../src/metadata-contract.ts';
 import * as discoveryContract from '../src/discovery-contract.ts';
 import * as runtimeVersionContract from '../src/runtime-version-contract.ts';
 import test from 'node:test';
@@ -22,7 +23,14 @@ const settings = (extra = {}) => ({
   persistence: 'PERSISTED',
   ...extra,
 });
-function mount(api, width = 1600, fleetApi = null, setupApi = null, discoveryApi = null) {
+function mount(
+  api,
+  width = 1600,
+  fleetApi = null,
+  setupApi = null,
+  discoveryApi = null,
+  metadataApi = null,
+) {
   let component,
     cursor = 0;
   const slots = [];
@@ -33,6 +41,13 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null, discoveryApi
     innerWidth: width,
     preferences: api,
     discovery: discoveryApi,
+    metadata: metadataApi ?? {
+      get: async () =>
+        metadataContract.metadataError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
+      read: async () => {
+        throw Error('UNEXPECTED_READ');
+      },
+    },
     platformTools: setupApi ?? {
       read: async () => setupContract.setupError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
       requestSetup: async () =>
@@ -104,6 +119,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null, discoveryApi
             },
           }),
         };
+      if (name === './metadata-contract.js') return metadataContract;
       if (name === './discovery-contract.js') return discoveryContract;
       if (name === './settings-contract.js') return contract;
       if (name === './fleet-contract.js') return fleetContract;
@@ -870,6 +886,457 @@ test('explicit cross-panel session revocation clears discovery and cached fleet 
     assert.equal(m.render().props.selection.selectedDeviceIds.length, 0);
     assert.equal(m.find('discovery-start').props.disabled, true);
     assert.equal(m.find('discovery-stop').props.disabled, false);
+    m.dispose();
+  }
+});
+
+const metadataEmpty = () => ({
+  revision: 0,
+  state: 'EMPTY',
+  deviceId: null,
+  registryRevision: null,
+  operationId: null,
+  field: null,
+  lastOutcome: 'NONE',
+  code: null,
+  observations: Object.fromEntries(metadataContract.METADATA_FIELDS.map((field) => [field, null])),
+  source: 'ADB_DISCOVERY',
+  evidence: 'NATIVE_METADATA_QUERY',
+});
+const metadataAnswer = (snapshot, outcome = 'OBSERVED') =>
+  metadataContract.metadataSuccess('p1', outcome, snapshot, null, 'DEGRADED');
+const metadataOp = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const metadataPendingState = (deviceId = fleetId) => ({
+  ...metadataEmpty(),
+  revision: 1,
+  state: 'PENDING',
+  deviceId,
+  registryRevision: 1,
+  operationId: metadataOp,
+  field: 'MODEL',
+  lastOutcome: 'PENDING',
+});
+const metadataReadyState = (deviceId = fleetId) => ({
+  ...metadataPendingState(deviceId),
+  revision: 2,
+  state: 'READY',
+  lastOutcome: 'OBSERVED',
+  code: 'OK',
+  observations: {
+    ...metadataEmpty().observations,
+    MODEL: {
+      field: 'MODEL',
+      observedUtc: 1000,
+      source: 'ADB_TEXT',
+      stale: false,
+      available: true,
+      value: 'Synthetic Model A',
+      units: 'TEXT',
+    },
+  },
+});
+function metadataMount(api, verification = 'VERIFIED', setupApi = null) {
+  const f = fleetState();
+  f.devices[0] = { ...f.devices[0], state: 'DEVICE', verification };
+  f.devices.push({
+    ...f.devices[0],
+    deviceId: '00000002-1234-4234-8234-123456789abc',
+    label: 'Device 0002',
+  });
+  return mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    {
+      read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE'),
+      replaceSelection: async () => {
+        throw Error('NO_SELECTION');
+      },
+    },
+    setupApi,
+    {
+      get: async () =>
+        discoveryAnswer(
+          discoverySnapshot({
+            revision: 2,
+            state: 'READY',
+            operationId: metadataOp,
+            operation: 'REFRESH',
+            lastOutcome: 'COMMITTED',
+            code: null,
+            observedAtUtc: 1000,
+            registryRevision: 1,
+          }),
+        ),
+      refresh: async () =>
+        discoveryContract.discoveryError('p1', 'SESSION_REVOKED', null, 'DEGRADED'),
+      stop: async () => discoveryContract.discoveryError('p1', 'SESSION_REVOKED', null, 'DEGRADED'),
+    },
+    api,
+  );
+}
+async function metadataSelect(m, id = fleetId) {
+  m.find(`metadata-candidate-${id}`).props.onClick();
+  m.find('metadata-get').props.onClick();
+  await flush();
+}
+test('metadata hydrates cache once; candidate selection is context only and PROVISIONAL remains unavailable', async () => {
+  let gets = 0,
+    reads = 0;
+  const m = metadataMount(
+    {
+      get: async () => {
+        gets++;
+        return metadataAnswer(metadataEmpty());
+      },
+      read: async () => {
+        reads++;
+        throw Error();
+      },
+    },
+    'PROVISIONAL',
+  );
+  m.effects();
+  await flush();
+  m.effects();
+  await flush();
+  assert.equal(gets, 1);
+  assert.equal(reads, 0);
+  m.find(`metadata-candidate-${fleetId}`).props.onClick();
+  await flush();
+  assert.equal(gets, 1);
+  assert.equal(reads, 0);
+  m.find('discovery-read').props.onClick();
+  await flush();
+  m.find('metadata-get').props.onClick();
+  await flush();
+  assert.equal(m.find('metadata-read').props.disabled, true);
+  m.find('metadata-read').props.onClick();
+  await flush();
+  assert.equal(reads, 0);
+  m.dispose();
+});
+test('metadata explicit one-field Read is PENDING until explicit cache reconciliation; never polls or retries', async () => {
+  const calls = [];
+  let completed = false;
+  const m = metadataMount({
+    get: async () => {
+      calls.push('get');
+      return metadataAnswer(completed ? metadataReadyState() : metadataEmpty());
+    },
+    read: async (...args) => {
+      calls.push(args);
+      completed = true;
+      return metadataAnswer(metadataPendingState(), 'PENDING');
+    },
+  });
+  m.effects();
+  await flush();
+  m.find('discovery-read').props.onClick();
+  await flush();
+  await metadataSelect(m);
+  assert.equal(m.find('metadata-read').props.disabled, false);
+  m.find('metadata-read').props.onClick();
+  m.find('metadata-read').props.onClick();
+  await flush();
+  assert.match(m.find('metadata-status').props.children, /PENDING/);
+  assert.equal(m.find('metadata-read').props.disabled, true);
+  m.effects();
+  await flush();
+  assert.equal(calls.filter(Array.isArray).length, 1);
+  assert.deepEqual(calls.find(Array.isArray), [fleetId, 'MODEL', 0, 1]);
+  m.find('metadata-get').props.onClick();
+  await flush();
+  assert.match(JSON.stringify(m.find('metadata-observations')), /Synthetic Model A/);
+  assert.equal(m.find('metadata-read').props.disabled, false);
+  m.dispose();
+});
+test('metadata response for A cannot display under B; Stop suppresses an old cache read', async () => {
+  let release,
+    held = false;
+  const m = metadataMount({
+    get: async () =>
+      held
+        ? new Promise((r) => {
+            release = r;
+          })
+        : metadataAnswer(metadataEmpty()),
+    read: async () => metadataAnswer(metadataPendingState(), 'PENDING'),
+  });
+  m.effects();
+  await flush();
+  m.find('discovery-read').props.onClick();
+  await flush();
+  await metadataSelect(m);
+  held = true;
+  m.find('metadata-get').props.onClick();
+  await flush();
+  m.find('metadata-candidate-00000002-1234-4234-8234-123456789abc').props.onClick();
+  release(metadataAnswer(metadataReadyState()));
+  await flush();
+  assert.doesNotMatch(JSON.stringify(m.find('metadata-observations')), /Synthetic Model A/);
+  assert.equal(m.find('metadata-read').props.disabled, true);
+  m.find('metadata-get').props.onClick();
+  await flush();
+  m.find('discovery-stop').props.onClick();
+  await flush();
+  release(metadataAnswer(metadataReadyState()));
+  await flush();
+  assert.doesNotMatch(JSON.stringify(m.find('metadata-observations')), /Synthetic Model A/);
+  assert.equal(m.find('metadata-read').props.disabled, true);
+  m.dispose();
+});
+test('metadata timeout requires explicit status and never auto retries effect', async () => {
+  let reads = 0;
+  const m = metadataMount({
+    get: async () => metadataAnswer(metadataEmpty()),
+    read: async () => {
+      reads++;
+      return metadataContract.metadataError('p1', 'TIMEOUT', null, 'DEGRADED', 'OUTCOME_UNKNOWN');
+    },
+  });
+  m.effects();
+  await flush();
+  m.find('discovery-read').props.onClick();
+  await flush();
+  await metadataSelect(m);
+  m.find('metadata-read').props.onClick();
+  await flush();
+  m.effects();
+  await flush();
+  assert.equal(reads, 1);
+  assert.match(m.find('metadata-status').props.children, /OUTCOME_UNKNOWN.*TIMEOUT/);
+  assert.equal(m.find('metadata-read').props.disabled, true);
+  m.dispose();
+});
+test('metadata held cache reply cannot restore values after explicit discovery Refresh or setup', async () => {
+  for (const action of ['discovery-refresh', 'platform-tools-setup']) {
+    let held = false,
+      release;
+    const setupApi = {
+      read: async () =>
+        setupContract.setupSuccess(
+          'p1',
+          'OBSERVED',
+          {
+            revision: 0,
+            installationRevision: 0,
+            state: 'UNAVAILABLE',
+            operationId: null,
+            code: null,
+            installTargetVersion: '37.0.1',
+            activeVersion: null,
+            rollbackAvailable: false,
+          },
+          null,
+          'DEGRADED',
+        ),
+      requestSetup: async () =>
+        setupContract.setupError('p2', 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
+    };
+    const m = metadataMount(
+      {
+        get: async () =>
+          held
+            ? new Promise((r) => {
+                release = r;
+              })
+            : metadataAnswer(metadataEmpty()),
+        read: async () => {
+          throw Error('NO_QUERY');
+        },
+      },
+      'VERIFIED',
+      setupApi,
+    );
+    m.effects();
+    await flush();
+    m.find('discovery-read').props.onClick();
+    await flush();
+    m.find('fleet-read').props.onClick();
+    await flush();
+    await metadataSelect(m);
+    held = true;
+    m.find('metadata-get').props.onClick();
+    await flush();
+    assert.equal(m.find(action).props.disabled, false);
+    m.find(action).props.onClick();
+    await flush();
+    release(metadataAnswer(metadataReadyState()));
+    await flush();
+    assert.doesNotMatch(JSON.stringify(m.find('metadata-observations')), /Synthetic Model A/);
+    assert.equal(m.find('metadata-read').props.disabled, true);
+    m.dispose();
+  }
+});
+test('Fleet unavailable result invalidates cached metadata generation before a held reply can publish', async () => {
+  let failed = false,
+    held = false,
+    release;
+  const f = fleetState();
+  f.devices[0] = { ...f.devices[0], state: 'DEVICE' };
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    {
+      read: async () =>
+        failed
+          ? fleetContract.fleetError('FLEET_UNAVAILABLE', null, 'DEGRADED')
+          : fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE'),
+      replaceSelection: async () => {
+        throw Error();
+      },
+    },
+    null,
+    null,
+    {
+      get: async () =>
+        held
+          ? new Promise((r) => {
+              release = r;
+            })
+          : metadataAnswer(metadataEmpty()),
+      read: async () => {
+        throw Error('NO_QUERY');
+      },
+    },
+  );
+  m.effects();
+  await flush();
+  await metadataSelect(m);
+  held = true;
+  m.find('metadata-get').props.onClick();
+  await flush();
+  failed = true;
+  m.find('fleet-read').props.onClick();
+  await flush();
+  release(metadataAnswer(metadataReadyState()));
+  await flush();
+  assert.doesNotMatch(JSON.stringify(m.find('metadata-observations')), /Synthetic Model A/);
+  assert.equal(m.find('metadata-read').props.disabled, true);
+  m.dispose();
+});
+test('explicit Refresh and current Fleet plus STALE cache CAS allow a new explicit Read without freshening history', async () => {
+  let refreshed = false,
+    reads = 0;
+  const stale = {
+    ...metadataReadyState(),
+    state: 'STALE',
+    observations: {
+      ...metadataReadyState().observations,
+      MODEL: { ...metadataReadyState().observations.MODEL, stale: true },
+    },
+  };
+  const currentFleet = () => {
+    const f = fleetState();
+    f.registryRevision = refreshed ? 2 : 1;
+    f.devices[0] = { ...f.devices[0], state: 'DEVICE' };
+    return f;
+  };
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    {
+      read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', currentFleet(), 'AVAILABLE'),
+      replaceSelection: async () => {
+        throw Error('NO_SELECTION');
+      },
+    },
+    null,
+    {
+      get: async () =>
+        discoveryAnswer(
+          discoverySnapshot({
+            revision: refreshed ? 4 : 2,
+            state: 'READY',
+            operationId: metadataOp,
+            operation: 'REFRESH',
+            lastOutcome: 'COMMITTED',
+            code: null,
+            observedAtUtc: 1000,
+            registryRevision: refreshed ? 2 : 1,
+          }),
+        ),
+      refresh: async () => {
+        refreshed = true;
+        return discoveryAnswer(
+          discoverySnapshot({
+            revision: 3,
+            state: 'REFRESHING',
+            operationId: metadataOp,
+            operation: 'REFRESH',
+            lastOutcome: 'PENDING',
+            registryRevision: 1,
+          }),
+          'PENDING',
+        );
+      },
+    },
+    {
+      get: async () => metadataAnswer(refreshed ? stale : metadataReadyState()),
+      read: async (...args) => {
+        reads++;
+        assert.deepEqual(args, [fleetId, 'MODEL', 2, 2]);
+        return metadataAnswer(
+          { ...metadataPendingState(), revision: 3, registryRevision: 2 },
+          'PENDING',
+        );
+      },
+    },
+  );
+  m.effects();
+  await flush();
+  m.find('discovery-read').props.onClick();
+  await flush();
+  await metadataSelect(m);
+  m.find('discovery-refresh').props.onClick();
+  await flush();
+  assert.equal(reads, 0);
+  m.find('discovery-read').props.onClick();
+  await flush();
+  m.find('fleet-read').props.onClick();
+  await flush();
+  m.find('metadata-get').props.onClick();
+  await flush();
+  assert.equal(m.find('metadata-read').props.disabled, false);
+  assert.match(JSON.stringify(m.find('metadata-observations')), /STALE.*Synthetic Model A/);
+  m.effects();
+  await flush();
+  assert.equal(reads, 0);
+  m.find('metadata-read').props.onClick();
+  await flush();
+  assert.equal(reads, 1);
+  assert.match(m.find('metadata-status').props.children, /PENDING/);
+  m.dispose();
+});
+test('fresh metadata status never rearms CLOSED or uncertain history even when represented as STALE', async () => {
+  for (const state of ['OUTCOME_UNKNOWN', 'STALE', 'CLOSED']) {
+    const uncertain = {
+      ...metadataReadyState(),
+      state,
+      lastOutcome: 'OUTCOME_UNKNOWN',
+      code: 'OUTCOME_UNKNOWN',
+      observations: {
+        ...metadataReadyState().observations,
+        MODEL: { ...metadataReadyState().observations.MODEL, stale: true },
+      },
+    };
+    let reads = 0;
+    const m = metadataMount({
+      get: async () => metadataAnswer(uncertain),
+      read: async () => {
+        reads++;
+        throw Error('NO_EFFECT');
+      },
+    });
+    m.effects();
+    await flush();
+    m.find('discovery-read').props.onClick();
+    await flush();
+    await metadataSelect(m);
+    assert.equal(m.find('metadata-read').props.disabled, true, state);
+    m.find('metadata-read').props.onClick();
+    await flush();
+    assert.equal(reads, 0);
     m.dispose();
   }
 });

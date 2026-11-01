@@ -34,7 +34,7 @@ function composition() {
     },
     randomUUID: () => '11111111-1111-4111-8111-111111111111',
     context: () => ({ ok: true, launchRoot: '/synthetic/launch' }),
-    logger: { discoveryAudit: async () => 'AVAILABLE' },
+    logger: { discoveryAudit: async () => 'AVAILABLE', metadataAudit: async () => 'DEGRADED' },
     createDiscoverySessionService(options) {
       captured.facade = options;
       return {};
@@ -201,4 +201,13 @@ test('actual renderer-loss failure uses coordinated quit before cleanup owner in
   assert.deepEqual(calls, ['quit']);
   assert.equal(context.cleanupComplete, false);
   assert.match(source, /bridge\.attach\(window, \(\) => discoverySessionService\?\.revoke\(\)\)/);
+});
+
+test('main metadata audit forwards actual logger result and absent logger degrades without native builders', async () => {
+  const f = composition();
+  assert.equal(await f.captured.facade.metadataAudit({}), 'DEGRADED');
+  assert.deepEqual(f.calls, []);
+  f.context.logger = undefined;
+  assert.equal(await f.captured.facade.metadataAudit({}), 'DEGRADED');
+  assert.deepEqual(f.calls, []);
 });

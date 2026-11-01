@@ -1,3 +1,5 @@
+import * as metadataClient from '../src/metadata-client.ts';
+import * as metadataContract from '../src/metadata-contract.ts';
 import * as discoveryClient from '../src/discovery-client.ts';
 import * as discoveryContract from '../src/discovery-contract.ts';
 import test from 'node:test';
@@ -158,6 +160,7 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
     events = [],
     invocations = [];
   const modules = {
+    './metadata-client.js': metadataClient,
     './discovery-client.js': discoveryClient,
     './preload-client.js': clients,
     './settings-client.js': preferences,
@@ -236,6 +239,13 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
   const hostWindow = {
     innerWidth: width,
     preferences: api,
+    metadata: {
+      get: async () =>
+        metadataContract.metadataError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
+      read: async () => {
+        throw Error('UNEXPECTED_METADATA_EFFECT');
+      },
+    },
     platformTools: setupApi ?? {
       read: async () => setupContract.setupError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
       requestSetup: async () =>
@@ -307,6 +317,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
             },
           }),
         };
+      if (name === './metadata-contract.js') return metadataContract;
       if (name === './runtime-version-contract.js') return versionContract;
       if (name === './discovery-contract.js') return discoveryContract;
       if (name === './settings-contract.js') return contract;

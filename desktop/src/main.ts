@@ -515,6 +515,7 @@ try {
           clock: () => Date.now(),
           newId: () => randomUUID(),
           audit: (fields) => logger?.discoveryAudit(fields) ?? Promise.resolve('DEGRADED'),
+          metadataAudit: (fields) => logger?.metadataAudit(fields) ?? Promise.resolve('DEGRADED'),
           policy: () => {
             ordinaryOwned();
             const result = context();
