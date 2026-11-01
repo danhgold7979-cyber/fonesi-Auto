@@ -14,7 +14,11 @@ const BOOTSTRAP = Object.freeze([
   'provisioned',
   'authenticated',
   'mainReady',
-  'schema3',
+  'schema4',
+  'migration3BackupAuthenticated',
+  'migration4ReceiptBound',
+  'durableStartupCommitted',
+  'captureStoreEmpty',
   'leaseReleased',
   'journalSettled',
 ]);
@@ -27,6 +31,7 @@ const SOURCES = Object.freeze([
   'verification/settings-contract.cjs',
   'verification/fleet-ui-control.cjs',
   'verification/fleet-ui-main-probe.cjs',
+  'verification/fleet-ui-schema4.cjs',
   'verification/fleet-ui-contract.cjs',
   'verification/persistence-launch-init-probe.cjs',
   'verification/persistence-launch-e2e-control.cjs',
@@ -371,17 +376,31 @@ async function inspect(root) {
     })
   )
     fail('FLEET_UI_AUTH');
+  const observed = json(path.join(root, 'schema4-observed.json'));
+  if (
+    JSON.stringify(observed) !==
+    JSON.stringify({
+      version: 2,
+      migration3BackupAuthenticated: true,
+      migration4ReceiptBound: true,
+      durableStartupCommitted: true,
+      captureStoreEmpty: true,
+    })
+  )
+    fail('FLEET_UI_SCHEMA');
+  const { inspectSchema4 } = require('./fleet-ui-schema4.cjs');
+  inspectSchema4(data, header.storeId);
   const { FoundationDatabase } = require('../build/foundation-database.cjs');
   const db = new FoundationDatabase(path.join(data, 'active.sqlite'), header.storeId, true);
   try {
     db.validate();
-    if (db.version !== 3) fail('FLEET_UI_SCHEMA');
+    if (db.version !== 4) fail('FLEET_UI_SCHEMA');
     db.readSettings();
   } finally {
     db.close();
   }
   write(path.join(root, 'bootstrap.json'), {
-    version: 1,
+    version: 2,
     cases: Object.fromEntries(BOOTSTRAP.map((k) => [k, true])),
   });
   return s;
@@ -505,6 +524,7 @@ async function cleanup(root) {
     'copy.json',
     'launcher-capture.json',
     'bootstrap.json',
+    'schema4-observed.json',
     'fleet-ui-result.json',
     'public.json',
     'fleet-light.png',

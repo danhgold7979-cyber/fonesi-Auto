@@ -6,7 +6,7 @@ Import-Module (Join-Path $PSScriptRoot 'OwnedFiles.psm1') -Force
 $desktop=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $base=Join-Path $desktop '.fleet-ui-runtime'
 $owner=$null;$allClean=$true;$baseVerified=$false;$phase='PREPARE'
-$report=[ordered]@{version=1;scope='HOSTED_FLEET_UI_SOURCE_ONLY';excludedVaultContext='P106_UNMET_NOT_RERUN';bootstrap=$null;ui=$null;process=$null;directoryCleanup=$false;failure=$null}
+$report=[ordered]@{version=2;scope='HOSTED_FLEET_UI_SOURCE_ONLY';excludedVaultContext='P106_UNMET_NOT_RERUN';bootstrap=$null;ui=$null;process=$null;directoryCleanup=$false;failure=$null}
 function Retired($p){return ($p.CleanupComplete -and -not $p.StdoutTruncated -and -not $p.StderrTruncated -and $p.Status -cin @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT'))}
 function Evidence($p){return [ordered]@{status=$p.Status;exitCode=$p.ExitCode;cleanupComplete=$p.CleanupComplete;stdoutTruncated=$p.StdoutTruncated;stderrTruncated=$p.StderrTruncated}}
 function Write-Private([string]$file,$value){Assert-PlainDirectory ([IO.Path]::GetDirectoryName($file));$bytes=[Text.Encoding]::UTF8.GetBytes(($value|ConvertTo-Json -Depth 16 -Compress));if($bytes.Length -gt 65536){throw 'PRIVATE_LIMIT'};$s=[IO.File]::Open($file,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$s.Write($bytes,0,$bytes.Length);$s.Flush($true)}finally{$s.Dispose()}}
@@ -58,7 +58,7 @@ try{
  if($allClean -and ($native.Status -cne 'SUCCESS' -or $native.ExitCode -ne 0)){
   $allClean=$false;$diagnostic=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'fleet-ui-control.cjs'),'diagnose',$root)) 30000 @{};$allClean=Retired $diagnostic
   if($allClean -and $diagnostic.Status -ceq 'SUCCESS' -and $diagnostic.ExitCode -eq 0){
-   $matches=@($diagnostic.Stderr -split '\r?\n'|Where-Object {$_ -cmatch '\AFLEET_UI_PHASE_(PREPARE|HYDRATE|READ|SELECT|RECONCILE|LIGHT|DARK|SENDER|SUBFRAME|REVOKE|CLOSE)\z'})
+   $matches=@($diagnostic.Stderr -split '\r?\n'|Where-Object {$_ -cmatch '\AFLEET_UI_PHASE_(PREPARE|MIGRATION|HYDRATE|READ|SELECT|RECONCILE|LIGHT|DARK|SENDER|SUBFRAME|REVOKE|CLOSE)\z'})
    if($matches.Count -eq 1 -and @($diagnostic.Stderr -split '\r?\n'|Where-Object {$_ -ceq 'FLEET_UI_FAILED'}).Count -eq 1){Write-Output $matches[0];Write-Output 'FLEET_UI_FAILED'}
   }else{Show-Control $diagnostic}
  }

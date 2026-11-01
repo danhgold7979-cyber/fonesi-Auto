@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 04:34 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 04:58 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -29,16 +29,22 @@ The [official candidate version job](evidence/P2-01-platform-tools-development-2
 Input/capture source now has exact Windows678/109/185 PASS; native input/capture remain NOT_RUN. [Isolated server development source](evidence/P2-02-isolated-server-development-2026-11-01.md) has local688 and affected review PASS, but its first hosted attempt refused a preexisting native `.android` entry before any server launch. Native server criterion is UNMET; automatic retries are disabled and no existing profile is adopted.
 [Selection/diagnostics/fault composition](evidence/P2-selection-diagnostics-faults-software-2026-11-01.md) now passes its local711 source checkpoint, with no new IPC/V9/effect integration or canonical task acceptance.
 [Fleet facade/IPC and V9 selection integration](evidence/P2-fleet-facade-integration-2026-11-01.md)
-has exact Windows751/109/194 source PASS. Its first SOURCE native smoke returned
-CONTROL_FAILED at capture inspection despite outer processSUCCESS; no UI PASS is
-claimed. A separate schema3 exact one-leading-newline correction is pending native retry;
-its observed PROVISION framing cause is now known. Production fleet remains
-unavailable and selection is process-local; no actual phone rows/effects are invented.
+has exact Windows751/109/194 source PASS. Its historical schema3 SOURCE native smoke
+now has bounded protocol and Light/Dark visual PASS: seven bootstrap and18 UI cases,
+with exact report and two PNGs independently reviewed. The exact one-leading-newline
+framing correction preserves all other capture predicates. This is not current schema4
+native evidence. Production fleet remains unavailable and selection is process-local;
+no actual phone rows/effects are invented.
 [Durable registry/capture](evidence/P2-durable-registry-capture-2026-11-01.md) now
 implements migration4, audited main-owned stores and normal-start retirement/recovery.
 Actual SQLite/owned-file source composition and the stitched closed-inventory checkpoint pass; current
 schema4 Windows/native migration/capture evidence is NOT_RUN. No Phase2 task count,
 formal acceptance, P1-06 status or physical gate changes.
+[Adopted Amendment03](phases/PLATFORM-TOOLS-RECIPIENT-PROVISIONING-AMENDMENT-03.md)
+changes optional ADB delivery to a direct Google or recipient-held pinned archive, while
+foundation offline use remains. The [private provisioning core](evidence/P2-recipient-provisioning-core-2026-11-01.md)
+has owned-file source tests only; no production recipient issuer/download activation or
+binary/server authority is wired. First ADB setup is not an included offline binary bundle.
 Historical Phase0 records below are preserved, not the current software work queue.
 
 | Item | Status | Evidence / boundary |

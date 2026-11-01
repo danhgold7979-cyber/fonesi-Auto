@@ -10,7 +10,8 @@ from validate_settings import screenshot
 from validate_persistence import _admit_root, _read_owned, _write_new
 SCOPE='HOSTED_FLEET_UI_SOURCE_ONLY'
 CASES=('mainReady','oneFleetHydration','preferencesHydrated','emptyProduction','readObserved','emptySelectionUnchanged','selectionTimeoutObserved','selectionReconcileRequired','explicitReadReconciled','lateReplyNoReplay','foreignSenderDenied','subframeDenied','revokedSessionDenied','sixTabsPresent','noDeviceActions','lightLayout','darkLayout','mainClosed')
-BOOTSTRAP=('auditedCopy','provisioned','authenticated','mainReady','schema3','leaseReleased','journalSettled')
+BOOTSTRAP_V1=('auditedCopy','provisioned','authenticated','mainReady','schema3','leaseReleased','journalSettled')
+BOOTSTRAP=tuple('schema4' if k=='schema3' else k for k in BOOTSTRAP_V1)+('migration3BackupAuthenticated','migration4ReceiptBound','durableStartupCommitted','captureStoreEmpty')
 FAILURES=('PREPARE_FAILED','INSTALL_FAILED','CONTROL_FAILED','NATIVE_FAILED','VALIDATION_FAILED','CLEANUP_FAILED')
 def parse(raw):
  if type(raw) is not bytes or not 0<len(raw)<=65536:reject()
@@ -35,20 +36,20 @@ def ui(value):
 def validate(value):
  keys=('version','scope','excludedVaultContext','bootstrap','ui','process','directoryCleanup','failure')
  exact_record(value,keys+(('passed',) if 'passed' in value else ()))
- if type(value['version']) is not int or value['version']!=1 or value['scope']!=SCOPE or value['excludedVaultContext']!='P106_UNMET_NOT_RERUN' or type(value['directoryCleanup']) is not bool:reject()
+ if type(value['version']) is not int or value['version'] not in (1,2) or value['scope']!=SCOPE or value['excludedVaultContext']!='P106_UNMET_NOT_RERUN' or type(value['directoryCleanup']) is not bool:reject()
  if value['failure'] is not None and value['failure'] not in FAILURES:reject()
  bootstrap=value['bootstrap'];observed=value['ui'];process=value['process']
  if bootstrap is not None:
   exact_record(bootstrap,('version','cases'))
-  if type(bootstrap['version']) is not int or bootstrap['version']!=1:reject()
-  bootstrap={'version':1,'cases':booleans(bootstrap['cases'],BOOTSTRAP)}
+  if type(bootstrap['version']) is not int or bootstrap['version']!=value['version']:reject()
+  bootstrap={'version':value['version'],'cases':booleans(bootstrap['cases'],BOOTSTRAP_V1 if value['version']==1 else BOOTSTRAP)}
  if observed is not None:observed=ui(observed)
  normal=False
  if process is not None:normal=validate_process(process)
  if value['failure'] is None and any(x is None for x in (bootstrap,observed,process)):reject()
  passed=bool(value['failure'] is None and value['directoryCleanup'] and normal and bootstrap and all(bootstrap['cases'].values()) and observed and all(observed['cases'].values()))
  if 'passed' in value and (type(value['passed']) is not bool or value['passed']!=passed):reject()
- return {'version':1,'scope':SCOPE,'excludedVaultContext':'P106_UNMET_NOT_RERUN','bootstrap':bootstrap,'ui':observed,'process':process,'directoryCleanup':value['directoryCleanup'],'failure':value['failure'],'passed':passed}
+ return {'version':value['version'],'scope':SCOPE,'excludedVaultContext':'P106_UNMET_NOT_RERUN','bootstrap':bootstrap,'ui':observed,'process':process,'directoryCleanup':value['directoryCleanup'],'failure':value['failure'],'passed':passed}
 def read_image(file):
  if not file.is_absolute() or file.resolve()!=file:reject()
  s=file.lstat()
@@ -77,7 +78,7 @@ def stage(root):
  if not normal or capture['stdout'].replace('\r\n','\n')!='PERSISTENCE_DESKTOP_CLOSED\n':reject()
  if any(s in capture['stderr'].splitlines() for s in ('FLEET_UI_FAILED','PERSISTENCE_LAUNCH_PROBE_FAILED','BOOTSTRAP_FAILED','BOOTSTRAP_CLEANUP_FAILED')):reject()
  observed=ui(parse(_read_owned(root,'fleet-ui-result.json')))
- result=validate({'version':1,'scope':SCOPE,'excludedVaultContext':'P106_UNMET_NOT_RERUN','bootstrap':parse(_read_owned(root,'bootstrap.json')),'ui':observed,'process':capture['process'],'directoryCleanup':False,'failure':None})
+ result=validate({'version':2,'scope':SCOPE,'excludedVaultContext':'P106_UNMET_NOT_RERUN','bootstrap':parse(_read_owned(root,'bootstrap.json')),'ui':observed,'process':capture['process'],'directoryCleanup':False,'failure':None})
  images=bound_images(root,observed)
  if _admit_root(root)[1]!=token:reject()
  for name,raw in images:write_image(root.parent/name,raw)

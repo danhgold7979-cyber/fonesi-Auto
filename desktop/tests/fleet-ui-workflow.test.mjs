@@ -6,7 +6,7 @@ const raw = readFileSync(
   'utf8',
 );
 const condition =
-  "false && ((github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[fleet-ui]')))";
+  "(github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[fleet-ui]'))";
 function validate(input) {
   const source = input.replace(/\r\n/g, '\n');
   assert.match(
@@ -31,12 +31,12 @@ function validate(input) {
   assert.match(job, /FLEET_UI_SCREENSHOTS_BOUND/);
   assert.match(job, /fleet-light\.png\n {12}desktop\/\.fleet-ui-runtime\/fleet-dark\.png/);
 }
-test('historical schema3 fleet UI is suspended for schema4 while preserving exact future opt-in and publication gates', () => {
+test('schema4 fleet UI requires exact manual or phase02 marker opt-in and preserves publication gates', () => {
   validate(raw);
   validate(raw.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'));
   for (const changed of [
     raw.replace(condition, 'true'),
-    raw.replace('if: false && (', 'if: ('),
+    raw.replace(condition, condition.replace("github.event_name == 'workflow_dispatch' && ", '')),
     raw.replace("github.ref == 'refs/heads/phase-02' && ", ''),
     raw.replace("github.event_name == 'push' && ", ''),
     raw.replace("contains(github.event.head_commit.message, '[fleet-ui]')", 'true'),

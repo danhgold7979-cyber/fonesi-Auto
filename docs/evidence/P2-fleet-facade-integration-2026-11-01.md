@@ -176,3 +176,23 @@ zero/one-leading positives and multiple-leading/trailing/interior/space/reorder/
 negatives. This is an actual observed framing cause, unlike the earlier diagnosis-only
 checkpoint. Coordinator approved this bounded schema3 retry at04:32UTC. Current
 schema4 development remains excluded from this commit and native outcome is pending.
+
+## Accepted historical schema3 SOURCE smoke — 2026-11-01
+
+Coordinator Coder Bin accepted bounded protocol and Light/Dark visual PASS for exact
+[run41273611811](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41273611811), public commit `4657abbdddbe2cd315ed7580dc0411868e220d38`, report artifact13070535255 and PNG artifact13070585124, after independent duplicate-aware reconstruction and both original PNG
+hash/CRC/privacy/visual checks. The [retained exact report](samples/P2-fleet-ui-schema3-pass.json)
+is1290 bytes, SHA256 `f4edf7b591d6178536313780938f5484adef050d6be45030656c0ebdd6f86206`.
+All seven bootstrap and18 UI cases pass, with retired native processes and cleanup.
+The corrected grammar accepts exactly zero or one leading empty line, preserving
+nonempty markers/order and all other bounds. The reviewer withdrew an initial mistaken
+visual observation of a blank dark dock after reopening the exact original image;
+no CSS or screenshot change was made or needed.
+
+This remains SOURCE/schema3 evidence with injected provisioning answers and four
+hash-bound verification substitutions, not an untouched end-user launcher or real
+ADB/device test. Two theme captures establish this bounded integration smoke, not a new
+32-image parity campaign; inherited reference contrast limitations remain. The current
+schema4 application has separate source evidence and native UI/migration NOT_RUN.
+The old schema3 job remains explicitly suspended on schema4 until a reviewed update.
+No canonical task count, formal acceptance or P1-06/hardware gate changes.

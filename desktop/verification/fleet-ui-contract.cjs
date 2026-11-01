@@ -25,6 +25,7 @@ const CASES = Object.freeze([
 ]);
 const PHASES = Object.freeze([
   'PREPARE',
+  'MIGRATION',
   'HYDRATE',
   'READ',
   'SELECT',

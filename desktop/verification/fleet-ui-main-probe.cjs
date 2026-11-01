@@ -1,7 +1,7 @@
 'use strict';
 function runObserver() {
   // Verification-only observer. Actual compiled main/preload/React; no provider substitution.
-  const { app, BrowserWindow, ipcMain } = require('electron');
+  const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
   const fs = require('node:fs'),
     path = require('node:path');
   const {
@@ -147,6 +147,16 @@ function runObserver() {
     await help();
   }
   async function run() {
+    phase = 'MIGRATION';
+    const { observeSchema4 } = require('./fleet-ui-schema4.cjs');
+    if ((await observeSchema4(launch, safeStorage)) !== true) throw Error('FLEET_UI_SCHEMA4');
+    write(path.join(root, 'schema4-observed.json'), {
+      version: 2,
+      migration3BackupAuthenticated: true,
+      migration4ReceiptBound: true,
+      durableStartupCommitted: true,
+      captureStoreEmpty: true,
+    });
     phase = 'HYDRATE';
     window = BrowserWindow.getAllWindows()[0];
     if (!window || BrowserWindow.getAllWindows().length !== 1) throw Error('FLEET_UI_WINDOW');

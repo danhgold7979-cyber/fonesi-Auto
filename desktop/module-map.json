@@ -1387,6 +1387,99 @@
           "createDurableCoordinator": "type"
         }
       }
+    },
+    "main/platform-tools-archive.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "node:zlib": {
+          "inflateRawSync": "value"
+        },
+        "./platform-tools-candidate.ts": {
+          "PLATFORM_TOOLS_CANDIDATE": "value"
+        }
+      }
+    },
+    "main/platform-tools-candidate.ts": {
+      "role": "main-adapter",
+      "imports": {}
+    },
+    "main/platform-tools-provision-files.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value",
+          "realpath": "value",
+          "opendir": "value",
+          "open": "value",
+          "mkdir": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "dirname": "value",
+          "join": "value"
+        },
+        "./platform-tools-candidate.ts": {
+          "PLATFORM_TOOLS_CANDIDATE": "value"
+        },
+        "./platform-tools-archive.ts": {
+          "decodePlatformToolsArchive": "value",
+          "snapshotPlatformToolsArchive": "value"
+        },
+        "./platform-tools-files.ts": {
+          "verifyPlatformToolsFiles": "value"
+        }
+      }
+    },
+    "main/platform-tools-provision-ledger.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "lstat": "value",
+          "realpath": "value",
+          "opendir": "value",
+          "mkdir": "value",
+          "open": "value"
+        },
+        "node:path": {
+          "join": "value",
+          "resolve": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        }
+      }
+    },
+    "main/platform-tools-provisioner.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs/promises": {
+          "open": "value",
+          "lstat": "value",
+          "realpath": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "join": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "./platform-tools-candidate.ts": {
+          "PLATFORM_TOOLS_CANDIDATE": "value"
+        },
+        "./platform-tools-archive.ts": {
+          "snapshotPlatformToolsArchive": "value"
+        },
+        "./platform-tools-provision-ledger.ts": {
+          "createPlatformToolsProvisionLedger": "value"
+        },
+        "./platform-tools-provision-files.ts": {
+          "createPlatformToolsProvisionFiles": "value"
+        }
+      }
     }
   }
 }

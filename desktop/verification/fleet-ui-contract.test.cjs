@@ -121,6 +121,7 @@ test('observer keeps original production main and full handler dispatch while on
   assert.equal((source.match(/holdNext = true/g) || []).length, 1);
   assert.deepEqual(PHASES, [
     'PREPARE',
+    'MIGRATION',
     'HYDRATE',
     'READ',
     'SELECT',
