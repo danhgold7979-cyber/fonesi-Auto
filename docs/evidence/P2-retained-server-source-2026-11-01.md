@@ -122,3 +122,34 @@ Independent final29-file closure at18:40 verified all12 recorded hashes, all10 c
 managed-v3 pins, unchanged historicalv2 pins, additive inventory and local links.
 The coordinator's18:24 disposition plus this exact review permits one `[server-managed]`
 compile/fake-provider-only campaign. Actual Windows outcome remains pending, not PASS.
+
+
+## First Windows attempt and narrow encoding-fixture correction
+
+Exact public530179a8/local435d473/tree695cc1b1, CI41338043792, source job124941953184
+stopped at desktop batch10 with TEST_PROCESS_CAPTURE_LIMIT and
+TEST_DIAGNOSTIC_INPUT_REJECTED. The private assertion/counts were not recoverable from
+that bounded capture. Foundation/Python and current managed19 execution did not run;
+managed job124942442777 and all other optional native jobs were SKIPPED. No artifact,
+current compiler/managed PASS, server/profile effect or task acceptance was produced.
+
+Read-only comparison of the new/changed workflow-fixture helpers found exactly two
+LF→CRLF construction sites in this checkpoint. The managed fixture did not normalize
+Windows checkout CRLF before creating its synthetic CRLF variant, producing CRCRLF.
+The existing rollback helper already normalized correctly. Executing the actual new
+managed gate against ordinary Windows CRLF passes; generating CRLF again reproduces
+its rejection locally. This proves the fixture mismatch and is consistent with the
+hosted capture overflow, but does not reveal the original private hosted assertion.
+
+A small shared test-only `desktop/verification/workflow-fixture.cjs` now normalizes
+before producing the two encodings, and both changed fixture helpers use it. The
+managed regression explicitly supplies already-CRLF input and compares both generated
+encodings; every negative mutation must change bytes before unchanged gate rejection.
+No workflow predicate, capture cap, timeout, production source or managed pin changes.
+Historical helpers outside these changed files are not broadly refactored.
+
+Affected final4/4 checks PASS; the earlier narrow2/2 run overlaps. During the local edit,
+a missing closing parenthesis caused one syntax-only failed invocation before tests;
+it was corrected before this final result and never published. Scoped formatter/lint
+exits0 with informational suggestions retained, diff clean. Expected hosted1219/109/277
+remains pending. Same authorized managed-only retry; no new server execution scope.

@@ -3,6 +3,7 @@ const test = require('node:test'),
   assert = require('node:assert/strict'),
   fs = require('node:fs'),
   path = require('node:path');
+const { workflowEncodings } = require('./workflow-fixture.cjs');
 const raw = fs
   .readFileSync(path.join(__dirname, '../../.github/workflows/phase-02-software.yml'), 'utf8')
   .replaceAll('\r\n', '\n');
@@ -26,7 +27,7 @@ function gate(value) {
   return section;
 }
 test('historical four-stage campaign remains suspended pending current server input review under LF and CRLF', () => {
-  for (const s of [raw, raw.replaceAll('\n', '\r\n')]) {
+  for (const s of workflowEncodings(raw)) {
     gate(s);
     for (const replacement of ['s.countTestCases()==263', 's.countTestCases()>=277']) {
       const changed = s.replace('s.countTestCases()==277', replacement);

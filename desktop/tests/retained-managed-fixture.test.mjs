@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import workflowFixtures from '../verification/workflow-fixture.cjs';
 import {
   managedProcessPassed,
   MANAGED_SCOPE,
@@ -137,7 +138,7 @@ test('admission, source rechecks and unknown retirement preserve owned output wi
 const workflow = readFileSync(
   new URL('../../.github/workflows/phase-02-software.yml', import.meta.url),
   'utf8',
-);
+).replaceAll('\r\n', '\n');
 const serverGate =
   "    if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_server_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[server-managed]')))";
 function managedOnlyJob(raw) {
@@ -156,7 +157,9 @@ function managedOnlyJob(raw) {
   return job;
 }
 test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects broadened or absent gates', () => {
-  for (const text of [workflow, workflow.replaceAll('\n', '\r\n')]) {
+  const { workflowEncodings: encodings } = workflowFixtures;
+  assert.deepEqual(encodings(workflow), encodings(workflow.replaceAll('\n', '\r\n')));
+  for (const text of encodings(workflow.replaceAll('\n', '\r\n'))) {
     managedOnlyJob(text);
     for (const replacement of [
       '    if: true',
@@ -166,11 +169,12 @@ test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects 
       serverGate.replace('inputs.run_server_managed == true', 'inputs.run_adb_server == true'),
     ]) {
       const changed = text.replaceAll('\r\n', '\n').replace(serverGate, replacement);
+      assert.notEqual(changed, text.replaceAll('\r\n', '\n'));
       assert.throws(() => managedOnlyJob(changed));
     }
-    assert.throws(() =>
-      managedOnlyJob(text.replace('        default: false', '        default: true')),
-    );
+    const changedDefault = text.replace('        default: false', '        default: true');
+    assert.notEqual(changedDefault, text);
+    assert.throws(() => managedOnlyJob(changedDefault));
   }
 });
 test('managed-only job has no native campaign or archive actions and publishes only strict version3 JSON', () => {
