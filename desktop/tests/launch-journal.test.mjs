@@ -450,3 +450,129 @@ test('capture transport rejects decoded duplicates, nonretirement and malformed 
     assert.equal(fs.existsSync(path.join(f.launch, 'settled-02.json')), false);
   }
 });
+
+function hostMain(f) {
+  setup(f);
+  for (const [index, stage] of [
+    'PREPARE_AUTH',
+    'AUTH',
+    'OBSERVE_AUTH',
+    'PREPARE_READY',
+  ].entries()) {
+    j.appendIntent(f.parent, f.launch, index + 2, stage);
+    capture(f, index + 2);
+    j.settle(f.parent, f.launch, index + 2);
+  }
+  j.appendIntent(f.parent, f.launch, 6, 'MAIN');
+  const ready = {
+    version: 2,
+    state: 'READY',
+    root: f.root,
+    parentToken: f.header.parentToken,
+    ownerToken: f.header.ownerToken,
+    storeId: f.header.storeId,
+    checkpoint: `key-checkpoint-${randomUUID()}.json`,
+    runtimeExeSha256: f.header.executableSha256,
+  };
+  write(path.join(f.root, '.ready-launch.json'), ready);
+  const receipt = {
+    version: 1,
+    launchId: f.header.launchId,
+    storeId: f.header.storeId,
+    ownerToken: f.header.ownerToken,
+    readySha256: j.sha(JSON.stringify(ready)),
+    jobName: `Local\\Fonesi-Auto-host-${randomUUID()}`,
+    parentPid: 123,
+    parentCreationFileTime: '0000000000000001',
+    parentImagePath: path.join(f.parent, 'electron.exe'),
+    parentImageSha256: f.header.executableSha256,
+  };
+  write(path.join(f.launch, 'host-parent.json'), receipt);
+  const sessionId = randomUUID(),
+    root = path.join(f.launch, `host-session-${sessionId}`);
+  fs.mkdirSync(root);
+  write(path.join(root, '.owner'), f.header.ownerToken);
+  fs.mkdirSync(path.join(root, 'profile'));
+  const assets = Object.fromEntries(
+    [
+      'launch/Invoke-RetainedHost.ps1',
+      'native/IsolatedAdbServer.cs',
+      'native/RetainedAdbSession.cs',
+      'native/RetainedAdbProtocol.cs',
+      'native/RetainedHostAdmission.cs',
+    ].map((k) => [k, 'b'.repeat(64)]),
+  );
+  const bootstrap = {
+    version: 1,
+    operationSet: 'VERSION_ONLY',
+    sessionId,
+    launchId: f.header.launchId,
+    storeId: f.header.storeId,
+    ownerToken: f.header.ownerToken,
+    parentReceiptSha256: j.sha(JSON.stringify(receipt)),
+    readySha256: receipt.readySha256,
+    runRoot: root,
+    adbPath: path.join(
+      f.root,
+      'platform-tools-runtime',
+      'runtimes',
+      `runtime-${'b'.repeat(64)}`,
+      'adb.exe',
+    ),
+    adbExeSha256: 'b'.repeat(64),
+    candidateArchiveSha256: 'b'.repeat(64),
+    candidateManifestSha256: 'b'.repeat(64),
+    installationRevision: 1,
+    assets,
+  };
+  write(path.join(root, 'bootstrap.json'), bootstrap);
+  return { root, receipt, bootstrap };
+}
+test('bound retained helper partitions inspect but never authorize RELEASE or RECOVERY from MAIN exit alone', (t) => {
+  const f = fixture(t),
+    h = hostMain(f);
+  assert.deepEqual(j.inspect(f.parent, f.launch).hostSessions, [path.basename(h.root)]);
+  capture(f, 6);
+  j.settle(f.parent, f.launch, 6);
+  const before = snapshot(f.parent);
+  assert.throws(() => j.appendIntent(f.parent, f.launch, 7, 'RELEASE'));
+  assert.throws(() => j.eligibleRecovery(f.parent, f.launch));
+  assert.deepEqual(snapshot(f.parent), before);
+  // Synthetic fixture disposal only; real factory requires native/helper/stdio retirement.
+  fs.rmSync(h.root, { recursive: true });
+  assert.deepEqual(j.inspect(f.parent, f.launch).hostSessions, []);
+  j.appendIntent(f.parent, f.launch, 7, 'RELEASE');
+});
+test('unknown, partial, changed-owner and aliased helper partitions reject unchanged', (t) => {
+  for (const kind of ['extra', 'partial', 'owner', 'alias']) {
+    const f = fixture(t),
+      h = hostMain(f);
+    if (kind === 'extra') write(path.join(h.root, 'unknown'), 'private');
+    if (kind === 'partial') fs.unlinkSync(path.join(h.root, 'bootstrap.json'));
+    if (kind === 'owner') fs.writeFileSync(path.join(h.root, '.owner'), randomUUID());
+    if (kind === 'alias')
+      fs.linkSync(path.join(h.root, 'bootstrap.json'), path.join(h.root, 'profile', 'alias'));
+    const before = snapshot(f.parent);
+    assert.throws(() => j.inspect(f.parent, f.launch));
+    assert.deepEqual(snapshot(f.parent), before);
+  }
+});
+test('retained receipt cannot be introduced before MAIN or bind another READY/owner', (t) => {
+  const f = fixture(t),
+    h = hostMain(f);
+  for (const [key, value] of [
+    ['readySha256', 'f'.repeat(64)],
+    ['ownerToken', randomUUID()],
+    ['parentCreationFileTime', '1'],
+    ['parentImageSha256', 'f'.repeat(64)],
+  ]) {
+    fs.writeFileSync(
+      path.join(f.launch, 'host-parent.json'),
+      JSON.stringify({ ...h.receipt, [key]: value }),
+    );
+    assert.throws(() => j.inspect(f.parent, f.launch));
+  }
+  fs.writeFileSync(path.join(f.launch, 'host-parent.json'), JSON.stringify(h.receipt));
+  fs.unlinkSync(path.join(f.launch, 'intent-06.json'));
+  assert.throws(() => j.inspect(f.parent, f.launch));
+});

@@ -1,6 +1,6 @@
 # P2-02 — bounded compile-only verification preparation
 
-**Current: source reviewed; actual Windows compiler NOT_RUN.** No assembly is loaded or
+**Current: actual bounded Windows compile-only PASS; generated assembly NOT_EXECUTED.** No assembly is loaded or
 invoked, and no ADB/profile/server/device operation is part of this step.
 
 The [retained native API checkpoint](P2-retained-native-helper-2026-11-01.md) cannot claim
@@ -86,3 +86,28 @@ compiler handoff. All six affected fixture tests and warning-level lint PASS loc
 The exact prior Windows private failure location remains unexposed; next actual hosted
 result must confirm the correction. No additional unchanged aggregate is run. Expected
 next full source count961 remains NOT_RUN. Compiler/helper/workflow hashes are unchanged.
+
+
+## Actual Windows compile-only result — 2026-11-01 08:13 UTC
+
+The user explicitly approved one hosted-test exception to phase-batched publication.
+Only the three-file fixture/evidence repair was published as
+`e5680a2f8934a747e6fd45bada7340b0e3331f0f`, exact tree
+`7fce10971edb51ac82a548f2e5be692b1c259304` (local `577480d`).
+Run41287763437 / source job124792445587 completed SUCCESS on Windows Server2022.
+Actual logs report desktop961/961, foundation109/109 (zero skipped), Python214/214 OK,
+and `RETAINED_HELPER_COMPILE_ONLY_PASS` at08:12:50 UTC, with compiler statusSUCCESS,
+retiredTRUE and owned-directory cleanupTRUE. All three unrelated native jobs were
+SKIPPED. The compiler script, workflow and both C# source hashes above/linked remain
+unchanged; the real compiler now confirms their C# compatibility under the exact
+fixed Framework references and arguments. The output was checked and removed, never
+loaded or invoked. This is not a server/Job/profile runtime test or proof of an
+installed native pipe/provider. Earlier failed runs remain historical failures;
+the fixture correction is now verified on Windows without inferring its private
+prior exception text. No full P2 task, physical-device or formal acceptance follows.
+This closure is retained locally for the next coherent phase batch; it does not
+request another push or repeat any passing campaign.
+
+Independent reviewer read the same single fetched job log and exact committed source
+hashes at08:14 UTC: CLEAR for bounded compilation only. No duplicate log fetch,
+local aggregate, DLL invocation or native campaign was performed for that review.

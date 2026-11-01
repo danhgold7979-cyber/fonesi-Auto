@@ -1,10 +1,10 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 07:57 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 09:57 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
-Current source: recipient integration public `611c56e0cd90761f51d7becf996c613ed3ad3e24`
+Historical recipient source checkpoint: integration public `611c56e0cd90761f51d7becf996c613ed3ad3e24`
 passed Windows source CI `41279086636` (883 desktop /109 foundation /205 Python; native skipped).
 The separately reviewed local-archive recipient campaign completed on public `f1fe3212e680d672b511983223fc5728d177d2de`,
 CI `41279477173` passed901/109/214 and the bounded injected-consent/local-archive
@@ -18,18 +18,26 @@ distinguishes live server custody from retired invocations and retains actual pe
 work across timeout. It installs no native provider. Accepted recipient campaign49/49
 checks are partial P2-01 evidence, not49 canonical criteria or full-task acceptance.
 [Retained helper/bridge source](evidence/P2-retained-native-helper-2026-11-01.md) now reuses
-the unchanged Windows interop API and adds bounded injected-byte framing. C# remains
-NOT_COMPILED/NOT_EXECUTED; no actual pipe reader/bootstrap/provider is installed.
-Affected tests are recorded separately; prior937 aggregate is carried forward, not rerun.
-[Compile-only preparation](evidence/P2-retained-helper-compile-preparation-2026-11-01.md)
-adds a default-off, fixed Windows compiler step without loading/invoking the DLL;
-actual compilation remains NOT_RUN. The39-file bundle is published as `493b1b28`;
-first CI41286185772 stopped at a reproduced test-regex lint warning before compilation.
-Published correction `d92a133d` passed quality but CI41286557987 failed four owned-file
-fixtures before compilation. A native-canonical fixture correction passes six affected
-tests locally; production admission and compiler bytes are unchanged;
-[exact failure/repair evidence](evidence/P2-retained-helper-compile-preparation-2026-11-01.md)
-does not claim a new Windows PASS.
+the unchanged Windows interop API and adds bounded injected-byte framing. Actual
+Windows compile-only PASS is now observed on public `e5680a2f`, run41287763437:
+961 desktop /109 foundation /214 Python PASS, compiler SUCCESS with retirement and
+owned cleanup confirmed. The generated DLL was never loaded/invoked; no actual pipe
+reader/bootstrap/provider is installed. Unrelated native jobs were SKIPPED.
+[Exact compile evidence and retained failures](evidence/P2-retained-helper-compile-preparation-2026-11-01.md)
+distinguish this one user-approved hosted-test exception from the normal phase-batched
+publication cadence. P2-02 server runtime remains unverified; the existing-profile
+refusal is not bypassed and no new canonical task PASS is claimed.
+
+Current local batch adds the [retained VERSION transport source](evidence/P2-retained-host-integration-source-2026-11-01.md):
+opt-in outer-Job/native-parent binding, private continuous C# reader, fixed PowerShell
+bootstrap and main-only factory, with closed SOURCE/PACKAGE assets. Main does not
+activate it. Complete122-file source inventory passed as the explicitly documented
+stitched checkpoint (remaining151 tests plus earlier passed batches); no new full
+aggregate count or native PASS is inferred. New C#/PowerShell/real private-pipe path
+remains NOT_COMPILED/NOT_EXECUTED. Prior Windows compile-only evidence applies only to
+its exact old helper/session sources. The user has now approved the [single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
+and restored necessary important checkpoint publication. Its new managed/native results
+remain NOT_RUN until actual evidence; local reviewed checkpoints remain allowed. No canonical task/phase count changes.
 
 ## 1. Status definitions
 

@@ -16,7 +16,10 @@ export interface HostNativeProvider {
 type Attempt = { token: object; kind: 'VERSION' | 'FOREGROUND'; terminal: boolean };
 export function createHostAdapter(
   options: Readonly<{
-    runtimeCustody: PlatformToolsRuntimeCustody;
+    runtimeCustody: Pick<
+      PlatformToolsRuntimeCustody,
+      'acquireRead' | 'revalidateRead' | 'assertRead' | 'releaseRead'
+    >;
     nativeProvider: HostNativeProvider;
     assertOwnedSync(): void;
     now(): number;

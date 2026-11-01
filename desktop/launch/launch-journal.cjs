@@ -364,7 +364,161 @@ function capture(raw) {
     fail();
   return v;
 }
-function inventory(directory, profileNames = []) {
+const HOST_ASSET_KEYS = Object.freeze([
+  'launch/Invoke-RetainedHost.ps1',
+  'native/IsolatedAdbServer.cs',
+  'native/RetainedAdbSession.cs',
+  'native/RetainedAdbProtocol.cs',
+  'native/RetainedHostAdmission.cs',
+]);
+function hostRecord(file, max, keys) {
+  const stat = fs.lstatSync(file);
+  if (stat.nlink !== 1 || stat.size < 1 || stat.size > max) fail();
+  const raw = read(file),
+    value = canonical(raw);
+  exact(value, keys);
+  if (Buffer.byteLength(raw) > max) fail();
+  return { raw, value };
+}
+function hostParent(header, launch) {
+  const file = path.join(launch, 'host-parent.json');
+  if (absent(file)) return null;
+  const { raw, value: r } = hostRecord(file, 4096, [
+    'version',
+    'launchId',
+    'storeId',
+    'ownerToken',
+    'readySha256',
+    'jobName',
+    'parentPid',
+    'parentCreationFileTime',
+    'parentImagePath',
+    'parentImageSha256',
+  ]);
+  if (
+    r.version !== 1 ||
+    r.launchId !== header.launchId ||
+    r.storeId !== header.storeId ||
+    r.ownerToken !== header.ownerToken ||
+    !hash(r.readySha256) ||
+    typeof r.jobName !== 'string' ||
+    !r.jobName.startsWith('Local\\Fonesi-Auto-host-') ||
+    !uuid(r.jobName.slice('Local\\Fonesi-Auto-host-'.length)) ||
+    !Number.isSafeInteger(r.parentPid) ||
+    r.parentPid < 1 ||
+    r.parentPid > 4294967295 ||
+    typeof r.parentCreationFileTime !== 'string' ||
+    !/^[0-9a-f]{16}$/.test(r.parentCreationFileTime) ||
+    typeof r.parentImagePath !== 'string' ||
+    path.resolve(r.parentImagePath) !== r.parentImagePath ||
+    r.parentImageSha256 !== header.executableSha256 ||
+    header.maintenance !== 'NORMAL'
+  )
+    fail();
+  const ready = read(path.join(header.dataRoot, '.ready-launch.json'));
+  if (sha(ready) !== r.readySha256) fail();
+  const value = canonical(ready);
+  if (
+    value.ownerToken !== header.ownerToken ||
+    value.storeId !== header.storeId ||
+    value.root !== header.dataRoot ||
+    value.runtimeExeSha256 !== header.executableSha256 ||
+    ![2, 3].includes(value.version)
+  )
+    fail();
+  return Object.freeze({ receipt: r, sha256: sha(raw) });
+}
+function hostSession(root, header, receipt) {
+  if (!receipt) fail();
+  plain(root);
+  const sessionId = path.basename(root).slice('host-session-'.length);
+  if (!uuid(sessionId) || read(path.join(root, '.owner')) !== header.ownerToken) fail();
+  const { value: b } = hostRecord(path.join(root, 'bootstrap.json'), 8192, [
+    'version',
+    'operationSet',
+    'sessionId',
+    'launchId',
+    'storeId',
+    'ownerToken',
+    'parentReceiptSha256',
+    'readySha256',
+    'runRoot',
+    'adbPath',
+    'adbExeSha256',
+    'candidateArchiveSha256',
+    'candidateManifestSha256',
+    'installationRevision',
+    'assets',
+  ]);
+  if (
+    b.version !== 1 ||
+    b.operationSet !== 'VERSION_ONLY' ||
+    b.sessionId !== sessionId ||
+    b.launchId !== header.launchId ||
+    b.storeId !== header.storeId ||
+    b.ownerToken !== header.ownerToken ||
+    b.parentReceiptSha256 !== receipt.sha256 ||
+    b.readySha256 !== receipt.receipt.readySha256 ||
+    b.runRoot !== root ||
+    typeof b.adbPath !== 'string' ||
+    path.resolve(b.adbPath) !== b.adbPath ||
+    !hash(b.adbExeSha256) ||
+    !hash(b.candidateArchiveSha256) ||
+    !hash(b.candidateManifestSha256) ||
+    !Number.isSafeInteger(b.installationRevision) ||
+    b.installationRevision < 1 ||
+    !b.assets ||
+    typeof b.assets !== 'object'
+  )
+    fail();
+  if (
+    b.adbPath !==
+    path.join(
+      header.dataRoot,
+      'platform-tools-runtime',
+      'runtimes',
+      `runtime-${b.candidateArchiveSha256}`,
+      'adb.exe',
+    )
+  )
+    fail();
+  exact(b.assets, HOST_ASSET_KEYS);
+  if (HOST_ASSET_KEYS.some((k) => !hash(b.assets[k]))) fail();
+  let count = 0,
+    bytes = 0;
+  function scan(directory, depth) {
+    if (depth > 8) fail();
+    plain(directory);
+    const list = fs.opendirSync(directory);
+    try {
+      for (;;) {
+        const item = list.readSync();
+        if (!item) break;
+        if (
+          ++count > 256 ||
+          (depth === 0 && !['.owner', 'bootstrap.json', 'profile', 'adb.log'].includes(item.name))
+        )
+          fail();
+        const file = path.join(directory, item.name),
+          stat = fs.lstatSync(file);
+        if (stat.isSymbolicLink()) fail();
+        if (stat.isDirectory()) {
+          if (depth === 0 && item.name !== 'profile') fail();
+          scan(file, depth + 1);
+        } else if (stat.isFile()) {
+          if (stat.nlink !== 1 || (depth === 0 && item.name === 'profile')) fail();
+          bytes += stat.size;
+          if (bytes > 64 * 1024 * 1024) fail();
+        } else fail();
+      }
+    } finally {
+      list.closeSync();
+    }
+  }
+  plain(path.join(root, 'profile'));
+  scan(root, 0);
+}
+function inventory(directory, profileNames = [], host = null) {
   plain(directory);
   const entries = [];
   let count = 0;
@@ -396,8 +550,13 @@ function inventory(directory, profileNames = []) {
       if (!item) break;
       if (++count > 256 || item.isSymbolicLink()) fail();
       if (item.isDirectory()) {
-        if (!profileNames.includes(item.name)) fail();
         const child = path.join(directory, item.name);
+        if (host && item.name.startsWith('host-session-')) {
+          hostSession(child, host.header, host.receipt);
+          entries.push(item.name);
+          continue;
+        }
+        if (!profileNames.includes(item.name)) fail();
         plain(child);
         if (read(path.join(child, '.owner')) !== 'FONESI_AUTO_FOUNDATION_PROFILE_V1\n') fail();
         profile(child, 1, { bytes: 0, count: 0 });
@@ -479,7 +638,8 @@ function inspect(parent, launch) {
     profileNames = ['provision', 'auth', 'main'].map(
       (stage) => `fonesi-auto-foundation-${header.launchId}-${stage}`,
     ),
-    names = inventory(launch, profileNames),
+    receipt = hostParent(header, launch),
+    names = inventory(launch, profileNames, { header, receipt }),
     intents = [],
     settlements = [];
   let pending = null;
@@ -492,10 +652,12 @@ function inspect(parent, launch) {
     'runtime-attestation.json',
     'log-launch-proof.json',
     'log-recovery-owner.json',
+    'host-parent.json',
   ];
   for (const name of names) {
     if (
       !profileNames.includes(name) &&
+      !(name.startsWith('host-session-') && uuid(name.slice('host-session-'.length))) &&
       !fixed.includes(name) &&
       !/^(intent|settled|capture)-(?:0[1-9]|1[0-6])\.json$/.test(name) &&
       !/^(provision|auth)-(control|result|observed|capture)\.json$/.test(name) &&
@@ -549,8 +711,11 @@ function inspect(parent, launch) {
     settlements.push(settlement);
     previous = sha(sRaw);
   }
+  const hostSessions = names.filter((name) => name.startsWith('host-session-'));
+  if (receipt && !intents.some((intent) => intent.stage === 'MAIN')) fail();
   return Object.freeze({
     header,
+    hostSessions: Object.freeze(hostSessions),
     intents: Object.freeze(intents),
     settlements: Object.freeze(settlements),
     latest: settlements.at(-1) ?? null,
@@ -646,6 +811,7 @@ function completed(parent, launch) {
     h = state.header;
   if (
     state.pending ||
+    state.hostSessions.length ||
     !state.latest ||
     state.latest.status !== 'SUCCESS' ||
     state.latest.exitCode !== 0 ||
@@ -718,6 +884,7 @@ function appendIntent(parent, launch, sequence, stage) {
   )
     fail();
   transition(state.latest, sequence, stage);
+  if (['RELEASE', 'RECOVERY'].includes(stage) && state.hostSessions.length) fail();
   if (stage === 'RECOVERY') eligibleRecovery(parent, launch);
   const value = {
     version: 1,
@@ -758,6 +925,7 @@ function settle(parent, launch, sequence) {
 }
 function eligibleRecovery(parent, launch, allowPending = false) {
   const state = inspect(parent, launch);
+  if (state.hostSessions.length) fail();
   if (state.pending && (!allowPending || state.pending.stage !== 'RECOVERY')) fail();
   if (!state.latest) fail();
   const h = state.header,

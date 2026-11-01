@@ -279,7 +279,7 @@ function syntheticPolicyPackage(packageRoot) {
   for (const name of ['react', 'react-dom', 'scheduler'])
     write(`licenses/${name}-LICENSE`, 'SYNTHETIC-REACT-LICENSE');
   for (const name of admission.CLOSURE) write(`app/launch/${name}`, 'owned helper');
-  write('app/native/PersistenceProcess.cs', 'owned helper');
+  for (const name of admission.NATIVE) write(`app/native/${name}`, 'owned helper');
   for (const name of admission.BUILD_OUTPUTS)
     write(`app/build/${name}`, `production output ${name}`);
   const pkg = { name: 'synthetic' },
@@ -308,7 +308,7 @@ function syntheticPolicyPackage(packageRoot) {
   };
   for (const name of [
     ...admission.CLOSURE.map((n) => `launch/${n}`),
-    'native/PersistenceProcess.cs',
+    ...admission.NATIVE.map((n) => `native/${n}`),
   ])
     build.inputs[name] = verifier.digest(resolve(root, 'app', name)).sha256;
   json('provenance/build-manifest.json', build);
@@ -401,7 +401,7 @@ test('synthetic policy rejects copied launcher/native provenance disagreement de
     assert.equal(f.verifier.verifyPackage(p).mode, 'INTERNAL_PRODUCTION');
     for (const name of [
       ...admission.CLOSURE.map((n) => `launch/${n}`),
-      'native/PersistenceProcess.cs',
+      ...admission.NATIVE.map((n) => `native/${n}`),
     ]) {
       const file = resolve(p, 'app', name),
         original = readFileSync(file);

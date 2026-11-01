@@ -68,7 +68,7 @@ try {
     if($args.Count -ne 0 -or [Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT){throw 'ARGUMENTS_REJECTED'}
     Assert-Directory $desktop
     $helper=Join-Path $desktop 'native/PersistenceProcess.cs'
-    if((Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash -ine '482874120c798b61a0e6a4ab759568832bae1189a71fa2fc2950b6a508083df1'){throw 'HELPER_CHANGED'}
+    if((Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash -ine '7005eaa51de202d1138828254b766a48af2bb9305823a50076165efd4fe422fe'){throw 'HELPER_CHANGED'}
     if('Fonesi.Desktop.Persistence.PersistenceProcess' -as [type]){throw 'PRELOADED_HELPER_REJECTED'}
     Add-Type -Path $helper
     $nodes=@(Get-Command node.exe -CommandType Application -ErrorAction Stop)

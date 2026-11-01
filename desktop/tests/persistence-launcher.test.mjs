@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../launch/launch-core.ps1', import.meta.url), 'utf8');
 test('developer launcher fixes helper/runtime admission before owned initialization', () => {
-  assert.match(source, /482874120c798b61a0e6a4ab759568832bae1189a71fa2fc2950b6a508083df1/);
+  assert.match(source, /7005eaa51de202d1138828254b766a48af2bb9305823a50076165efd4fe422fe/);
   assert.match(source, /d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5/);
   assert.ok(source.indexOf('PRELOADED_HELPER_REJECTED') < source.indexOf('Add-Type -Path $helper'));
   assert.ok(source.indexOf("'verify-runtime'") < source.indexOf('$Root=New-Reserved'));

@@ -26,11 +26,11 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual eighty-seven modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 87, runtimeInputs: 87 });
+test('actual eighty-nine modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 89, runtimeInputs: 89 });
 });
-test('fleet stays in its exact role boundary and graph limit remains finite at eighty-seven', async () => {
-  assert.equal(Object.keys(map.modules).length, 87);
+test('fleet stays in its exact role boundary and graph limit remains finite at eighty-nine', async () => {
+  assert.equal(Object.keys(map.modules).length, 89);
   await assert.rejects(
     () =>
       validateGraph(actual(), {

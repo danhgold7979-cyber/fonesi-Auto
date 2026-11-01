@@ -2,8 +2,15 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const admission = require('../launch/package-admission.cjs');
 export const NODE_LICENSE_URL = 'https://raw.githubusercontent.com/nodejs/node/v24.22.1/LICENSE';
-export const { NODE_SHA, NODE_LICENSE_SHA, REACT_LICENSE_SHA, BUILD_OUTPUTS, CLOSURE, PROVENANCE } =
-  admission;
+export const {
+  NODE_SHA,
+  NODE_LICENSE_SHA,
+  REACT_LICENSE_SHA,
+  BUILD_OUTPUTS,
+  CLOSURE,
+  NATIVE,
+  PROVENANCE,
+} = admission;
 export function createPackageManifest(root, sourceHead, sourceTree, runtime) {
   return {
     version: 1,

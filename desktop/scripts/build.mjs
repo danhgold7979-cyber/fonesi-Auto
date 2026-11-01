@@ -64,6 +64,7 @@ try {
   const pure = await build({
     ...options,
     entryPoints: [
+      resolve(root, 'src/main/adb-host-factory.ts'),
       resolve(root, 'src/main/asset-policy.ts'),
       resolve(root, 'src/main/lifecycle.ts'),
       resolve(root, 'src/main/profile-owner.ts'),

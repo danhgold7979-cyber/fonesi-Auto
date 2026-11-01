@@ -204,6 +204,88 @@ namespace Fonesi.Desktop.Persistence
 
         public static void ReserveDirectory(string directory) { Require(CreateDirectory(directory, IntPtr.Zero)); }
 
+        // BEGIN RETAINED HOST OPT-IN
+        [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetProcessTimes(IntPtr process, out ulong creation, out ulong exit, out ulong kernel, out ulong user);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder name, ref uint size);
+        public sealed class HostJobContext
+        {
+            internal readonly string directory, launchId, storeId, ownerToken, readyHash, imageHash, jobName;
+            public HostJobContext(string launchDirectory, string launchId, string storeId, string ownerToken, string readySha256, string parentImageSha256, string jobNonce)
+            {
+                if (!HostUuid(launchId) || !HostUuid(storeId) || !HostUuid(ownerToken) || !HostUuid(jobNonce) || !HostHash(readySha256) || !HostHash(parentImageSha256)) throw new ArgumentException("HOST_CONTEXT_REJECTED");
+                HostDirectory(launchDirectory);
+                if (Path.GetFileName(launchDirectory) != "launch-" + launchId) throw new ArgumentException("HOST_CONTEXT_REJECTED");
+                directory = launchDirectory; this.launchId = launchId; this.storeId = storeId; this.ownerToken = ownerToken;
+                readyHash = readySha256; imageHash = parentImageSha256; jobName = "Local\\Fonesi-Auto-host-" + jobNonce;
+            }
+        }
+        static bool HostUuid(string value) { Guid parsed; return value != null && Guid.TryParseExact(value, "D", out parsed) && parsed.ToString() == value; }
+        static bool HostHash(string value) { if (value == null || value.Length != 64) return false; foreach (char c in value) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false; return true; }
+        static void HostDirectory(string value)
+        {
+            if (String.IsNullOrEmpty(value) || Path.GetFullPath(value) != value) throw new IOException("HOST_DIRECTORY_REJECTED");
+            DirectoryInfo current = new DirectoryInfo(value);
+            for (int depth = 0; current != null; current = current.Parent, depth++)
+                if (depth > 32 || !current.Exists || (current.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("HOST_DIRECTORY_REJECTED");
+        }
+        static string HostDigest(string path)
+        {
+            HostDirectory(Path.GetDirectoryName(path));
+            if (Path.GetFullPath(path) != path || (File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0) throw new IOException("HOST_IMAGE_REJECTED");
+            using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
+                if (file.Length < 1 || file.Length > 536870912) throw new IOException("HOST_IMAGE_REJECTED");
+                using (System.Security.Cryptography.SHA256 hash = System.Security.Cryptography.SHA256.Create()) return BitConverter.ToString(hash.ComputeHash(file)).Replace("-", "").ToLowerInvariant();
+            }
+        }
+        static string HostJsonString(string value)
+        {
+            StringBuilder output = new StringBuilder("\"");
+            foreach (char c in value) {
+                if (c == '"' || c == '\\') output.Append('\\').Append(c);
+                else if (c < 32) output.Append("\\u").Append(((int)c).ToString("x4", System.Globalization.CultureInfo.InvariantCulture));
+                else output.Append(c);
+            }
+            return output.Append('"').ToString();
+        }
+        static string HostMarker(HostJobContext context)
+        {
+            HostDirectory(context.directory);
+            string path = Path.Combine(context.directory, ".owner");
+            if ((File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0) throw new IOException("HOST_OWNER_REJECTED");
+            using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
+                if (file.Length != 36) throw new IOException("HOST_OWNER_REJECTED");
+                byte[] bytes = new byte[36]; int offset = 0;
+                while (offset < bytes.Length) { int count = file.Read(bytes, offset, bytes.Length - offset); if (count == 0) throw new IOException("HOST_OWNER_REJECTED"); offset += count; }
+                string marker = Encoding.ASCII.GetString(bytes); if (!HostUuid(marker) || file.ReadByte() != -1) throw new IOException("HOST_OWNER_REJECTED"); return marker;
+            }
+        }
+        static void WriteHostParent(HostJobContext context, string executable, PROCESS_INFORMATION process, string marker)
+        {
+            if (HostMarker(context) != marker || HostDigest(executable) != context.imageHash || process.dwProcessId == 0) throw new IOException("HOST_CONTEXT_CHANGED");
+            ulong creation, exit, kernel, user; Require(GetProcessTimes(process.hProcess, out creation, out exit, out kernel, out user));
+            StringBuilder image = new StringBuilder(32768); uint size = (uint)image.Capacity;
+            Require(QueryFullProcessImageName(process.hProcess, 0, image, ref size));
+            if (!String.Equals(image.ToString(), executable, StringComparison.OrdinalIgnoreCase)) throw new IOException("HOST_IMAGE_REJECTED");
+            string json = "{\"version\":1,\"launchId\":" + HostJsonString(context.launchId) + ",\"storeId\":" + HostJsonString(context.storeId) +
+                ",\"ownerToken\":" + HostJsonString(context.ownerToken) + ",\"readySha256\":" + HostJsonString(context.readyHash) + ",\"jobName\":" + HostJsonString(context.jobName) +
+                ",\"parentPid\":" + process.dwProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"parentCreationFileTime\":" + HostJsonString(creation.ToString("x16", System.Globalization.CultureInfo.InvariantCulture)) +
+                ",\"parentImagePath\":" + HostJsonString(executable) + ",\"parentImageSha256\":" + HostJsonString(context.imageHash) + "}";
+            byte[] bytes = new UTF8Encoding(false, true).GetBytes(json); if (bytes.Length > 4096) throw new IOException("HOST_CONTEXT_LIMIT");
+            string path = Path.Combine(context.directory, "host-parent.json");
+            using (FileStream file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None)) {
+                file.Write(bytes, 0, bytes.Length); file.Flush(true); file.Position = 0;
+                for (int i = 0; i < bytes.Length; i++) if (file.ReadByte() != bytes[i]) throw new IOException("HOST_CONTEXT_READBACK");
+                if (file.ReadByte() != -1) throw new IOException("HOST_CONTEXT_READBACK");
+            }
+            if (HostMarker(context) != marker) throw new IOException("HOST_CONTEXT_CHANGED");
+        }
+        public static PersistenceProcessResult RunInteractiveWithHostJob(string executable, string[] arguments, HostJobContext context)
+        {
+            if (context == null) throw new ArgumentException("HOST_CONTEXT_REJECTED");
+            return RunCoreNamed(executable, arguments, INFINITE, 10000, 32768, context);
+        }
+        // END RETAINED HOST OPT-IN
+
         // Fixed caller owns executable hash, arguments, environment and persistent lease.
         // Interactive mode deliberately has no application lifetime deadline.
         public static PersistenceProcessResult RunBounded(string executable, string[] arguments, int timeoutMilliseconds)
@@ -217,6 +299,9 @@ namespace Fonesi.Desktop.Persistence
         { return RunCore(executable, arguments, INFINITE, 10000, 32768); }
 
         static PersistenceProcessResult RunCore(string executable, string[] arguments, uint timeoutMilliseconds, int cleanupMilliseconds, int maxCharacters)
+        { return RunCoreNamed(executable, arguments, timeoutMilliseconds, cleanupMilliseconds, maxCharacters, null); }
+
+        static PersistenceProcessResult RunCoreNamed(string executable, string[] arguments, uint timeoutMilliseconds, int cleanupMilliseconds, int maxCharacters, HostJobContext host)
         {
             PersistenceProcessResult result = new PersistenceProcessResult(); Stopwatch elapsed = Stopwatch.StartNew();
             IntPtr outputRead = IntPtr.Zero, outputWrite = IntPtr.Zero, errorRead = IntPtr.Zero, errorWrite = IntPtr.Zero;
@@ -227,13 +312,17 @@ namespace Fonesi.Desktop.Persistence
             {
                 if ((timeoutMilliseconds != 30000 && timeoutMilliseconds != 120000 && timeoutMilliseconds != INFINITE) || cleanupMilliseconds != 10000 || maxCharacters != 32768) throw new ArgumentException("INVALID_LIMIT");
                 if (!Path.IsPathRooted(executable) || !String.Equals(Path.GetExtension(executable), ".exe", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("DIRECT_EXECUTABLE_REQUIRED");
+                string hostMarker = host == null ? null : HostMarker(host);
+                if (host != null && HostDigest(executable) != host.imageHash) throw new IOException("HOST_IMAGE_REJECTED");
                 SECURITY_ATTRIBUTES security = new SECURITY_ATTRIBUTES(); security.nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES)); security.bInheritHandle = 1;
                 Require(CreatePipe(out outputRead, out outputWrite, ref security, 0));
                 Require(CreatePipe(out errorRead, out errorWrite, ref security, 0));
                 Require(SetHandleInformation(outputRead, 1, 0)); Require(SetHandleInformation(errorRead, 1, 0));
                 input = CreateFile("NUL", 0x80000000, 3, ref security, 3, 0, IntPtr.Zero);
                 Require(input != InvalidHandle);
-                job = CreateJobObject(IntPtr.Zero, null); Require(job != IntPtr.Zero);
+                job = CreateJobObject(IntPtr.Zero, host == null ? null : host.jobName);
+                int jobError = Marshal.GetLastWin32Error(); Require(job != IntPtr.Zero);
+                if (host != null && jobError == 183) { Close(ref job); throw new IOException("HOST_JOB_EXISTS"); }
                 JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
                 limits.BasicLimitInformation.LimitFlags = KILL_ON_JOB_CLOSE;
                 Require(SetInformationJobObject(job, JobObjectExtendedLimitInformation, ref limits, (uint)Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION))));
@@ -253,6 +342,7 @@ namespace Fonesi.Desktop.Persistence
                 Require(CreateProcess(executable, command, IntPtr.Zero, IntPtr.Zero, true, CREATE_SUSPENDED | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, Path.GetDirectoryName(executable), ref startup, out process));
                 started = true;
                 Require(AssignProcessToJobObject(job, process.hProcess)); assigned = true;
+                if (host != null) WriteHostParent(host, executable, process, hostMarker);
                 // Close the parent's write ends so EOF is delivered when owned children exit.
                 Close(ref outputWrite); Close(ref errorWrite); Close(ref input);
                 stdout = TakeDrain(ref outputRead, maxCharacters);

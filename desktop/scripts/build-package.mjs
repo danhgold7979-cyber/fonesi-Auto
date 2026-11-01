@@ -29,6 +29,7 @@ import {
   NODE_LICENSE_SHA,
   REACT_LICENSE_SHA,
   CLOSURE,
+  NATIVE,
 } from './package-manifest.mjs';
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const LAUNCH =
@@ -261,10 +262,7 @@ export async function buildPackage({
   copy(nodeExe, join(stage, 'runtime/node/node.exe'));
   copy(nodeLicense, join(stage, 'runtime/node/LICENSE'));
   for (const name of CLOSURE) copy(join(desktop, 'launch', name), join(stage, 'app/launch', name));
-  copy(
-    join(desktop, 'native/PersistenceProcess.cs'),
-    join(stage, 'app/native/PersistenceProcess.cs'),
-  );
+  for (const name of NATIVE) copy(join(desktop, 'native', name), join(stage, 'app/native', name));
   for (const name of [...outputs, '.verified-build.json'])
     copy(join(desktop, 'build', name), join(stage, 'app/build', name));
   mkdirSync(join(stage, 'provenance'));

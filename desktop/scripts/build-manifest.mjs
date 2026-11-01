@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 export const outputs = [
   'main.cjs',
+  'adb-host-factory.cjs',
   'asset-policy.cjs',
   'lifecycle.cjs',
   'profile-owner.cjs',
@@ -38,6 +39,7 @@ export const outputs = [
 ];
 export const inputs = [
   'launch/Invoke-Desktop.ps1',
+  'launch/Invoke-RetainedHost.ps1',
   'launch/Invoke-Package.ps1',
   'launch/launch-core.ps1',
   'launch/launch-journal.cjs',
@@ -47,6 +49,8 @@ export const inputs = [
   'native/PersistenceProcess.cs',
   'native/IsolatedAdbServer.cs',
   'native/RetainedAdbSession.cs',
+  'native/RetainedAdbProtocol.cs',
+  'native/RetainedHostAdmission.cs',
   'scripts/compile-retained-helper.mjs',
   'package.json',
   'package-lock.json',
@@ -85,6 +89,8 @@ export const inputs = [
   'src/main/adb-host-plan.ts',
   'src/main/adb-host-adapter.ts',
   'src/main/adb-host-bridge.ts',
+  'src/main/adb-host-factory.ts',
+  'src/main/adb-host-context.ts',
   'src/main/transport-registry.ts',
   'src/main/device-actor.ts',
   'src/main/input-contract.ts',

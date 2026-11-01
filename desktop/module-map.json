@@ -1677,6 +1677,81 @@
           "RuntimeReadObservation": "type"
         }
       }
+    },
+    "main/adb-host-context.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs": {
+          "openSync": "value",
+          "closeSync": "value",
+          "readSync": "value",
+          "fstatSync": "value",
+          "lstatSync": "value",
+          "realpathSync": "value",
+          "opendirSync": "value",
+          "mkdirSync": "value",
+          "writeSync": "value",
+          "fsyncSync": "value",
+          "unlinkSync": "value",
+          "rmdirSync": "value"
+        },
+        "node:path": {
+          "resolve": "value",
+          "dirname": "value",
+          "join": "value",
+          "basename": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "./persistence-entry.ts": {
+          "assertPreparedPersistenceLease": "value",
+          "PersistenceEntry": "type"
+        }
+      }
+    },
+    "main/adb-host-factory.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:child_process": {
+          "spawn": "value",
+          "ChildProcessWithoutNullStreams": "type"
+        },
+        "node:path": {
+          "join": "value",
+          "resolve": "value"
+        },
+        "node:crypto": {
+          "randomUUID": "value"
+        },
+        "./adb-host-adapter.ts": {
+          "createHostAdapter": "value"
+        },
+        "./adb-host-bridge.ts": {
+          "createHostBridge": "value"
+        },
+        "./platform-tools-runtime-custody.ts": {
+          "PlatformToolsRuntimeCustody": "type",
+          "RuntimeReadObservation": "type"
+        },
+        "./persistence-entry.ts": {
+          "PersistenceEntry": "type"
+        },
+        "./platform-tools-candidate.ts": {
+          "PLATFORM_TOOLS_CANDIDATE": "value"
+        },
+        "./adb-host-context.ts": {
+          "HOST_ASSETS": "value",
+          "hostHash": "value",
+          "hostUuid": "value",
+          "hostPlain": "value",
+          "hostWrite": "value",
+          "readHostContext": "value",
+          "createHostRoot": "value",
+          "cleanupHostRoot": "value",
+          "hostNames": "value"
+        }
+      }
     }
   }
 }

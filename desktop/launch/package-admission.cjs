@@ -12,6 +12,7 @@ const REACT_LICENSE_SHA = 'da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d
 const MAX_BYTES = 640 * 1024 * 1024;
 const BUILD_OUTPUTS = [
   'main.cjs',
+  'adb-host-factory.cjs',
   'asset-policy.cjs',
   'lifecycle.cjs',
   'profile-owner.cjs',
@@ -45,8 +46,16 @@ const BUILD_OUTPUTS = [
   'status.html',
   'v9.css',
 ];
+const NATIVE = [
+  'PersistenceProcess.cs',
+  'IsolatedAdbServer.cs',
+  'RetainedAdbSession.cs',
+  'RetainedAdbProtocol.cs',
+  'RetainedHostAdmission.cs',
+];
 const CLOSURE = [
   'Invoke-Package.ps1',
+  'Invoke-RetainedHost.ps1',
   'launch-core.ps1',
   'persistence-initialize.cjs',
   'persistence-launch-control.cjs',
@@ -237,7 +246,7 @@ function verifyPackage(root) {
     'README.txt',
     'runtime/node/node.exe',
     'runtime/node/LICENSE',
-    'app/native/PersistenceProcess.cs',
+    ...NATIVE.map((n) => 'app/native/' + n),
     ...CLOSURE.map((n) => 'app/launch/' + n),
     ...BUILD_OUTPUTS.map((n) => 'app/build/' + n),
     'app/build/.verified-build.json',
@@ -296,7 +305,7 @@ function verifyPackage(root) {
     safeName(name);
     if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) fail();
   }
-  for (const name of [...CLOSURE.map((n) => `launch/${n}`), 'native/PersistenceProcess.cs']) {
+  for (const name of [...CLOSURE.map((n) => `launch/${n}`), ...NATIVE.map((n) => `native/${n}`)]) {
     const expectedHash = build.inputs[name];
     if (
       typeof expectedHash !== 'string' ||
@@ -368,6 +377,7 @@ module.exports = {
   REACT_LICENSE_SHA,
   BUILD_OUTPUTS,
   CLOSURE,
+  NATIVE,
   PROVENANCE,
 };
 if (require.main === module) {

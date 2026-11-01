@@ -1,6 +1,6 @@
 # Shared fixed SOURCE/PACKAGE lifecycle. No renderer or arbitrary executable entry.
 function Invoke-PersistenceLauncher {
-param([ValidateSet('SOURCE','PACKAGE')][string]$EntryMode,[ValidateSet('Create','Existing','Store')][string]$Selection,[string]$CreateUnder,[string]$Root,[string]$Store,[string]$Maintenance,[string]$RecoverRetainedLaunch)
+param([ValidateSet('SOURCE','PACKAGE')][string]$EntryMode,[ValidateSet('Create','Existing','Store')][string]$Selection,[string]$CreateUnder,[string]$Root,[string]$Store,[string]$Maintenance,[string]$RecoverRetainedLaunch,[switch]$EnableRetainedHost)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
 $desktop=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -49,7 +49,7 @@ function New-Reserved([string]$Parent,[string]$Name,[string]$Marker) {
     Write-Private (Join-Path $path '.owner') $Marker
     return $path
 }
-function Invoke-Selected([string]$Exe,[string[]]$Arguments,[hashtable]$OwnedEnvironment,[bool]$Interactive=$false) {
+function Invoke-Selected([string]$Exe,[string[]]$Arguments,[hashtable]$OwnedEnvironment,[bool]$Interactive=$false,[object]$HostContext=$null) {
     Assert-FullPath $Exe
     $file=Get-Item -LiteralPath $Exe -Force
     if($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or [IO.Path]::GetExtension($Exe) -ine '.exe'){throw 'EXECUTABLE_REJECTED'}
@@ -61,6 +61,10 @@ function Invoke-Selected([string]$Exe,[string[]]$Arguments,[hashtable]$OwnedEnvi
         foreach($key in @($original.Keys)){[Environment]::SetEnvironmentVariable([string]$key,$null,'Process')}
         foreach($key in $original.Keys){if($allowed -contains [string]$key){[Environment]::SetEnvironmentVariable([string]$key,[string]$original[$key],'Process')}}
         foreach($key in $OwnedEnvironment.Keys){[Environment]::SetEnvironmentVariable([string]$key,[string]$OwnedEnvironment[$key],'Process')}
+        if($null -ne $HostContext){
+            if(-not $Interactive -or -not $EnableRetainedHost){throw 'HOST_CONTEXT_REJECTED'}
+            return [Fonesi.Desktop.Persistence.PersistenceProcess]::RunInteractiveWithHostJob($Exe,$Arguments,$HostContext)
+        }
         if($Interactive){return [Fonesi.Desktop.Persistence.PersistenceProcess]::RunInteractive($Exe,$Arguments)}
         return [Fonesi.Desktop.Persistence.PersistenceProcess]::RunBounded($Exe,$Arguments,120000)
     } finally {
@@ -89,7 +93,17 @@ function Invoke-Journaled([string]$Stage,[string]$Exe,[string[]]$Arguments,[hash
     if($Stage -ceq 'RECOVERY'){Journal ([string[]]@('recovery-intent',$Root,$launch,[string]$context.Sequence))}
     else{Journal ([string[]]@('intent',$Root,$launch,[string]$context.Sequence,$Stage))}
     $context.AllClean=$false
-    $result=Invoke-Selected $Exe $Arguments $Environment $Interactive
+    $hostContext=$null
+    if($Stage -ceq 'MAIN' -and $EnableRetainedHost){
+        if(-not $Interactive -or $Maintenance -or $Selection -ceq 'Store' -or $RecoverRetainedLaunch){throw 'HOST_CONTEXT_REJECTED'}
+        $header=(Read-Private (Join-Path $launch 'launch-journal.json'))|ConvertFrom-Json
+        $readyPath=Join-Path $dataRoot '.ready-launch.json'
+        $readyRaw=Read-Private $readyPath;$ready=$readyRaw|ConvertFrom-Json
+        if($ready.ownerToken -cne $header.ownerToken -or $ready.storeId -cne $header.storeId -or $ready.runtimeExeSha256 -cne $exeHash -or $ready.root -cne $dataRoot){throw 'HOST_CONTEXT_REJECTED'}
+        $readyHash=(Get-FileHash -LiteralPath $readyPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $hostContext=New-Object Fonesi.Desktop.Persistence.PersistenceProcess+HostJobContext -ArgumentList $launch,$header.launchId,$header.storeId,$header.ownerToken,$readyHash,$exeHash,([guid]::NewGuid().ToString())
+    }
+    $result=Invoke-Selected $Exe $Arguments $Environment $Interactive $hostContext
     $context.AllClean=Retired $result
     Save-Capture $context.Sequence $Stage $result
     if(-not $context.AllClean){throw 'RETIREMENT_UNCONFIRMED'}
@@ -110,12 +124,13 @@ function Outside-Package([string]$Path){
 }
 try {
     if([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT){throw 'WINDOWS_REQUIRED'}
+    if($EnableRetainedHost -and ($Maintenance -or $Selection -ceq 'Store' -or $RecoverRetainedLaunch)){throw 'HOST_CONTEXT_REJECTED'}
     if($Maintenance -cnotin @('','--maintenance=backup-now','--maintenance=list-backups','--maintenance=restore-to-new','--maintenance=accept-upgrade','--maintenance=select-backup-folder')){throw 'MAINTENANCE_REJECTED'}
     if($RecoverRetainedLaunch -and ($RecoverRetainedLaunch -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z' -or $Maintenance)){throw 'RECOVERY_ARGUMENT_REJECTED'}
     if($Selection -ceq 'Store' -and -not $Maintenance -and -not $RecoverRetainedLaunch){throw 'RESTORED_MAINTENANCE_REQUIRED'}
     Assert-Directory $desktop
     $helper=Join-Path $desktop 'native/PersistenceProcess.cs'
-    if((Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash -ine '482874120c798b61a0e6a4ab759568832bae1189a71fa2fc2950b6a508083df1'){throw 'HELPER_CHANGED'}
+    if((Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash -ine '7005eaa51de202d1138828254b766a48af2bb9305823a50076165efd4fe422fe'){throw 'HELPER_CHANGED'}
     if('Fonesi.Desktop.Persistence.PersistenceProcess' -as [type]){throw 'PRELOADED_HELPER_REJECTED'}
     Add-Type -Path $helper
     if($EntryMode -ceq 'PACKAGE'){$node=Join-Path $packageRoot 'runtime/node/node.exe'}

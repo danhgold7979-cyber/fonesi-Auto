@@ -191,6 +191,7 @@ try {
       const hashes = manifest.outputs as Record<string, unknown>;
       const required = [
         'main.cjs',
+        'adb-host-factory.cjs',
         'asset-policy.cjs',
         'lifecycle.cjs',
         'profile-owner.cjs',

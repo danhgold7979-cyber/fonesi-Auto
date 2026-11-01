@@ -2,8 +2,8 @@
 const fs = require('node:fs'),
   path = require('node:path'),
   crypto = require('node:crypto');
-const ORIGINAL_SHA = '874f8b9f623d9ee9990541dad3c60779e6307fdcf28500ba1f6a0cd5141023db';
-const WRAPPER_SHA = 'ee36256d501505e395b90229d723d49f1dca6c0a690e866906aab1a8b3ceb8c5';
+const ORIGINAL_SHA = '891465ba6b10bba2e3e2949f38571c8d9276112a09f76f1acd3db6b461c52148';
+const WRAPPER_SHA = '98843de866b97ca42609a1285d6e886923b670499f4fe0728dd703c4d49cd225';
 const CASES = [
   'audited_copy',
   'first_provisioned',

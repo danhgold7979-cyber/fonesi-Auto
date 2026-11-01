@@ -61,7 +61,40 @@ test('persistence native helper preserves the frozen ownership/capture/cleanup b
       'WaitForSingleObject(process.hProcess, (uint)timeoutMilliseconds)',
       'WaitForSingleObject(process.hProcess, timeoutMilliseconds)',
     );
-  assert.equal(derived, expected);
+  const optIn = derived.match(
+    / {8}\/\/ BEGIN RETAINED HOST OPT-IN\n[\s\S]*? {8}\/\/ END RETAINED HOST OPT-IN\n\n/,
+  );
+  assert.ok(optIn);
+  assert.equal(
+    createHash('sha256').update(optIn[0]).digest('hex'),
+    'bbee0d636fbf24526f0c408b9451c08d5e10aa9a9166c29f934c46b720f28254',
+  );
+  const historical = derived
+    .replace(optIn[0], '')
+    .replace(
+      `        static PersistenceProcessResult RunCore(string executable, string[] arguments, uint timeoutMilliseconds, int cleanupMilliseconds, int maxCharacters)
+        { return RunCoreNamed(executable, arguments, timeoutMilliseconds, cleanupMilliseconds, maxCharacters, null); }
+
+        static PersistenceProcessResult RunCoreNamed(string executable, string[] arguments, uint timeoutMilliseconds, int cleanupMilliseconds, int maxCharacters, HostJobContext host)`,
+      '        static PersistenceProcessResult RunCore(string executable, string[] arguments, uint timeoutMilliseconds, int cleanupMilliseconds, int maxCharacters)',
+    )
+    .replace(
+      `                string hostMarker = host == null ? null : HostMarker(host);
+                if (host != null && HostDigest(executable) != host.imageHash) throw new IOException("HOST_IMAGE_REJECTED");
+`,
+      '',
+    )
+    .replace(
+      `                job = CreateJobObject(IntPtr.Zero, host == null ? null : host.jobName);
+                int jobError = Marshal.GetLastWin32Error(); Require(job != IntPtr.Zero);
+                if (host != null && jobError == 183) { Close(ref job); throw new IOException("HOST_JOB_EXISTS"); }`,
+      '                job = CreateJobObject(IntPtr.Zero, null); Require(job != IntPtr.Zero);',
+    )
+    .replace(
+      '                if (host != null) WriteHostParent(host, executable, process, hostMarker);\n',
+      '',
+    );
+  assert.equal(historical, expected);
 });
 test('native lifetime policy separates indefinite UI from bounded operations, without shell entry', () => {
   assert.match(
