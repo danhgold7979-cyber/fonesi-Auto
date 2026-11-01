@@ -177,3 +177,104 @@ test('nested observer diagnostics retain only one exact phase and failure after 
   assert.ok(source.includes("latest?.stage !== 'MAIN'"));
   assert.ok(source.includes('s.chain.pending'));
 });
+
+test('capture diagnostics classify exact finite framing without changing admission or echoing data', () => {
+  const raw = (stdout, stderr = '') =>
+    JSON.stringify({
+      process: {
+        status: 'SUCCESS',
+        exitCode: 0,
+        cleanupComplete: true,
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      },
+      stdout,
+      stderr,
+    });
+  const lines = ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED'];
+  const good = api.captureVector(raw(lines.join('\n') + '\n'), lines, 'MAIN');
+  assert.equal(good.SCHEMA, 'VALID');
+  assert.equal(good.EXPECTED, 'EXACT');
+  assert.equal(good.ORDER, 'MATCH');
+  assert.equal(good.LEADING, 'ZERO');
+  assert.equal(good.TRAILING, 'ONE');
+  for (const [text, key, value] of [
+    ['\n' + lines.join('\n') + '\n', 'LEADING', 'ONE'],
+    [lines.join('\n') + '\n\n', 'TRAILING', 'MULTIPLE'],
+    [lines.join('\n\n') + '\n', 'INTERIOR', 'TRUE'],
+    [lines.slice().reverse().join('\n') + '\n', 'ORDER', 'MISMATCH'],
+    ['PRIVATE_CANARY_PATH\n', 'UNKNOWN', 'TRUE'],
+    ['BOOTSTRAP_FAILED\n', 'FAILURE', 'ONE'],
+  ]) {
+    const v = api.captureVector(raw(text), lines, 'MAIN');
+    assert.equal(v[key], value);
+    assert.equal(JSON.stringify(v).includes('PRIVATE_CANARY'), false);
+  }
+  assert.equal(
+    api.captureVector(raw('', 'BOOTSTRAP_FAILED\n'), lines, 'MAIN').STDERR_FAILURE,
+    'TRUE',
+  );
+  assert.equal(api.captureVector('{bad', lines, 'MAIN').SCHEMA, 'INVALID');
+  const ps = fs.readFileSync(path.join(__dirname, 'Invoke-FleetUi.ps1'), 'utf8');
+  for (const [key, values] of Object.entries(api.CAPTURE_VECTOR)) {
+    assert.ok(ps.includes(key + '=@('));
+    for (const value of values) assert.ok(ps.includes("'" + value + "'"));
+  }
+});
+
+test('actual failed capture attaches only fixed target and framing diagnostics', () => {
+  const f = fixture();
+  try {
+    const file = path.join(f.root, 'capture.json');
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        process: {
+          status: 'SUCCESS',
+          exitCode: 0,
+          cleanupComplete: true,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        },
+        stdout: '\nPERSISTENCE_DESKTOP_CLOSED\n',
+        stderr: 'PRIVATE_CANARY',
+      }),
+      { flag: 'wx' },
+    );
+    let caught;
+    try {
+      api.capture(file, ['PERSISTENCE_DESKTOP_CLOSED'], 'OUTER');
+    } catch (error) {
+      caught = error;
+    }
+    assert.ok(caught);
+    const lines = api.diagnostics('inspect', caught);
+    assert.ok(lines.includes('FLEET_UI_CAPTURE_TARGET_OUTER'));
+    assert.ok(lines.includes('FLEET_UI_CAPTURE_LEADING_ONE'));
+    assert.equal(lines.length, 16);
+    assert.equal(lines.join('').includes('PRIVATE_CANARY'), false);
+    for (const kind of [
+      'PREPARE',
+      'SETUP',
+      'INITIALIZATION',
+      'APPLICATION',
+      'RELEASE',
+      'RECOVERY',
+    ]) {
+      const raw = JSON.stringify({
+        process: {
+          status: 'NONZERO_EXIT',
+          exitCode: 1,
+          cleanupComplete: true,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        },
+        stdout: 'PERSISTENCE_DESKTOP_' + kind + '_FAILED\n',
+        stderr: '',
+      });
+      assert.equal(api.captureVector(raw, ['PERSISTENCE_DESKTOP_CLOSED'], 'OUTER').FAILURE, 'ONE');
+    }
+  } finally {
+    f.close();
+  }
+});

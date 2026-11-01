@@ -135,8 +135,94 @@ async function verifyCopy(root) {
     fail('FLEET_UI_COPY');
   return true;
 }
-function capture(file, lines) {
-  const v = parseCapture(read(file)),
+const CAPTURE_VECTOR = Object.freeze({
+  TARGET: Object.freeze(['OUTER', 'PROVISION', 'AUTH', 'MAIN', 'UNKNOWN']),
+  SCHEMA: Object.freeze(['VALID', 'INVALID']),
+  STATUS: Object.freeze(['SUCCESS', 'NONZERO_EXIT', 'OTHER', 'UNAVAILABLE']),
+  EXIT: Object.freeze(['ZERO', 'NONZERO', 'NULL', 'UNAVAILABLE']),
+  RETIRED: Object.freeze(['TRUE', 'FALSE', 'UNAVAILABLE']),
+  TRUNCATED: Object.freeze(['TRUE', 'FALSE', 'UNAVAILABLE']),
+  EXPECTED: Object.freeze(['ZERO', 'EXACT', 'OTHER', 'UNAVAILABLE']),
+  ORDER: Object.freeze(['MATCH', 'MISMATCH', 'UNAVAILABLE']),
+  LEADING: Object.freeze(['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE']),
+  TRAILING: Object.freeze(['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE']),
+  INTERIOR: Object.freeze(['TRUE', 'FALSE', 'UNAVAILABLE']),
+  UNKNOWN: Object.freeze(['TRUE', 'FALSE', 'UNAVAILABLE']),
+  FAILURE: Object.freeze(['ZERO', 'ONE', 'MULTIPLE', 'UNAVAILABLE']),
+  STDERR_FAILURE: Object.freeze(['TRUE', 'FALSE', 'UNAVAILABLE']),
+});
+const captureErrors = new WeakMap();
+const FAILURE_LINES = Object.freeze([
+  'PERSISTENCE_LAUNCH_PROBE_FAILED',
+  'FLEET_UI_FAILED',
+  'BOOTSTRAP_FAILED',
+  'BOOTSTRAP_CLEANUP_FAILED',
+  'PERSISTENCE_SHUTDOWN_FAILED',
+  'PERSISTENCE_DESKTOP_PREPARE_FAILED',
+  'PERSISTENCE_DESKTOP_SETUP_FAILED',
+  'PERSISTENCE_DESKTOP_INITIALIZATION_FAILED',
+  'PERSISTENCE_DESKTOP_APPLICATION_FAILED',
+  'PERSISTENCE_DESKTOP_RELEASE_FAILED',
+  'PERSISTENCE_DESKTOP_RECOVERY_FAILED',
+  'PERSISTENCE_INITIALIZE_FAILED',
+]);
+function captureVector(value, lines, target) {
+  const out = Object.fromEntries(Object.keys(CAPTURE_VECTOR).map((k) => [k, 'UNAVAILABLE']));
+  out.TARGET = CAPTURE_VECTOR.TARGET.includes(target) ? target : 'UNKNOWN';
+  out.SCHEMA = 'INVALID';
+  let v;
+  try {
+    v = parseCapture(value);
+  } catch {
+    return out;
+  }
+  out.SCHEMA = 'VALID';
+  const p = v.process,
+    raw = v.stdout.replace(/\r\n/g, '\n'),
+    parts = raw.split('\n');
+  out.STATUS = ['SUCCESS', 'NONZERO_EXIT'].includes(p.status) ? p.status : 'OTHER';
+  out.EXIT = p.exitCode === 0 ? 'ZERO' : p.exitCode === null ? 'NULL' : 'NONZERO';
+  out.RETIRED = p.cleanupComplete === true ? 'TRUE' : 'FALSE';
+  out.TRUNCATED = p.stdoutTruncated || p.stderrTruncated ? 'TRUE' : 'FALSE';
+  const nonempty = parts.filter((x) => x !== ''),
+    expected = nonempty.filter((x) => lines.includes(x));
+  out.EXPECTED =
+    expected.length === 0
+      ? 'ZERO'
+      : expected.length === lines.length &&
+          lines.every((x) => expected.filter((y) => x === y).length === 1)
+        ? 'EXACT'
+        : 'OTHER';
+  out.ORDER = JSON.stringify(expected) === JSON.stringify(lines) ? 'MATCH' : 'MISMATCH';
+  let leading = 0,
+    trailing = 0;
+  while (leading < parts.length && parts[leading] === '') leading++;
+  while (trailing < parts.length && parts[parts.length - 1 - trailing] === '') trailing++;
+  const count = (n) => (n === 0 ? 'ZERO' : n === 1 ? 'ONE' : 'MULTIPLE');
+  out.LEADING = count(leading);
+  out.TRAILING = count(trailing);
+  out.INTERIOR = parts.slice(leading, parts.length - trailing).includes('') ? 'TRUE' : 'FALSE';
+  out.UNKNOWN = nonempty.some((x) => !lines.includes(x) && !FAILURE_LINES.includes(x))
+    ? 'TRUE'
+    : 'FALSE';
+  out.FAILURE = count(nonempty.filter((x) => FAILURE_LINES.includes(x)).length);
+  out.STDERR_FAILURE = v.stderr.split(/\r?\n/).some((x) => FAILURE_LINES.includes(x))
+    ? 'TRUE'
+    : 'FALSE';
+  return out;
+}
+function capture(file, lines, target = 'UNKNOWN') {
+  const raw = read(file);
+  try {
+    return captureChecked(raw, lines);
+  } catch (error) {
+    if (error && typeof error === 'object')
+      captureErrors.set(error, captureVector(raw, lines, target));
+    throw error;
+  }
+}
+function captureChecked(raw, lines) {
+  const v = parseCapture(raw),
     p = v.process;
   if (
     p?.status !== 'SUCCESS' ||
@@ -227,14 +313,18 @@ async function diagnose(root) {
 }
 async function inspect(root) {
   await verifyCopy(root);
-  capture(path.join(root, 'launcher-capture.json'), ['PERSISTENCE_DESKTOP_CLOSED']);
+  capture(path.join(root, 'launcher-capture.json'), ['PERSISTENCE_DESKTOP_CLOSED'], 'OUTER');
   const s = state(root),
     { launch, header } = s;
   const provision = json(path.join(launch, 'provision-observed.json')),
     auth = json(path.join(launch, 'auth-observed.json'));
   for (const stage of ['provision', 'auth'])
-    capture(path.join(launch, stage + '-capture.json'), ['PERSISTENCE_INITIALIZE_ORDERLY']);
-  capture(path.join(launch, 'main-capture.json'), ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED']);
+    capture(
+      path.join(launch, stage + '-capture.json'),
+      ['PERSISTENCE_INITIALIZE_ORDERLY'],
+      stage.toUpperCase(),
+    );
+  capture(path.join(launch, 'main-capture.json'), ['BOOTSTRAP_READY', 'BOOTSTRAP_CLOSED'], 'MAIN');
   if (
     provision.status !== 'PROVISIONED' ||
     auth.status !== 'AUTHENTICATED' ||
@@ -298,7 +388,7 @@ async function cleanup(root) {
   await verifyCopy(root);
   const token = owned(root),
     s = state(root);
-  capture(path.join(root, 'launcher-capture.json'), ['PERSISTENCE_DESKTOP_CLOSED']);
+  capture(path.join(root, 'launcher-capture.json'), ['PERSISTENCE_DESKTOP_CLOSED'], 'OUTER');
   const publicResult = json(path.join(root, 'public.json'));
   if (
     publicResult.failure !== null ||
@@ -504,6 +594,9 @@ function diagnostics(action, error) {
   return [
     'FLEET_UI_CONTROL_PHASE_' + (PHASES.includes(phase) ? phase : 'ARGUMENT'),
     'FLEET_UI_CONTROL_REASON_' + code,
+    ...Object.entries(captureErrors.get(error) ?? {}).map(
+      ([key, value]) => 'FLEET_UI_CAPTURE_' + key + '_' + value,
+    ),
   ];
 }
 module.exports = {
@@ -514,6 +607,8 @@ module.exports = {
   transform,
   rawWrite,
   capture,
+  captureVector,
+  CAPTURE_VECTOR,
   BOOTSTRAP,
   SOURCES,
   PHASES,

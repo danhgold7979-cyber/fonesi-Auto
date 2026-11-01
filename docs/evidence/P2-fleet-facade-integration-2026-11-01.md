@@ -130,3 +130,30 @@ exact-source/owned-envelope review CLEAR. This authorizes the frozen SOURCE-only
 and two bounded screenshots via the explicit developer opt-in, not native success,
 production/device activation or a canonical task acceptance. Native remains NOT_RUN
 at this source commit.
+
+## First native smoke result and bounded capture diagnostics — 04:22 UTC
+
+The exact published `cbd81704bee66a639f0a87c9ea4cb4dbdec26346` first smoke
+returned a truthful failed report: `CONTROL_FAILED`, no bootstrap/UI result,
+`cleanupComplete:false`. The outer native process was `SUCCESS`/exit0; the
+inspection control rejected its capture boundary with `FLEET_UI_CAPTURE`.
+Artifact13069357932 reconstructs to306 bytes, SHA256
+`4eb9d4543ab202bfc22eeff360313ae351d78bc1aa1e7d7305ea36c2a9778593`.
+This is not a native UI PASS and does not identify the private framing difference.
+
+A verification-only diagnostic increment binds14 fixed capture classifications
+(target, schema, status/exit, retirement/truncation, expected-marker count/order,
+leading/trailing/interior empty lines, unknown lines and known failure categories)
+to the actual thrown capture error. PowerShell forwards at most one exact literal
+per slot; no private stdout, stderr, path or exception is forwarded. Existing exact
+capture acceptance and every report/retirement predicate remain unchanged. All six
+actual launcher failure literals and the initializer failure are recognized.
+
+Five affected capture/diagnostic tests PASS, including actual failed-capture
+classification, equivalent PowerShell JSON transport, malformed/duplicate rejection,
+fixed-enum forwarding parity and private-canary exclusion. The unchanged copied
+launcher materialization tests are not repeated against the concurrently dirty
+schema4 development build, whose manifest correctly refuses the old verified build.
+This narrow checkpoint contains no durable schema4 source; the retry remains bound
+to the committed schema3 application. Native cause and corrected outcome remain
+pending the next explicitly opted-in run. No canonical count changes.
