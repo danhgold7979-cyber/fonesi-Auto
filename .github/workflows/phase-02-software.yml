@@ -17,6 +17,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_recipient_setup:
+        description: 'Reviewed local-archive recipient setup with injected native answers; no ADB execution'
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [phase-02]
     paths:
@@ -79,7 +84,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==205; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==214; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Explicit unavailable runtime and deferred hardware boundary
         run: |
@@ -282,5 +287,93 @@ jobs:
           path: |
             desktop/.fleet-ui-runtime/fleet-light.png
             desktop/.fleet-ui-runtime/fleet-dark.png
+          if-no-files-found: error
+          retention-days: 14
+
+  # Recipient setup is separately opt-in; injected native answers are not genuine consent.
+  owned-recipient-setup-development:
+    needs: windows-software-only
+    if: (github.event_name == 'workflow_dispatch' && inputs.run_recipient_setup) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[recipient-setup]'))
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Fetch exact official development archive once, never upload binaries
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/fetch_platform_tools.py ([IO.Path]::GetFullPath('desktop'))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned source recipient local-archive setup without executable or device effects
+        run: |
+          try { & ./desktop/verification/Invoke-RecipientSetup.ps1 }
+          catch { Write-Output 'RECIPIENT_SETUP_RUNNER_FAILED'; exit 1 }
+      - name: Strict recipient setup evidence and separately bound screenshots
+        id: recipient_setup_validation
+        if: always()
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_recipient_setup.py publish 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines) {
+              if ([string]$line -cmatch '^(RECIPIENT_SETUP_VALIDATION_WRITTEN|RECIPIENT_SETUP_SCREENSHOTS_BOUND|RECIPIENT_SETUP_VALIDATION_PASS|RECIPIENT_SETUP_VALIDATION_FAIL|RECIPIENT_SETUP_VALIDATION_INVALID)$') { Write-Output ([string]$line) }
+            }
+            if (@($lines | Where-Object {$_ -ceq 'RECIPIENT_SETUP_VALIDATION_WRITTEN'}).Count -eq 1) {
+              'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if (@($lines | Where-Object {$_ -ceq 'RECIPIENT_SETUP_SCREENSHOTS_BOUND'}).Count -eq 1) {
+              'images=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RECIPIENT_SETUP_VALIDATION_PASS'}).Count -ne 1) { exit 1 }
+          } catch { Write-Output 'RECIPIENT_SETUP_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only validated fixed-field recipient setup evidence
+        if: always() && steps.recipient_setup_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: recipient-setup-development-evidence
+          path: desktop/.recipient-setup-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload only two fully bound setup screenshots
+        if: always() && steps.recipient_setup_validation.outputs.images == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: recipient-setup-development-images
+          path: |
+            desktop/.recipient-setup-runtime/setup-light.png
+            desktop/.recipient-setup-runtime/setup-dark.png
           if-no-files-found: error
           retention-days: 14

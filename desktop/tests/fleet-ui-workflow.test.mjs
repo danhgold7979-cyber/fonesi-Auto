@@ -15,7 +15,7 @@ function validate(input) {
   );
   const parts = source.split('  owned-fleet-ui-development:\n');
   assert.equal(parts.length, 2);
-  const job = parts[1];
+  const job = parts[1].split(/\n {2}[a-z0-9-]+:\n/)[0];
   assert.ok(job.startsWith(`    needs: windows-software-only\n    if: ${condition}\n`));
   assert.doesNotMatch(
     job,

@@ -186,7 +186,12 @@ function assertManualGates(raw) {
     '  owned-adb-version-development:',
   );
   assert.doesNotMatch(sourceJob, /Invoke-PlatformTools|fetch_platform_tools/);
-  assert.equal((workflow.match(/fetch_platform_tools.py/g) ?? []).length, 1);
+  const adbJob = section(
+    workflow,
+    '  owned-adb-version-development:',
+    '  owned-fleet-ui-development:',
+  );
+  assert.equal((adbJob.match(/fetch_platform_tools.py/g) ?? []).length, 1);
 }
 
 test('ordinary source pushes cannot invoke development binaries; version and server require separate manual opt-ins', () => {
