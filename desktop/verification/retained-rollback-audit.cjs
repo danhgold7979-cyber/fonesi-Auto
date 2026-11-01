@@ -19,13 +19,12 @@ function correlate(rows, b) {
           v.phase !== 'RESULT' ||
           v.outcome !== 'OBSERVED' ||
           v.code !== 'OK' ||
-          v.operationId !== null ||
           v.expectedRevision !== null,
       )
     )
       fail('AUDIT');
     if (!op) {
-      if (effects.length) fail('AUDIT');
+      if (effects.length || reads.some((v) => v.operationId !== null)) fail('AUDIT');
       return;
     }
     const expected = [
@@ -39,7 +38,20 @@ function correlate(rows, b) {
         op.verifiedRevision,
       ],
     ];
-    if (effects.length !== 4 || new Set(effects.map((v) => v.diagnosticId)).size !== 1)
+    if (effects.length !== 4) fail('AUDIT');
+    if (
+      isSetup
+        ? effects[0].diagnosticId !== effects[1].diagnosticId ||
+          effects[2].diagnosticId !== effects[3].diagnosticId ||
+          effects[0].diagnosticId === effects[2].diagnosticId
+        : new Set(effects.map((v) => v.diagnosticId)).size !== 1
+    )
+      fail('AUDIT');
+    if (
+      reads.some(
+        (v, i) => v.operationId !== (isSetup && i === reads.length - 1 ? op.operationId : null),
+      )
+    )
       fail('AUDIT');
     effects.forEach((v, i) => {
       const [operation, phase, outcome, revision] = expected[i];
@@ -50,7 +62,7 @@ function correlate(rows, b) {
         v.resultingRevision !== revision ||
         v.code !== 'OK' ||
         v.operationId !== op.operationId ||
-        v.expectedRevision !== op.expectedRevision ||
+        v.expectedRevision !== (isSetup && i >= 2 ? op.pendingRevision : op.expectedRevision) ||
         (isSetup
           ? v.action !== (i < 2 ? null : op.action)
           : v.installationRevision !== op.installationRevision)

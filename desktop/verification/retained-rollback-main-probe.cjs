@@ -94,7 +94,9 @@ function response(raw, kind) {
     if (
       v.outcome === 'PENDING'
         ? !['AWAITING_RECIPIENT', 'PROVISIONING'].includes(s.state) || !uuid(s.operationId)
-        : !['UNAVAILABLE', 'VERIFIED_LOCAL'].includes(s.state) || s.operationId !== null
+        : !['UNAVAILABLE', 'VERIFIED_LOCAL'].includes(s.state) ||
+          (s.operationId !== null && !uuid(s.operationId)) ||
+          (s.state === 'UNAVAILABLE' && s.operationId !== null)
     )
       reject();
   } else {
@@ -419,6 +421,7 @@ function runObserver() {
       stage === 'SEED' ? 0 : stage === 'UPGRADE' ? 1 : stage === 'ROLLBACK' ? 2 : 3;
     const beforeActive = stage === 'SEED' ? null : stage === 'ROLLBACK' ? '37.0.1' : '36.0.0';
     if (
+      initial.operationId !== null ||
       initial.installationRevision !== beforeRevision ||
       initial.activeVersion !== beforeActive ||
       initial.installTargetVersion !== expected.installTargetVersion ||
@@ -441,7 +444,7 @@ function runObserver() {
       if (
         installed.revision <= pending.pendingRevision ||
         installed.state !== 'VERIFIED_LOCAL' ||
-        installed.operationId !== null ||
+        installed.operationId !== pending.operationId ||
         installed.installationRevision !== expected.installationRevision
       )
         reject();

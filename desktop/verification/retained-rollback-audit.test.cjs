@@ -39,7 +39,8 @@ function rows(b, runId = randomUUID()) {
   const out = [];
   function group(isSetup) {
     const op = isSetup ? b.setup : b.runtime,
-      diagnosticId = randomUUID();
+      diagnosticId = randomUUID(),
+      provisionDiagnosticId = randomUUID();
     function row(operation, phase, outcome, resultingRevision) {
       const value = {
         schemaVersion: isSetup ? 8 : 7,
@@ -52,9 +53,24 @@ function rows(b, runId = randomUUID()) {
         event: isSetup ? 'PLATFORM_TOOLS_SETUP' : 'RUNTIME_VERSION',
         operation,
         phase,
-        diagnosticId: operation === 'READ' ? randomUUID() : diagnosticId,
-        operationId: operation === 'READ' ? null : op.operationId,
-        expectedRevision: operation === 'READ' ? null : op.expectedRevision,
+        diagnosticId:
+          operation === 'READ'
+            ? randomUUID()
+            : operation === 'PROVISION'
+              ? provisionDiagnosticId
+              : diagnosticId,
+        operationId:
+          operation === 'READ'
+            ? isSetup && op && resultingRevision === 2
+              ? op.operationId
+              : null
+            : op.operationId,
+        expectedRevision:
+          operation === 'READ'
+            ? null
+            : operation === 'PROVISION'
+              ? op.pendingRevision
+              : op.expectedRevision,
         resultingRevision,
         ...(isSetup
           ? { action: operation === 'PROVISION' ? op.action : null }
@@ -223,6 +239,101 @@ test('actual finalized audit rejects unknown files, rewritten prior segment witn
     }
   } finally {
     assert.equal(fs.readFileSync(path.join(root, '.owner'), 'utf8'), token);
+    fs.rmSync(root, { recursive: true, force: false });
+  }
+});
+test('actual owned setup service and actual runtime service emit distinct audit semantics through real LogStore', async () => {
+  const { setupObservation, runtimeObservation } = await import(
+      './retained-rollback-service-fixture.mjs'
+    ),
+    setup = await setupObservation(),
+    runtime = await runtimeObservation();
+  const root = fs.mkdtempSync(
+      path.join(
+        fs.realpathSync.native(path.join(__dirname, '../.test-output')),
+        'rollback-service-audit-',
+      ),
+    ),
+    owner = randomUUID(),
+    directory = path.join(root, 'logs-main');
+  fs.writeFileSync(path.join(root, '.owner'), owner, { flag: 'wx' });
+  try {
+    const make = (f, isSetup) => ({
+        operationId: f.pending.snapshot.operationId,
+        ...(isSetup ? {} : { installationRevision: f.pending.snapshot.installationRevision }),
+        expectedRevision: f.initial.snapshot.revision,
+        pendingRevision: f.pending.snapshot.revision,
+        verifiedRevision: f.terminal.snapshot.revision,
+        reads: isSetup ? 3 : 2,
+        requestId: f.pending.requestId,
+        ...(isSetup ? { action: 'INSTALL' } : {}),
+      }),
+      b = { version: 1, stage: 'SEED', setup: make(setup, true), runtime: make(runtime, false) };
+    c.validateBinding(b);
+    assert.equal(setup.terminal.snapshot.operationId, b.setup.operationId);
+    assert.equal(runtime.terminal.snapshot.operationId, null);
+    const runId = randomUUID();
+    let sequence = 0;
+    const emitted = [
+      ...setup.events.map((e) => ({ schemaVersion: 8, event: 'PLATFORM_TOOLS_SETUP', ...e })),
+      ...runtime.events.map((e) => ({ schemaVersion: 7, event: 'RUNTIME_VERSION', ...e })),
+    ].map((e) => ({
+      ...e,
+      runId,
+      sequence: ++sequence,
+      utc: '2026-11-01T14:00:00.000Z',
+      severity: 'INFO',
+      component: 'MAIN',
+      task: 'P2-01',
+    }));
+    assert.doesNotThrow(() => a.correlate(emitted, b));
+    for (const mutate of [
+      (r) => {
+        r.find(
+          (e) => e.schemaVersion === 8 && e.operation === 'READ' && e.operationId !== null,
+        ).operationId = null;
+      },
+      (r) => {
+        r.find((e) => e.operation === 'PROVISION').expectedRevision = b.setup.expectedRevision;
+      },
+      (r) => {
+        const d = r.find((e) => e.operation === 'REQUEST').diagnosticId;
+        r.filter((e) => e.operation === 'PROVISION').forEach((e) => {
+          e.diagnosticId = d;
+        });
+      },
+      (r) => {
+        r.findLast((e) => e.schemaVersion === 7 && e.operation === 'READ').operationId =
+          b.runtime.operationId;
+      },
+      (r) => {
+        r.find((e) => e.operation === 'VERIFY').diagnosticId = randomUUID();
+      },
+      (r) => {
+        r.find((e) => e.operation === 'VERIFY').expectedRevision = b.runtime.pendingRevision;
+      },
+    ]) {
+      const changed = structuredClone(emitted);
+      mutate(changed);
+      assert.throws(() => a.correlate(changed, b));
+    }
+    const { LogStore } = await import('../src/main/log-store.ts'),
+      store = await LogStore.open(
+        { root: directory, parentToken: owner },
+        '2026-11-01T14:00:00.000Z',
+        () => {},
+        owner,
+      );
+    for (const row of emitted) {
+      assert.equal(store.enqueue(row), 'QUEUED');
+      assert.equal(await store.flush(), 'FLUSHED');
+    }
+    assert.equal(await store.close(), 'FLUSHED');
+    assert.equal((await a.audit(directory, b, base.binary, owner)).runIds.length, 1);
+  } finally {
+    await setup.cleanup();
+    await runtime.cleanup();
+    assert.equal(fs.readFileSync(path.join(root, '.owner'), 'utf8'), owner);
     fs.rmSync(root, { recursive: true, force: false });
   }
 });

@@ -1,8 +1,8 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 17:28 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 17:38 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
-Current four-launch CI41331167124 passed source1189/109/274 and refreshed managed10 compilation/fixtures. Native SEED stopped at PREPARE before main/VERSION. A source-proven harness PATH mismatch is being corrected: SEED needs only the admitted Node directory plus System32; PACKAGE stays System32-only. No actual rollback or campaign-directory cleanup PASS yet.
+Current four-launch CI41331857064 passes source and refreshed managed10, and the repaired SEED launcher reaches actual main. It stops at the verification observer SETUP/RESPONSE boundary: observer/audit mocks incorrectly assumed setup clears its terminal operation ID and shares runtime audit revisions. Verification-only expectations are being corrected against actual service-generated records; product runtime semantics remain unchanged. No rollback/campaign-cleanup PASS yet.
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 

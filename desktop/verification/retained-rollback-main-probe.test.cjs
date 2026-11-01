@@ -45,13 +45,18 @@ function wire(
   installationRevision,
   activeVersion,
   target = '37.0.1',
+  setupOperationId = null,
 ) {
   const pending = ['PENDING', 'AWAITING_RECIPIENT'].includes(state),
     snapshot = {
       revision,
       installationRevision,
       state,
-      operationId: pending ? id(kind === 'setup' ? 8 : 9) : null,
+      operationId: pending
+        ? id(kind === 'setup' ? 8 : 9)
+        : kind === 'setup'
+          ? setupOperationId
+          : null,
       code: null,
       installTargetVersion: target,
       activeVersion,
@@ -301,6 +306,15 @@ async function simulate(stage, fault = null) {
             installation,
             active,
             expected.installTargetVersion,
+            srequests
+              ? fault === 'terminal-null'
+                ? null
+                : fault === 'terminal-other'
+                  ? id(18)
+                  : id(8)
+              : fault === 'initial-operation'
+                ? id(8)
+                : null,
           );
         }
         srequests++;
@@ -483,3 +497,30 @@ test('actual Electron dynamic-import entry starts observer without manually call
   });
   assert.equal(r.status, 0, r.stderr);
 });
+
+test('actual setup service/core owned installation produces retained terminal operation accepted by observer', async () => {
+  const { setupObservation } = await import('./retained-rollback-service-fixture.mjs');
+  const f = await setupObservation();
+  try {
+    for (const record of [f.hydrated, f.initial, f.pending, f.terminal])
+      assert.deepEqual(
+        JSON.parse(JSON.stringify(response(JSON.stringify(record), 'setup'))),
+        record,
+      );
+    assert.equal(f.initial.snapshot.operationId, null);
+    assert.notEqual(f.pending.snapshot.operationId, null);
+    assert.equal(f.terminal.snapshot.operationId, f.pending.snapshot.operationId);
+    assert.ok(f.terminal.snapshot.revision > f.pending.snapshot.revision);
+    assert.equal(f.terminal.snapshot.state, 'VERIFIED_LOCAL');
+  } finally {
+    await f.cleanup();
+  }
+});
+for (const fault of ['terminal-null', 'terminal-other', 'initial-operation'])
+  test(`actual observer rejects setup operation-correlation mismatch ${fault}`, async () => {
+    const r = await simulate('SEED', fault);
+    assert.equal(r.exit, 1);
+    assert.equal(r.observed, null);
+    assert.equal(r.rrequests, 0);
+    assert.equal(r.srequests, fault === 'initial-operation' ? 0 : 1);
+  });

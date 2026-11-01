@@ -1,6 +1,6 @@
 # P2-01 — four-launch retained rollback campaign preparation
 
-2026-11-01. Status: coherent runner source independently reviewed CLEAR; actual current Windows compilation and10 managed groups are **PASS**; first native SEED preparation failed, so four-launch rollback remains **UNPROVED**. Historical preparation and failed attempts are retained below.
+2026-11-01. Status: coherent runner source independently reviewed CLEAR; actual current Windows compilation and10 managed groups are **PASS**; the latest native SEED attempt reached main but failed verification at SETUP/RESPONSE, so four-launch rollback remains **UNPROVED**. Historical preparation and failed attempts are retained below.
 
 ## Requirement, authority and exact product boundary
 
@@ -73,3 +73,21 @@ The native SEED launcher returned `PERSISTENCE_DESKTOP_PREPARE_FAILED` /NONZERO_
 Independent source reads identified a concrete harness mismatch: the new outer runner forced System32-only PATH for every stage, while unchanged SOURCE launch-core resolves `node.exe` with Get-Command before root creation. Its exact pinned Node lives in the toolcache. The earlier retained runner restricted PATH only for PACKAGE. This source mismatch explains the observed preparation boundary; the private thrown exception was not published. The narrow correction gives SEED only the already hash-verified Node directory plus System32; PACKAGE remains System32-only with its absolute packaged Node. It preserves the four core substitutions, compiler/runtime arguments, deadlines and all ownership/cleanup predicates. No ambient PATH or generic executable fallback is admitted. Corrected Windows execution remains pending.
 
 The existing rollback Python file passed8/8 after this correction, including actual hash-bound core materialization for both modes, exact SOURCE-before-root lookup and PACKAGE absolute-node branch, and seed-only fixed PATH/hash fence assertions. No test count or full aggregate rerun was added. Independent report audit reconstructed both original reports from the exact committed validator/import closure. Corrected outer SHA256 is `8e3c4f13ee05548656536eac6206e53cc73861428e8c96507d86bb354d1de8ab`; test SHA256 `27e3add121cb8f5fdefc0b5b0c6c36f82354626a8ac4b117674d9413723423cc`. The historical outer hash above remains unchanged as prior-attempt provenance.
+
+## Second native boundary and service-derived expectation correction —17:38 UTC
+
+Public `ac5696f3fe9902924a0433811e47a5dd738e1c1d` /tree `b101053642006b73bef51dd6c5dfa4daf4dd66ba` /CI41331857064 passed its source job and managed gate. The corrected SEED launcher reached actual main but stopped with `PERSISTENCE_DESKTOP_APPLICATION_FAILED`, observer SETUP/RESPONSE. The downloaded managed report remains byte-identical1202B/SHA `fe7e37eb9ca872fcdaa153bf2d02860128c36d26918c4f6788ba682e02c763f2`; failed native report2022B/SHA `b3921ddb38e350622369ec1a525e63e6325057d59c7dea42bf8ba651b2c0c266` is strictly reconstructed, with no stage observation/bootstrap, later stages null and directoryCleanup false. Independent validation used the exact committed validator/import closure, without another download or test suite.
+
+Independent source review found that the verification mocks had incorrectly assigned runtime semantics to setup. Actual setup deliberately retains its operation ID after successful completion; its PROVISION pair has a separately allocated diagnostic and expectedRevision equal to the PENDING revision. REQUEST uses the original CAS revision. Terminal setup READ logs the retained operation ID. Runtime deliberately clears terminal operation ID and shares request diagnostic/original CAS across REQUEST/VERIFY, so that branch must remain unchanged. The observer and audit verifier are being corrected to these exact real service semantics, with one shared composition fixture: actual setup service with real transformed catalog/core/custody/ledger/files over synthetic owned ZIP/catalog/recipient answers; actual runtime service with synthetic custody/native facts, and actual LogStore flush/encoding (no network/native effects), rather than changing product behavior to fit invented tuples. No core failure or rollback success is inferred from the failed observation.
+
+The repaired observer13/13 and audit4/4 affected checks passed (17 total, overlapping the prior observer/audit checks); five added cases make the next expected desktop total1194. Existing142 test paths remain unchanged; foundation109/Python274 are unchanged scope, not rerun locally. Scoped formatting/quality and diff checks are clean. The composition checks actual service responses and emitted audit records, including reopened initial null ID; six causal old-assumption mutations and terminal null/wrong-ID/stale-initial negatives are refused. Current managed bytes are unchanged and prior proof remains exact. Next Windows execution is pending.
+
+Corrected verification SHA256 values:
+
+```text
+35f1b61f4909b6e336fc4568bca4af98e0de33920873c8b23a70cf7f51dc36fc  desktop/verification/retained-rollback-main-probe.cjs
+a566eebcd4e126b51f741e9b5c0b6202aefc411f6c170451b2fc5716362c4d5b  desktop/verification/retained-rollback-main-probe.test.cjs
+6b12b48111f043370f71d7ce2182ccf2a80ade06648c6e9b5feb6680046d5e1c  desktop/verification/retained-rollback-audit.cjs
+20df3f1d12b4c95dd5a8ed8364b723e7bea39a4cee09995ced1d2337cfbdb7ac  desktop/verification/retained-rollback-audit.test.cjs
+2afd5e09ff8f5595e67bfa1dadc03d51fd7259e7eb36347585df6cd8da0f2834  desktop/verification/retained-rollback-service-fixture.mjs
+```
