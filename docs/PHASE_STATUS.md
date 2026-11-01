@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-10-31 19:16 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 02:48 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -20,11 +20,11 @@ Test results are separately PASS / FAIL / NOT_RUN / NOT_APPLICABLE. Report exact
 
 ## 2. Current repository and plan-review state
 
-**Current execution: Phase 1 technical software handoff ready; formal acceptance pending.**
+**Current execution: Phase2 bounded software foundation IN_PROGRESS on `phase-02`; formal acceptance pending.**
 Ten of eleven canonical task scopes have technical passes (10/11=90.9%;10/154=6.5% overall).
 P1-06 cross-user proof remains UNMET; formal accepted count is0. P1-10 internal packaging
 and known-retired/RESTORED launcher obligations passed their bounded native scope.
-Phase2 software-first entry remains proposed, not code or branch authorization.
+Phase2 reviewed internal P2-01–P2-07 source batch is authorized under Amendment02; exact base `f8b155738e0ebbe404449579d4f4b60b911aed28`. [Entry record](phases/PHASE-02-SOFTWARE-FIRST-ENTRY-PROPOSAL.md) and [software checkpoint](evidence/P2-01-07-software-foundation-2026-11-01.md) distinguish pure source/fixture tests from actual ADB/binary/device gates. Independent local checkpoint641 desktop/109 foundation/157 Python passes; six main-only modules remain unwired and production ADB remains `BINARY_UNAVAILABLE`. No Phase2 task PASS is added.
 Historical Phase0 records below are preserved, not the current software work queue.
 
 | Item | Status | Evidence / boundary |
@@ -72,7 +72,7 @@ The four concurrent IN_PROGRESS rows are retained historical facts, **not eviden
 
 All 12 checkboxes in the approved baseline's §11 remain unaccepted. In particular, physical **ADB + UI Automator + Vision** smoke evidence is mandatory under the recorded approval; the reversible ADB setting test alone does not meet that gate. The older “Draft only” sentence and LAB-02 “Proposed” row are preserved historical inconsistencies; the later explicit approval/mandatory physical-test record is not revoked by them. Proposed reconciliation is in Amendment 01, not a silent baseline rewrite.
 
-## 4. Phase execution tracker and draft-plan index
+## 4. Historical pre-amendment phase tracker (superseded development gates)
 
 **Current boundary:** DEC-022 / playbook §6 authorized the recorded independent feasibility slices, now concluded with reviewed evidence. [Final handoff](evidence/PHASE-00-independent-work-handoff-2026-10-30.md) separates their results from open gates. Further Auto production coding is BLOCKED at Phase 0; Phase 1 remains NOT_STARTED. No new experiment is authorized by this status update.
 

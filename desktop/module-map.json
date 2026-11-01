@@ -1071,6 +1071,39 @@
           "UiModal": "value"
         }
       }
+    },
+    "main/adb-discovery.ts": {
+      "role": "main-adapter",
+      "imports": {}
+    },
+    "main/adb-metadata.ts": {
+      "role": "main-adapter",
+      "imports": {}
+    },
+    "main/platform-tools-contract.ts": {
+      "role": "main-adapter",
+      "imports": {}
+    },
+    "main/adb-host-lifecycle.ts": {
+      "role": "main-adapter",
+      "imports": {}
+    },
+    "main/transport-registry.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-discovery.ts": {
+          "snapshotDiscoveryRow": "value",
+          "AdbDiscoveryRow": "type"
+        }
+      }
+    },
+    "main/device-actor.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./adb-discovery.ts": {
+          "validAdbSerial": "value"
+        }
+      }
     }
   }
 }

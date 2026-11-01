@@ -1,12 +1,12 @@
 # PHASE-02 — ADB and device fleet
 
-**Revision/date:** 1.1-draft / 2026-10-30
-**Plan:** DRAFT / NOT AUTHORIZED · **Execution:** NOT_STARTED · **Coding:** NO
-**Proposed branch:** `phase-02` (not created)
-**Base:** accepted `main` SHA to verify after Phase 1 acceptance/merge
-**Owner/reviewer:** assign at approval
+**Revision/date:** 1.2-software-entry / 2026-11-01
+**Plan:** BOUNDED SOFTWARE ENTRY APPROVED · **Execution:** IN_PROGRESS · **Coding:** YES, internal P2-01–P2-07 batch only
+**Development branch:** `phase-02`, created/verified 2026-11-01 02:37–02:38 UTC
+**Base:** reviewed Phase1 public `f8b155738e0ebbe404449579d4f4b60b911aed28`; no main merge
+**Owner/reviewer:** coordinator Coder Bin / independent source-and-safety reviewer
 
-> Phase 0 remains unfinished. This future plan authorizes neither code nor device changes. Planning approval does not approve this Phase or a test command on a user's phone.
+> Phase0/formal predecessor acceptance remains unfinished. The adopted [software-first amendment](SOFTWARE-FIRST-HARDWARE-DEFERRED-AMENDMENT-02.md) and exact [Phase2 entry record](PHASE-02-SOFTWARE-FIRST-ENTRY-PROPOSAL.md) supersede the original development-entry gate only. They permit the bounded internal software batch, not phone/ADB execution, SDK terms acceptance, formal phase acceptance or unverified production activation.
 
 ## 1. Outcome and scope
 
@@ -16,7 +16,7 @@ No production streams/OCR/workflows/posting, automatic account login, open unaut
 
 ## 2. Entry and execution order
 
-Require Phase 0 acceptance with physical evidence, Phase 1 acceptance **and merge**, current repo/remote/branch/HEAD/status verification and explicit approval of this plan/task. All earlier phases remain accepted; no parallel later-phase work.
+Original predecessor acceptance/merge gates remain formal acceptance requirements, not blockers for independently testable software development under Amendment02. The exact reviewed Phase1 base and new branch were verified; coordinator source entry was granted 2026-10-31 19:24 UTC and resumed after explicit user authorization 2026-11-01. Routine phase/branch progression is delegated by the user after reviewed readiness, without repetitive permission ceremonies. Concrete binary/license, device, account, installation and security authority remains separately gated.
 
 [Accepted C-03/C-07/C-08/C-17](../16_ACCEPTED_PRODUCT_DECISIONS.md): user provisions device authorization; validate current Windows host with at least two physical phones and two AVDs, initially one AVD running. **USB first; Wireless Debugging remains disabled until dedicated authenticated pairing/reconnect tests pass.** Before execution record exact Platform Tools version/license/trust, Android/Windows/driver profiles, device identity resolution and authorized input-helper/lab changes. A disabled wireless UI is not a passing wireless test. Never guess device identity from display labels; helper install/permissions need separate approval.
 
@@ -30,7 +30,7 @@ Contracts include device ID, explicit serial/transport ID, connection generation
 
 ## 4. Task packages
 
-All tasks **NOT_STARTED**; all tests below **NOT RUN**. Each row names deliverable, direct dependencies, both positive and negative assertions, evidence and rollback. Common evidence/rollback rules in §§5–6 apply to every row.
+P2-01–P2-07 internal source portions are **IN_PROGRESS**; no complete canonical task has new acceptance. P2-08–P2-13 remain **NOT_STARTED**. All actual ADB/Windows lifecycle/physical tests below remain **NOT_RUN**; pure source/fixture evidence is recorded separately in the checkpoint ledger. Each row names deliverable, direct dependencies, both positive and negative assertions, evidence and rollback. Common evidence/rollback rules in §§5–6 apply to every row.
 
 | ID / deliverable and proposed module | Dependencies | Positive acceptance | Negative / failure acceptance | Required evidence / rollback |
 |---|---|---|---|---|
@@ -70,11 +70,13 @@ Each test artifact records task/case ID, SHA, UTC, Windows/ADB version, pseudony
 - [ ] No unscoped command path, competing input owner, unsafe fallback or false success remains.
 - [ ] V9 selection/focus/batch behavior and redacted diagnostics pass; complete impacted regression and Windows package smoke pass.
 - [ ] AC-02, supported matrix, known limitations and rollback are recorded in acceptance report/status.
-- [ ] User accepts and authorizes merge before separate Phase 3 approval.
+- [ ] Formal acceptance and any main merge are explicitly recorded. Routine later software entry/phase branch creation follows the delegated software-first readiness process; it is not formal acceptance or device permission.
 
 Risks/stop conditions: identity collision → quarantine; Unicode unsupported → text capability blocked; ADB ownership conflict → do not terminate foreign process; missing hardware → BLOCKED; unapproved wireless → disabled. Name owners at approval.
 
-**User approval:** PENDING · **Coding:** NO · **Runtime/hardware tests:** NOT RUN.
+**Bounded software entry:** APPROVED · **Coding:** IN_PROGRESS · **Actual ADB/runtime/hardware tests:** NOT_RUN.
+
+[Current software checkpoint](../evidence/P2-01-07-software-foundation-2026-11-01.md) separates synthetic contract/state tests from actual binary/host/device evidence.
 
 | Date | Task | Commit/evidence | Actual result |
 |---|---|---|---|
@@ -86,3 +88,5 @@ Risks/stop conditions: identity collision → quarantine; Unicode unsupported �
 | 2026-10-30 | 1.0-draft | Full device-fleet tasks, Unicode gate, failure and evidence plan | Future draft only |
 
 - 2026-10-30 / 1.1-draft: aligned accepted USB-first, provisioning, two-physical/two-AVD and exact-Unicode directions; no hardware result inferred.
+
+- 2026-11-01 / 1.2: recorded reviewed bounded software entry and exact development base under Amendment02; canonical13 task definitions/physical acceptance unchanged, no new task PASS.

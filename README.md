@@ -13,14 +13,14 @@ The only retained inputs are:
 
 All architecture, schemas, adapters, workflow state machines, tests, and implementation plans must be designed independently for this repository.
 
-## Current software status — 2026-10-31 19:16 UTC
+## Current software status — 2026-11-01
 
 Phase1 has **10/11 task-specific technical passes (90.9%;10/154=6.5% overall)**,
 including an unsigned offline Windows internal package and tested known-retired launch
 recovery. P1-06 cross-user proof remains UNMET; formal accepted count is0. This is not
 a complete tool, signed release or physical-device acceptance.
 [Current status](docs/PHASE_STATUS.md) · [Package/technical handoff audit](docs/evidence/P1-10-canonical-criterion-audit-2026-10-31.md).
-Phase2 software-first entry is proposed, not yet authorized.
+Phase2 bounded internal software foundation is now IN_PROGRESS on `phase-02` from the reviewed Phase1 head. No ADB/device effects or new task PASS are implied; [entry and evidence gates](docs/phases/PHASE-02-SOFTWARE-FIRST-ENTRY-PROPOSAL.md) remain explicit.
 
 ## Historical planning status — 2026-10-30 (superseded only by recorded entries)
 

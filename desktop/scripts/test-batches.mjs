@@ -1,5 +1,9 @@
 // Fixed reviewed inventory: no glob discovery, shell expansion or concurrent children.
 export const TEST_FILES = Object.freeze([
+  'tests/adb-composition.test.mjs',
+  'tests/adb-discovery.test.mjs',
+  'tests/adb-host-lifecycle.test.mjs',
+  'tests/adb-metadata.test.mjs',
   'tests/backup-catalog.test.mjs',
   'tests/backup-container.test.mjs',
   'tests/backup-key-profile.test.mjs',
@@ -8,6 +12,7 @@ export const TEST_FILES = Object.freeze([
   'tests/demo-preferences.test.mjs',
   'tests/demo-renderer.test.mjs',
   'tests/demo-runtime.test.mjs',
+  'tests/device-actor.test.mjs',
   'tests/foundation-database.test.mjs',
   'tests/foundation-persistence.test.mjs',
   'tests/invocation-budget.test.mjs',
@@ -32,6 +37,7 @@ export const TEST_FILES = Object.freeze([
   'tests/persistence-process.test.mjs',
   'tests/persistence-proof.test.mjs',
   'tests/persistence-recovery.test.mjs',
+  'tests/platform-tools-contract.test.mjs',
   'tests/policy.test.mjs',
   'tests/preferences-bridge.test.mjs',
   'tests/primary-pages.test.mjs',
@@ -52,6 +58,7 @@ export const TEST_FILES = Object.freeze([
   'tests/settings-window.test.mjs',
   'tests/test-batches.test.mjs',
   'tests/test-diagnostics.test.mjs',
+  'tests/transport-registry.test.mjs',
   'tests/ui-shell.test.mjs',
   'tests/vault-audit.test.mjs',
   'tests/vault-context.test.mjs',
