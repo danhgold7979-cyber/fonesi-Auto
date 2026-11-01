@@ -66,3 +66,23 @@ The repair replaces those exact eight spaces with equivalent ` {8}`, preserving 
 workflow predicates. The affected gate test and full quality check pass after repair;
 no unchanged aggregate/native campaign is repeated. Actual Windows compilation is
 still NOT_RUN. The approved compiler script/workflow/helper bytes are unchanged.
+
+## Windows owned-fixture canonical-path correction
+
+The quality repair was published as `d92a133d59974ee4db550bd3b5b6bd7f6db32465`
+(tree `ed0c26802d90673077605eadb153a5934615b86a`). CI41286557987 passed quality
+and reached batch10:62 tests,58 PASS,4 FAIL, zero cancelled/skipped. Ordinals10–13
+map exactly to the four compiler-owned-file fixtures; the preceding nine native-source
+assertions and following workflow gate test passed. Actual compiler execution stayed
+SKIPPED. No private assertion text is inferred from the ordinal-only diagnostics.
+
+Those fixtures constructed paths using `realpathSync`, while the unchanged production
+admission requires exact `realpathSync.native` identity. The correction canonicalizes
+the temporary parent and freshly created fixture root with the same native API and
+asserts their canonical identity before testing. This removes the Windows short-name/
+canonical-path mismatch possibility without relaxing production path admission. A new
+causal negative confirms a noncanonical supplied root is still rejected before any
+compiler handoff. All six affected fixture tests and warning-level lint PASS locally.
+The exact prior Windows private failure location remains unexposed; next actual hosted
+result must confirm the correction. No additional unchanged aggregate is run. Expected
+next full source count961 remains NOT_RUN. Compiler/helper/workflow hashes are unchanged.

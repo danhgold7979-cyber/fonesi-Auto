@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 07:49 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 07:57 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -25,7 +25,9 @@ Affected tests are recorded separately; prior937 aggregate is carried forward, n
 adds a default-off, fixed Windows compiler step without loading/invoking the DLL;
 actual compilation remains NOT_RUN. The39-file bundle is published as `493b1b28`;
 first CI41286185772 stopped at a reproduced test-regex lint warning before compilation.
-The equivalent spacing correction passes affected testing and full quality locally;
+Published correction `d92a133d` passed quality but CI41286557987 failed four owned-file
+fixtures before compilation. A native-canonical fixture correction passes six affected
+tests locally; production admission and compiler bytes are unchanged;
 [exact failure/repair evidence](evidence/P2-retained-helper-compile-preparation-2026-11-01.md)
 does not claim a new Windows PASS.
 

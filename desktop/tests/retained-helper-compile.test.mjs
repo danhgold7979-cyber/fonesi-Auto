@@ -15,7 +15,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { compileRetainedHelper } from '../scripts/compile-retained-helper.mjs';
 function fixture() {
-  const base = mkdtempSync(join(realpathSync(tmpdir()), 'retained-compile-test-')),
+  const base = realpathSync.native(
+      mkdtempSync(join(realpathSync.native(tmpdir()), 'retained-compile-test-')),
+    ),
     root = join(base, 'app'),
     framework = join(base, 'framework'),
     tempParent = join(base, 'tmp');
@@ -24,6 +26,7 @@ function fixture() {
     writeFileSync(join(framework, n), 'synthetic compiler fixture');
   for (const n of ['IsolatedAdbServer.cs', 'RetainedAdbSession.cs'])
     copyFileSync(new URL(`../native/${n}`, import.meta.url), join(root, 'native', n));
+  for (const p of [base, root, framework, tempParent]) assert.equal(realpathSync.native(p), p);
   return { base, root, framework, tempParent };
 }
 const clean = (f) => rmSync(f.base, { recursive: true, force: true });
@@ -183,4 +186,24 @@ test('compile workflow is default-off exact opt-in after source checks, never an
     /Assembly\.Load|Add-Type|Import-Module|execFile|powershell|\.invoke\(/,
   );
   assert.match(source, /v4\.0\.30319/);
+});
+test('noncanonical owned input is refused before any compiler handoff without weakening physical admission', () => {
+  const f = fixture();
+  try {
+    let calls = 0;
+    const result = compileRetainedHelper({
+      ...f,
+      root: f.root + '/../app',
+      run: () => {
+        calls++;
+        return success;
+      },
+    });
+    assert.equal(result.passed, false);
+    assert.equal(result.stage, 'ADMISSION');
+    assert.equal(calls, 0);
+    assert.deepEqual(readdirSync(f.tempParent), []);
+  } finally {
+    clean(f);
+  }
 });
