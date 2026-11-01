@@ -374,11 +374,18 @@ test('failed installed verification prevents build; successful stages run in ord
     true,
   );
 });
-test('approved public bridge has no effect service or arbitrary renderer API', () => {
+test('approved runtime VERSION stays main-only with no arbitrary renderer process API', () => {
   const main = readFileSync(resolve(root, 'build/main.cjs'), 'utf8');
-  // Recipient setup adds only a native-initiated, fixed terms page; no renderer URL.
-  assert.equal(main.includes('node:child_process'), false);
+  // Main now contains only the reviewed fixed VERSION factory, never renderer process authority.
+  assert.equal(main.includes('node:child_process'), true);
+  const service = readFileSync(resolve(root, 'src/main/runtime-version-service.ts'), 'utf8');
+  assert.match(service, /operation: 'HOST_VERSION'/);
+  assert.equal(
+    /operation: '(SERVER_START|SERVER_HEALTH|SERVER_STOP|DISCOVER)'/.test(service),
+    false,
+  );
   const source = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
+  assert.equal(source.includes('node:child_process'), false);
   assert.equal((source.match(/shell\.openExternal\(/g) ?? []).length, 1);
   assert.match(source, /if \(url !== PLATFORM_TOOLS_TERMS_URL\) throw Error\('INVALID_REQUEST'\);/);
   assert.match(source, /await shell\.openExternal\(PLATFORM_TOOLS_TERMS_URL\);/);

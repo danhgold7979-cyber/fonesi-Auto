@@ -26,11 +26,11 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual eighty-nine modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 89, runtimeInputs: 89 });
+test('actual ninety-five modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 95, runtimeInputs: 95 });
 });
-test('fleet stays in its exact role boundary and graph limit remains finite at eighty-nine', async () => {
-  assert.equal(Object.keys(map.modules).length, 89);
+test('fleet stays in its exact role boundary and graph limit remains finite at ninety-five', async () => {
+  assert.equal(Object.keys(map.modules).length, 95);
   await assert.rejects(
     () =>
       validateGraph(actual(), {
@@ -171,6 +171,7 @@ test('comments strings regex templates and actual JSX do not fabricate imports',
   assert.deepEqual(
     (await sourceImports(actual()['renderer.tsx'], 'tsx')).map((edge) => edge.specifier),
     [
+      './runtime-version-contract.js',
       './platform-tools-setup-contract.js',
       'react-dom/client',
       'react',

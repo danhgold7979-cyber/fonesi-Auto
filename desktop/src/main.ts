@@ -1,3 +1,10 @@
+import { installRuntimeVersionBridge } from './runtime-version-bridge.js';
+import {
+  createRuntimeVersionService,
+  type RuntimeVersionService,
+} from './main/runtime-version-service.ts';
+import { inspectRuntimeVersionContext } from './main/runtime-version-native.ts';
+import { createHostFactory } from './main/adb-host-factory.ts';
 import { createPlatformToolsRuntimeCustody } from './main/platform-tools-runtime-custody.ts';
 import { installPlatformToolsSetupBridge } from './platform-tools-setup-bridge.js';
 import {
@@ -73,6 +80,8 @@ let bridge: ReturnType<typeof installFoundationBridge> | undefined;
 let preferencesBridge: ReturnType<typeof installPreferencesBridge> | undefined;
 let settingsStore: SettingsStore | undefined;
 let fleetService: FleetService | undefined;
+let runtimeVersionService: RuntimeVersionService | undefined;
+let runtimeVersionBridge: ReturnType<typeof installRuntimeVersionBridge> | undefined;
 let platformToolsService: PlatformToolsSetupService | undefined;
 let platformToolsBridge: ReturnType<typeof installPlatformToolsSetupBridge> | undefined;
 let platformToolsWindow: BrowserWindow | undefined;
@@ -107,6 +116,7 @@ function cleanup(): boolean {
   if (backupTimer !== undefined) clearInterval(backupTimer);
   const disposed = disposeResources([
     () => platformToolsBridge?.dispose(),
+    () => runtimeVersionBridge?.dispose(),
     () => fleetBridge?.dispose(),
     () => preferencesBridge?.dispose(),
     () => bridge?.dispose(),
@@ -429,19 +439,73 @@ try {
           audit: (fields) => logger?.platformToolsAudit(fields) ?? Promise.resolve('DEGRADED'),
           readOfficialArchive: createPlatformToolsDownload(),
         });
+        const cleanupOwned = () => {
+          if (resourcesDisposed) throw Error('OWNER_REVOKED');
+          assertPreparedPersistenceLease(ownedEntry);
+        };
+        const desktopRoot = join(__dirname, '..');
+        const context = () => inspectRuntimeVersionContext(ownedEntry, desktopRoot, process.pid);
+        runtimeVersionService = createRuntimeVersionService({
+          custody: runtimeCustody,
+          assertOwnedSync: () => {
+            if (closing || resourcesDisposed) throw Error('OWNER_REVOKED');
+            assertPreparedPersistenceLease(ownedEntry);
+          },
+          inspectContext: () => {
+            const result = context();
+            return result.ok ? null : result.code;
+          },
+          createFactory: (expectedInstallationRevision) => {
+            if (closing || resourcesDisposed) throw Error('OWNER_REVOKED');
+            const result = context();
+            if (!result.ok) throw Error('RUNTIME_CONTEXT_UNAVAILABLE');
+            return createHostFactory({
+              entry: ownedEntry,
+              launchRoot: result.launchRoot,
+              desktopRoot,
+              runtimeCustody,
+              expectedInstallationRevision,
+              assertOwnedSync: cleanupOwned,
+              now: () => Date.now(),
+              diagnosticId: () => randomUUID(),
+            });
+          },
+          clock: () => Date.now(),
+          newId: () => randomUUID(),
+          audit: (fields) => logger?.runtimeVersionAudit(fields) ?? Promise.resolve('DEGRADED'),
+        });
+        const versionService = runtimeVersionService;
         const setup = platformToolsService;
         await platformToolsLifecycle.open(async () => {
           await setup.initialize();
           return {
             shutdown: async () => {
-              const serviceRetirement = setup.shutdown();
-              const custodyRetirement = runtimeCustody.close();
-              const results = await Promise.all([serviceRetirement, custodyRetirement]);
-              if (results.some((result) => result !== 'RETIRED'))
-                throw Error('PLATFORM_TOOLS_UNRETIRED');
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              const retirement = (async () => {
+                const results = await Promise.all([setup.shutdown(), versionService.shutdown()]);
+                if (results.some((result) => result !== 'RETIRED'))
+                  throw Error('PLATFORM_TOOLS_UNRETIRED');
+                if ((await runtimeCustody.close()) !== 'RETIRED')
+                  throw Error('PLATFORM_TOOLS_UNRETIRED');
+              })();
+              try {
+                await Promise.race([
+                  retirement,
+                  new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(Error('PLATFORM_TOOLS_UNRETIRED')), 120000);
+                  }),
+                ]);
+              } finally {
+                if (timer !== undefined) clearTimeout(timer);
+              }
             },
           };
         });
+        runtimeVersionBridge = installRuntimeVersionBridge(
+          ipcMain,
+          bridge.admitPreferences,
+          () => runtimeVersionService,
+        );
         platformToolsBridge = installPlatformToolsSetupBridge(
           ipcMain,
           bridge.admitPreferences,
@@ -599,6 +663,7 @@ try {
       closing = true;
       if (backupTimer !== undefined) clearInterval(backupTimer);
       platformToolsBridge?.dispose();
+      runtimeVersionBridge?.dispose();
       fleetBridge?.dispose();
       preferencesBridge?.dispose();
       bridge?.dispose();

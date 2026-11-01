@@ -1,3 +1,4 @@
+import { createRuntimeVersionClient } from './runtime-version-client.js';
 import { createPlatformToolsSetupClient } from './platform-tools-setup-client.js';
 import { createFleetClient } from './fleet-client.js';
 import { contextBridge, ipcRenderer } from 'electron';
@@ -33,10 +34,19 @@ const platformTools = createPlatformToolsSetupClient(
   undefined,
   readiness,
 );
+const runtimeVersion = createRuntimeVersionClient(
+  (wire) => ipcRenderer.invoke('foundation:runtime-version:v1', wire),
+  budget,
+  undefined,
+  readiness,
+);
 contextBridge.exposeInMainWorld(
   'platformTools',
   Object.freeze({
     read: () => platformTools.read(),
+    readVersion: () => runtimeVersion.readVersion(),
+    verifyVersion: (revision: unknown, installationRevision: unknown) =>
+      runtimeVersion.verifyVersion(revision, installationRevision),
     requestSetup: (revision: unknown) => platformTools.requestSetup(revision),
   }),
 );
@@ -73,6 +83,7 @@ window.addEventListener(
     preferences.dispose();
     fleet.dispose();
     platformTools.dispose();
+    runtimeVersion.dispose();
   },
   { once: true },
 );

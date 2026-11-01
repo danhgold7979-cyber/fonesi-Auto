@@ -1,3 +1,7 @@
+import {
+  parseRuntimeVersionResponse,
+  type RuntimeVersionSnapshot,
+} from './runtime-version-contract.js';
 import { parseSetupResponse, type SetupSnapshot } from './platform-tools-setup-contract.js';
 import { createRoot } from 'react-dom/client';
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -17,6 +21,8 @@ declare global {
     platformTools: Readonly<{
       read: () => Promise<string>;
       requestSetup: (revision: unknown) => Promise<string>;
+      readVersion: () => Promise<string>;
+      verifyVersion: (revision: unknown, installationRevision: unknown) => Promise<string>;
     }>;
     fleet: Readonly<{
       read: () => Promise<string>;
@@ -80,6 +86,51 @@ function Diagnostic() {
     setupHydrated.current = true;
     void setupAction();
   }, [setupAction]);
+  const [runtimeVersion, setRuntimeVersion] = useState<RuntimeVersionSnapshot | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState(
+    'Chưa kiểm tra phiên bản. Không tự chạy khi mở bảng.',
+  );
+  const [runtimePending, setRuntimePending] = useState(false);
+  const [runtimeReconcile, setRuntimeReconcile] = useState(true);
+  const runtimeInFlight = useRef(false);
+  async function runtimeAction(verify = false) {
+    if (runtimeInFlight.current || (verify && (!runtimeVersion || runtimeReconcile))) return;
+    runtimeInFlight.current = true;
+    setRuntimePending(true);
+    if (verify) setRuntimeReconcile(true);
+    try {
+      const raw = verify
+        ? await window.platformTools.verifyVersion(
+            runtimeVersion?.revision,
+            runtimeVersion?.installationRevision,
+          )
+        : await window.platformTools.readVersion();
+      const response = parseRuntimeVersionResponse(raw);
+      if (!response) throw Error('INVALID_RESPONSE');
+      if (!response.ok) {
+        setRuntimeReconcile(true);
+        setRuntimeStatus(
+          `${response.outcome} / ${response.code}. Đọc lại để đối chiếu; không tự thử lại.`,
+        );
+      } else {
+        setRuntimeVersion(response.snapshot);
+        setRuntimeReconcile(
+          response.outcome !== 'OBSERVED' ||
+            response.snapshot.state === 'PENDING' ||
+            response.snapshot.state === 'OUTCOME_UNKNOWN',
+        );
+        setRuntimeStatus(
+          `${response.snapshot.state} / ${response.snapshot.code ?? 'OK'} / LOG ${response.loggingHealth}. ${response.snapshot.state === 'VERIFIED' ? 'Đã quan sát phiên bản tại lần kiểm tra; không giám sát liên tục.' : 'Nhấn Đọc kết quả sau khi thao tác hoàn tất.'}`,
+        );
+      }
+    } catch {
+      setRuntimeReconcile(true);
+      setRuntimeStatus('OUTCOME_UNKNOWN / INTERNAL_FAILURE. Đọc lại để đối chiếu.');
+    } finally {
+      runtimeInFlight.current = false;
+      setRuntimePending(false);
+    }
+  }
   const [fleet, setFleet] = useState<FleetSnapshot | null>(null);
   const [fleetStatus, setFleetStatus] = useState('LOADING / FLEET NOT YET OBSERVED');
   const [fleetFailed, setFleetFailed] = useState(false);
@@ -365,6 +416,42 @@ function Diagnostic() {
             <p>
               Sau khi hoàn tất hộp thoại, nhấn Đọc trạng thái. Mọi xác nhận điều khoản và chọn tệp
               diễn ra trong hộp thoại gốc; không có quyền thiết bị được cấp.
+            </p>
+          </section>
+          <section aria-label="Local runtime version" id="runtime-version-panel">
+            <h3>Kiểm tra phiên bản bộ công cụ</h3>
+            <p>
+              Chỉ chạy lệnh version khi bạn chọn. Không khởi động máy chủ hoặc kết nối thiết bị. Cần
+              phiên launcher bật chế độ kiểm tra được quản lý; đường dẫn quá dài bị từ chối.
+            </p>
+            <button
+              type="button"
+              id="runtime-version-read"
+              disabled={runtimePending}
+              onClick={() => {
+                void runtimeAction();
+              }}
+            >
+              Đọc kết quả / đối chiếu
+            </button>
+            <button
+              type="button"
+              id="runtime-version-verify"
+              disabled={
+                runtimePending ||
+                runtimeReconcile ||
+                !runtimeVersion ||
+                !['IDLE', 'VERIFIED', 'FAILED'].includes(runtimeVersion.state) ||
+                runtimeVersion.installationRevision === null
+              }
+              onClick={() => {
+                void runtimeAction(true);
+              }}
+            >
+              Kiểm tra phiên bản cục bộ
+            </button>
+            <p id="runtime-version-status" aria-live="polite">
+              {runtimeStatus}
             </p>
           </section>
           <section aria-label="Fleet status" id="fleet-panel">

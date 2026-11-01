@@ -4,6 +4,10 @@
     "renderer.tsx": {
       "role": "renderer",
       "imports": {
+        "./runtime-version-contract.js": {
+          "parseRuntimeVersionResponse": "value",
+          "RuntimeVersionSnapshot": "type"
+        },
         "./platform-tools-setup-contract.js": {
           "parseSetupResponse": "value",
           "SetupSnapshot": "type"
@@ -37,6 +41,9 @@
     "preload.ts": {
       "role": "preload",
       "imports": {
+        "./runtime-version-client.js": {
+          "createRuntimeVersionClient": "value"
+        },
         "./platform-tools-setup-client.js": {
           "createPlatformToolsSetupClient": "value"
         },
@@ -134,6 +141,22 @@
     "main.ts": {
       "role": "main",
       "imports": {
+        "./runtime-version-bridge.js": {
+          "installRuntimeVersionBridge": "value"
+        },
+        "./main/runtime-version-service.ts": {
+          "createRuntimeVersionService": "value",
+          "RuntimeVersionService": "type"
+        },
+        "./main/runtime-version-native.ts": {
+          "inspectRuntimeVersionContext": "value"
+        },
+        "./main/adb-host-factory.ts": {
+          "createHostFactory": "value"
+        },
+        "./main/platform-tools-runtime-custody.ts": {
+          "createPlatformToolsRuntimeCustody": "value"
+        },
         "./platform-tools-setup-bridge.js": {
           "installPlatformToolsSetupBridge": "value"
         },
@@ -258,9 +281,6 @@
           "securePreferences": "value",
           "installSessionPolicy": "value",
           "installWindowPolicy": "value"
-        },
-        "./main/platform-tools-runtime-custody.ts": {
-          "createPlatformToolsRuntimeCustody": "value"
         }
       }
     },
@@ -313,6 +333,10 @@
     "log-contract.ts": {
       "role": "contract",
       "imports": {
+        "./runtime-version-audit-contract.ts": {
+          "validRuntimeVersionAuditTuple": "value",
+          "RuntimeVersionAudit": "type"
+        },
         "./platform-tools-setup-audit-contract.ts": {
           "validSetupAuditTuple": "value",
           "SetupAudit": "type"
@@ -493,7 +517,8 @@
           "SettingsAuditFields": "type",
           "FleetAuditFields": "type",
           "DurableAuditFields": "type",
-          "SetupAuditFields": "type"
+          "SetupAuditFields": "type",
+          "RuntimeVersionAuditFields": "type"
         }
       }
     },
@@ -1754,6 +1779,113 @@
         "node:fs": {
           "lstatSync": "value",
           "realpathSync": "value"
+        }
+      }
+    },
+    "runtime-version-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "runtime-version-audit-contract.ts": {
+      "role": "contract",
+      "imports": {
+        "./runtime-version-contract.ts": {
+          "RUNTIME_VERSION_CODES": "value",
+          "RUNTIME_VERSION_FAILED_CODES": "value",
+          "validRuntimeVersionRevision": "value",
+          "validRuntimeVersionUuid": "value",
+          "RuntimeVersionCode": "type"
+        }
+      }
+    },
+    "runtime-version-client.ts": {
+      "role": "client",
+      "imports": {
+        "./invocation-budget.ts": {
+          "createInvocationBudget": "value",
+          "InvocationBudget": "type"
+        },
+        "./runtime-version-contract.ts": {
+          "parseRuntimeVersionRequest": "value",
+          "validRuntimeVersionRevision": "value",
+          "parseRuntimeVersionResponse": "value",
+          "runtimeVersionError": "value",
+          "RuntimeVersionRequest": "type",
+          "RuntimeVersionCode": "type"
+        }
+      }
+    },
+    "runtime-version-bridge.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "electron": {
+          "IpcMain": "type",
+          "IpcMainInvokeEvent": "type"
+        },
+        "./view-session.ts": {
+          "Admission": "type"
+        },
+        "./main/runtime-version-service.ts": {
+          "RuntimeVersionService": "type"
+        },
+        "./runtime-version-contract.ts": {
+          "parseRuntimeVersionRequest": "value",
+          "runtimeVersionError": "value",
+          "RuntimeVersionCode": "type"
+        }
+      }
+    },
+    "main/runtime-version-service.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./platform-tools-runtime-custody.ts": {
+          "PlatformToolsRuntimeCustody": "type"
+        },
+        "./adb-host-factory.ts": {
+          "createHostFactory": "type"
+        },
+        "../runtime-version-audit-contract.ts": {
+          "RuntimeVersionAudit": "type"
+        },
+        "../runtime-version-contract.ts": {
+          "snapshotRuntimeVersionRequest": "value",
+          "runtimeVersionSuccess": "value",
+          "runtimeVersionError": "value",
+          "RuntimeVersionRequest": "type",
+          "RuntimeVersionSnapshot": "type",
+          "RuntimeVersionCode": "type",
+          "RuntimeVersionHealth": "type"
+        }
+      }
+    },
+    "main/runtime-version-native.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "node:fs": {
+          "lstatSync": "value"
+        },
+        "node:path": {
+          "dirname": "value",
+          "join": "value"
+        },
+        "../runtime-version-contract.ts": {
+          "RuntimeVersionCode": "type"
+        },
+        "./persistence-entry.ts": {
+          "PersistenceEntry": "type",
+          "assertPreparedPersistenceLease": "value"
+        },
+        "./adb-host-context.ts": {
+          "hostRead": "value",
+          "hostPlain": "value",
+          "hostRecord": "value",
+          "hostUuid": "value",
+          "readHostContext": "value",
+          "assertHostPathBudget": "value",
+          "HOST_ASSETS": "value"
+        },
+        "./platform-tools-candidate.ts": {
+          "PLATFORM_TOOLS_CANDIDATE": "value"
         }
       }
     }

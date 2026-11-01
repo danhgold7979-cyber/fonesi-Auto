@@ -1,3 +1,4 @@
+import * as runtimeVersionContract from '../src/runtime-version-contract.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -104,6 +105,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
       if (name === './settings-contract.js') return contract;
       if (name === './fleet-contract.js') return fleetContract;
       if (name === './platform-tools-setup-contract.js') return setupContract;
+      if (name === './runtime-version-contract.js') return runtimeVersionContract;
       if (name === './ui/ui-shell.tsx') return { UiShell: 'UiShell' };
       throw Error('UNKNOWN_MODULE');
     },

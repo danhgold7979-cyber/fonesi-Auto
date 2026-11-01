@@ -1,3 +1,7 @@
+import {
+  validRuntimeVersionAuditTuple,
+  type RuntimeVersionAudit,
+} from './runtime-version-audit-contract.ts';
 import { validSetupAuditTuple, type SetupAudit } from './platform-tools-setup-audit-contract.ts';
 import {
   DURABLE_CODES,
@@ -186,13 +190,35 @@ function setupTuple(record: Record<string, unknown>): boolean {
     validSetupAuditTuple(record)
   );
 }
+export type RuntimeVersionAuditFields = RuntimeVersionAudit;
+export type RuntimeVersionLogRecord = RuntimeVersionAudit &
+  Readonly<{
+    schemaVersion: 7;
+    runId: string;
+    sequence: number;
+    utc: string;
+    severity: 'INFO' | 'WARN';
+    component: 'MAIN';
+    task: 'P2-01';
+    event: 'RUNTIME_VERSION';
+  }>;
+function runtimeVersionTuple(record: Record<string, unknown>): boolean {
+  return (
+    record.component === 'MAIN' &&
+    record.task === 'P2-01' &&
+    record.event === 'RUNTIME_VERSION' &&
+    record.severity === (record.code === 'OK' ? 'INFO' : 'WARN') &&
+    validRuntimeVersionAuditTuple(record)
+  );
+}
 export type LogRecord =
   | LegacyLogRecord
   | VaultLogRecord
   | SettingsLogRecord
   | FleetLogRecord
   | DurableLogRecord
-  | SetupLogRecord;
+  | SetupLogRecord
+  | RuntimeVersionLogRecord;
 function fleetTuple(record: Record<string, unknown>): boolean {
   return (
     record.component === 'MAIN' &&
@@ -374,7 +400,7 @@ export function encodeLogRecord(input: unknown): string | null {
     ];
     const version = Object.getOwnPropertyDescriptor(input, 'schemaVersion');
     if (!version || !Object.hasOwn(version, 'value')) return null;
-    if (version.value === 6)
+    if (version.value === 6 || version.value === 7)
       fields.splice(
         0,
         fields.length,
@@ -401,6 +427,7 @@ export function encodeLogRecord(input: unknown): string | null {
     else if (version.value === 3 || version.value === 4)
       fields.push('operation', 'phase', 'expectedRevision', 'resultingRevision');
     else if (version.value !== 1) return null;
+    if (version.value === 7) fields.push('installationRevision');
     if (Object.getOwnPropertyNames(input).length !== fields.length) return null;
     const record: Record<string, unknown> = {};
     for (const key of fields) {
@@ -426,7 +453,9 @@ export function encodeLogRecord(input: unknown): string | null {
               ? fleetTuple(record)
               : record.schemaVersion === 5
                 ? durableTuple(record)
-                : setupTuple(record))
+                : record.schemaVersion === 6
+                  ? setupTuple(record)
+                  : runtimeVersionTuple(record))
     )
       return null;
     const encoded = JSON.stringify(record) + '\n';

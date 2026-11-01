@@ -1,3 +1,4 @@
+import * as runtimeVersion from '../src/runtime-version-client.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -42,6 +43,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
       if (name === './settings-client.js') return preferences;
       if (name === './fleet-client.js') return fleet;
       if (name === './platform-tools-setup-client.js') return platformTools;
+      if (name === './runtime-version-client.js') return runtimeVersion;
       if (name === './invocation-budget.js') return budget;
       if (name === './ipc-diagnostic-contract.js') return diagnostic;
       throw Error('UNKNOWN_MODULE');
@@ -62,7 +64,12 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'update',
   ]);
   assert.deepEqual(Object.keys(exposed.fleet).sort(), ['read', 'replaceSelection']);
-  assert.deepEqual(Object.keys(exposed.platformTools).sort(), ['read', 'requestSetup']);
+  assert.deepEqual(Object.keys(exposed.platformTools).sort(), [
+    'read',
+    'readVersion',
+    'requestSetup',
+    'verifyVersion',
+  ]);
   assert.ok(Object.isFrozen(exposed.platformTools));
   assert.equal(JSON.parse(await exposed.platformTools.requestSetup(0)).code, 'SESSION_UNAVAILABLE');
   assert.equal(invocations.length, 0);

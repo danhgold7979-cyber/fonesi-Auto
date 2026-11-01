@@ -331,7 +331,7 @@ function runObserver() {
     cases.helperExitZero = evidence.helperState === 'EXITED' && evidence.exit === 'ZERO';
     cases.helperDirectoryRemoved =
       evidence.directoryCleanup &&
-      !fs.readdirSync(launch).some((n) => n.startsWith('host-session'));
+      !fs.readdirSync(launch).some((n) => n === '.host-session' || n.startsWith('host-session'));
     if (CASES.filter((k) => k !== 'mainClosed').some((k) => cases[k] !== true))
       throw Error('RETAINED_HOST_CASES');
     phase = 'CLOSE';

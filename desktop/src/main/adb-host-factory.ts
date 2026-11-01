@@ -178,6 +178,7 @@ export function createHostFactory(
     launchRoot: string;
     desktopRoot: string;
     runtimeCustody: PlatformToolsRuntimeCustody;
+    expectedInstallationRevision?: number;
     assertOwnedSync(): void;
     now(): number;
     diagnosticId(): string;
@@ -190,6 +191,12 @@ export function createHostFactory(
   const owned = options.assertOwnedSync.bind(options),
     clock = options.now.bind(options),
     diagnostic = options.diagnosticId.bind(options);
+  const expectedInstallationRevision = options.expectedInstallationRevision;
+  if (
+    expectedInstallationRevision !== undefined &&
+    (!Number.isSafeInteger(expectedInstallationRevision) || expectedInstallationRevision < 1)
+  )
+    fail();
   const custody = options.runtimeCustody,
     start = bindings.spawn.bind(bindings),
     parentPid = bindings.parentPid,
@@ -265,6 +272,8 @@ export function createHostFactory(
       o.manifestSha256 !== hostHash(JSON.stringify(PLATFORM_TOOLS_CANDIDATE)) ||
       !Number.isSafeInteger(o.installationRevision) ||
       o.installationRevision < 1 ||
+      (expectedInstallationRevision !== undefined &&
+        o.installationRevision !== expectedInstallationRevision) ||
       o.adbPath !==
         join(
           entry.root,
@@ -449,6 +458,11 @@ export function createHostFactory(
     },
     assertRead(token: object) {
       custody.assertRead(token);
+      if (
+        expectedInstallationRevision !== undefined &&
+        liveObservation?.installationRevision !== expectedInstallationRevision
+      )
+        fail();
     },
     async releaseRead(token: object) {
       const r = await custody.releaseRead(token);

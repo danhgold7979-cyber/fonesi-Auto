@@ -1,3 +1,4 @@
+import { inspectRuntimeVersionContext } from '../src/main/runtime-version-native.ts';
 // Actual owned files and production factory/bridge/adapter; OS/native/custody facts injected.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -228,6 +229,7 @@ function fixture(extra = {}) {
         launchRoot: launch,
         desktopRoot: desktop,
         runtimeCustody: custody,
+        expectedInstallationRevision: extra.expectedInstallationRevision,
         assertOwnedSync() {
           if (!owned) throw Error('private ownership');
           extra.ownerCallback?.({ base, launch, systemExe });
@@ -851,4 +853,55 @@ test('compiler reason normalization models only edge ASCII spaces and one period
   assert.ok(ps.includes('if($lookupComplete -and $matchCount -eq 1)'));
   assert.ok(ps.includes('catch {$lookupComplete=$false}'));
   assert.ok(ps.includes("'The file name is too long' {$tempReason='PATH_TOO_LONG'}"));
+});
+
+test('main VERSION resolver binds actual current journal and distinguishes disabled opt-in from damaged ownership', async () => {
+  const f = fixture();
+  try {
+    assert.deepEqual(inspectRuntimeVersionContext(f.entry, f.desktop, 100), {
+      ok: true,
+      launchRoot: f.launch,
+    });
+    const receipt = join(f.launch, 'host-parent.json'),
+      held = join(f.base, 'held-receipt');
+    renameSync(receipt, held);
+    assert.deepEqual(inspectRuntimeVersionContext(f.entry, f.desktop, 100), {
+      ok: false,
+      code: 'RETAINED_HOST_DISABLED',
+    });
+    put(receipt, '{}');
+    assert.deepEqual(inspectRuntimeVersionContext(f.entry, f.desktop, 100), {
+      ok: false,
+      code: 'RECOVERY_REQUIRED',
+    });
+    rmSync(receipt);
+    renameSync(held, receipt);
+    const marker = join(f.launch, '.owner');
+    const owner = readFileSync(marker);
+    put(marker, 'invalid');
+    assert.deepEqual(inspectRuntimeVersionContext(f.entry, f.desktop, 100), {
+      ok: false,
+      code: 'RECOVERY_REQUIRED',
+    });
+    writeFileSync(marker, owner);
+    assert.equal(f.spawns, 0);
+  } finally {
+    await f.factory.close();
+    f.cleanup();
+  }
+});
+
+test('main captured installation revision refuses a replacement before any actual provider spawn', async () => {
+  const f = fixture({ expectedInstallationRevision: 1 });
+  try {
+    f.changeRuntimeRevision();
+    const result = await f.factory.execute(f.cap, f.request());
+    assert.notEqual(result.outcome, 'OBSERVED');
+    assert.equal(f.spawns, 0);
+    assert.equal(existsSync(join(f.launch, '.host-session')), false);
+    assert.equal(f.releases, 1);
+    assert.equal(await f.factory.close(), 'RETIRED');
+  } finally {
+    f.cleanup();
+  }
 });

@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 13:27 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 13:59 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -13,6 +13,8 @@ does not cover genuine user consent, production HTTPS, server/devices or later c
 is source-only and grants no executable/server/device capability.
 
 Latest retained-host campaign is an accepted **bounded SOURCE VERSION/EOF PASS**: public `c955d1ca`, CI41310721221, source1061/109/233,24/24 native cases and8/8 managed groups. Exact app-local runtime/native parent+Job admission, VERSION observation, EOF/helper retirement and owned cleanup pass on the supported fixed-leaf layout. [Strict reports and canonical subcriteria reconciliation](evidence/P2-retained-windows-campaign-2026-11-01.md) distinguish this from PACKAGE/main production integration, genuine consent/HTTPS, server/device, physical and P106 obligations. Phase2 full-task count remains0/13; proven bounded facts are accepted, not left NOT_RUN.
+
+Current local [main-owned VERSION / Help integration](evidence/P2-main-runtime-version-integration-2026-11-01.md) has complete1094/1094 source PASS plus final47/47 affected checks after three new causal regressions (expected1097 hosted): explicit path-free read/verify actions, actual shared custody, schema7 INTENT barriers and cleanup-first lifecycle. The launcher opt-in stays explicit; no helper starts on status reads. This changed main/UI integration is not yet hosted/native-validated. Existing accepted SOURCE VERSION/EOF bytes remain historical evidence, not automatic acceptance of the new user-facing path.
 
 Current canonical source step: **P2-02 — ADB server lifecycle (2nd of13 task IDs)**,
 with P2-01 runtime custody. [Host-session source evidence](evidence/P2-host-session-adapter-2026-11-01.md)
