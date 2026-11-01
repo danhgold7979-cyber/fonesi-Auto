@@ -81,7 +81,7 @@ test('invalid selection never invokes and asynchronous caller mutation cannot ch
   assert.deepEqual(JSON.parse(held).selection, selection);
   await result;
 });
-test('global budget remains eight across diagnostic preferences and fleet, timeout retains native occupancy', async () => {
+test('ordinary budget remains seven across diagnostic preferences and fleet, timeout retains native occupancy', async () => {
   const budget = createInvocationBudget(),
     t = timer(),
     settlers = [];
@@ -89,21 +89,12 @@ test('global budget remains eight across diagnostic preferences and fleet, timeo
   const d = createDiagnosticClient(invoke, t, budget),
     p = createSettingsClient(invoke, budget, t),
     f = createFleetClient(invoke, budget, t);
-  const pending = [
-    d.health(),
-    d.settings(),
-    p.read(),
-    p.read(),
-    f.read(),
-    f.read(),
-    f.read(),
-    f.replaceSelection(0, selection),
-  ];
-  assert.equal(budget.outstanding(), 8);
+  const pending = [d.health(), d.settings(), p.read(), p.read(), f.read(), f.read(), f.read()];
+  assert.equal(budget.outstanding(), 7);
   assert.equal(code(await f.read()), 'BUSY');
   t.expire();
   await Promise.all(pending);
-  assert.equal(budget.outstanding(), 8);
+  assert.equal(budget.outstanding(), 7);
   for (const resolve of settlers) resolve('bad');
   await flush();
   assert.equal(budget.outstanding(), 0);

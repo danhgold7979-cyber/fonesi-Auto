@@ -4,6 +4,10 @@
     "renderer.tsx": {
       "role": "renderer",
       "imports": {
+        "./discovery-contract.js": {
+          "parseDiscoveryResponse": "value",
+          "DiscoverySnapshot": "type"
+        },
         "./runtime-version-contract.js": {
           "parseRuntimeVersionResponse": "value",
           "RuntimeVersionSnapshot": "type"
@@ -41,6 +45,9 @@
     "preload.ts": {
       "role": "preload",
       "imports": {
+        "./discovery-client.js": {
+          "createDiscoveryClient": "value"
+        },
         "./runtime-version-client.js": {
           "createRuntimeVersionClient": "value"
         },
@@ -143,6 +150,19 @@
       "imports": {
         "./runtime-version-bridge.js": {
           "installRuntimeVersionBridge": "value"
+        },
+        "./discovery-bridge.ts": {
+          "installDiscoveryBridge": "value"
+        },
+        "./main/discovery-session-service.ts": {
+          "createDiscoverySessionService": "value",
+          "DiscoverySessionService": "type"
+        },
+        "./main/adb-server-service.ts": {
+          "createAdbServerService": "value"
+        },
+        "./main/adb-discovery-service.ts": {
+          "createAdbDiscoveryService": "value"
         },
         "./main/runtime-version-service.ts": {
           "createRuntimeVersionService": "value",
@@ -333,6 +353,11 @@
     "log-contract.ts": {
       "role": "contract",
       "imports": {
+        "./discovery-audit-contract.ts": {
+          "validDiscoveryAuditTuple": "value",
+          "DISCOVERY_AUDIT_FIELDS": "value",
+          "DiscoveryAudit": "type"
+        },
         "./runtime-version-audit-contract.ts": {
           "validRuntimeVersionAuditTuple": "value",
           "RuntimeVersionAudit": "type"
@@ -519,7 +544,8 @@
           "FleetAuditFields": "type",
           "DurableAuditFields": "type",
           "SetupAuditFields": "type",
-          "RuntimeVersionAuditFields": "type"
+          "RuntimeVersionAuditFields": "type",
+          "DiscoveryAuditFields": "type"
         }
       }
     },
@@ -1962,6 +1988,89 @@
         "./adb-server-service.ts": {
           "inspectOwnedDiscoveryProvider": "value",
           "OwnedDiscoveryProvider": "type"
+        }
+      }
+    },
+    "discovery-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "discovery-audit-contract.ts": {
+      "role": "contract",
+      "imports": {
+        "./discovery-contract.ts": {
+          "DISCOVERY_CODES": "value",
+          "DISCOVERY_FAILURE_CODES": "value",
+          "validDiscoveryRevision": "value",
+          "validDiscoveryUuid": "value",
+          "DiscoveryCode": "type"
+        }
+      }
+    },
+    "discovery-client.ts": {
+      "role": "client",
+      "imports": {
+        "./invocation-budget.ts": {
+          "createInvocationBudget": "value",
+          "InvocationBudget": "type"
+        },
+        "./discovery-contract.ts": {
+          "parseDiscoveryRequest": "value",
+          "validDiscoveryRevision": "value",
+          "parseDiscoveryResponse": "value",
+          "discoveryError": "value",
+          "DiscoveryRequest": "type",
+          "DiscoveryCode": "type"
+        }
+      }
+    },
+    "discovery-bridge.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "electron": {
+          "IpcMain": "type",
+          "IpcMainInvokeEvent": "type"
+        },
+        "./view-session.ts": {
+          "Admission": "type"
+        },
+        "./discovery-contract.ts": {
+          "DiscoveryRequest": "type",
+          "parseDiscoveryRequest": "value",
+          "discoveryError": "value",
+          "DiscoveryCode": "type"
+        }
+      }
+    },
+    "main/discovery-session-service.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "../discovery-contract.ts": {
+          "snapshotDiscoveryRequest": "value",
+          "discoverySuccess": "value",
+          "discoveryError": "value",
+          "DiscoveryRequest": "type",
+          "DiscoverySnapshot": "type",
+          "DiscoveryCode": "type"
+        },
+        "../discovery-audit-contract.ts": {
+          "DiscoveryAudit": "type"
+        },
+        "./adb-server-service.ts": {
+          "inspectOwnedDiscoveryProvider": "value",
+          "createAdbServerService": "type",
+          "OwnedDiscoveryProvider": "type",
+          "ServerAudit": "type"
+        },
+        "./adb-discovery-service.ts": {
+          "createAdbDiscoveryService": "type",
+          "DiscoveryReceipt": "type"
+        },
+        "./platform-tools-runtime-custody.ts": {
+          "PlatformToolsRuntimeCustody": "type"
+        },
+        "./transport-registry.ts": {
+          "RegistrySnapshot": "type"
         }
       }
     }

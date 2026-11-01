@@ -1,3 +1,8 @@
+import { buildSync } from 'esbuild';
+import { runInNewContext } from 'node:vm';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseRequest, publicResponse, errorResponse } from '../src/ipc-contract.ts';
@@ -105,11 +110,11 @@ test('sender, frame, origin, URL each independently enforced', () => {
   ])
     assert.equal(session.admit({ ...caller, ...change }).code, 'UNTRUSTED_SENDER');
 });
-test('held admissions cannot commit after revoke; eight-slot cap and idempotent release', () => {
+test('held admissions cannot commit after revoke; seven ordinary plus reserved cleanup cap and idempotent release', () => {
   const { session, caller } = fixture();
   session.beginMainLoad(caller.url);
   session.finishInitial(caller);
-  const held = Array.from({ length: 8 }, () => session.admit(caller));
+  const held = Array.from({ length: 7 }, () => session.admit(caller));
   assert.ok(held.every((x) => x.ok && x.current()));
   assert.equal(session.admit(caller).code, 'BUSY');
   session.revoke();
@@ -174,16 +179,16 @@ test('timeout retains native slots; late delivery discarded; no retry', async ()
       resolves.push(() => resolve(publicResponse(parseRequest(raw).request))),
     );
   }, c.timer);
-  const requests = Array.from({ length: 8 }, () => client.health());
+  const requests = Array.from({ length: 7 }, () => client.health());
   c.tick();
   assert.ok((await Promise.all(requests)).every((raw) => JSON.parse(raw).code === 'TIMEOUT'));
-  assert.equal(client.outstanding(), 8);
+  assert.equal(client.outstanding(), 7);
   assert.equal(JSON.parse(await client.settings()).code, 'BUSY');
-  assert.equal(count, 8);
+  assert.equal(count, 7);
   resolves[0]();
   await flush();
-  assert.equal(client.outstanding(), 7);
-  assert.equal(count, 8);
+  assert.equal(client.outstanding(), 6);
+  assert.equal(count, 7);
   client.dispose();
   for (const resolve of resolves.slice(1)) resolve();
   await flush();
@@ -218,5 +223,115 @@ test('preload accepts only exact main serialization; duplicate response keys rej
   for (const raw of raws) {
     const client = createPublicClient(async () => raw, clock().timer);
     assert.equal(JSON.parse(await client.health()).code, 'INTERNAL_FAILURE');
+  }
+});
+
+test('reserved cleanup is inside total eight and revocation callback observes invalidation once', () => {
+  const sender = {},
+    caller = {
+      sender,
+      isMainFrame: true,
+      origin: 'auto-foundation://app',
+      url: 'auto-foundation://app/index.html',
+    };
+  let calls = 0,
+    session,
+    observed;
+  session = new ViewSession(sender, caller.origin, caller.url, () => {
+    calls++;
+    observed = { status: session.status, current: held[0].current() };
+    session.revoke();
+    session.beginMainLoad(caller.url);
+    throw Error('private');
+  });
+  session.beginMainLoad(caller.url);
+  assert.equal(session.finishInitial(caller), true);
+  const held = Array.from({ length: 7 }, () => session.admit(caller));
+  assert.equal(session.admit(caller).code, 'BUSY');
+  assert.equal(session.admitCleanup({ ...caller, isMainFrame: false }).code, 'UNTRUSTED_SENDER');
+  const cleanup = session.admitCleanup(caller);
+  assert.equal(cleanup.ok, true);
+  assert.equal(session.outstanding, 8);
+  assert.equal(session.admitCleanup(caller).code, 'BUSY');
+  session.revoke();
+  session.close();
+  assert.equal(calls, 1);
+  assert.deepEqual(observed, { status: 'REVOKED', current: false });
+  assert.equal(session.outstanding, 8);
+  for (const lease of [...held, cleanup]) {
+    lease.release();
+    lease.release();
+  }
+  assert.equal(session.outstanding, 0);
+});
+
+test('actual source-bundled foundation attach invalidates before one caught cleanup callback on every lifecycle route', () => {
+  const code = buildSync({
+    entryPoints: [fileURLToPath(new URL('../src/foundation-bridge.ts', import.meta.url))],
+    bundle: true,
+    write: false,
+    platform: 'node',
+    format: 'cjs',
+  }).outputFiles[0].text;
+  const module = { exports: {} };
+  runInNewContext(code, {
+    module,
+    exports: module.exports,
+    require: createRequire(import.meta.url),
+  });
+  for (const route of [
+    'will-navigate',
+    'will-frame-navigate',
+    'will-redirect',
+    'did-navigate-in-page',
+    'render-process-gone',
+    'destroyed',
+    'close',
+    'closed',
+    'dispose',
+  ]) {
+    const ipc = { handle() {}, removeHandler() {} },
+      bridge = module.exports.installFoundationBridge(ipc);
+    const contents = new EventEmitter(),
+      window = new EventEmitter();
+    window.webContents = contents;
+    contents.isDestroyed = () => false;
+    contents.mainFrame = {
+      origin: 'auto-foundation://app',
+      url: 'auto-foundation://app/status.html',
+    };
+    let callbacks = 0,
+      seen;
+    const view = bridge.attach(window, () => {
+      callbacks++;
+      seen = { status: view.status(), current: held.current() };
+      bridge.dispose();
+      throw Error('private');
+    });
+    contents.emit('did-start-navigation', { isMainFrame: true, url: contents.mainFrame.url });
+    assert.equal(view.arm(), true);
+    const event = { sender: contents, senderFrame: contents.mainFrame },
+      held = bridge.admitPreferences(event);
+    assert.equal(held.ok, true);
+    const ordinary = Array.from({ length: 6 }, () => bridge.admitPreferences(event));
+    assert.equal(bridge.admitPreferences(event).code, 'BUSY');
+    const stop = bridge.admitCleanup(event);
+    assert.equal(stop.ok, true);
+    assert.equal(bridge.admitCleanup(event).code, 'BUSY');
+    if (route === 'dispose') bridge.dispose();
+    else if (route === 'close' || route === 'closed') window.emit(route);
+    else if (route === 'did-navigate-in-page')
+      contents.emit(route, {}, contents.mainFrame.url, true);
+    else contents.emit(route, { isMainFrame: true });
+    assert.equal(callbacks, 1, route);
+    assert.equal(seen.status, 'REVOKED');
+    assert.equal(seen.current, false);
+    assert.equal(view.arm(), false);
+    bridge.dispose();
+    assert.equal(callbacks, 1);
+    for (const lease of [held, ...ordinary, stop]) {
+      lease.release();
+      lease.release();
+    }
   }
 });

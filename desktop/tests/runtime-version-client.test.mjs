@@ -61,7 +61,7 @@ test('explicit fresh read precedes each fixed verification request; no automatic
   assert.equal(JSON.parse(await c.verifyVersion(1, 1)).code, 'SESSION_UNAVAILABLE');
   c.dispose();
 });
-test('shared eight unresolved slots stay occupied after timeout until actual settlement', async () => {
+test('shared seven ordinary unresolved slots stay occupied after timeout until actual settlement', async () => {
   const budget = createInvocationBudget(),
     t = timer(),
     pending = [];
@@ -70,7 +70,7 @@ test('shared eight unresolved slots stay occupied after timeout until actual set
     budget,
     t,
   );
-  const calls = Array.from({ length: 8 }, () => c.readVersion());
+  const calls = Array.from({ length: 7 }, () => c.readVersion());
   assert.equal(JSON.parse(await c.readVersion()).code, 'BUSY');
   t.expire();
   for (const r of await Promise.all(calls)) assert.equal(JSON.parse(r).code, 'TIMEOUT');

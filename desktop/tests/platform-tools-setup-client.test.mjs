@@ -94,7 +94,7 @@ test('shared8 unresolved cap remains held after timeout; no late success or auto
   assert.equal(calls, 2);
   assert.equal(JSON.parse(await client.requestSetup(1)).code, 'SESSION_UNAVAILABLE');
   const other = createPlatformToolsSetupClient(() => new Promise(() => {}), budget, t);
-  const eight = Array.from({ length: 8 }, () => other.read());
+  const eight = Array.from({ length: 7 }, () => other.read());
   assert.equal(JSON.parse(await other.read()).code, 'BUSY');
   other.dispose();
   await Promise.all(eight);

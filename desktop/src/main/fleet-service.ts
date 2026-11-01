@@ -24,6 +24,7 @@ export type FleetServiceOptions = Readonly<{
   assertOwnedSync(): void;
   newDiagnostic(): string | null;
   audit(fields: FleetAudit): Promise<Health>;
+  finalProjection?(expected: RegistrySnapshot): boolean;
   availability(): 'BINARY_UNAVAILABLE' | 'LIVE_DISCOVERY_UNAVAILABLE' | 'OBSERVED';
 }>;
 const budget = Object.freeze({
@@ -49,7 +50,8 @@ export function createFleetService(options: FleetServiceOptions) {
     owned = options.assertOwnedSync.bind(options),
     allocate = options.newDiagnostic.bind(options),
     audit = options.audit.bind(options),
-    availability = options.availability.bind(options);
+    availability = options.availability.bind(options),
+    finalProjection = options.finalProjection?.bind(options);
   const admittedSelection = createDeviceSelection(budget);
   if (!admittedSelection) throw new Error('FLEET_OPTIONS');
   const selection = admittedSelection;
@@ -77,7 +79,7 @@ export function createFleetService(options: FleetServiceOptions) {
     // Trusted callbacks may synchronously close/revoke; no callback follows this fence.
     if (closed || capabilities.get(cap) !== check) throw new Fault('SESSION_REVOKED');
   }
-  function finalAdmission(cap: FleetCapability, expected: RegistrySnapshot) {
+  function finalAdmission(cap: FleetCapability, expected: RegistrySnapshot, observed: boolean) {
     admit(cap);
     const check = capabilities.get(cap);
     const latest = registry();
@@ -85,6 +87,9 @@ export function createFleetService(options: FleetServiceOptions) {
     if (latest !== expected) throw new Fault('CONFLICT');
     // The registry callback itself may invalidate external owner/session custody.
     admit(cap);
+    if (observed && finalProjection && !finalProjection(expected))
+      throw new Fault('FLEET_UNAVAILABLE');
+    if (closed || capabilities.get(cap) !== check) throw new Fault('SESSION_REVOKED');
   }
   function current(): RegistrySnapshot {
     const r = registry();
@@ -178,7 +183,7 @@ export function createFleetService(options: FleetServiceOptions) {
           resultingRevision: state.revision,
           code: 'OK',
         });
-        finalAdmission(cap, r);
+        finalAdmission(cap, r, fleet.availability === 'OBSERVED');
         return (
           fleetSuccess(request.requestId, 'OBSERVED', fleet, health) ??
           fleetError('INTERNAL_FAILURE', diagnosticId, 'DEGRADED')
@@ -209,7 +214,7 @@ export function createFleetService(options: FleetServiceOptions) {
       const outcome = same ? 'UNCHANGED' : 'APPLIED';
       if (!fleetSuccess(request.requestId, outcome, fleet, 'AVAILABLE'))
         throw new Fault('LIMIT_EXCEEDED');
-      finalAdmission(cap, r);
+      finalAdmission(cap, r, fleet.availability === 'OBSERVED');
       if (!same) {
         const changed = selection.replace(state.revision, request.selection);
         if (!changed.ok)
@@ -222,7 +227,7 @@ export function createFleetService(options: FleetServiceOptions) {
         resultingRevision: next.revision,
         code: 'OK',
       });
-      admit(cap);
+      finalAdmission(cap, r, fleet.availability === 'OBSERVED');
       return (
         fleetSuccess(request.requestId, outcome, fleet, health) ??
         fleetError('INTERNAL_FAILURE', diagnosticId, 'DEGRADED')

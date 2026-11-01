@@ -370,3 +370,39 @@ test('last registry callback external owner loss is fenced before CAS', async ()
   const observed = await parse(service.execute(cap, read));
   assert.equal(observed.fleet.selection.revision, 0);
 });
+
+test('final internal projection denies read and preserves applied selection when last owner revokes custody', async () => {
+  for (const operation of ['READ', 'SELECT']) {
+    let live = true,
+      armed = false,
+      enabled = true;
+    const f = fixture({
+      assertOwnedSync() {
+        if (armed) live = false;
+      },
+      finalProjection: () => live,
+      audit: async (e) => {
+        if (enabled && e.phase === 'RESULT' && e.operation === operation) armed = true;
+        return 'AVAILABLE';
+      },
+    });
+    const r = registry();
+    f.set(r);
+    const reply =
+      operation === 'READ'
+        ? await f.read()
+        : await f.replace(0, selection([r.devices[0].deviceId]));
+    assert.equal(reply.ok, false);
+    assert.equal(reply.code, 'FLEET_UNAVAILABLE');
+    armed = false;
+    enabled = false;
+    live = true;
+    const next = await f.read();
+    assert.equal(next.fleet.selection.revision, operation === 'SELECT' ? 1 : 0);
+    assert.deepEqual(
+      next.fleet.selection.selectedDeviceIds,
+      operation === 'SELECT' ? [r.devices[0].deviceId] : [],
+    );
+    await f.service.close();
+  }
+});

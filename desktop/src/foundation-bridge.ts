@@ -105,32 +105,34 @@ export function installFoundationBridge(
       },
     );
 
+  function admitView(event: IpcMainInvokeEvent, cleanup: boolean) {
+    const view = sessions.get(event.sender),
+      identity = caller(event);
+    if (!view || !identity) return { ok: false as const, code: 'UNTRUSTED_SENDER' as const };
+    const admission = cleanup ? view.admitCleanup(identity) : view.admit(identity);
+    if (!admission.ok) return admission;
+    return {
+      ...admission,
+      current: () => {
+        const latest = caller(event);
+        return (
+          admission.current() &&
+          latest !== null &&
+          latest.sender === identity.sender &&
+          latest.isMainFrame &&
+          latest.origin === 'auto-foundation://app' &&
+          latest.url === ENTRY_URL
+        );
+      },
+    };
+  }
   return {
-    admitPreferences(event: IpcMainInvokeEvent) {
-      const view = sessions.get(event.sender),
-        identity = caller(event);
-      if (!view || !identity) return { ok: false as const, code: 'UNTRUSTED_SENDER' as const };
-      const admission = view.admit(identity);
-      if (!admission.ok) return admission;
-      return {
-        ...admission,
-        current: () => {
-          const latest = caller(event);
-          return (
-            admission.current() &&
-            latest !== null &&
-            latest.sender === identity.sender &&
-            latest.isMainFrame &&
-            latest.origin === 'auto-foundation://app' &&
-            latest.url === ENTRY_URL
-          );
-        },
-      };
-    },
-    attach(window: BrowserWindow) {
+    admitPreferences: (event: IpcMainInvokeEvent) => admitView(event, false),
+    admitCleanup: (event: IpcMainInvokeEvent) => admitView(event, true),
+    attach(window: BrowserWindow, onRevoke?: () => void) {
       const contents = window.webContents;
       if (sessions.has(contents)) throw new Error('DUPLICATE_VIEW');
-      const view = new ViewSession(contents, 'auto-foundation://app', ENTRY_URL);
+      const view = new ViewSession(contents, 'auto-foundation://app', ENTRY_URL, onRevoke);
       sessions.set(contents, view);
       contents.on('did-start-navigation', (details) => {
         if (details.isMainFrame) view.beginMainLoad(details.url);

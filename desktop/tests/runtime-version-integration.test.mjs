@@ -1,3 +1,5 @@
+import * as discoveryClient from '../src/discovery-client.ts';
+import * as discoveryContract from '../src/discovery-contract.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -156,6 +158,7 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
     events = [],
     invocations = [];
   const modules = {
+    './discovery-client.js': discoveryClient,
     './preload-client.js': clients,
     './settings-client.js': preferences,
     './fleet-client.js': fleet,
@@ -207,12 +210,12 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
     exposed.preferences.read(),
     exposed.fleet.read(),
     exposed.platformTools.read(),
-    ...Array.from({ length: 3 }, () => exposed.platformTools.readVersion()),
+    ...Array.from({ length: 2 }, () => exposed.platformTools.readVersion()),
   ];
   assert.equal(JSON.parse(await exposed.platformTools.readVersion()).code, 'BUSY');
   await new Promise((r) => setImmediate(r));
-  assert.equal(invocations.length, 8);
-  assert.equal(invocations.filter((r) => r.channel === 'foundation:runtime-version:v2').length, 3);
+  assert.equal(invocations.length, 7);
+  assert.equal(invocations.filter((r) => r.channel === 'foundation:runtime-version:v2').length, 2);
   events.find((e) => e[0] === 'pagehide')[1]();
   for (const p of pending) assert.equal(JSON.parse(await p).code, 'SESSION_UNAVAILABLE');
   assert.equal(JSON.parse(await exposed.platformTools.readVersion()).code, 'SESSION_UNAVAILABLE');
@@ -305,6 +308,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
           }),
         };
       if (name === './runtime-version-contract.js') return versionContract;
+      if (name === './discovery-contract.js') return discoveryContract;
       if (name === './settings-contract.js') return contract;
       if (name === './fleet-contract.js') return fleetContract;
       if (name === './platform-tools-setup-contract.js') return setupContract;
@@ -397,14 +401,15 @@ test('actual transformed Help renderer never auto-verifies; only explicit click 
   assert.equal(calls.length, 2);
   m.dispose();
 });
-test('source lifecycle keeps cleanup lease distinct and closes both services before custody; observer detects fixed and legacy residue', () => {
+test('source lifecycle keeps cleanup lease distinct and closes setup/version/discovery before custody; observer detects fixed and legacy residue', () => {
   const main = source('src/main.ts'),
     native = source('src/main/runtime-version-native.ts');
-  assert.match(main, /Promise\.all\(\[setup\.shutdown\(\), versionService\.shutdown\(\)\]\)/);
-  assert.ok(
-    main.indexOf('Promise.all([setup.shutdown(), versionService.shutdown()])') <
-      main.indexOf('await runtimeCustody.close()'),
-  );
+  const concurrent =
+    /Promise\.all\(\[\s*setup\.shutdown\(\),\s*versionService\.shutdown\(\),\s*discovery\.close\(\),?\s*\]\)/.exec(
+      main,
+    );
+  assert.ok(concurrent);
+  assert.ok(concurrent.index < main.indexOf('await runtimeCustody.close()'));
   const cleanup = main.slice(
     main.indexOf('const cleanupOwned ='),
     main.indexOf('const desktopRoot =', main.indexOf('const cleanupOwned =')),

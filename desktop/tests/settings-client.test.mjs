@@ -106,18 +106,18 @@ test('shared cap covers public v1 v2 and settings; timeout/disposal never releas
   const a = createPublicClient(invoke, t, b),
     d = createDiagnosticClient(invoke, t, b),
     s = createSettingsClient(invoke, b, t);
-  const pending = [a.health(), d.health(), ...Array.from({ length: 6 }, () => s.read())];
-  assert.equal(b.outstanding(), 8);
+  const pending = [a.health(), d.health(), ...Array.from({ length: 5 }, () => s.read())];
+  assert.equal(b.outstanding(), 7);
   assert.equal(code(await s.read()), 'BUSY');
   assert.equal(code(await a.settings()), 'BUSY');
   assert.equal(code(await d.settings()), 'BUSY');
   t.expire();
   for (const p of pending) assert.equal(code(await p), 'TIMEOUT');
-  assert.equal(b.outstanding(), 8);
+  assert.equal(b.outstanding(), 7);
   s.dispose();
   a.dispose();
   d.dispose();
-  assert.equal(b.outstanding(), 8);
+  assert.equal(b.outstanding(), 7);
   for (const r of resolvers) r('PRIVATE_INVALID_LATE');
   await flush();
   assert.equal(b.outstanding(), 0);
@@ -255,11 +255,11 @@ test('private readiness signals once before or after read; shared cap and no mut
   assert.equal(code(await c.reset(0)), 'SESSION_UNAVAILABLE');
   assert.equal(calls, 1);
   await flush();
-  const pending = Array.from({ length: 8 }, () => c.read());
+  const pending = Array.from({ length: 7 }, () => c.read());
   assert.equal(code(await c.read()), 'BUSY');
-  assert.equal(b.outstanding(), 8);
+  assert.equal(b.outstanding(), 7);
   t.expire();
-  assert.deepEqual((await Promise.all(pending)).map(code), Array(8).fill('TIMEOUT'));
+  assert.deepEqual((await Promise.all(pending)).map(code), Array(7).fill('TIMEOUT'));
   await flush();
   assert.equal(b.outstanding(), 0);
   ready.signal();

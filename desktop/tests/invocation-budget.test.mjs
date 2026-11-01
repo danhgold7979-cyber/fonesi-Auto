@@ -5,7 +5,12 @@ test('fixed eight unforgeable local leases release only their own count exactly 
   const b = createInvocationBudget();
   assert.equal(INVOCATION_LIMIT, 8);
   assert.ok(Object.isFrozen(b));
-  const leases = Array.from({ length: 8 }, () => b.acquire());
+  const leases = Array.from({ length: 7 }, () => b.acquire());
+  assert.equal(b.acquire(), null);
+  const cleanup = b.acquireCleanup();
+  assert.ok(cleanup);
+  assert.equal(b.acquireCleanup(), null);
+  leases.push(cleanup);
   assert.equal(b.outstanding(), 8);
   assert.equal(b.acquire(), null);
   for (const l of leases) assert.ok(Object.isFrozen(l));
@@ -19,5 +24,5 @@ test('fixed eight unforgeable local leases release only their own count exactly 
   replacement.release();
   replacement.release();
   assert.equal(b.outstanding(), 0);
-  assert.equal(Object.keys(b).sort().join(','), 'acquire,outstanding');
+  assert.equal(Object.keys(b).sort().join(','), 'acquire,acquireCleanup,outstanding');
 });

@@ -1,4 +1,11 @@
 import { installRuntimeVersionBridge } from './runtime-version-bridge.js';
+import { installDiscoveryBridge } from './discovery-bridge.ts';
+import {
+  createDiscoverySessionService,
+  type DiscoverySessionService,
+} from './main/discovery-session-service.ts';
+import { createAdbServerService } from './main/adb-server-service.ts';
+import { createAdbDiscoveryService } from './main/adb-discovery-service.ts';
 import {
   createRuntimeVersionService,
   type RuntimeVersionService,
@@ -82,6 +89,8 @@ let settingsStore: SettingsStore | undefined;
 let fleetService: FleetService | undefined;
 let runtimeVersionService: RuntimeVersionService | undefined;
 let runtimeVersionBridge: ReturnType<typeof installRuntimeVersionBridge> | undefined;
+let discoverySessionService: DiscoverySessionService | undefined;
+let discoveryBridge: ReturnType<typeof installDiscoveryBridge> | undefined;
 let platformToolsService: PlatformToolsSetupService | undefined;
 let platformToolsBridge: ReturnType<typeof installPlatformToolsSetupBridge> | undefined;
 let platformToolsWindow: BrowserWindow | undefined;
@@ -115,6 +124,8 @@ function cleanup(): boolean {
   closing = true;
   if (backupTimer !== undefined) clearInterval(backupTimer);
   const disposed = disposeResources([
+    () => discoverySessionService?.revoke(),
+    () => discoveryBridge?.dispose(),
     () => platformToolsBridge?.dispose(),
     () => runtimeVersionBridge?.dispose(),
     () => fleetBridge?.dispose(),
@@ -128,6 +139,14 @@ function cleanup(): boolean {
 }
 function fail(): void {
   if (closing) return;
+  if (mainReady && discoverySessionService) {
+    // Preserve cleanup-valid persistence ownership while the retained session drains.
+    // Renderer loss is a failed shutdown, never a reason to abandon native custody.
+    cleanupComplete = false;
+    console.error('BOOTSTRAP_FAILED');
+    app.quit();
+    return;
+  }
   if (!mainReady) logger?.emit('STARTUP_FAILED', 'STARTUP_FAILURE');
   cleanup();
   console.error('BOOTSTRAP_FAILED');
@@ -384,7 +403,13 @@ try {
         },
         newDiagnostic: () => randomUUID(),
         audit: (fields) => logger?.fleetAudit(fields) ?? Promise.resolve('DEGRADED'),
-        availability: () => 'BINARY_UNAVAILABLE',
+        availability: () => discoverySessionService?.availability() ?? 'BINARY_UNAVAILABLE',
+        finalProjection: (expected) =>
+          !closing &&
+          !resourcesDisposed &&
+          (discoverySessionService
+            ? discoverySessionService.finalProjection(expected)
+            : expected === empty),
       });
       const ownedFleetService = fleetService;
       await fleetLifecycle.open(async () => ({ shutdown: () => ownedFleetService.close() }));
@@ -474,7 +499,85 @@ try {
           newId: () => randomUUID(),
           audit: (fields) => logger?.runtimeVersionAudit(fields) ?? Promise.resolve('DEGRADED'),
         });
+        if (!registry) throw Error('DISCOVERY_REGISTRY_UNAVAILABLE');
+        const durable = ownedPersistence.durableAdapter();
+        const ordinaryOwned = () => {
+          if (closing || resourcesDisposed) throw Error('OWNER_REVOKED');
+          cleanupOwned();
+        };
+        const readDurableRevision = () => {
+          ordinaryOwned();
+          return durable.readDurable().meta.revision;
+        };
+        discoverySessionService = createDiscoverySessionService({
+          custody: runtimeCustody,
+          assertOwnedSync: cleanupOwned,
+          clock: () => Date.now(),
+          newId: () => randomUUID(),
+          audit: (fields) => logger?.discoveryAudit(fields) ?? Promise.resolve('DEGRADED'),
+          policy: () => {
+            ordinaryOwned();
+            const result = context();
+            return result.ok
+              ? null
+              : result.code === 'RETAINED_HOST_DISABLED'
+                ? result.code
+                : result.code === 'UNSUPPORTED_PATH'
+                  ? result.code
+                  : 'RECOVERY_REQUIRED';
+          },
+          readDurableRevision,
+          createServer: (expectedInstallationRevision, assertCurrentSync, audit) => {
+            ordinaryOwned();
+            assertCurrentSync();
+            return createAdbServerService({
+              ownerId: randomUUID(),
+              expectedInstallationRevision,
+              assertOwnedSync: cleanupOwned,
+              assertCurrentSync: () => {
+                ordinaryOwned();
+                assertCurrentSync();
+              },
+              clock: () => Date.now(),
+              newId: () => randomUUID(),
+              audit,
+              createFactory: (expected) => {
+                ordinaryOwned();
+                assertCurrentSync();
+                const result = context();
+                if (!result.ok) throw Error('DISCOVERY_CONTEXT_UNAVAILABLE');
+                return createHostFactory({
+                  entry: ownedEntry,
+                  launchRoot: result.launchRoot,
+                  desktopRoot,
+                  runtimeCustody,
+                  expectedInstallationRevision: expected,
+                  operationSet: 'SERVER_ONLY',
+                  assertOwnedSync: cleanupOwned,
+                  now: () => Date.now(),
+                  diagnosticId: () => randomUUID(),
+                });
+              },
+            });
+          },
+          createIngestion: (provider, assertCurrentSync) => {
+            ordinaryOwned();
+            assertCurrentSync();
+            return createAdbDiscoveryService({
+              provider,
+              registry,
+              readDurableRevision,
+              assertOwnedSync: () => {
+                ordinaryOwned();
+                assertCurrentSync();
+              },
+              clock: () => Date.now(),
+              newId: () => randomUUID(),
+            });
+          },
+        });
         const versionService = runtimeVersionService;
+        const discovery = discoverySessionService;
         const setup = platformToolsService;
         await platformToolsLifecycle.open(async () => {
           await setup.initialize();
@@ -482,7 +585,11 @@ try {
             shutdown: async () => {
               let timer: ReturnType<typeof setTimeout> | undefined;
               const retirement = (async () => {
-                const results = await Promise.all([setup.shutdown(), versionService.shutdown()]);
+                const results = await Promise.all([
+                  setup.shutdown(),
+                  versionService.shutdown(),
+                  discovery.close(),
+                ]);
                 if (results.some((result) => result !== 'RETIRED'))
                   throw Error('PLATFORM_TOOLS_UNRETIRED');
                 if ((await runtimeCustody.close()) !== 'RETIRED')
@@ -505,6 +612,12 @@ try {
           ipcMain,
           bridge.admitPreferences,
           () => runtimeVersionService,
+        );
+        discoveryBridge = installDiscoveryBridge(
+          ipcMain,
+          bridge.admitPreferences,
+          bridge.admitCleanup,
+          () => discoverySessionService,
         );
         platformToolsBridge = installPlatformToolsSetupBridge(
           ipcMain,
@@ -626,7 +739,7 @@ try {
             () => undefined,
           );
         }
-        const view = bridge.attach(window);
+        const view = bridge.attach(window, () => discoverySessionService?.revoke());
         window.webContents.on('render-process-gone', () => {
           if (!closing) logger?.emit('RENDERER_LOST', 'RENDERER_LOSS');
           fail();
@@ -661,6 +774,8 @@ try {
   const shutdown = createLogShutdown({
     stop: () => {
       closing = true;
+      discoverySessionService?.revoke();
+      discoveryBridge?.dispose();
       if (backupTimer !== undefined) clearInterval(backupTimer);
       platformToolsBridge?.dispose();
       runtimeVersionBridge?.dispose();

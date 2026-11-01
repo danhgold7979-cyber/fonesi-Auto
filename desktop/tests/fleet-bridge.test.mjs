@@ -179,11 +179,11 @@ test('post-application reload denies stale reply without reversing actual select
     await f.cleanup();
   }
 });
-test('shared eight-admission budget denies fleet then releases idempotently', async () => {
+test('shared seven-ordinary-admission budget denies fleet then releases idempotently', async () => {
   const f = fixture();
   const held = [];
   try {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 7; i++) {
       const a = f.foundation.admitPreferences(f.event);
       assert.equal(a.ok, true);
       held.push(a);

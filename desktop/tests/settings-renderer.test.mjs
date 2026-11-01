@@ -1,3 +1,4 @@
+import * as discoveryContract from '../src/discovery-contract.ts';
 import * as runtimeVersionContract from '../src/runtime-version-contract.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,7 +22,7 @@ const settings = (extra = {}) => ({
   persistence: 'PERSISTED',
   ...extra,
 });
-function mount(api, width = 1600, fleetApi = null, setupApi = null) {
+function mount(api, width = 1600, fleetApi = null, setupApi = null, discoveryApi = null) {
   let component,
     cursor = 0;
   const slots = [];
@@ -31,6 +32,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
   const hostWindow = {
     innerWidth: width,
     preferences: api,
+    discovery: discoveryApi,
     platformTools: setupApi ?? {
       read: async () => setupContract.setupError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
       requestSetup: async () =>
@@ -102,6 +104,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
             },
           }),
         };
+      if (name === './discovery-contract.js') return discoveryContract;
       if (name === './settings-contract.js') return contract;
       if (name === './fleet-contract.js') return fleetContract;
       if (name === './platform-tools-setup-contract.js') return setupContract;
@@ -676,6 +679,197 @@ test('late VERSION read cannot rearm Help after setup begins or observed install
     release();
     await flush();
     assert.equal(m.find('runtime-version-verify').props.disabled, true, trigger);
+    m.dispose();
+  }
+});
+
+const discoverySnapshot = (extra = {}) => ({
+  revision: 0,
+  installationRevision: 1,
+  state: 'IDLE',
+  operationId: null,
+  operation: null,
+  lastOutcome: 'NONE',
+  code: null,
+  registryRevision: 2,
+  observedAtUtc: null,
+  restartRequired: false,
+  ...extra,
+});
+const discoveryAnswer = (snapshot, outcome = 'OBSERVED') =>
+  discoveryContract.discoverySuccess('p1', outcome, snapshot, null, 'DEGRADED');
+test('Help discovery is explicit; Stop preempts pending Start and late PENDING cannot rearm', async () => {
+  const calls = [];
+  let settle;
+  const api = {
+    get: async () => {
+      calls.push('get');
+      return discoveryAnswer(discoverySnapshot());
+    },
+    start: () => {
+      calls.push('start');
+      return new Promise((r) => {
+        settle = r;
+      });
+    },
+    refresh: async () => {
+      calls.push('refresh');
+      throw Error();
+    },
+    stop: async () => {
+      calls.push('stop');
+      return discoveryAnswer(
+        discoverySnapshot({
+          revision: 2,
+          state: 'STOPPING',
+          operation: 'STOP',
+          operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          lastOutcome: 'PENDING',
+          restartRequired: true,
+        }),
+        'PENDING',
+      );
+    },
+  };
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    null,
+    null,
+    api,
+  );
+  m.effects();
+  await flush();
+  assert.deepEqual(calls, []);
+  m.find('discovery-read').props.onClick();
+  await flush();
+  assert.equal(m.find('discovery-start').props.disabled, false);
+  m.find('discovery-start').props.onClick();
+  await flush();
+  assert.equal(m.find('discovery-stop').props.disabled, false);
+  m.find('discovery-stop').props.onClick();
+  await flush();
+  assert.deepEqual(calls, ['get', 'start', 'stop']);
+  settle(
+    discoveryAnswer(
+      discoverySnapshot({
+        revision: 1,
+        state: 'STARTING',
+        operation: 'START',
+        operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        lastOutcome: 'PENDING',
+      }),
+      'PENDING',
+    ),
+  );
+  await flush();
+  assert.match(m.find('discovery-status').props.children, /STOPPING/);
+  assert.equal(m.find('discovery-start').props.disabled, true);
+  assert.equal(m.render().props.selectionBlocked, true);
+  m.dispose();
+});
+test('observed discovery failure clears cached fleet and suppresses older pending fleet reply', async () => {
+  let releaseFleet,
+    reads = 0;
+  const fleetApi = {
+    read: async () => {
+      reads++;
+      if (reads === 1)
+        return fleetContract.fleetSuccess('f1', 'OBSERVED', fleetState(), 'AVAILABLE');
+      return new Promise((r) => {
+        releaseFleet = r;
+      });
+    },
+    replaceSelection: async () => {
+      throw Error();
+    },
+  };
+  const discoveryApi = {
+    get: async () => discoveryContract.discoveryError('p1', 'SESSION_REVOKED', null, 'DEGRADED'),
+    start: async () => {
+      throw Error();
+    },
+    refresh: async () => {
+      throw Error();
+    },
+    stop: async () => {
+      throw Error();
+    },
+  };
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    fleetApi,
+    null,
+    discoveryApi,
+  );
+  m.effects();
+  await flush();
+  assert.equal(m.render().props.snapshot.devices.length, 1);
+  m.find('fleet-read').props.onClick();
+  await flush();
+  m.find('discovery-read').props.onClick();
+  await flush();
+  assert.equal(m.render().props.snapshot.devices.length, 0);
+  releaseFleet(fleetContract.fleetSuccess('f2', 'OBSERVED', fleetState(), 'AVAILABLE'));
+  await flush();
+  assert.equal(m.render().props.snapshot.devices.length, 0);
+  assert.equal(m.render().props.selectionBlocked, true);
+  m.dispose();
+});
+
+test('explicit cross-panel session revocation clears discovery and cached fleet without treating initial unavailable as loss', async () => {
+  for (const code of ['SESSION_REVOKED', 'OWNER_REVOKED', 'CLOSED']) {
+    let denied = false;
+    const preferences = {
+      read: async () =>
+        denied
+          ? contract.settingsError(code, null, 'DEGRADED')
+          : contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE'),
+    };
+    const fleetApi = {
+      read: async () =>
+        fleetContract.fleetSuccess('f1', 'OBSERVED', fleetState(0, [fleetId]), 'AVAILABLE'),
+      replaceSelection: async () => {
+        throw Error();
+      },
+    };
+    const discoveryApi = {
+      get: async () => discoveryAnswer(discoverySnapshot()),
+      start: async () => {
+        throw Error();
+      },
+      refresh: async () => {
+        throw Error();
+      },
+      stop: async () => {
+        throw Error();
+      },
+    };
+    const setupApi = {
+      read: async () => setupContract.setupError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
+      readVersion: async () =>
+        runtimeVersionContract.runtimeVersionError(null, code, null, 'DEGRADED'),
+    };
+    const m = mount(preferences, 1600, fleetApi, setupApi, discoveryApi);
+    m.effects();
+    await flush();
+    assert.equal(m.render().props.snapshot.devices.length, 1);
+    m.find('discovery-read').props.onClick();
+    await flush();
+    assert.equal(m.find('discovery-start').props.disabled, false);
+    m.find('fleet-read').props.onClick();
+    await flush();
+    assert.equal(m.render().props.snapshot.devices.length, 1);
+    denied = true;
+    m.find(
+      code === 'SESSION_REVOKED' ? 'preferences-read' : 'runtime-version-read',
+    ).props.onClick();
+    await flush();
+    assert.equal(m.render().props.snapshot.devices.length, 0, code);
+    assert.equal(m.render().props.selection.selectedDeviceIds.length, 0);
+    assert.equal(m.find('discovery-start').props.disabled, true);
+    assert.equal(m.find('discovery-stop').props.disabled, false);
     m.dispose();
   }
 });

@@ -84,10 +84,10 @@ test('final reply revocation after service entry remains conservative unknown ev
   assert.equal(r.outcome, 'OUTCOME_UNKNOWN');
   assert.equal(f.v.outstanding, 0);
 });
-test('shared ViewSession eight slots and dispose while awaiting do not leak raw exceptions', async () => {
+test('shared ViewSession seven ordinary slots and dispose while awaiting do not leak raw exceptions', async () => {
   const pending = [];
   const f = fixture(() => new Promise((r) => pending.push(r)));
-  const calls = Array.from({ length: 8 }, () => f.run(caller, wire()));
+  const calls = Array.from({ length: 7 }, () => f.run(caller, wire()));
   assert.equal(JSON.parse(await f.run(caller, wire())).code, 'BUSY');
   f.bridge.dispose();
   for (const r of pending) r('');

@@ -1,3 +1,4 @@
+import { createDiscoveryClient } from './discovery-client.js';
 import { createRuntimeVersionClient } from './runtime-version-client.js';
 import { createPlatformToolsSetupClient } from './platform-tools-setup-client.js';
 import { createFleetClient } from './fleet-client.js';
@@ -40,6 +41,22 @@ const runtimeVersion = createRuntimeVersionClient(
   undefined,
   readiness,
 );
+const discovery = createDiscoveryClient(
+  (wire) => ipcRenderer.invoke('auto:discovery:v1', wire),
+  budget,
+  undefined,
+  readiness,
+);
+contextBridge.exposeInMainWorld(
+  'discovery',
+  Object.freeze({
+    get: () => discovery.get(),
+    start: (revision: unknown, installationRevision: unknown) =>
+      discovery.start(revision, installationRevision),
+    refresh: (revision: unknown) => discovery.refresh(revision),
+    stop: () => discovery.stop(),
+  }),
+);
 contextBridge.exposeInMainWorld(
   'platformTools',
   Object.freeze({
@@ -49,9 +66,11 @@ contextBridge.exposeInMainWorld(
       runtimeVersion.verifyVersion(revision, installationRevision),
     requestSetup: (revision: unknown) => {
       runtimeVersion.invalidateObservation();
-      return platformTools
-        .requestSetup(revision)
-        .finally(() => runtimeVersion.invalidateObservation());
+      discovery.invalidateObservation();
+      return platformTools.requestSetup(revision).finally(() => {
+        runtimeVersion.invalidateObservation();
+        discovery.invalidateObservation();
+      });
     },
   }),
 );
@@ -89,6 +108,7 @@ window.addEventListener(
     fleet.dispose();
     platformTools.dispose();
     runtimeVersion.dispose();
+    discovery.dispose();
   },
   { once: true },
 );

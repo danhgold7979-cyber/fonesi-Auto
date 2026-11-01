@@ -1,3 +1,4 @@
+import * as discoveryClient from '../src/discovery-client.ts';
 import * as runtimeVersion from '../src/runtime-version-client.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -41,6 +42,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
         };
       if (name === './preload-client.js') return clients;
       if (name === './settings-client.js') return preferences;
+      if (name === './discovery-client.js') return discoveryClient;
       if (name === './fleet-client.js') return fleet;
       if (name === './platform-tools-setup-client.js') return platformTools;
       if (name === './runtime-version-client.js') return runtimeVersion;
@@ -51,6 +53,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     window: { addEventListener: (...args) => listeners.push(args) },
   });
   assert.deepEqual(Object.keys(exposed).sort(), [
+    'discovery',
     'fleet',
     'foundation',
     'platformTools',
@@ -83,14 +86,21 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     exposed.foundation.settings(),
     ...Array.from({ length: 2 }, () => exposed.preferences.read()),
     ...Array.from({ length: 2 }, () => exposed.fleet.read()),
-    ...Array.from({ length: 2 }, () => exposed.platformTools.read()),
+    ...Array.from({ length: 1 }, () => exposed.platformTools.read()),
   ];
   assert.equal(JSON.parse(await exposed.preferences.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.fleet.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.platformTools.read()).code, 'BUSY');
   await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(invocations.length, 7);
+  assert.deepEqual(Object.keys(exposed.discovery).sort(), ['get', 'refresh', 'start', 'stop']);
+  const stop = exposed.discovery.stop();
+  assert.equal(exposed.discovery.stop(), stop);
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(invocations.length, 8);
+  assert.equal(invocations.filter((x) => x.channel === 'auto:discovery:v1').length, 1);
   assert.deepEqual([...new Set(invocations.map((x) => x.channel))].sort(), [
+    'auto:discovery:v1',
     'foundation:fleet:v1',
     'foundation:platform-tools:v2',
     'foundation:preferences:v1',
@@ -102,6 +112,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   listeners[0][1]();
   assert.equal(readyListeners.size, 0);
   for (const p of pending) assert.equal(JSON.parse(await p).code, 'SESSION_UNAVAILABLE');
+  assert.equal(JSON.parse(await stop).outcome, 'OUTCOME_UNKNOWN');
   assert.equal(invocations.length, 8);
   assert.equal(JSON.parse(await exposed.platformTools.read()).code, 'SESSION_UNAVAILABLE');
   assert.equal(JSON.parse(await exposed.platformTools.requestSetup(0)).code, 'SESSION_UNAVAILABLE');

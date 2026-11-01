@@ -22,10 +22,14 @@ export class ViewSession {
   private initialLoads = 0;
   private generation = 0;
   private pending = 0;
+  private ordinary = 0;
+  private cleanup = 0;
+  private onRevoke: (() => void) | null;
   private readonly sender: object;
   private readonly origin: string;
   private readonly url: string;
-  constructor(sender: object, origin: string, url: string) {
+  constructor(sender: object, origin: string, url: string, onRevoke?: () => void) {
+    this.onRevoke = onRevoke ?? null;
     this.sender = sender;
     this.origin = origin;
     this.url = url;
@@ -55,6 +59,13 @@ export class ViewSession {
     if (this.state === 'CLOSED' || this.state === 'REVOKED') return;
     this.state = 'REVOKED';
     this.generation++;
+    const callback = this.onRevoke;
+    this.onRevoke = null;
+    try {
+      callback?.();
+    } catch {
+      /* Revocation cannot be rolled back by cleanup notification. */
+    }
   }
   close(): void {
     this.revoke();
@@ -69,10 +80,19 @@ export class ViewSession {
     );
   }
   admit(caller: Caller): Admission {
+    return this.admission(caller, false);
+  }
+  admitCleanup(caller: Caller): Admission {
+    return this.admission(caller, true);
+  }
+  private admission(caller: Caller, cleanup: boolean): Admission {
     if (!this.trusted(caller)) return { ok: false, code: 'UNTRUSTED_SENDER' };
     if (this.state === 'INITIALIZING') return { ok: false, code: 'SESSION_UNAVAILABLE' };
     if (this.state !== 'ACTIVE') return { ok: false, code: 'SESSION_REVOKED' };
-    if (this.pending >= 8) return { ok: false, code: 'BUSY' };
+    if (this.pending >= 8 || (cleanup ? this.cleanup >= 1 : this.ordinary >= 7))
+      return { ok: false, code: 'BUSY' };
+    if (cleanup) this.cleanup++;
+    else this.ordinary++;
     this.pending++;
     const generation = this.generation;
     let released = false;
@@ -85,6 +105,8 @@ export class ViewSession {
         if (!released) {
           released = true;
           this.pending--;
+          if (cleanup) this.cleanup--;
+          else this.ordinary--;
         }
       },
     };

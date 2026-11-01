@@ -1,3 +1,4 @@
+import { parseDiscoveryResponse, type DiscoverySnapshot } from './discovery-contract.js';
 import {
   parseRuntimeVersionResponse,
   type RuntimeVersionSnapshot,
@@ -28,6 +29,12 @@ declare global {
       read: () => Promise<string>;
       replaceSelection: (expectedRevision: number, selection: FleetSelection) => Promise<string>;
     }>;
+    discovery: Readonly<{
+      get: () => Promise<string>;
+      start: (revision: unknown, installationRevision: unknown) => Promise<string>;
+      refresh: (revision: unknown) => Promise<string>;
+      stop: () => Promise<string>;
+    }>;
     foundation: Readonly<{ health: () => Promise<string>; settings: () => Promise<string> }>;
   }
 }
@@ -47,12 +54,125 @@ function Diagnostic() {
   const setupHydrated = useRef(false);
   const runtimeGeneration = useRef<object>(Object.freeze({}));
   const setupObservation = useRef<string | null>(null);
+  const discoveryGeneration = useRef<object>(Object.freeze({}));
+  const fleetGeneration = useRef<object>(Object.freeze({}));
+  const [discovery, setDiscovery] = useState<DiscoverySnapshot | null>(null);
+  const [discoveryStatus, setDiscoveryStatus] = useState(
+    'Chưa đọc trạng thái máy chủ; không tự khởi động hoặc quét.',
+  );
+  const [discoveryPending, setDiscoveryPending] = useState(false);
+  const [discoveryStopPending, setDiscoveryStopPending] = useState(false);
+  const [discoveryReconcile, setDiscoveryReconcile] = useState(true);
+  const discoveryInFlight = useRef(false),
+    discoveryStopInFlight = useRef(false);
+  const invalidateFleet = useCallback(() => {
+    fleetGeneration.current = Object.freeze({});
+    setFleet(null);
+    setFleetFailed(true);
+    setFleetReconcile(true);
+    setFleetStatus(
+      'LIVE_DISCOVERY_UNAVAILABLE / CACHED OBSERVATION CLEARED / EXPLICIT FLEET READ REQUIRED',
+    );
+  }, []);
+  const invalidateDiscovery = useCallback(() => {
+    discoveryGeneration.current = Object.freeze({});
+    setDiscovery(null);
+    setDiscoveryReconcile(true);
+    setDiscoveryStatus('Cần đọc lại trạng thái; quan sát trước không còn hiện hành.');
+    invalidateFleet();
+  }, [invalidateFleet]);
+  const observeRevocation = useCallback(
+    (code: unknown) => {
+      if (code === 'SESSION_REVOKED' || code === 'OWNER_REVOKED' || code === 'CLOSED')
+        invalidateDiscovery();
+    },
+    [invalidateDiscovery],
+  );
+  async function discoveryAction(method: 'get' | 'start' | 'refresh' | 'stop') {
+    const stop = method === 'stop';
+    if (
+      stop
+        ? discoveryStopInFlight.current
+        : discoveryInFlight.current || discoveryStopInFlight.current
+    )
+      return;
+    if ((method === 'start' || method === 'refresh') && (!discovery || discoveryReconcile)) return;
+    if (stop) {
+      discoveryStopInFlight.current = true;
+      setDiscoveryStopPending(true);
+    } else {
+      discoveryInFlight.current = true;
+      setDiscoveryPending(true);
+    }
+    if (method !== 'get') {
+      discoveryGeneration.current = Object.freeze({});
+      setDiscoveryReconcile(true);
+      invalidateFleet();
+    }
+    const generation = discoveryGeneration.current;
+    try {
+      const raw =
+        method === 'get'
+          ? await window.discovery.get()
+          : method === 'start'
+            ? await window.discovery.start(discovery?.revision, discovery?.installationRevision)
+            : method === 'refresh'
+              ? await window.discovery.refresh(discovery?.revision)
+              : await window.discovery.stop();
+      if (generation !== discoveryGeneration.current) return;
+      const response = parseDiscoveryResponse(raw);
+      if (!response) throw Error('INVALID_RESPONSE');
+      if (!response.ok) {
+        discoveryGeneration.current = Object.freeze({});
+        setDiscovery(null);
+        setDiscoveryReconcile(true);
+        invalidateFleet();
+        setDiscoveryStatus(
+          `${response.outcome} / ${response.code}. Đọc lại để đối chiếu; không tự thử lại.`,
+        );
+        return;
+      }
+      setDiscovery(response.snapshot);
+      setDiscoveryReconcile(
+        response.outcome !== 'OBSERVED' ||
+          !['IDLE', 'READY', 'STOPPED'].includes(response.snapshot.state),
+      );
+      if (
+        response.snapshot.state !== 'READY' ||
+        response.snapshot.lastOutcome !== 'COMMITTED' ||
+        response.snapshot.observedAtUtc === null
+      )
+        invalidateFleet();
+      setDiscoveryStatus(
+        `${response.outcome} / ${response.snapshot.state} / ${response.snapshot.lastOutcome} / ${response.snapshot.code ?? 'OK'} / LOG ${response.loggingHealth}. ${response.snapshot.restartRequired ? 'Cần khởi động lại ứng dụng trước lần Start mới.' : 'Nhấn Đọc trạng thái để đối chiếu; không tự quét hoặc thử lại.'} ${response.snapshot.observedAtUtc === null ? 'Chưa có quan sát thiết bị hiện hành.' : `Quan sát được chụp tại UTC ms ${response.snapshot.observedAtUtc}; không giám sát liên tục. Đọc Fleet riêng để xem kết quả.`}`,
+      );
+    } catch {
+      if (generation !== discoveryGeneration.current) return;
+      discoveryGeneration.current = Object.freeze({});
+      setDiscovery(null);
+      setDiscoveryReconcile(true);
+      invalidateFleet();
+      setDiscoveryStatus(
+        'OUTCOME_UNKNOWN / INTERNAL_FAILURE. Đọc trạng thái để đối chiếu; Stop vẫn khả dụng.',
+      );
+    } finally {
+      if (stop) {
+        discoveryStopInFlight.current = false;
+        setDiscoveryStopPending(false);
+      } else {
+        discoveryInFlight.current = false;
+        setDiscoveryPending(false);
+      }
+    }
+  }
+
   const setupAction = useCallback(
     async (request = false) => {
       if (setupInFlight.current || (request && (!setup || setupReconcile))) return;
       setupInFlight.current = true;
       setSetupPending(true);
       if (request) {
+        invalidateDiscovery();
         setSetupReconcile(true);
         runtimeGeneration.current = Object.freeze({});
         setRuntimeReconcile(true);
@@ -65,6 +185,7 @@ function Diagnostic() {
         const response = parseSetupResponse(raw);
         if (!response) throw Error('INVALID_RESPONSE');
         if (!response.ok) {
+          observeRevocation(response.code);
           setSetupReconcile(true);
           setSetupStatus(
             `${response.outcome} / ${response.code}. Nhấn Đọc trạng thái để đối chiếu; không tự thử lại.`,
@@ -74,6 +195,7 @@ function Diagnostic() {
         const observed = JSON.stringify(response.snapshot);
         if (setupObservation.current !== observed) {
           setupObservation.current = observed;
+          invalidateDiscovery();
           runtimeGeneration.current = Object.freeze({});
           setRuntimeReconcile(true);
           setRuntimeVersion(null);
@@ -93,7 +215,7 @@ function Diagnostic() {
         setSetupPending(false);
       }
     },
-    [setup, setupReconcile],
+    [setup, setupReconcile, invalidateDiscovery, observeRevocation],
   );
   useEffect(() => {
     if (setupHydrated.current) return;
@@ -124,6 +246,7 @@ function Diagnostic() {
       const response = parseRuntimeVersionResponse(raw);
       if (!response) throw Error('INVALID_RESPONSE');
       if (!response.ok) {
+        observeRevocation(response.code);
         setRuntimeReconcile(true);
         setRuntimeStatus(
           `${response.outcome} / ${response.code}. Đọc lại để đối chiếu; không tự thử lại.`,
@@ -159,6 +282,7 @@ function Diagnostic() {
     async (selection?: FleetSelection) => {
       if (fleetInFlight.current || (selection !== undefined && (!fleet || fleetReconcile))) return;
       fleetInFlight.current = true;
+      const generation = fleetGeneration.current;
       setFleetPending(true);
       setFleetStatus(
         selection === undefined ? 'READING / FLEET' : 'PENDING / SELECTION NOT YET APPLIED',
@@ -168,8 +292,11 @@ function Diagnostic() {
           selection === undefined
             ? await window.fleet.read()
             : await window.fleet.replaceSelection(fleet?.selection.revision ?? 0, selection);
+        if (generation !== fleetGeneration.current) return;
         const response = parseFleetResponse(raw);
         if (!response?.ok) {
+          if (response && !response.ok) observeRevocation(response.code);
+          setFleet(null);
           setFleetFailed(true);
           setFleetReconcile(true);
           setFleetStatus(
@@ -184,6 +311,8 @@ function Diagnostic() {
           `${response.outcome} / PROCESS-LOCAL SELECTION ${response.fleet.selection.revision} / ${response.fleet.reason ?? 'OBSERVED'} / AUDIT ${response.auditHealth}`,
         );
       } catch {
+        if (generation !== fleetGeneration.current) return;
+        setFleet(null);
         setFleetFailed(true);
         setFleetReconcile(true);
         setFleetStatus('INTERNAL_FAILURE / EXPLICIT FLEET READ REQUIRED');
@@ -192,7 +321,7 @@ function Diagnostic() {
         setFleetPending(false);
       }
     },
-    [fleet, fleetReconcile],
+    [fleet, fleetReconcile, observeRevocation],
   );
   useEffect(() => {
     if (fleetHydrationStarted.current) return;
@@ -289,6 +418,7 @@ function Diagnostic() {
             `${result.outcome} / PERSISTED / REVISION ${result.settings.revision} / AUDIT ${result.auditHealth}`,
           );
         } else {
+          observeRevocation(result.code);
           setReconcile(true);
           setPreferenceStatus(
             `${result.code} / ${result.code === 'TIMEOUT' || result.code === 'OUTCOME_UNKNOWN' ? 'OUTCOME UNKNOWN — CONFIRMATION MAY STILL BE OPEN / ' : ''}EXPLICIT READ REQUIRED / AUDIT ${result.auditHealth}`,
@@ -302,7 +432,7 @@ function Diagnostic() {
         setPending(false);
       }
     },
-    [preferences, reconcile, tileInput, dockInput],
+    [preferences, reconcile, tileInput, dockInput, observeRevocation],
   );
   const hydrationStarted = useRef(false);
   useEffect(() => {
@@ -347,6 +477,7 @@ function Diagnostic() {
         typeof response.code === 'string' &&
         'diagnosticId' in response
       ) {
+        observeRevocation(response.code);
         setStatus(
           `REQUEST ${response.code} / ${typeof response.diagnosticId === 'string' ? response.diagnosticId : 'diagnostic reference unavailable'}`,
         );
@@ -480,6 +611,70 @@ function Diagnostic() {
             </button>
             <p id="runtime-version-status" aria-live="polite">
               {runtimeStatus}
+            </p>
+          </section>
+          <section aria-label="Owned discovery" id="discovery-panel">
+            <h3>Máy chủ và quan sát thiết bị</h3>
+            <p>
+              Chỉ thực hiện khi bạn chọn. Không giám sát liên tục; hồ sơ hoặc môi trường không phù
+              hợp sẽ bị từ chối.
+            </p>
+            <button
+              type="button"
+              id="discovery-read"
+              disabled={discoveryPending || discoveryStopPending}
+              onClick={() => {
+                void discoveryAction('get');
+              }}
+            >
+              Đọc trạng thái máy chủ
+            </button>
+            <button
+              type="button"
+              id="discovery-start"
+              disabled={
+                discoveryPending ||
+                discoveryStopPending ||
+                discoveryReconcile ||
+                !discovery ||
+                discovery.restartRequired ||
+                !['IDLE', 'STOPPED'].includes(discovery.state) ||
+                discovery.installationRevision === null
+              }
+              onClick={() => {
+                void discoveryAction('start');
+              }}
+            >
+              Start máy chủ được sở hữu
+            </button>
+            <button
+              type="button"
+              id="discovery-refresh"
+              disabled={
+                discoveryPending ||
+                discoveryStopPending ||
+                discoveryReconcile ||
+                discovery?.state !== 'READY' ||
+                discovery.restartRequired
+              }
+              onClick={() => {
+                void discoveryAction('refresh');
+              }}
+            >
+              Refresh thiết bị
+            </button>
+            <button
+              type="button"
+              id="discovery-stop"
+              disabled={discoveryStopPending}
+              onClick={() => {
+                void discoveryAction('stop');
+              }}
+            >
+              Stop / dọn phiên được sở hữu
+            </button>
+            <p id="discovery-status" aria-live="polite">
+              {discoveryStatus}
             </p>
           </section>
           <section aria-label="Fleet status" id="fleet-panel">

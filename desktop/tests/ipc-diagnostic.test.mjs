@@ -137,16 +137,16 @@ test('v2 timeout/busy/disposal retain bounded native occupancy and discard late 
       ),
     );
   }, c.timer);
-  const pending = Array.from({ length: 8 }, () => client.health());
+  const pending = Array.from({ length: 7 }, () => client.health());
   c.tick();
   const results = await Promise.all(pending);
   assert.ok(results.every((raw) => raw === localDiagnosticError('TIMEOUT')));
-  assert.equal(client.outstanding(), 8);
+  assert.equal(client.outstanding(), 7);
   assert.equal(await client.settings(), localDiagnosticError('BUSY'));
   resolves[0]();
   await settle();
-  assert.equal(client.outstanding(), 7);
-  assert.equal(calls, 8);
+  assert.equal(client.outstanding(), 6);
+  assert.equal(calls, 7);
   assert.ok(results.every((raw) => !raw.includes(uuid)));
   client.dispose();
   for (const done of resolves.slice(1)) done();

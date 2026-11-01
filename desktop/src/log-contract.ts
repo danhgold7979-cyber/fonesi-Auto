@@ -1,4 +1,9 @@
 import {
+  validDiscoveryAuditTuple,
+  DISCOVERY_AUDIT_FIELDS,
+  type DiscoveryAudit,
+} from './discovery-audit-contract.ts';
+import {
   validRuntimeVersionAuditTuple,
   type RuntimeVersionAudit,
 } from './runtime-version-audit-contract.ts';
@@ -197,6 +202,38 @@ function setupTuple(record: Record<string, unknown>): boolean {
 export type SetupV2LogRecord = SetupAudit &
   Omit<SetupLogRecord, 'schemaVersion'> &
   Readonly<{ schemaVersion: 8 }>;
+export type DiscoveryAuditFields = DiscoveryAudit;
+export type DiscoveryLogRecord = Readonly<{
+  schemaVersion: 9;
+  runId: string;
+  sequence: number;
+  utc: string;
+  severity: 'INFO' | 'WARN';
+  component: 'MAIN';
+  task: 'P2-03';
+  event: 'DISCOVERY';
+  discovery: DiscoveryAudit;
+}>;
+function discoveryTuple(record: Record<string, unknown>): boolean {
+  const input = record.discovery;
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    Object.getPrototypeOf(input) !== Object.prototype ||
+    Reflect.ownKeys(input).length !== DISCOVERY_AUDIT_FIELDS.length
+  )
+    return false;
+  const d = Object.getOwnPropertyDescriptor(input, 'code');
+  return (
+    !!d &&
+    'value' in d &&
+    record.component === 'MAIN' &&
+    record.task === 'P2-03' &&
+    record.event === 'DISCOVERY' &&
+    record.severity === (d.value === 'OK' ? 'INFO' : 'WARN') &&
+    validDiscoveryAuditTuple(input as Record<string, unknown>)
+  );
+}
 export type RuntimeVersionAuditFields = RuntimeVersionAudit;
 export type RuntimeVersionLogRecord = RuntimeVersionAudit &
   Readonly<{
@@ -226,7 +263,8 @@ export type LogRecord =
   | DurableLogRecord
   | SetupLogRecord
   | SetupV2LogRecord
-  | RuntimeVersionLogRecord;
+  | RuntimeVersionLogRecord
+  | DiscoveryLogRecord;
 function fleetTuple(record: Record<string, unknown>): boolean {
   return (
     record.component === 'MAIN' &&
@@ -408,7 +446,21 @@ export function encodeLogRecord(input: unknown): string | null {
     ];
     const version = Object.getOwnPropertyDescriptor(input, 'schemaVersion');
     if (!version || !Object.hasOwn(version, 'value')) return null;
-    if (version.value === 6 || version.value === 7 || version.value === 8)
+    if (version.value === 9)
+      fields.splice(
+        0,
+        fields.length,
+        'schemaVersion',
+        'runId',
+        'sequence',
+        'utc',
+        'severity',
+        'component',
+        'task',
+        'event',
+        'discovery',
+      );
+    else if (version.value === 6 || version.value === 7 || version.value === 8)
       fields.splice(
         0,
         fields.length,
@@ -466,7 +518,9 @@ export function encodeLogRecord(input: unknown): string | null {
                   ? setupTuple(record)
                   : record.schemaVersion === 8
                     ? setupTuple(record) && validSetupAuditV2Tuple(record)
-                    : runtimeVersionTuple(record))
+                    : record.schemaVersion === 9
+                      ? discoveryTuple(record)
+                      : runtimeVersionTuple(record))
     )
       return null;
     const encoded = JSON.stringify(record) + '\n';
