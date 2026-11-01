@@ -26,8 +26,8 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual sixty modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 60, runtimeInputs: 60 });
+test('actual sixty-two modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 62, runtimeInputs: 62 });
 });
 test('renderer cannot import native, Electron, or main-owned profile services', async () => {
   for (const statement of [

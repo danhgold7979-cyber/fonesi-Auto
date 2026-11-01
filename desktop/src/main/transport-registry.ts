@@ -173,6 +173,11 @@ function recognized(value: unknown): value is RegistrySnapshot {
 }
 const key = (row: Readonly<{ serial: string; transportId: string | null }>) =>
   JSON.stringify([row.serial, row.transportId]);
+// In-process provenance check only; serialized or structurally matching records cannot enter.
+export function isRegistrySnapshot(value: unknown): value is RegistrySnapshot {
+  return recognized(value);
+}
+
 export function isCurrentBinding(snapshot: unknown, input: unknown): boolean {
   try {
     if (!recognized(snapshot)) return false;

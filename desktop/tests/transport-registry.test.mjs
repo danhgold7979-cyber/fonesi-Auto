@@ -4,6 +4,7 @@ import {
   emptyRegistry,
   reconcileRegistry,
   isCurrentBinding,
+  isRegistrySnapshot,
 } from '../src/main/transport-registry.ts';
 const uuid = (n) => `${n.toString(16).padStart(8, '0')}-1234-4234-8234-123456789abc`;
 const row = (serial = 'phone-a', transportId = '1', state = 'DEVICE') => ({
@@ -396,4 +397,31 @@ test('fresh proof cannot silently transfer another independently VERIFIED curren
   assert.equal(f.snapshot.devices.find((d) => d.deviceId === b.deviceId).state, 'CONFLICT');
   assert.equal(f.snapshot.devices.find((d) => d.deviceId === a.deviceId).currentBindingId, null);
   assert.equal(f.calls, calls);
+});
+
+test('selection provenance predicate admits only actual in-process registry snapshots without property reads', () => {
+  const snapshot = emptyRegistry();
+  assert.equal(isRegistrySnapshot(snapshot), true);
+  assert.equal(isRegistrySnapshot(JSON.parse(JSON.stringify(snapshot))), false);
+  let reads = 0;
+  const fake = {
+    get version() {
+      reads++;
+      throw Error('private');
+    },
+  };
+  assert.equal(isRegistrySnapshot(fake), false);
+  assert.equal(
+    isRegistrySnapshot(
+      new Proxy(snapshot, {
+        get() {
+          reads++;
+          throw Error('private');
+        },
+      }),
+    ),
+    false,
+  );
+  assert.equal(isRegistrySnapshot(null), false);
+  assert.equal(reads, 0);
 });

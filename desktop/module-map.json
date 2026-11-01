@@ -1151,6 +1151,26 @@
           "DisplayEvidence": "type"
         }
       }
+    },
+    "main/device-diagnostics.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./device-actor.ts": {
+          "ActorCode": "type",
+          "ActorResult": "type"
+        }
+      }
+    },
+    "main/device-selection.ts": {
+      "role": "main-adapter",
+      "imports": {
+        "./transport-registry.ts": {
+          "isRegistrySnapshot": "value",
+          "isCurrentBinding": "value",
+          "CurrentBinding": "type",
+          "RegistrySnapshot": "type"
+        }
+      }
     }
   }
 }

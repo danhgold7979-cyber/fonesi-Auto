@@ -66,6 +66,8 @@ export const inputs = [
   'src/main/device-actor.ts',
   'src/main/input-contract.ts',
   'src/main/capture-contract.ts',
+  'src/main/device-selection.ts',
+  'src/main/device-diagnostics.ts',
   'src/main/foundation-database.ts',
   'src/main/backup-container.ts',
   'src/main/backup-service.ts',

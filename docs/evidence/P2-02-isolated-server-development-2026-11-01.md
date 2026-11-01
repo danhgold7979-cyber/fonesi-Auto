@@ -1,6 +1,6 @@
 # P2-02 — isolated server development source checkpoint
 
-**IN PROGRESS — native server NOT_RUN.** Coordinator Coder Bin approved source
+**NATIVE GATE UNMET — existing profile refused; no ADB server launched.** Coordinator Coder Bin approved source
 implementation of the [bounded hosted-only design](../phases/P2-02-ISOLATED-SERVER-DEVELOPMENT-PROPOSAL.md)
 at2026-11-01 03:15UTC. Exact runner/native-helper review and a separate first-execution
 disposition remain required. This is not production activation or canonical P2-02 PASS.
@@ -88,3 +88,31 @@ profile adoption, temporary unprovisioned keys, owned retirement/cleanup and fix
 loopback health with USB/emulator/mDNS suppression configured. This is execution
 permission, not a runtime PASS, personal-host/device permission, production activation
 or canonical-task acceptance. Native execution remains NOT_RUN at this source commit.
+
+## First hosted attempt — protected existing-profile refusal
+
+Exact public `3b37379ce11bfa71e7a1e712b34c3d115981d4e5`, tree
+`c949363300b68c3ae2fc80c5c82153d0c1aa85f2`, [run41269191167](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41269191167)
+passed the source job but failed strict server evidence publication. Fixed diagnostics
+reported native step PROFILE, detail PROFILE_REJECTED, status/phase NONE; no ADB server
+process launched. The exact native failure value PROFILE_REJECTED is assigned only
+when ReserveAbsentProfile returns false, which occurs only for Win32 error183 (entry
+already exists). Exceptions in native profile API resolution instead yield
+PREFLIGHT_FAILED. Thus the existing `.android` entry triggered the intended refusal;
+this is not an inferred failure of ADB health or a reason to weaken the guard.
+
+Artifact13069040142 [fixed truthful FAIL report](samples/P2-02-server-existing-profile-fail.json)
+is1460bytes, SHA256 `b7b33d3e931026c877076af6211eda94568532cce9b0320ae4c0f8637fd3b590`.
+Independent strict reconstruction/privacy review passed as FAIL: cases false, cleanup
+false and SERVER_FAILED. No existing directory listing, key content inspection,
+adoption/deletion, identity change or profile workaround was performed. Retained
+private test files are not a cleanup success. Proposed extra diagnostic code was
+cancelled without edits once exact source/log attribution established the cause.
+
+Ordinary source pushes now run only software tests. The development job requires
+explicit workflow_dispatch inputs, run_adb_version and run_adb_server, both default
+false, with separate execution/publication gates. The prior version PASS is reused;
+no unchanged server retry is planned. A future server test requires a genuinely new
+eligible absent-profile environment and reviewed execution disposition, not bypassing
+this boundary. Independent pure software development continues. Earlier NOT_RUN lines
+above are the historical pre-execution checkpoint, not a current runtime PASS.

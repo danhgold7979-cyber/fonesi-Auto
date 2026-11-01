@@ -1,6 +1,17 @@
 name: Phase 02 software and pinned development ADB boundaries
 on:
   workflow_dispatch:
+    inputs:
+      run_adb_version:
+        description: 'Explicit reviewed version-only development check'
+        required: false
+        type: boolean
+        default: false
+      run_adb_server:
+        description: 'Explicit reviewed server check only in a newly eligible absent-profile environment'
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [phase-02]
     paths:
@@ -73,6 +84,7 @@ jobs:
           Write-Output 'DEVICE_HARDWARE_NOT_RUN'
           Write-Output 'P106_CROSS_USER_UNMET_NOT_RERUN'
   owned-adb-version-development:
+    if: github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)
     needs: windows-software-only
     runs-on: windows-2022
     timeout-minutes: 10
@@ -104,6 +116,7 @@ jobs:
           & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/fetch_platform_tools.py ([IO.Path]::GetFullPath('desktop'))
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Syntax-check bounded runner and control without execution
+        if: inputs.run_adb_version
         run: |
           node --check desktop/verification/platform-tools-version-control.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -111,12 +124,13 @@ jobs:
           [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-PlatformToolsVersion.ps1'),[ref]$tokens,[ref]$errors)
           if (@($errors).Count -ne 0) { Write-Output 'P201_RUNNER_SYNTAX_FAILED'; exit 1 }
       - name: Owned exact app-local version command only, no server or device operations
+        if: inputs.run_adb_version
         run: |
           try { & ./desktop/verification/Invoke-PlatformToolsVersion.ps1 }
           catch { Write-Output 'P201_RUNNER_FAILED'; exit 1 }
       - name: Strict fixed-field publication, never raw capture or candidate binaries
         id: platform_tools_validation
-        if: always()
+        if: always() && inputs.run_adb_version
         run: |
           $ErrorActionPreference='Stop'
           try {
@@ -133,7 +147,7 @@ jobs:
             if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_HOSTED_PASS'}).Count -ne 1) { exit 1 }
           } catch { Write-Output 'P201_PUBLICATION_FAILED'; exit 1 }
       - name: Upload only fresh validated fixed-field evidence
-        if: always() && steps.platform_tools_validation.outputs.written == 'true'
+        if: always() && inputs.run_adb_version && steps.platform_tools_validation.outputs.written == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: platform-tools-development-evidence
@@ -141,6 +155,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Syntax-check isolated foreground server development boundary
+        if: inputs.run_adb_server
         run: |
           node --check desktop/verification/platform-tools-server-control.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -150,12 +165,13 @@ jobs:
             if (@($errors).Count -ne 0) { Write-Output 'P202_RUNNER_SYNTAX_FAILED'; exit 1 }
           }
       - name: Owned isolated foreground server and fixed host-version health only
+        if: inputs.run_adb_server
         run: |
           try { & ./desktop/verification/Invoke-PlatformToolsServer.ps1 }
           catch { Write-Output 'P202_RUNNER_FAILED'; exit 1 }
       - name: Strict server evidence publication, never profile keys or raw captures
         id: platform_tools_server_validation
-        if: always()
+        if: always() && inputs.run_adb_server
         run: |
           $ErrorActionPreference='Stop'
           try {
@@ -172,7 +188,7 @@ jobs:
             if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_SERVER_HOSTED_PASS'}).Count -ne 1) { exit 1 }
           } catch { Write-Output 'P202_PUBLICATION_FAILED'; exit 1 }
       - name: Upload only fresh validated fixed-field server evidence
-        if: always() && steps.platform_tools_server_validation.outputs.written == 'true'
+        if: always() && inputs.run_adb_server && steps.platform_tools_server_validation.outputs.written == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: platform-tools-server-development-evidence

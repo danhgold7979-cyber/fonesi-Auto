@@ -152,3 +152,27 @@ test('checked-in fresh PS entry binds complete source closure and exact pins wit
   assert.match(source, /privateKey.Length \+ publicKey.Length \+ 36 > 65536/);
   assert.doesNotMatch(outer, /Invoke-Expression|process\.noAsar|Set-Acl|New-LocalUser/);
 });
+
+test('ordinary source pushes cannot invoke development binaries; version and server require separate manual opt-ins', () => {
+  const workflow = read('../../.github/workflows/phase-02-software.yml');
+  for (const flag of ['run_adb_version', 'run_adb_server']) {
+    assert.match(
+      workflow,
+      new RegExp(`${flag}:\\n[\\s\\S]*?type: boolean\\n        default: false`),
+    );
+    assert.ok(workflow.includes(`if: inputs.${flag}`));
+    assert.ok(workflow.includes(`if: always() && inputs.${flag}`));
+  }
+  assert.ok(
+    workflow.includes(
+      "if: github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
+    ),
+  );
+  const sourceJob = section(
+    workflow,
+    '  windows-software-only:',
+    '  owned-adb-version-development:',
+  );
+  assert.doesNotMatch(sourceJob, /Invoke-PlatformTools|fetch_platform_tools/);
+  assert.equal((workflow.match(/fetch_platform_tools.py/g) ?? []).length, 1);
+});
