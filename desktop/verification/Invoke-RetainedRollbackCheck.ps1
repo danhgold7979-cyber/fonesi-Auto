@@ -71,9 +71,14 @@ try{
   $phase='NATIVE';$allClean=$false;$original=[Environment]::GetEnvironmentVariables('Process')
   try{
    foreach($key in $original.Keys){if($key -match '(?i)electron' -or $key -in @('NODE_OPTIONS','NODE_PATH','ESBUILD_BINARY_PATH')){throw 'ENVIRONMENT_REJECTED'}}
-   $allowed=@('SystemRoot','WINDIR','SystemDrive','PATH','PATHEXT','COMSPEC','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','PROGRAMDATA','OS','PROCESSOR_ARCHITECTURE','NUMBER_OF_PROCESSORS')
+   $allowed=@('SystemRoot','WINDIR','SystemDrive','PATHEXT','COMSPEC','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','PROGRAMDATA','OS','PROCESSOR_ARCHITECTURE','NUMBER_OF_PROCESSORS')
    foreach($key in @($original.Keys)){[Environment]::SetEnvironmentVariable([string]$key,$null,'Process')};foreach($key in $original.Keys){if($allowed -contains [string]$key){[Environment]::SetEnvironmentVariable([string]$key,[string]$original[$key],'Process')}}
-   [Environment]::SetEnvironmentVariable('PATH',[Environment]::SystemDirectory,'Process')
+   # SOURCE discovers node.exe before root admission; PACKAGE resolves its own absolute runtime.
+   if($stage -ceq 'SEED'){
+    PlainFile $node 134217728
+    if((Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash -ine 'd702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5'){throw 'NODE_REJECTED'}
+    [Environment]::SetEnvironmentVariable('PATH',([IO.Path]::GetDirectoryName($node)+';'+[Environment]::SystemDirectory),'Process')
+   }else{[Environment]::SetEnvironmentVariable('PATH',[Environment]::SystemDirectory,'Process')}
    $native=[Fonesi.Phase00.NativeProbe]::Run($powershell,[string[]]$launch,240000,10000,32768)
   }finally{foreach($key in @([Environment]::GetEnvironmentVariables('Process').Keys)){[Environment]::SetEnvironmentVariable([string]$key,$null,'Process')};foreach($key in $original.Keys){[Environment]::SetEnvironmentVariable([string]$key,[string]$original[$key],'Process')}}
   $allClean=Retired $native;$report.stages[$stage]=[ordered]@{observation=$null;process=(Evidence $native)}

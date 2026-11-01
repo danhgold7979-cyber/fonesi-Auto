@@ -1,12 +1,12 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 17:21 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 17:28 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
-Current four-launch campaign first CI41330753933 passed desktop1189/foundation109 but stopped at the stale Python discovery263 assertion before tests; native SKIPPED. Exact count274 workflow/test repair is prepared; no native acceptance is inferred.
+Current four-launch CI41331167124 passed source1189/109/274 and refreshed managed10 compilation/fixtures. Native SEED stopped at PREPARE before main/VERSION. A source-proven harness PATH mismatch is being corrected: SEED needs only the admitted Node directory plus System32; PACKAGE stays System32-only. No actual rollback or campaign-directory cleanup PASS yet.
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
-Current bounded Windows preparation: [four-stage retained rollback runner](evidence/P2-retained-rollback-windows-campaign-2026-11-01.md) now implements explicit derived36 seed → current PACKAGE37 upgrade → PACKAGE36 rollback → PACKAGE36 reopen. Current10-group managed proof and actual runtime outcome remain NOT_RUN; final exact runner review was CLEAR and bounded execution was authorized; first hosted attempt stopped at the source inventory gate. No server/device/HTTPS or whole-task claim.
+Current bounded Windows preparation: [four-stage retained rollback runner](evidence/P2-retained-rollback-windows-campaign-2026-11-01.md) now implements explicit derived36 seed → current PACKAGE37 upgrade → PACKAGE36 rollback → PACKAGE36 reopen. Current10-group managed proof is PASS; actual four-stage runtime outcome remains unproved; final exact runner review was CLEAR and bounded execution was authorized; first hosted attempt stopped at the source inventory gate. No server/device/HTTPS or whole-task claim.
 
 Current local metadata checkpoint: [reviewed36.0.0 retained prior](evidence/P2-prior-360-metadata-2026-11-01.md) is now source-adopted alongside unchanged37.0.1 INSTALL target. Exact official bytes/NOTICE/provenance were reviewed;41 affected tests and strict types/build pass. This supersedes the sole-pin limitation below, not the remaining real rollback/native proof. Metadata and reviewed runner were published together as public `ecc333e3a562264daa860453369a087595c3bb18`; current actual native proof remains pending.
 

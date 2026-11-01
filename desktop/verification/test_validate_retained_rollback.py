@@ -127,6 +127,23 @@ class Rollback(unittest.TestCase):
         ps=(here/'Invoke-RetainedRollbackCheck.ps1').read_text()
         for literal in (*v.STAGES,*contract['phases'],*contract['reasons']):self.assertIn("'"+literal+"'",ps)
         self.assertIn('240000,10000,32768',ps);self.assertIn("'PATH',[Environment]::SystemDirectory",ps)
+        # Exercise actual hash-bound core materialization; its lookup behavior is not a mock.
+        materialize = "const fs=require('node:fs'),path=require('node:path'),c=require(process.argv[1]);const root=path.resolve(process.argv[2]),raw=fs.readFileSync(path.join(root,'launch/launch-core.ps1'),'utf8');console.log(JSON.stringify([false,true].map(mode=>c.transform(raw,root,mode))))"
+        generated=subprocess.run(['node','-e',materialize,str(here/'retained-rollback-control.cjs'),str(here.parent)],capture_output=True,text=True,timeout=10,check=True)
+        source_core,package_core=json.loads(generated.stdout)
+        for core in (source_core,package_core):
+            self.assertIn("if($EntryMode -ceq 'PACKAGE'){$node=Join-Path $packageRoot 'runtime/node/node.exe'}",core)
+            self.assertIn('Get-Command node.exe -CommandType Application -ErrorAction Stop',core)
+            self.assertLess(core.index('Get-Command node.exe'),core.index("if($Selection -ceq 'Create')"))
+        self.assertIn("if($stage -ceq 'SEED'){\n    PlainFile $node 134217728",ps)
+        seed_path="[Environment]::SetEnvironmentVariable('PATH',([IO.Path]::GetDirectoryName($node)+';'+[Environment]::SystemDirectory),'Process')"
+        self.assertEqual(ps.count(seed_path),1)
+        self.assertIn("}else{[Environment]::SetEnvironmentVariable('PATH',[Environment]::SystemDirectory,'Process')}",ps)
+        fence=ps[ps.index("if($stage -ceq 'SEED'){\n    PlainFile $node"):ps.index('$native=[Fonesi.Phase00.NativeProbe]::Run')]
+        self.assertLess(fence.index('d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5'),fence.index(seed_path))
+        allowed=re.search(r"\$allowed=@\(([^\n]+)\)",ps).group(1)
+        self.assertNotIn("'PATH'",allowed)
+
         self.assertLess(ps.index("'managed-gate'"),ps.index("'install-electron.mjs'"))
         self.assertLess(ps.index("Control 'inspect' $stage"),ps.index('$index++'))
         self.assertIn("Control 'cleanup' '';Remove-VerifiedOwnedRun $owner $allClean",ps)
