@@ -264,34 +264,55 @@ test('outer source has one retained launch and unchanged pinned containment, no 
 });
 
 test('actual prepare verifies current build and materializes complete bound scripts/main derivation (synthetic archive pin only)', async () => {
-  const f = fixture();
-  try {
-    const bytes = Buffer.alloc(8044989, 19),
-      local = localApi(hash(bytes));
-    const input = path.join(f.root, 'synthetic-input.zip');
-    fs.writeFileSync(input, bytes, { flag: 'wx' });
-    await local.prepare(f.root, input);
-    await local.verifyCopy(f.root);
-    const proof = JSON.parse(fs.readFileSync(path.join(f.root, 'copy.json')));
-    const main = fs.readFileSync(path.join(desktop, 'build/main.cjs'), 'utf8');
-    const { deriveMain } = require('./retained-host-contract.cjs');
-    assert.equal(proof.originalMainSha256, hash(main));
-    assert.equal(
-      proof.derivedMainSha256,
-      hash(deriveMain(main, path.join(__dirname, 'retained-host-main-probe.cjs'))),
-    );
-    for (const source of api.SOURCES)
-      assert.equal(proof.sources[source], hash(fs.readFileSync(path.join(desktop, source))));
-    for (const [file, key] of [
-      ['Invoke-Desktop.instrumented.ps1', 'wrapperSha'],
-      ['launch-core.ps1', 'derivedSha'],
-    ])
-      assert.equal(proof[key], hash(fs.readFileSync(path.join(f.root, file))));
-    await assert.rejects(local.prepare(f.root, input));
-    fs.appendFileSync(path.join(f.root, 'launch-core.ps1'), '# changed');
-    await assert.rejects(local.verifyCopy(f.root));
-  } finally {
-    f.close();
+  for (const mainMode of [false, true]) {
+    const f = fixture();
+    try {
+      const bytes = Buffer.alloc(8044989, 19),
+        local = localApi(hash(bytes));
+      const input = path.join(f.root, 'synthetic-input.zip');
+      fs.writeFileSync(input, bytes, { flag: 'wx' });
+      await local.prepare(f.root, input, mainMode);
+      await local.verifyCopy(f.root, mainMode);
+      const proof = JSON.parse(fs.readFileSync(path.join(f.root, 'copy.json')));
+      assert.equal(proof.version, mainMode ? 2 : 1);
+      if (mainMode) {
+        assert.equal(proof.mode, 'MAIN_VERSION');
+        assert.equal(
+          JSON.parse(fs.readFileSync(path.join(f.root, 'historical-managed.json'))).reportSha256,
+          require('./main-runtime-version-evidence.cjs').REPORT_SHA,
+        );
+        await assert.rejects(local.verifyCopy(f.root, false));
+      }
+      const main = fs.readFileSync(path.join(desktop, 'build/main.cjs'), 'utf8');
+      const { deriveMain } = require(
+        mainMode ? './main-runtime-version-contract.cjs' : './retained-host-contract.cjs',
+      );
+      assert.equal(proof.originalMainSha256, hash(main));
+      assert.equal(
+        proof.derivedMainSha256,
+        hash(
+          deriveMain(
+            main,
+            path.join(
+              __dirname,
+              mainMode ? 'main-runtime-version-probe.cjs' : 'retained-host-main-probe.cjs',
+            ),
+          ),
+        ),
+      );
+      for (const source of api.SOURCES)
+        assert.equal(proof.sources[source], hash(fs.readFileSync(path.join(desktop, source))));
+      for (const [file, key] of [
+        ['Invoke-Desktop.instrumented.ps1', 'wrapperSha'],
+        ['launch-core.ps1', 'derivedSha'],
+      ])
+        assert.equal(proof[key], hash(fs.readFileSync(path.join(f.root, file))));
+      await assert.rejects(local.prepare(f.root, input, mainMode));
+      fs.appendFileSync(path.join(f.root, 'launch-core.ps1'), '# changed');
+      await assert.rejects(local.verifyCopy(f.root, mainMode));
+    } finally {
+      f.close();
+    }
   }
 });
 test('bound MAIN marker extraction and exact PS tables forward only fixed finite diagnostic slots', () => {
@@ -675,7 +696,7 @@ test('current verification root is exclusively fixed r with canonical owner and 
     assert.throws(() => api.timeoutSnapshot(f.root + path.sep + '..' + path.sep + 'r'));
     const source = fs.readFileSync(path.join(__dirname, 'retained-host-control.cjs'), 'utf8'),
       cleanup = source.slice(
-        source.indexOf('async function cleanup(root)'),
+        source.indexOf('async function cleanup(root, main = false)'),
         source.indexOf('const PHASES ='),
       );
     assert.doesNotMatch(

@@ -497,7 +497,9 @@ test('campaign is default-off, source-dependent and keeps managed success before
   );
   const check = (input) => {
     const text = input.replaceAll('\r\n', '\n'),
-      job = text.split('  owned-retained-version-development:\n')[1];
+      job = text
+        .split('  owned-retained-version-development:\n')[1]
+        ?.split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
     assert.ok(job);
     assert.match(job, /needs: windows-software-only/);
     assert.match(

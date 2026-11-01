@@ -111,6 +111,8 @@ export const TEST_FILES = Object.freeze([
   'verification/fleet-ui-control.test.cjs',
   'verification/fleet-ui-schema4.test.cjs',
   'verification/logging-evidence.test.cjs',
+  'verification/main-runtime-version-contract.test.cjs',
+  'verification/main-runtime-version-evidence.test.cjs',
   'verification/package-contract.test.cjs',
   'verification/package-launch-driver.test.cjs',
   'verification/persistence-envelope.test.cjs',
