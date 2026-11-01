@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const SOURCE_SHA256 = 'f8742cb01bf8bfbf7c9bfe891be2c8a6b70d699951d80efb7baf611c14193d64';
+const SOURCE_SHA256 = 'c88793ac80f3586afdc56b4376b98eeaf33201bf7631d9f1b44bac4dddbdea46';
 const BODY_SHA256 = '29999102f3c35887d92fe77531b24973ac689d4dba81162215e075c33669b6cf';
 const BOOTSTRAP = '{"version":1,"purpose":"RETAINED_PIPE_STARTUP"}';
 const CASES = Object.freeze([
@@ -97,6 +97,18 @@ function materializeScript(parameters) {
     index = text.indexOf(boundary);
   if (index < 0 || text.indexOf(boundary, index + 1) !== -1) fail();
   let prefix = text.slice(0, index);
+  const diagnosticStart = 'function Compile-Type',
+    diagnosticEnd = 'function Reject';
+  const start = prefix.indexOf(diagnosticStart),
+    end = prefix.indexOf(diagnosticEnd);
+  if (
+    start < 0 ||
+    end <= start ||
+    prefix.indexOf(diagnosticStart, start + 1) !== -1 ||
+    prefix.indexOf(diagnosticEnd, end + 1) !== -1
+  )
+    fail();
+  prefix = prefix.slice(0, start) + prefix.slice(end);
   const parameter =
     'param([Parameter(Mandatory=$true)][string]$BootstrapFile,[Parameter(Mandatory=$true)][string]$BootstrapSha256)\n';
   if (prefix.split(parameter).length !== 2) fail();

@@ -105,16 +105,31 @@ const COMPILE_TYPES = [
   'OTHER',
   'NONE',
 ] as const;
+const TEMP_REASONS = [
+  'UNAVAILABLE',
+  'ACCESS',
+  'PATH_TOO_LONG',
+  'NOT_FOUND',
+  'DISK_FULL',
+  'BUFFER_TOO_SMALL',
+  'INVALID_NAME',
+  'OTHER',
+] as const;
+const TEMP_RELATIONS = ['UNAVAILABLE', 'PROFILE', 'RUN', 'OTHER', 'EMPTY'] as const;
+const TEMP_LENGTHS = ['UNAVAILABLE', 'LE247', 'FROM248_TO259', 'GE260', 'EMPTY'] as const;
 type CompileFailure = Readonly<{
   id: (typeof COMPILE_IDS)[number];
   type: (typeof COMPILE_TYPES)[number];
   inner: (typeof COMPILE_TYPES)[number];
   cs: string;
+  tempReason: (typeof TEMP_REASONS)[number];
+  tempRelation: (typeof TEMP_RELATIONS)[number];
+  tempLength: (typeof TEMP_LENGTHS)[number];
 }>;
 function compileFrame(line: string): CompileFailure | null {
   const parts = line.split('|');
-  if (parts.length !== 5 || parts[0] !== 'HOST_BOOTSTRAP_COMPILE_ERROR') return null;
-  const [, id, type, inner, cs] = parts;
+  if (parts.length !== 8 || parts[0] !== 'HOST_BOOTSTRAP_COMPILE_ERROR') return null;
+  const [, id, type, inner, cs, tempReason, tempRelation, tempLength] = parts;
   if (
     !COMPILE_IDS.some((v) => v === id) ||
     !COMPILE_TYPES.some((v) => v === type) ||
@@ -125,7 +140,29 @@ function compileFrame(line: string): CompileFailure | null {
     )
   )
     return null;
-  return Object.freeze({ id, type, inner, cs }) as CompileFailure;
+  if (
+    !TEMP_REASONS.some((v) => v === tempReason) ||
+    !TEMP_RELATIONS.some((v) => v === tempRelation) ||
+    !TEMP_LENGTHS.some((v) => v === tempLength)
+  )
+    return null;
+  const unavailable = [tempReason, tempRelation, tempLength].every((v) => v === 'UNAVAILABLE');
+  if (
+    !unavailable &&
+    (cs !== 'CS1619' ||
+      [tempReason, tempRelation, tempLength].some((v) => v === 'UNAVAILABLE') ||
+      (tempRelation === 'EMPTY') !== (tempLength === 'EMPTY'))
+  )
+    return null;
+  return Object.freeze({
+    id,
+    type,
+    inner,
+    cs,
+    tempReason,
+    tempRelation,
+    tempLength,
+  }) as CompileFailure;
 }
 const observationKey = (o: RuntimeReadObservation) =>
   JSON.stringify([o.release, o.archiveSha256, o.manifestSha256, o.installationRevision, o.adbPath]);

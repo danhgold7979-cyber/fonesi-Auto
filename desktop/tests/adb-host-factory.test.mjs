@@ -654,7 +654,8 @@ test('actual adb basename and native asset paths obey conservative directory/fil
 });
 
 test('atomic compile diagnostic binds all fixed fields before pending request rejection, including split chunks', async () => {
-  const frame = 'HOST_BOOTSTRAP_COMPILE_ERROR|SOURCE_CODE_ERROR|CMDLET|INVALID_OPERATION|CS0246\n';
+  const frame =
+    'HOST_BOOTSTRAP_COMPILE_ERROR|SOURCE_CODE_ERROR|CMDLET|INVALID_OPERATION|CS0246|UNAVAILABLE|UNAVAILABLE|UNAVAILABLE\n';
   for (const chunks of [[frame], [frame.slice(0, 17), frame.slice(17, 62), frame.slice(62)]]) {
     const f = fixture({
       hold: true,
@@ -673,6 +674,9 @@ test('atomic compile diagnostic binds all fixed fields before pending request re
         type: 'CMDLET',
         inner: 'INVALID_OPERATION',
         cs: 'CS0246',
+        tempReason: 'UNAVAILABLE',
+        tempRelation: 'UNAVAILABLE',
+        tempLength: 'UNAVAILABLE',
       });
       assert.ok(Object.isFrozen(f.factory.evidence.compileFailure));
       assert.equal(await f.factory.close(), 'UNRETIRED');
@@ -682,11 +686,12 @@ test('atomic compile diagnostic binds all fixed fields before pending request re
   }
 });
 test('compile diagnostic rejects unknown raw fields and duplicate frames without cleanup authority', async () => {
-  const frame = 'HOST_BOOTSTRAP_COMPILE_ERROR|OTHER|OTHER|NONE|NONE\n';
+  const frame =
+    'HOST_BOOTSTRAP_COMPILE_ERROR|OTHER|OTHER|NONE|NONE|UNAVAILABLE|UNAVAILABLE|UNAVAILABLE\n';
   for (const stderr of [
     frame + frame,
     frame.replace('|OTHER|', '|private-path-canary|'),
-    frame.replace('|NONE\n', '|CS99999\n'),
+    frame.replace('|NONE|NONE|', '|NONE|CS99999|'),
     frame.replace('\n', '|extra\n'),
   ]) {
     const f = fixture({ stderr, exitCode: 1 });
@@ -725,7 +730,8 @@ test('bootstrap compile classification is bounded exact runtime types and preced
 
 test('any exact six-character compiler identifier remains diagnostic failure only', async () => {
   const f = fixture({
-    stderr: 'HOST_BOOTSTRAP_COMPILE_ERROR|COMPILER_ERRORS|OTHER|NONE|CS9999\n',
+    stderr:
+      'HOST_BOOTSTRAP_COMPILE_ERROR|COMPILER_ERRORS|OTHER|NONE|CS9999|UNAVAILABLE|UNAVAILABLE|UNAVAILABLE\n',
     exitCode: 1,
   });
   try {
@@ -744,4 +750,44 @@ test('bootstrap compiler identifier grammar rejects final LF and CRLF before ato
   assert.equal(exact('CS1234'), true);
   assert.equal(exact('CS1234\n'), false);
   assert.equal(exact('CS1234\r\n'), false);
+});
+
+test('CS1619 fixed temporary-file tuple is diagnostic only and rejects incoherent or raw fields', async () => {
+  const prefix = 'HOST_BOOTSTRAP_COMPILE_ERROR|SOURCE_CODE_ERROR|OTHER|NONE|';
+  for (const [suffix, valid] of [
+    ['CS1619|ACCESS|PROFILE|LE247', true],
+    ['CS1619|BUFFER_TOO_SMALL|EMPTY|EMPTY', true],
+    ['CS1619|INVALID_NAME|OTHER|GE260', true],
+    ['CS1619|OTHER|RUN|FROM248_TO259', true],
+    ['CS1619|UNAVAILABLE|UNAVAILABLE|UNAVAILABLE', true],
+    ['CS0246|ACCESS|PROFILE|LE247', false],
+    ['CS1619|ACCESS|EMPTY|LE247', false],
+    ['CS1619|UNAVAILABLE|PROFILE|LE247', false],
+    ['CS1619|private-canary|PROFILE|LE247', false],
+  ]) {
+    const f = fixture({
+      hold: true,
+      exitCode: 1,
+      request(_q, child) {
+        queueMicrotask(() => child.stderr.write(prefix + suffix + '\n'));
+      },
+    });
+    try {
+      assert.notEqual((await f.factory.execute(f.cap, f.request())).outcome, 'OBSERVED');
+      assert.equal(await f.factory.close(), 'UNRETIRED');
+      assert.equal(f.factory.evidence.compileFailure !== null, valid);
+      assert.equal(JSON.stringify(f.factory.evidence).includes('canary'), false);
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+
+test('temporary compiler text classifier has bounded exact framing and never emits raw input', () => {
+  const ps = readFileSync(new URL('../launch/Invoke-RetainedHost.ps1', import.meta.url), 'utf8');
+  const section = ps.slice(ps.indexOf('function Compile-Frame'), ps.indexOf('function Reject'));
+  assert.ok(section.includes('4096'));
+  assert.ok(section.includes('OrdinalIgnoreCase'));
+  assert.equal((section.match(/Console\]::Error.WriteLine/g) || []).length, 1);
+  assert.doesNotMatch(section, /Write-Output|Write-Host/);
 });

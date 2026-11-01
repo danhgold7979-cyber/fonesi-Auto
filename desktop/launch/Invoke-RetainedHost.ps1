@@ -30,6 +30,7 @@ function Compile-Type($Value) {
 }
 function Compile-Frame([System.Management.Automation.ErrorRecord]$Record) {
     $id='OTHER';$type='OTHER';$inner='NONE';$cs='NONE'
+    $tempReason='UNAVAILABLE';$tempRelation='UNAVAILABLE';$tempLength='UNAVAILABLE'
     try {
         if($Record.GetType() -ne [System.Management.Automation.ErrorRecord]){throw 'FIXED'}
         $fq=$Record.FullyQualifiedErrorId
@@ -53,9 +54,41 @@ function Compile-Frame([System.Management.Automation.ErrorRecord]$Record) {
             $number=$target.ErrorNumber
             $cs='OTHER'
             if($number -is [string] -and $number.Length -eq 6 -and $number -cmatch '\ACS[0-9]{4}\z'){$cs=$number}
+            if($cs -ceq 'CS1619'){
+                $text=$target.ErrorText
+                if($text -is [string] -and $text.Length -le 4096 -and $text.IndexOf([char]0) -lt 0 -and $text.IndexOf([char]10) -lt 0 -and $text.IndexOf([char]13) -lt 0){
+                    $match=[Text.RegularExpressions.Regex]::Match($text,'\ACannot create temporary file ''([^'']*)'' -- (.+)\z',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
+                    if($match.Success){
+                        $tempPath=$match.Groups[1].Value
+                        $reason=$match.Groups[2].Value
+                        $tempReason='OTHER'
+                        switch -CaseSensitive ($reason) {
+                            'Access is denied.' {$tempReason='ACCESS'}
+                            'The filename or extension is too long.' {$tempReason='PATH_TOO_LONG'}
+                            'The system cannot find the file specified.' {$tempReason='NOT_FOUND'}
+                            'The system cannot find the path specified.' {$tempReason='NOT_FOUND'}
+                            'There is not enough space on the disk.' {$tempReason='DISK_FULL'}
+                            'The disk is full.' {$tempReason='DISK_FULL'}
+                            'The data area passed to a system call is too small.' {$tempReason='BUFFER_TOO_SMALL'}
+                            'The filename, directory name, or volume label syntax is incorrect.' {$tempReason='INVALID_NAME'}
+                        }
+                        if($tempPath.Length -eq 0){$tempRelation='EMPTY';$tempLength='EMPTY'}
+                        else {
+                            $tempRelation='OTHER'
+                            $profilePrefix=$b.runRoot+'\profile\'
+                            $runPrefix=$b.runRoot+'\'
+                            if($tempPath.IndexOf('/') -lt 0 -and $tempPath -cnotmatch '(?:\A|\\)\.{1,2}(?:\\|\z)' -and $tempPath.StartsWith($profilePrefix,[StringComparison]::OrdinalIgnoreCase)){$tempRelation='PROFILE'}
+                            elseif($tempPath.IndexOf('/') -lt 0 -and $tempPath -cnotmatch '(?:\A|\\)\.{1,2}(?:\\|\z)' -and $tempPath.StartsWith($runPrefix,[StringComparison]::OrdinalIgnoreCase)){$tempRelation='RUN'}
+                            if($tempPath.Length -le 247){$tempLength='LE247'}
+                            elseif($tempPath.Length -le 259){$tempLength='FROM248_TO259'}
+                            else {$tempLength='GE260'}
+                        }
+                    }
+                }
+            }
         }
-    } catch {$id='OTHER';$type='OTHER';$inner='OTHER';$cs='OTHER'}
-    [Console]::Error.WriteLine('HOST_BOOTSTRAP_COMPILE_ERROR|'+$id+'|'+$type+'|'+$inner+'|'+$cs)
+    } catch {$id='OTHER';$type='OTHER';$inner='OTHER';$cs='OTHER';$tempReason='UNAVAILABLE';$tempRelation='UNAVAILABLE';$tempLength='UNAVAILABLE'}
+    [Console]::Error.WriteLine('HOST_BOOTSTRAP_COMPILE_ERROR|'+$id+'|'+$type+'|'+$inner+'|'+$cs+'|'+$tempReason+'|'+$tempRelation+'|'+$tempLength)
 }
 function Reject { throw 'HOST_BOOTSTRAP_REJECTED' }
 function Plain([string]$Path,[bool]$Directory=$false) {

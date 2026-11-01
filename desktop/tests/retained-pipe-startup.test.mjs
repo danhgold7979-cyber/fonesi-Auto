@@ -146,9 +146,15 @@ test('four fixed cases isolate mandatory binding and cwd/TEMP depth while script
   assert.ok(
     materializeScript(true)
       .toString()
-      .startsWith(source.toString().split("try {\n    Progress 'ENVIRONMENT'")[0]),
+      .startsWith(
+        source
+          .toString()
+          .split("try {\n    Progress 'ENVIRONMENT'")[0]
+          .replace(/function Compile-Type[\s\S]*?(?=function Reject)/, ''),
+      ),
   );
-  assert.doesNotMatch(materializeScript(true).toString(), /Add-Type|::Run\(/);
+  assert.doesNotMatch(materializeScript(true).toString(), /Add-Type|::Run\(|function Compile-/);
+  assert.ok(materializeScript(true).length <= 8192);
 });
 test('late startup after requested EOF stays EOF_REQUIRED and never becomes before-EOF success', async (t) => {
   const f = fixture(t),

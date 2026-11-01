@@ -209,6 +209,18 @@ const DIAGNOSTICS = Object.freeze({
     'UNAVAILABLE',
   ]),
   COMPILECS: Object.freeze(['NONE', 'OTHER', 'UNAVAILABLE']),
+  COMPILETEMPREASON: Object.freeze([
+    'UNAVAILABLE',
+    'ACCESS',
+    'PATH_TOO_LONG',
+    'NOT_FOUND',
+    'DISK_FULL',
+    'BUFFER_TOO_SMALL',
+    'INVALID_NAME',
+    'OTHER',
+  ]),
+  COMPILETEMPRELATION: Object.freeze(['UNAVAILABLE', 'PROFILE', 'RUN', 'OTHER', 'EMPTY']),
+  COMPILETEMPLENGTH: Object.freeze(['UNAVAILABLE', 'LE247', 'FROM248_TO259', 'GE260', 'EMPTY']),
   CONTEXTSITE: Object.freeze([
     ...Array.from({ length: 64 }, (_, i) => `SITE_${String(i + 1).padStart(2, '0')}`),
     'UNAVAILABLE',
@@ -247,6 +259,9 @@ function compileDiagnostic(evidence) {
     COMPILETYPE: 'UNAVAILABLE',
     COMPILEINNER: 'UNAVAILABLE',
     COMPILECS: 'UNAVAILABLE',
+    COMPILETEMPREASON: 'UNAVAILABLE',
+    COMPILETEMPRELATION: 'UNAVAILABLE',
+    COMPILETEMPLENGTH: 'UNAVAILABLE',
   };
   try {
     if (!evidence || typeof evidence !== 'object') return out;
@@ -260,20 +275,40 @@ function compileDiagnostic(evidence) {
     )
       return out;
     const value = d.value,
-      fields = { id: 'COMPILEID', type: 'COMPILETYPE', inner: 'COMPILEINNER', cs: 'COMPILECS' },
+      fields = {
+        id: 'COMPILEID',
+        type: 'COMPILETYPE',
+        inner: 'COMPILEINNER',
+        cs: 'COMPILECS',
+        tempReason: 'COMPILETEMPREASON',
+        tempRelation: 'COMPILETEMPRELATION',
+        tempLength: 'COMPILETEMPLENGTH',
+      },
       accepted = {};
-    if (Reflect.ownKeys(value).length !== 4) return out;
+    if (Reflect.ownKeys(value).length !== 7) return out;
     for (const [key, slot] of Object.entries(fields)) {
       const item = Object.getOwnPropertyDescriptor(value, key);
       if (
         !item ||
         !('value' in item) ||
         !diagnosticValue(slot, item.value) ||
-        item.value === 'UNAVAILABLE'
+        (item.value === 'UNAVAILABLE' && !key.startsWith('temp'))
       )
         return out;
       accepted[slot] = item.value;
     }
+    const temps = [
+      accepted.COMPILETEMPREASON,
+      accepted.COMPILETEMPRELATION,
+      accepted.COMPILETEMPLENGTH,
+    ];
+    if (
+      !temps.every((v) => v === 'UNAVAILABLE') &&
+      (accepted.COMPILECS !== 'CS1619' ||
+        temps.some((v) => v === 'UNAVAILABLE') ||
+        (accepted.COMPILETEMPRELATION === 'EMPTY') !== (accepted.COMPILETEMPLENGTH === 'EMPTY'))
+    )
+      return out;
     return accepted;
   } catch {
     return out;

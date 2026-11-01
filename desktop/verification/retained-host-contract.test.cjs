@@ -740,12 +740,18 @@ test('compile diagnostic projection permits only frozen exact fixed fields and b
     type: 'CMDLET',
     inner: 'IO',
     cs: 'CS9999',
+    tempReason: 'UNAVAILABLE',
+    tempRelation: 'UNAVAILABLE',
+    tempLength: 'UNAVAILABLE',
   });
   assert.deepEqual(compileDiagnostic({ compileFailure: tuple }), {
     COMPILEID: 'SOURCE_CODE_ERROR',
     COMPILETYPE: 'CMDLET',
     COMPILEINNER: 'IO',
     COMPILECS: 'CS9999',
+    COMPILETEMPREASON: 'UNAVAILABLE',
+    COMPILETEMPRELATION: 'UNAVAILABLE',
+    COMPILETEMPLENGTH: 'UNAVAILABLE',
   });
   for (const value of [
     'CS12345',
@@ -791,7 +797,10 @@ test('actual observer forwards atomic compile failure without promoting native o
         id: 'SOURCE_CODE_ERROR',
         type: 'CMDLET',
         inner: 'IO',
-        cs: 'CS9999',
+        cs: 'CS1619',
+        tempReason: 'BUFFER_TOO_SMALL',
+        tempRelation: 'EMPTY',
+        tempLength: 'EMPTY',
       }),
     },
   });
@@ -802,7 +811,38 @@ test('actual observer forwards atomic compile failure without promoting native o
     'COMPILEID_SOURCE_CODE_ERROR',
     'COMPILETYPE_CMDLET',
     'COMPILEINNER_IO',
-    'COMPILECS_CS9999',
+    'COMPILECS_CS1619',
+    'COMPILETEMPREASON_BUFFER_TOO_SMALL',
+    'COMPILETEMPRELATION_EMPTY',
+    'COMPILETEMPLENGTH_EMPTY',
   ])
     assert.equal(result.stderr.filter((x) => x === `RETAINED_HOST_DIAGNOSTIC_${line}\n`).length, 1);
+});
+
+test('CS1619 temporary-file projection forwards only coherent fixed tuples', () => {
+  const tuple = {
+    id: 'SOURCE_CODE_ERROR',
+    type: 'OTHER',
+    inner: 'NONE',
+    cs: 'CS1619',
+    tempReason: 'ACCESS',
+    tempRelation: 'PROFILE',
+    tempLength: 'LE247',
+  };
+  const result = compileDiagnostic({ compileFailure: Object.freeze(tuple) });
+  assert.equal(result.COMPILETEMPREASON, 'ACCESS');
+  assert.equal(result.COMPILETEMPRELATION, 'PROFILE');
+  assert.equal(result.COMPILETEMPLENGTH, 'LE247');
+  for (const delta of [
+    { cs: 'CS0001' },
+    { tempReason: 'UNAVAILABLE' },
+    { tempRelation: 'EMPTY' },
+    { tempLength: 'private-path' },
+  ]) {
+    assert.ok(
+      Object.values(
+        compileDiagnostic({ compileFailure: Object.freeze({ ...tuple, ...delta }) }),
+      ).every((v) => v === 'UNAVAILABLE'),
+    );
+  }
 });
