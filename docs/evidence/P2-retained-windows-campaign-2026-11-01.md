@@ -89,3 +89,23 @@ fleet/recipient opt-ins remain off for this campaign.
 Existing-profile server gate remains UNMET; no adoption, deletion, redirect or identity
 workaround. Hardware, P106 cross-user, canonical P2 full-task counts and formal
 acceptance remain unchanged. Failed or partial actual results must be retained honestly.
+
+## First hosted source result and bounded test repair — 10:02 UTC
+
+Published exact tree `eac8e9d66cd33efc14fe59f0d032ef048645b854` as public
+`cd3974c0585635225b69ce284de179faa1eb5b7f` (local harness `947f5aa08ae17697c2a4f4ee279a238d43ea34e6`).
+Run41295458202/source job124815270515 passed through build and the preceding test
+batches, then failed batch15 at ordinal32:49/50 tests passed. All native jobs,
+including managed/VERSION, were SKIPPED. No new compilation/runtime result exists.
+
+Ordinal32 is the new workflow-gate test. Its positive validator normalized LF/CRLF,
+but its negative `if: always()` mutation used an LF-only literal on the original
+Windows checkout text, so it did not mutate CRLF and the expected rejection failed.
+The source reproducer confirms mutation LF=true,CRLF=false and explains that exact
+ordinal under CRLF checkout. The hosted private assertion text is not exposed by the
+fixed ordinal log; no product/workflow failure or native cause is inferred. The test now normalizes each LF/CRLF fixture before both
+negative mutations and asserts each replacement actually changes bytes. Wrong-gate
+and always-on refusal predicates remain unchanged. Affected1/1 and warning-level
+quality pass. All eight runner/contract/workflow hashes above are unchanged.
+This necessary test repair is within the approved same campaign, not a new native
+scope or an unchanged blind rerun. Actual managed/VERSION evidence remains pending.

@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-**Updated:** 2026-11-01 09:57 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
+**Updated:** 2026-11-01 10:02 UTC · **Historical Phase 0 evidence baseline:** `34b9649`
 
 This is the single evidence-backed status board. Documentation readiness and execution/acceptance are separate; neither implies the other. Do not infer a completion percentage from authored pages, checked-in code, screenshots or partial task evidence.
 
@@ -38,6 +38,12 @@ remains NOT_COMPILED/NOT_EXECUTED. Prior Windows compile-only evidence applies o
 its exact old helper/session sources. The user has now approved the [single necessary Windows campaign](evidence/P2-retained-windows-campaign-2026-11-01.md)
 and restored necessary important checkpoint publication. Its new managed/native results
 remain NOT_RUN until actual evidence; local reviewed checkpoints remain allowed. No canonical task/phase count changes.
+
+First campaign publication `cd3974c0`, CI41295458202, stopped at one Windows CRLF
+negative-fixture assertion in the new workflow test (batch15:49/50); all managed/native
+steps were SKIPPED. The concrete test-only framing repair passes its affected check;
+runner/product/workflow predicates remain unchanged. Same bounded retry is pending,
+not a Windows runtime PASS. See the exact campaign evidence above.
 
 ## 1. Status definitions
 

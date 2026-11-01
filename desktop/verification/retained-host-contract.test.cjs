@@ -346,15 +346,17 @@ test('campaign is default-off, source-dependent and keeps managed success before
     assert.match(job, /steps.retained_host_validation.outputs.written == 'true'/);
     assert.doesNotMatch(job, /path:.*(?:\.exe|\.dll|\.zip|\*\*)/);
   };
-  check(raw);
-  check(raw.replaceAll('\r\n', '\n').replaceAll('\n', '\r\n'));
-  assert.throws(() => check(raw.replace('inputs.run_retained_version)', 'true)')));
-  assert.throws(() =>
-    check(
-      raw.replace(
-        '      - name: Actual owned SOURCE private VERSION and EOF retirement only\n        run:',
-        '      - name: Actual owned SOURCE private VERSION and EOF retirement only\n        if: always()\n        run:',
-      ),
-    ),
-  );
+  for (const fixture of [raw, raw.replaceAll('\r\n', '\n').replaceAll('\n', '\r\n')]) {
+    check(fixture);
+    const normalized = fixture.replaceAll('\r\n', '\n');
+    const wrongGate = normalized.replace('inputs.run_retained_version)', 'true)');
+    assert.notEqual(wrongGate, normalized);
+    assert.throws(() => check(wrongGate));
+    const always = normalized.replace(
+      '      - name: Actual owned SOURCE private VERSION and EOF retirement only\n        run:',
+      '      - name: Actual owned SOURCE private VERSION and EOF retirement only\n        if: always()\n        run:',
+    );
+    assert.notEqual(always, normalized);
+    assert.throws(() => check(always));
+  }
 });
