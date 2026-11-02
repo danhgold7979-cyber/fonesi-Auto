@@ -43,7 +43,7 @@ PACKAGES = ('android/content', 'android/view', 'com/genymobile/scrcpy', *('com/g
 
 
 DIAGNOSTIC_ACTIONS = ('ACQUIRE','PREPARE','PLAN','VERIFY','FINISH','CLEANUP','CLI')
-DIAGNOSTIC_STEPS = ('ENTRY','OWNER','CONTEXT','ARCHIVE','PATCH','TOOLS_JDK17','TOOLS_ANDROID36','TOOLS_BUILD_TOOLS36','TOOLS_FRAMEWORK64','TOOLS_METADATA','MATERIALIZE_SOURCE','MATERIALIZE_CONSUMER','GENERATED_INPUTS','RUNNER_CLOSURE','ADMISSION_WRITE','LOAD_ADMISSION','REVALIDATE_SOURCE','PLAN_WRITE','PLAN_COMPARE','PROCESS_RECEIPTS','DEPENDENCIES','OUTPUT_INSPECT','EVIDENCE_WRITE','REPORT_WRITE','CLOSED_LAYOUT','STAGING_BINDING','DELETE_FILES','DELETE_DIRS','ACQUIRE_FETCH','ACQUIRE_WRITE')
+DIAGNOSTIC_STEPS = ('ENTRY','OWNER','CONTEXT','ARCHIVE','PATCH','TOOLS_JDK17','TOOLS_ANDROID36','TOOLS_BUILD_TOOLS36','TOOLS_FRAMEWORK64','TOOLS_METADATA','MATERIALIZE_SOURCE','MATERIALIZE_CONSUMER','GENERATED_INPUTS','RUNNER_CLOSURE','ADMISSION_WRITE','LOAD_ADMISSION','REVALIDATE_SOURCE','PLAN_WRITE','PLAN_COMPARE','PROCESS_RECEIPTS','DEPENDENCIES','OUTPUT_INSPECT','OUTPUT_ZIP','DEX_HEADER','DEX_TABLES','DEX_NAME','DEX_NAMESPACE','PE_HEADER','PE_CLI','PE_METADATA','EVIDENCE_WRITE','REPORT_WRITE','CLOSED_LAYOUT','STAGING_BINDING','DELETE_FILES','DELETE_DIRS','ACQUIRE_FETCH','ACQUIRE_WRITE')
 DIAGNOSTIC_REASONS = ('PREDICATE','CANONICAL_PATH','REPARSE','FILE_TYPE','LINK_COUNT','IDENTITY','BYTE_LIMIT','ENTRY_LIMIT','TOTAL_BYTES','NAME','COLLISION','HASH','SCHEMA','NO_CLOBBER','IO_ACCESS','IO_NOT_FOUND','IO_OTHER','ENCODING','ARCHIVE_FORMAT','INTERNAL')
 _diagnostic_step = 'ENTRY'
 
@@ -519,20 +519,24 @@ def verify(root,stage):
 
 
 def inspect_dex(data):
+    checkpoint('DEX_HEADER')
     if not 112<=len(data)<=16*1024**2 or data[:8] not in [b'dex\n'+v+b'\0' for v in (b'035',b'037',b'038',b'039',b'040')]:fail('OUTPUT_REJECTED')
     u=lambda off:struct.unpack_from('<I',data,off)[0]
     if u(32)!=len(data) or u(36)!=112 or u(40)!=0x12345678 or u(8)!=zlib.adler32(data[12:])&0xffffffff or data[12:32]!=hashlib.sha1(data[32:]).digest():fail('OUTPUT_REJECTED')
     def table(count,offset,size,cap):
         if count>cap or (count and (offset<112 or offset+count*size>len(data))):fail('OUTPUT_REJECTED')
+    checkpoint('DEX_TABLES')
     strings,so=u(56),u(60);types,to=u(64),u(68);classes,co=u(96),u(100)
     table(strings,so,4,65536);table(types,to,4,65536);table(classes,co,32,2048)
     if not classes:fail('OUTPUT_REJECTED')
     descriptors=[]
     for i in range(classes):
+        checkpoint('DEX_TABLES')
         idx=u(co+i*32)
         if idx>=types:fail('OUTPUT_REJECTED')
         stridx=u(to+4*idx)
         if stridx>=strings:fail('OUTPUT_REJECTED')
+        checkpoint('DEX_NAME')
         off=u(so+4*stridx);count=0;shift=0
         for _ in range(5):
             if off>=len(data):fail('OUTPUT_REJECTED')
@@ -543,9 +547,11 @@ def inspect_dex(data):
         try:name=data[off:off+count].decode('ascii')
         except UnicodeError:fail('OUTPUT_REJECTED')
         if re.fullmatch(r'L(?:[A-Za-z_$][A-Za-z0-9_$]*/)*[A-Za-z_$][A-Za-z0-9_$]*;',name) is None:fail('OUTPUT_REJECTED')
+        checkpoint('DEX_NAMESPACE')
         package=name[1:-1].rsplit('/',1)[0]
         if package not in PACKAGES:fail('OUTPUT_REJECTED')
         descriptors.append(name)
+    checkpoint('DEX_NAME')
     if len(set(descriptors))!=len(descriptors):fail('OUTPUT_REJECTED')
     descriptors.sort();counts={}
     for name in descriptors:
@@ -554,6 +560,7 @@ def inspect_dex(data):
 
 
 def inspect_pe(data):
+    checkpoint('PE_HEADER')
     if not 256<=len(data)<=8388608 or data[:2]!=b'MZ':fail('OUTPUT_REJECTED')
     pe=struct.unpack_from('<I',data,60)[0]
     if pe+264>len(data) or data[pe:pe+4]!=b'PE\0\0':fail('OUTPUT_REJECTED')
@@ -570,11 +577,13 @@ def inspect_pe(data):
         matches=[rp+rva-va for va,rs,rp in regions if va<=rva and size<=rs-(rva-va)]
         if len(matches)!=1:fail('OUTPUT_REJECTED')
         return matches[0]
+    checkpoint('PE_CLI')
     cli_rva,cli_size=struct.unpack_from('<II',data,op+112+14*8)
     if cli_size<72:fail('OUTPUT_REJECTED')
     cli=map_rva(cli_rva,cli_size)
     cb,major,minor,mrva,msize,cflags,entry=struct.unpack_from('<IHHIIII',data,cli)
     if cb<72 or cb>cli_size or not cflags&1 or cflags&0x12 or entry!=0 or msize<24:fail('OUTPUT_REJECTED')
+    checkpoint('PE_METADATA')
     md=map_rva(mrva,msize)
     if data[md:md+4]!=b'BSJB':fail('OUTPUT_REJECTED')
     vl=struct.unpack_from('<I',data,md+12)[0]
@@ -597,7 +606,9 @@ def inspect_pe(data):
 
 def inspect_outputs(root):
     checkpoint('OUTPUT_INSPECT')
-    root=Path(root);raw=read(root/'output/classes.zip',8388608)
+    root=Path(root)
+    checkpoint('OUTPUT_ZIP')
+    raw=read(root/'output/classes.zip',8388608)
     with zipfile.ZipFile(io.BytesIO(raw)) as z:
         infos=z.infolist()
         if len(infos)!=1:fail('OUTPUT_REJECTED')
@@ -606,7 +617,9 @@ def inspect_outputs(root):
         with z.open(info) as f:data=f.read(16*1024**2+1)
         if len(data)!=info.file_size or zlib.crc32(data)&0xffffffff!=info.CRC:fail('OUTPUT_REJECTED')
     descriptors,namespaces=inspect_dex(data)
+    checkpoint('PE_HEADER')
     dll=read(root/'output/RetainedVideoConsumer.dll',8388608);pe=inspect_pe(dll)
+    checkpoint('OUTPUT_INSPECT')
     if {p.name for p in (root/'output').iterdir()}!={'classes.zip','RetainedVideoConsumer.dll'}:fail('OUTPUT_REJECTED')
     server={'name':'server.jar','bytes':len(raw),'sha256':sha(raw),'entries':[{'name':'classes.dex','bytes':len(data),'sha256':sha(data)}]}
     consumer={'name':'RetainedVideoConsumer.dll','bytes':len(dll),'sha256':sha(dll),**pe}
@@ -663,6 +676,12 @@ def closed_layout(root,state):
 
 
 def finish(root,failure='NONE'):
+    # Imported callers receive only the report; diagnostic emission belongs to the CLI.
+    return _finish(root,failure)[0]
+
+
+def _finish(root,failure='NONE'):
+    handled_diagnostic=None
     root=Path(root)
     if failure not in ('NONE',*FAILURES):fail()
     state=load(root);report=blank_report(state['context']);report['failure']=None if failure=='NONE' else failure
@@ -682,8 +701,11 @@ def finish(root,failure='NONE'):
             if read(root/'generated/com/genymobile/scrcpy/BuildConfig.java',4096)!=BUILD_CONFIG:fail('SOURCE_REJECTED')
             commands={'version':1,'stages':[]}
             for stage in STAGES:
+                checkpoint('PLAN_COMPARE')
                 stored=parse(read(root/('private/command-'+stage+'.json'),262144))
-                if stored!=make_plan(root,stage,state)[1]:fail('SOURCE_REJECTED')
+                expected=make_plan(root,stage,state)[1]
+                checkpoint('PLAN_COMPARE')
+                if stored!=expected:fail('SOURCE_REJECTED')
                 commands['stages'].append(stored)
             outputs,jar,dll=inspect_outputs(root)
             checkpoint('EVIDENCE_WRITE')
@@ -697,6 +719,7 @@ def finish(root,failure='NONE'):
             report.update(serverBuildManifestSha256=sha(canonical(sb)),consumerBuildManifestSha256=sha(canonical(cb)),outputInspected=True)
             write_new(root/'evidence/server.jar',jar,8388608);write_new(root/'evidence/RetainedVideoConsumer.dll',dll,8388608)
     except (ValueError,OSError,KeyError,UnicodeError,zipfile.BadZipFile,struct.error) as error:
+        handled_diagnostic=diagnostic_frame('FINISH',error)
         report['failure']=error.code if type(error) is ControlFailure else 'OUTPUT_REJECTED'
     if any(p is not None and not retired(p) for p in (report[stage] for stage in STAGES)):report['failure']='UNRETIRED'
     checkpoint('REPORT_WRITE')
@@ -704,7 +727,7 @@ def finish(root,failure='NONE'):
     # Seal an exact physical inventory for later cleanup; no broad unknown-file deletion.
     sealed=closed_layout(root,state)
     write_json(root/'private/cleanup-inventory.json',{'version':1,'files':sealed},12*1024**2)
-    return report
+    return report,handled_diagnostic
 
 
 def cleanup(root):
@@ -785,7 +808,9 @@ def main(argv=None):
         elif len(args)==4 and args[0]=='prepare':prepare(Path(args[1]),Path(args[2]),Path(args[3]))
         elif len(args)==3 and args[0]=='plan':plan(Path(args[1]),args[2])
         elif len(args)==3 and args[0]=='verify':verify(Path(args[1]),args[2])
-        elif len(args)==3 and args[0]=='finish':finish(Path(args[1]),args[2])
+        elif len(args)==3 and args[0]=='finish':
+            _,handled_diagnostic=_finish(Path(args[1]),args[2])
+            if handled_diagnostic is not None:print(handled_diagnostic)
         elif len(args)==2 and args[0]=='cleanup':cleanup(Path(args[1]))
         else:fail('INTERNAL_FAILURE')
         print('DERIVED_PAIR_CONTROL_PASS');return 0

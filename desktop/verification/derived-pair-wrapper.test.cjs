@@ -538,3 +538,123 @@ test('supervisor diagnostics expose only actual closed status and finite retirem
   ])
     assert.equal(forwarded.test(line), false);
 });
+
+// Extracted grammar plus source predicates only; no PowerShell/native execution.
+test('FINISH handled refusal admits only one bounded successful controller frame', () => {
+  const section = source.slice(
+    source.indexOf('function Python([string]'),
+    source.indexOf('function Property('),
+  );
+  const pattern = section.match(/\$finishPattern='([^'\n]+)'/)?.[1];
+  assert.ok(pattern);
+  const framePattern = new RegExp(pattern.replace(/^\\A/, '^').replace(/\\z$/, '$(?![\\s\\S])'));
+  const sites = [
+    'OUTPUT_ZIP',
+    'DEX_HEADER',
+    'DEX_TABLES',
+    'DEX_NAME',
+    'DEX_NAMESPACE',
+    'PE_HEADER',
+    'PE_CLI',
+    'PE_METADATA',
+  ];
+  const forwarding = new RegExp(workflow.match(/-cmatch '(\^DERIVED_PAIR_[^'\n]+)'/)?.[1]);
+  const controller = fs.readFileSync(path.join(__dirname, 'derived_pair_build.py'), 'utf8');
+  const steps = controller.match(/^DIAGNOSTIC_STEPS = \(([^\n]+)\)$/m)?.[1];
+  assert.ok(steps);
+  for (const name of ['STEPS', 'REASONS']) {
+    const values = controller.match(new RegExp(`^DIAGNOSTIC_${name} = \\(([^\\n]+)\\)$`, 'm'))?.[1];
+    assert.ok(values);
+    const alternatives = [...values.matchAll(/'([A-Z0-9_]+)'/g)].map((match) => match[1]).join('|');
+    assert.ok(pattern.includes(`(${alternatives})`));
+  }
+  for (const guard of [
+    '$script -ceq $script:controller',
+    "$arguments[0] -ceq 'finish'",
+    "$marker -ceq 'DERIVED_PAIR_CONTROL_PASS'",
+    '(Success $p)',
+    '$p.ExitCode -eq 0',
+    "$p.Stderr -ceq ''",
+    '$p.Stdout.Length -le 256',
+    "$p.Stdout -cnotmatch '[^\\x00-\\x7f]'",
+    '$p.Stdout.Replace("`r`n","`n") -cne ($marker+"`n")',
+    "PythonDiagnostic $p $script $arguments[0];throw 'CONTROL_FAILED'",
+  ])
+    assert.ok(section.includes(guard), guard);
+  assert.ok(
+    source.includes(
+      "function Success($p){return ((Retired $p) -and $p.ExitCode -eq 0 -and -not $p.StdoutTruncated -and -not $p.StderrTruncated -and $p.Status -cin @('SUCCESS','EMPTY_OUTPUT'))}",
+    ),
+  );
+  assert.ok(
+    section.includes(
+      "Write-Output ('DERIVED_PAIR_CONTROL_DIAG|FINISH|'+$finishMatch.Groups[1].Value+'|'+$finishMatch.Groups[2].Value)",
+    ),
+  );
+  assert.doesNotMatch(section, /Write-Output[^\n]*(?:\$p\.|\$finishFrame|Exception)/);
+  function admit(raw, facts = {}) {
+    const p = {
+      controller: true,
+      action: 'finish',
+      marker: 'DERIVED_PAIR_CONTROL_PASS',
+      status: 'SUCCESS',
+      retired: true,
+      exitCode: 0,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      stderr: '',
+      ...facts,
+    };
+    if (
+      !p.controller ||
+      p.action !== 'finish' ||
+      p.marker !== 'DERIVED_PAIR_CONTROL_PASS' ||
+      !['SUCCESS', 'EMPTY_OUTPUT'].includes(p.status) ||
+      !p.retired ||
+      p.exitCode !== 0 ||
+      p.stdoutTruncated ||
+      p.stderrTruncated ||
+      p.stderr !== '' ||
+      raw.length > 256 ||
+      [...raw].some((character) => character.charCodeAt(0) > 127)
+    )
+      return false;
+    return framePattern.test(raw.replace(/\r\n/g, '\n'));
+  }
+  for (const site of sites) {
+    assert.ok(steps.includes(`'${site}'`));
+    const line = `DERIVED_PAIR_CONTROL_DIAG|FINISH|${site}|PREDICATE`;
+    const frame = `${line}\nDERIVED_PAIR_CONTROL_PASS\n`;
+    assert.equal(admit(frame), true);
+    assert.equal(admit(frame.replace(/\n/g, '\r\n'), { status: 'EMPTY_OUTPUT' }), true);
+    assert.equal(forwarding.test(line), true);
+    for (const action of ['prepare', 'plan', 'verify', 'cleanup', 'acquire', 'cli', 'FINISH'])
+      assert.equal(admit(frame, { action }), false);
+    for (const bad of [
+      `\n${frame}`,
+      `${frame}\n`,
+      frame + frame,
+      frame.slice(0, -1),
+      frame.replace('FINISH', 'PLAN'),
+      frame.replace(site, 'PRIVATE_PATH'),
+      frame.replace('PREDICATE', 'RAW_CANARY'),
+      frame.replace('CONTROL_PASS', 'CONTROL_FAILED'),
+      frame.replace('PREDICATE', 'é'),
+      `${' '.repeat(257)}${frame}`,
+    ])
+      assert.equal(admit(bad), false);
+    for (const facts of [
+      { controller: false },
+      { marker: 'OTHER_PASS' },
+      { status: 'NONZERO_EXIT' },
+      { status: 'TIMEOUT' },
+      { retired: false },
+      { exitCode: null },
+      { exitCode: 1 },
+      { stdoutTruncated: true },
+      { stderrTruncated: true },
+      { stderr: 'private-canary' },
+    ])
+      assert.equal(admit(frame, facts), false);
+  }
+});

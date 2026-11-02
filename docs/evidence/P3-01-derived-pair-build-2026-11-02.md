@@ -80,17 +80,17 @@ The 23-file packet includes only the paths below. Caches, archive/source origina
 
 | Source / gate | SHA256 |
 |---|---|
-| `.github/workflows/phase-02-software.yml` | `4ef93f520de263d8b79b939865893228b72051831569e3993ade3e76cb97743c` |
+| `.github/workflows/phase-02-software.yml` | `cdd6fe7b74dc065c837c0e3f1e4bd4c0c8d535fcb3722f7a153c4baf56c6befb` |
 | `desktop/scripts/quality-tool.mjs` | `ccff8a43620c7cea61d81b5c3ae0ea5e963431ae2e7b7fdd73975b5c500f663d` |
 | `desktop/scripts/test-batches.mjs` | `0489ff8d0afaa86a83bad671bc4a762a0343c4bf3b53c600804f985e8f511f63` |
-| `desktop/tests/phase-source-workflow.test.mjs` | `58c555103c976dc08910f00b64642deb68e7d09c61495e6c941e5c4cc8d6b59c` |
+| `desktop/tests/phase-source-workflow.test.mjs` | `dbd5d6f9cb80484066677922217b21d0b9a1f87904ebbe00eb0e32fa30f65616` |
 | `desktop/tests/quality-tool.test.mjs` | `05110e6803d583a3574a3cc93d30c5e6c71f91f485dfb64e5029794296767bf5` |
 | `desktop/tests/retained-managed-fixture.test.mjs` | `a05176ed8fe84fc460d508fb01af5ded49814adb5e2e942124451d04298e09b8` |
-| `desktop/verification/retained-rollback-workflow.test.cjs` | `0aa42bcf5cd6d6a802c8142984c4a97a418735f37c80fdfdea78acad543916d5` |
-| `desktop/verification/Invoke-DerivedPairBuild.ps1` | `1f92dd122c48d5a8a978e5db34183274d7a6456f9072138c21c5740cf5ae81c0` |
-| `desktop/verification/derived-pair-wrapper.test.cjs` | `2c50844f0f9f42ca8b295a9b659eb8ae5ddab7fee192f9adb61f8679e5b1d541` |
-| `desktop/verification/derived_pair_build.py` | `639412090bd3a8ca1a6856bc54b2489741b6fac6611ca0520138b71fd382994e` |
-| `desktop/verification/test_derived_pair_build.py` | `88e8975c9ac7bf28ae2bea32ef7e93ce34ef529d767409c8b33baa41d8a226ef` |
+| `desktop/verification/retained-rollback-workflow.test.cjs` | `7fbaf7984250f2973c6e134259afa8135c3313716b062f7b9dd4f53c671bcc7b` |
+| `desktop/verification/Invoke-DerivedPairBuild.ps1` | `eb84ac52651d081860557a9bf8b79aa5c3855408fc6d71e4de7958a7481bd0f8` |
+| `desktop/verification/derived-pair-wrapper.test.cjs` | `fdaf656dfebc95252c558ab3dd328ee1c9d5bb60d255d098d60e3a5673be673c` |
+| `desktop/verification/derived_pair_build.py` | `91e5db7df43b0657e79dce324bfb5857815ce6abc097866f9e9b91e04ad1287f` |
+| `desktop/verification/test_derived_pair_build.py` | `b7fb4fbfa6a18023f687ef321c026e8f27625c71052b0af61d8ccd682769428b` |
 | `desktop/verification/test_validate_derived_pair_build.py` | `7347a1388d03b189dd40c0e66a32364de6c9296c32f4f71c353a4a5f6efbb03e` |
 | `desktop/verification/validate_derived_pair_build.py` | `4878d3e40e9219e3815a52ff20a31736cf8debd6c1a053c36fbaf13775bb5d0b` |
 | `desktop/video-source/README.md` | `71886a1b4a7a210757da499cebe7bbf55e860bd25cf28b51ceaef1fd0f535d42` |
@@ -216,3 +216,21 @@ Pinned [Android16 AIDL aidl.cpp](https://android.googlesource.com/platform/syste
 The former expansion combined a native root with forward-slash relative suffixes, making the input base end `/` while the Windows import-directory option ends `\`. This is a concrete source-derived invocation incompatibility, **not proof of the unretained hosted compiler message or its sole cause**. The correction normalizes only admitted namespace-token path components, including each fixed classpath component. Public symbolic command records stay unchanged; literal CSC `/switch` syntax stays unchanged; the actual invocation hash commits to the real normalized bytes. Producer and publisher must independently agree. Unknown tokens refuse, with no broader path selector, argument fallback or command/deadline increase.
 
 Author affected validation: cleanup regression passed after causal failure reproduction; producer native-path/fixed-plan cases passed (two distinct cases, with one overlapping strengthened refusal rerun); publisher three distinct affected cases passed through overlapping runs. Four additive Python methods give measured discovery **334**, not a claimed full local rerun. Public symbolic argv and literal switches remain exact; Windows-separator tests explicitly simulate native spelling, spaces, classpaths and malformed-token refusal. Actual latest hosted evidence remains1602/109/330; next source gate requires334 with no skips. Exact workflow/count cases also pass4/4. Independent exact ten-file packet review is CLEAR at06:46 UTC: all18 fingerprints, index/disk identity, strict334/no-skip inventory, bounded path expansion and cleanup ownership verified. The same bounded source-dependent compile-only retry is supported.
+
+
+## Ninth source PASS; all five compilers exit zero, output inspection refused — 06:55 UTC
+
+Public `f5c760f9196f5dfb7c7618576ad3c74093cd87ce` / local `d1ce7858a5a075a610d56adeda370091f8de8386`, exact tree `e7f05c48b81e6cd16e5335429ae4e9e6704b6adf`, CI41402189040/source job125136211911 establishes actual **1602/1602 desktop plus sourcePASS, foundation109 with zero exclusions, Python334/OK**. Retained92,296-byte source log SHA256 `567558284311a429f0ab91a7ea19776873f8313c836e74c39c3111e1af64c59b` is independently audited. Paired job125137468452 now records all five actual compiler processes as EMPTY_OUTPUT/exit0, retired and untruncated. Source/tools remain unchanged and owned directory cleanup is true. These are actual process and cleanup facts, not proof that the resulting outputs passed static admission.
+
+The retained24,108-byte build log SHA256 is `9638a8cca9c87eedd5f44c12f12e2f9029a273fe1ffe35134aa7300852d4c968`. Artifact13122550827 is74,032 bytes, ZIP SHA256 `3a72f5463954e353a7020d73826a40d61194322f62985868b103f2ef3ae6a885`, containing only four JSON files. The1,861-byte/no-LF report SHA256 `409bad31163e42dd1c36b8aee4ab93b35b04c1dd3f2c9900233e51e7d27c0765` independently reconstructs through exact committed validation. It remains a truthful **OUTPUT_REJECTED / passed false** report: outputInspected false, output identities and generated/command/output/build manifest digests null. The failure's exact predicate is not exposed by this log. Deleted output bytes cannot be inspected retrospectively or inferred from process exit0. Eleven optional skips and overall pair failure/upload success are separately observed job-API facts.
+
+The previous path and cleanup corrections now have actual hosted improvement, but no completed build-output cell, deployable pair, runtime admission or task acceptance is claimed. Source inspection is diagnosing the retained output-admission boundary before another coherent reviewed correction; no unchanged retry or cap relaxation is justified by exit0 alone.
+
+
+### Preserve handled output-refusal diagnostics
+
+The controller's FINISH path catches an output refusal and writes its truthful failed report, so the earlier exit1-only diagnostic channel could not expose that internal checkpoint. The finite correction captures the fixed FINISH site/reason immediately, emits it only after report/seal succeeds, and keeps later write/seal failures on the ordinary exit1 grammar without stale extra frames. Imported finish callers remain silent. Eight closed ZIP/DEX/PE/CLI checkpoints distinguish actual predicate locations; no output grammar, package, version, name, cap or hash acceptance is widened speculatively.
+
+The wrapper accepts the optional diagnostic plus CONTROL_PASS only for the exact FINISH controller invocation with actual retired exit0, untruncated streams, empty stderr and the complete bounded ASCII grammar. This identifies a handled refusal only; subsequent strict report staging remains the acceptance authority. Other success paths retain one-line PASS and nonzero failure handling is unchanged. Workflow forwards only the reviewed closed sites.
+
+Author targeted controller3/3 PASS includes two additive methods; wrapper2/2 affected static cases PASS includes one additive case. The wrapper's initial cross-file parity run failed while the controller still had the old enum; final coherent enum parity passed. One control-regex lint warning was corrected without changing the protocol predicate. These are synthetic controller/grammar and source-static guards, not PowerShell execution. Measured Python inventory is336; expected desktop1603, foundation109, while actual prior hosted evidence remains1602/109/334. Exact workflow/count cases also pass4/4. Independent exact ten-file source/runner/index review is CLEAR at07:02 UTC: all18 fingerprints and strict336/no-skip inventory verified, with unchanged admission and truthful handled-failure semantics. The same bounded retry is supported; no full local suite/compiler rerun or progress credit is claimed.

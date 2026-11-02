@@ -315,7 +315,7 @@ class DerivedPairBuildTests(unittest.TestCase):
             self.assertEqual(d.diagnostic_frame('PREPARE',error),'DERIVED_PAIR_CONTROL_DIAG|PREPARE|ENTRY|INTERNAL')
         for action,args in [('acquire',['x']),('prepare',['x','y','z']),('plan',['x','javac']),('verify',['x','javac']),('finish',['x','NONE']),('cleanup',['x'])]:
             output=io.StringIO()
-            with patch.object(d,action,side_effect=Hostile()),redirect_stdout(output):self.assertEqual(d.main([action,*args]),1)
+            with patch.object(d,'_finish' if action=='finish' else action,side_effect=Hostile()),redirect_stdout(output):self.assertEqual(d.main([action,*args]),1)
             self.assertEqual(output.getvalue(),'DERIVED_PAIR_CONTROL_DIAG|'+action.upper()+'|ENTRY|INTERNAL\nDERIVED_PAIR_CONTROL_FAILED\n')
         for action in d.DIAGNOSTIC_ACTIONS:
             for step in d.DIAGNOSTIC_STEPS:
@@ -326,6 +326,49 @@ class DerivedPairBuildTests(unittest.TestCase):
         output=io.StringIO()
         with patch.object(d,'verify',return_value=True),redirect_stdout(output):self.assertEqual(d.main(['verify','x','javac']),0)
         self.assertEqual(output.getvalue(),'DERIVED_PAIR_CONTROL_PASS\n')
+
+    def test_finish_handled_diagnostic_after_seal_and_no_stale_frame_on_write_failure(self):
+        from contextlib import redirect_stdout
+        def refuse(_):
+            d.checkpoint('DEX_NAMESPACE');d.fail('OUTPUT_REJECTED','NAME')
+        for late in (None,'report.json','cleanup-inventory.json'):
+            with self.subTest(late=late):
+                base,root,context,state=self.prepared();original=d.write_json
+                def writing(path,*args,**kwargs):
+                    if Path(path).name==late:raise PermissionError('PRIVATE_CANARY')
+                    return original(path,*args,**kwargs)
+                output=io.StringIO()
+                with patch.object(d,'revalidate',side_effect=refuse),patch.object(d,'write_json',side_effect=writing),redirect_stdout(output):result=d.main(['finish',str(root),'NONE'])
+                if late is None:
+                    self.assertEqual(result,0)
+                    self.assertEqual(output.getvalue(),'DERIVED_PAIR_CONTROL_DIAG|FINISH|DEX_NAMESPACE|NAME\nDERIVED_PAIR_CONTROL_PASS\n')
+                    self.assertEqual(d.parse(d.read(root/'private/report.json',65536))['failure'],'OUTPUT_REJECTED')
+                    self.assertTrue((root/'private/cleanup-inventory.json').is_file())
+                else:
+                    self.assertEqual(result,1);step='REPORT_WRITE' if late=='report.json' else 'CLOSED_LAYOUT'
+                    self.assertEqual(output.getvalue(),'DERIVED_PAIR_CONTROL_DIAG|FINISH|'+step+'|IO_ACCESS\nDERIVED_PAIR_CONTROL_FAILED\n')
+        base,root,context,state=self.prepared();output=io.StringIO()
+        with patch.object(d,'revalidate',side_effect=refuse),redirect_stdout(output):report=d.finish(root)
+        self.assertEqual(report['failure'],'OUTPUT_REJECTED');self.assertEqual(output.getvalue(),'')
+
+    def test_output_diagnostic_sites_preserve_closed_inspector_refusals(self):
+        cases=[('DEX_HEADER',lambda:d.inspect_dex(b'PRIVATE_CANARY')),('DEX_NAME',lambda:d.inspect_dex(dex_fixture('Lcom/genymobile/scrcpy/Bad-Name;'))),('DEX_NAMESPACE',lambda:d.inspect_dex(dex_fixture('Lforeign/Example;'))),('PE_HEADER',lambda:d.inspect_pe(b'PRIVATE_CANARY'))]
+        raw=bytearray(dex_fixture());struct.pack_into('<I',raw,96,0)
+        raw[12:32]=hashlib.sha1(raw[32:]).digest();struct.pack_into('<I',raw,8,zlib.adler32(raw[12:])&0xffffffff)
+        cases.append(('DEX_TABLES',lambda:d.inspect_dex(bytes(raw))))
+        cli=bytearray(pe_fixture());struct.pack_into('<I',cli,152+112+14*8+4,0)
+        cases.append(('PE_CLI',lambda:d.inspect_pe(bytes(cli))))
+        metadata=bytearray(pe_fixture());metadata[640:644]=b'NOPE'
+        cases.append(('PE_METADATA',lambda:d.inspect_pe(bytes(metadata))))
+        base,root=self.root();(root/'output').mkdir();(root/'output/classes.zip').write_bytes(b'PRIVATE_CANARY')
+        cases.append(('OUTPUT_ZIP',lambda:d.inspect_outputs(root)))
+        for site,call in cases:
+            with self.subTest(site=site):
+                try:call()
+                except (ValueError,zipfile.BadZipFile) as error:frame=d.diagnostic_frame('FINISH',error)
+                else:self.fail('expected fixed inspector refusal')
+                self.assertTrue(frame.startswith('DERIVED_PAIR_CONTROL_DIAG|FINISH|'+site+'|'))
+                self.assertNotIn('PRIVATE_CANARY',frame)
 
     def test_isolated_cli_failure_exact_closed_frame(self):
         import subprocess
