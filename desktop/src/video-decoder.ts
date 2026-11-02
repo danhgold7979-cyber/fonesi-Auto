@@ -47,7 +47,34 @@ export const TILE_VIDEO_FAILURE_REASONS = Object.freeze([
 export type TileVideoFailureReason = (typeof TILE_VIDEO_FAILURE_REASONS)[number];
 type Frame = Pick<
   VideoFrame,
-  'timestamp' | 'codedWidth' | 'codedHeight' | 'displayWidth' | 'displayHeight' | 'close'
+  | 'timestamp'
+  | 'codedWidth'
+  | 'codedHeight'
+  | 'visibleRect'
+  | 'displayWidth'
+  | 'displayHeight'
+  | 'close'
+> &
+  Readonly<{ rotation?: unknown; flip?: unknown }>;
+export type VideoGeometryFailure = Readonly<
+  Record<
+    | 'expectedCodedW'
+    | 'expectedCodedH'
+    | 'expectedVisibleW'
+    | 'expectedVisibleH'
+    | 'expectedDisplayW'
+    | 'expectedDisplayH'
+    | 'codedW'
+    | 'codedH'
+    | 'visibleX'
+    | 'visibleY'
+    | 'visibleW'
+    | 'visibleH'
+    | 'displayW'
+    | 'displayH'
+    | 'rotation',
+    number | null
+  > & { flip: boolean | null }
 >;
 type Decoder = Pick<VideoDecoder, 'configure' | 'decode' | 'close' | 'decodeQueueSize'>;
 /** Source-test substitution only; production callers omit this second argument. */
@@ -92,6 +119,7 @@ export function createTileVideoDecoder(
     clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
   };
   let failureReason: TileVideoFailureReason | null = null;
+  let geometryFailure: VideoGeometryFailure | null = null;
   let clockFailed = false;
   let closed = false,
     state: TileVideoState = 'STARTING',
@@ -216,9 +244,27 @@ export function createTileVideoDecoder(
       if (!v || !config || !live() || token !== generation)
         return stop('DECODE_FAILED', 'OUTPUT_IDENTITY');
       if (clock() >= until) return stop('DECODE_FAILED', 'DEADLINE');
+      const rect = frame.visibleRect;
+      // WebCodecs allocation may contain padding or a relocated visible surface.
+      // Canvas consumes visible/display space, so do not apply the SPS crop twice.
       if (
-        frame.codedWidth !== config.codedWidth ||
-        frame.codedHeight !== config.codedHeight ||
+        !integer(frame.codedWidth, 1) ||
+        !integer(frame.codedHeight, 1) ||
+        frame.codedWidth > 4096 ||
+        frame.codedHeight > 4096 ||
+        frame.codedWidth * frame.codedHeight > 8388608 ||
+        !rect ||
+        !integer(rect.x) ||
+        !integer(rect.y) ||
+        !integer(rect.width, 1) ||
+        !integer(rect.height, 1) ||
+        rect.width !== config.width ||
+        rect.height !== config.height ||
+        rect.x + rect.width > frame.codedWidth ||
+        rect.y + rect.height > frame.codedHeight ||
+        frame.rotation !== 0 ||
+        Object.is(frame.rotation, -0) ||
+        frame.flip !== false ||
         !(
           (frame.displayWidth === config.width && frame.displayHeight === config.height) ||
           (frame.displayWidth === config.displayWidth &&
@@ -227,8 +273,31 @@ export function createTileVideoDecoder(
         frame.displayWidth > 4096 ||
         frame.displayHeight > 4096 ||
         frame.displayWidth * frame.displayHeight > 8388608
-      )
+      ) {
+        const scalar = (n: unknown) => (integer(n) && n <= 4096 ? n : null);
+        geometryFailure = Object.freeze({
+          expectedCodedW: scalar(config.codedWidth),
+          expectedCodedH: scalar(config.codedHeight),
+          expectedVisibleW: scalar(config.width),
+          expectedVisibleH: scalar(config.height),
+          expectedDisplayW: scalar(config.displayWidth),
+          expectedDisplayH: scalar(config.displayHeight),
+          codedW: scalar(frame.codedWidth),
+          codedH: scalar(frame.codedHeight),
+          visibleX: scalar(rect?.x),
+          visibleY: scalar(rect?.y),
+          visibleW: scalar(rect?.width),
+          visibleH: scalar(rect?.height),
+          displayW: scalar(frame.displayWidth),
+          displayH: scalar(frame.displayHeight),
+          rotation:
+            integer(frame.rotation) && [0, 90, 180, 270].includes(frame.rotation)
+              ? frame.rotation
+              : null,
+          flip: typeof frame.flip === 'boolean' ? frame.flip : null,
+        });
         return stop('DECODE_FAILED', 'OUTPUT_GEOMETRY');
+      }
       if (frame.timestamp <= lastPaint) return stop('DECODE_FAILED', 'OUTPUT_IDENTITY');
       failureContext = 'PAINT';
       const context = options.canvas.getContext('2d');
@@ -396,6 +465,13 @@ export function createTileVideoDecoder(
     },
     close: () => stop(),
     snapshot: () =>
-      Object.freeze({ state, closed, pending: pending.size, held: held !== null, failureReason }),
+      Object.freeze({
+        state,
+        closed,
+        pending: pending.size,
+        held: held !== null,
+        failureReason,
+        geometryFailure,
+      }),
   });
 }

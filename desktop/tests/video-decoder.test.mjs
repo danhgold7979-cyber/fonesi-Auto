@@ -46,6 +46,7 @@ function configuration({
   sar = 1,
   refs = 1,
   buffering = 1,
+  crop = false,
 } = {}) {
   const s = new Bits().u(profile, 8).u(0, 8).u(30, 8).ue(0);
   if (profile === 100)
@@ -63,8 +64,9 @@ function configuration({
     .ue(1)
     .u(interlace ? 0 : 1, 1)
     .u(1, 1)
-    .u(0, 1)
-    .u(vui ? 1 : 0, 1);
+    .u(crop ? 1 : 0, 1);
+  if (crop) s.ue(1).ue(1).ue(1).ue(0);
+  s.u(vui ? 1 : 0, 1);
   if (vui) {
     s.u(1, 1)
       .u(sar, 8)
@@ -243,6 +245,9 @@ function rig({ support = async () => true, deadline = 30000 } = {}) {
   const frame = (decoder, pts) => {
     const f = {
       timestamp: pts,
+      visibleRect: { x: 0, y: 0, width: 32, height: 32 },
+      rotation: 0,
+      flip: false,
       codedWidth: 32,
       codedHeight: 32,
       displayWidth: 32,
@@ -401,6 +406,9 @@ test('wrong output identity or geometry closes rather than falsely advancing pai
     let closed = 0;
     const f = {
       timestamp: wrong === 'identity' ? 999 : 2000,
+      visibleRect: { x: 0, y: 0, width: 32, height: 32 },
+      rotation: 0,
+      flip: false,
       codedWidth: 32,
       codedHeight: 32,
       displayWidth: wrong === 'geometry' ? 16 : 32,
@@ -486,6 +494,9 @@ test('non-square SAR accepts decoder cropped or adjusted display once and paint 
     let closed = 0;
     r.decoders[0].output({
       timestamp: 2000,
+      visibleRect: { x: 0, y: 0, width: 32, height: 32 },
+      rotation: 0,
+      flip: false,
       codedWidth: 32,
       codedHeight: 32,
       displayWidth: actualWidth,
@@ -546,6 +557,9 @@ test('fixed reasons distinguish native callback, submission, malformed configura
 test('fixed reasons distinguish output identity, geometry, draw, acknowledgment and frame-close failures', async () => {
   const frame = (extra = {}) => ({
     timestamp: 2000,
+    visibleRect: { x: 0, y: 0, width: 32, height: 32 },
+    rotation: 0,
+    flip: false,
     codedWidth: 32,
     codedHeight: 32,
     displayWidth: 32,
@@ -636,4 +650,120 @@ test('terminal reason is latched before observer and later observer error cannot
   });
   callback.send('SESSION');
   assert.equal(callback.owner.snapshot().failureReason, 'STATE_CALLBACK');
+});
+
+test('WebCodecs padded allocation and relocated visible surface preserve exact draw space', async () => {
+  for (const [w, h, x, y] of [
+    [32, 32, 0, 0],
+    [48, 64, 8, 16],
+    [4096, 32, 4064, 0],
+  ]) {
+    const r = await configuredRig();
+    r.send('KEY');
+    const f = {
+      timestamp: 2000,
+      codedWidth: w,
+      codedHeight: h,
+      visibleRect: { x, y, width: 32, height: 32 },
+      displayWidth: 32,
+      displayHeight: 32,
+      rotation: 0,
+      flip: false,
+      close() {},
+    };
+    r.decoders[0].output(f);
+    assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+    assert.deepEqual(r.draws[0], [f, 0, 0, 32, 32]);
+    assert.equal(r.owner.snapshot().geometryFailure, null);
+    r.owner.close();
+  }
+});
+test('WebCodecs rejects malformed allocation, crop, display and unknown orientation before paint', async () => {
+  const bad = [
+    { codedWidth: 0 },
+    { codedWidth: 4097 },
+    { codedWidth: 1.5 },
+    { codedWidth: NaN },
+    { codedWidth: 4096, codedHeight: 4096 },
+    { codedHeight: Infinity },
+    { visibleRect: null },
+    { visibleRect: { x: -0, y: 0, width: 32, height: 32 } },
+    { visibleRect: { x: 1, y: 0, width: 32, height: 32 } },
+    { visibleRect: { x: 0, y: 1, width: 32, height: 32 } },
+    { visibleRect: { x: 0, y: 0, width: 31, height: 32 } },
+    { visibleRect: { x: 0, y: 0, width: 32, height: 31 } },
+    { visibleRect: { x: NaN, y: 0, width: 32, height: 32 } },
+    { visibleRect: { x: 0, y: 0, width: 32.5, height: 32 } },
+    { displayWidth: 31 },
+    { displayHeight: 33 },
+    { displayWidth: NaN },
+    { displayWidth: 4097 },
+    { rotation: 90 },
+    { rotation: -0 },
+    { rotation: undefined },
+    { flip: true },
+    { flip: undefined },
+  ];
+  for (const extra of bad) {
+    const r = await configuredRig();
+    r.send('KEY');
+    let closes = 0;
+    r.decoders[0].output({
+      timestamp: 2000,
+      codedWidth: 32,
+      codedHeight: 32,
+      visibleRect: { x: 0, y: 0, width: 32, height: 32 },
+      displayWidth: 32,
+      displayHeight: 32,
+      rotation: 0,
+      flip: false,
+      close() {
+        closes++;
+      },
+      ...extra,
+    });
+    const snap = r.owner.snapshot();
+    assert.equal(snap.failureReason, 'OUTPUT_GEOMETRY');
+    assert.equal(closes, 1);
+    assert.equal(r.draws.length, 0);
+    assert.equal(r.painted.length, 0);
+    assert.equal(Object.keys(snap.geometryFailure).length, 16);
+    assert.equal(Object.isFrozen(snap.geometryFailure), true);
+    if (!Number.isSafeInteger(extra.codedWidth) && 'codedWidth' in extra)
+      assert.equal(snap.geometryFailure.codedW, null);
+    r.decoders[0].error();
+    assert.equal(r.owner.snapshot().geometryFailure, snap.geometryFailure);
+  }
+});
+
+test('SPS cropped visible content may be repacked without applying original crop offsets twice', async () => {
+  const bytes = configuration({ crop: true });
+  const c = parseAvcConfiguration(bytes, 28, 30);
+  assert.equal(c.codedWidth, 32);
+  assert.equal(c.codedHeight, 32);
+  for (const [codedWidth, codedHeight, x, y] of [
+    [28, 30, 0, 0],
+    [48, 64, 3, 5],
+  ]) {
+    const r = rig();
+    r.send('SESSION', { width: 28, height: 30 });
+    r.send('CONFIG', { width: 28, height: 30, bytes, totalBytes: bytes.length });
+    await flush();
+    r.send('KEY', { width: 28, height: 30 });
+    const f = {
+      timestamp: 2000,
+      codedWidth,
+      codedHeight,
+      visibleRect: { x, y, width: 28, height: 30 },
+      displayWidth: 28,
+      displayHeight: 30,
+      rotation: 0,
+      flip: false,
+      close() {},
+    };
+    r.decoders[0].output(f);
+    assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+    assert.deepEqual(r.draws[0], [f, 0, 0, 28, 30]);
+    r.owner.close();
+  }
 });

@@ -2000,12 +2000,15 @@ test('actual renderer registers explicit video request before early port and REA
     ports: [port],
   });
   assert.equal(posts.length, 0);
+  const dataset = { videoGeometry: 'stale' };
   m.render().props.video.canvasRef({
+    dataset,
     width: 0,
     height: 0,
     style: {},
     getContext: () => ({ clearRect() {}, drawImage() {} }),
   });
+  assert.equal(Object.hasOwn(dataset, 'videoGeometry'), false);
   assert.deepEqual(
     posts.map((v) => v.kind),
     ['READY'],

@@ -12,6 +12,8 @@ import {
   exact,
   validPixels,
   validateVideoDiagnostic,
+  validateVideoGeometry,
+  VIDEO_GEOMETRY_FIELDS,
   validateVideoSupervisor,
   validateVideoEvidence,
   VIDEO_DIAGNOSTIC_STAGES,
@@ -171,6 +173,7 @@ test('failure diagnostics admit only fixed stages, states, cases and bound diges
       inputs: base.inputs,
       stage: 'LANDSCAPE_OUTPUT',
       rendererState: 'WAITING_KEY',
+      geometry: null,
       cases: base.cases,
     };
   for (const stage of VIDEO_DIAGNOSTIC_STAGES)
@@ -220,6 +223,7 @@ test('sanitized aggregate cannot promote failed or missing pixel evidence to pas
       inputs: result.inputs,
       stage: 'LANDSCAPE_OUTPUT',
       rendererState: 'DECODING',
+      geometry: null,
       cases: result.cases,
     };
   for (const process of [
@@ -261,4 +265,74 @@ test('qualification failure suffixes exactly cover reviewed production reasons w
     for (const state of ['STOPPING', 'STOPPED', 'UNCERTAIN'])
       assert.ok(VIDEO_DIAGNOSTIC_STATES.includes(`DECODE_FAILED:${reason} / ${state}`));
   assert.equal(VIDEO_DIAGNOSTIC_STATES.includes('DECODE_FAILED:secret / STOPPED'), false);
+});
+
+test('geometry failure facts admit only fixed bounded scalars and matching cause', () => {
+  const geometry = Object.fromEntries(
+    VIDEO_GEOMETRY_FIELDS.map((k) => [k, k === 'flip' ? false : 0]),
+  );
+  assert.equal(validateVideoGeometry(geometry), true);
+  assert.equal(
+    validateVideoGeometry(Object.fromEntries(VIDEO_GEOMETRY_FIELDS.map((k) => [k, null]))),
+    true,
+  );
+  for (const change of [
+    { extra: 1 },
+    { codedW: 4097 },
+    { visibleX: -0 },
+    { visibleY: NaN },
+    { rotation: 45 },
+    { rotation: 360 },
+    { flip: 0 },
+    { displayW: '32' },
+    { codedH: Infinity },
+  ])
+    assert.equal(validateVideoGeometry({ ...geometry, ...change }), false);
+  const diagnostic = {
+    version: 1,
+    scope,
+    head: 'a'.repeat(40),
+    inputs: Object.fromEntries(inputs.map((k) => [k, 'b'.repeat(64)])),
+    stage: 'LANDSCAPE_OUTPUT',
+    rendererState: 'DECODE_FAILED:OUTPUT_GEOMETRY / STOPPED',
+    geometry,
+    cases: Object.fromEntries(cases.map((k) => [k, false])),
+  };
+  assert.equal(validateVideoDiagnostic(diagnostic), true);
+  assert.equal(validateVideoDiagnostic({ ...diagnostic, rendererState: 'DISPLAYING' }), false);
+  assert.equal(
+    validateVideoDiagnostic({ ...diagnostic, rendererState: 'DECODE_FAILED:DEADLINE / STOPPED' }),
+    false,
+  );
+  assert.equal(validateVideoDiagnostic({ ...diagnostic, geometry: 'x'.repeat(513) }), false);
+});
+
+test('probe bounds serialized geometry and never reuses absent or malformed facts', () => {
+  const text = readFileSync(new URL('./video-decoder-probe.mjs', import.meta.url), 'utf8');
+  const fn = text.slice(
+    text.indexOf('function observeState(v)'),
+    text.indexOf('async function observe(fixture)'),
+  );
+  const ctx = {
+    VIDEO_DIAGNOSTIC_STATES,
+    validateVideoGeometry,
+    rendererState: 'UNOBSERVED',
+    failureGeometry: null,
+  };
+  runInNewContext(`${fn};globalThis.observeState=observeState;`, ctx);
+  const g = Object.fromEntries(VIDEO_GEOMETRY_FIELDS.map((k) => [k, k === 'flip' ? false : 0]));
+  const state = 'DECODE_FAILED:OUTPUT_GEOMETRY / STOPPED';
+  ctx.observeState({ state, geometry: JSON.stringify(g) });
+  assert.equal(JSON.stringify(ctx.failureGeometry), JSON.stringify(g));
+  for (const geometry of [
+    undefined,
+    null,
+    '{',
+    'x'.repeat(513),
+    JSON.stringify({ ...g, extra: 1 }),
+  ]) {
+    ctx.observeState({ state, geometry: JSON.stringify(g) });
+    ctx.observeState({ state, geometry });
+    assert.equal(ctx.failureGeometry, null);
+  }
 });

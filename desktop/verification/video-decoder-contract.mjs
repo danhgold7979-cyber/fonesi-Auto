@@ -161,9 +161,52 @@ export const VIDEO_DIAGNOSTIC_STATES = Object.freeze([
   'DECODE_FAILED',
   'UNCERTAIN',
 ]);
+export const VIDEO_GEOMETRY_FIELDS = Object.freeze([
+  'expectedCodedW',
+  'expectedCodedH',
+  'expectedVisibleW',
+  'expectedVisibleH',
+  'expectedDisplayW',
+  'expectedDisplayH',
+  'codedW',
+  'codedH',
+  'visibleX',
+  'visibleY',
+  'visibleW',
+  'visibleH',
+  'displayW',
+  'displayH',
+  'rotation',
+  'flip',
+]);
+export function validateVideoGeometry(v) {
+  return (
+    exact(v, VIDEO_GEOMETRY_FIELDS) &&
+    VIDEO_GEOMETRY_FIELDS.every(
+      (k) =>
+        v[k] === null ||
+        (k === 'flip'
+          ? typeof v[k] === 'boolean'
+          : Number.isSafeInteger(v[k]) &&
+            !Object.is(v[k], -0) &&
+            v[k] >= 0 &&
+            v[k] <= 4096 &&
+            (k !== 'rotation' || [0, 90, 180, 270].includes(v[k]))),
+    )
+  );
+}
 export function validateVideoDiagnostic(v) {
   return (
-    exact(v, ['version', 'scope', 'head', 'inputs', 'stage', 'rendererState', 'cases']) &&
+    exact(v, [
+      'version',
+      'scope',
+      'head',
+      'inputs',
+      'stage',
+      'rendererState',
+      'geometry',
+      'cases',
+    ]) &&
     v.version === 1 &&
     v.scope === VIDEO_QUALIFICATION_SCOPE &&
     typeof v.head === 'string' &&
@@ -171,6 +214,9 @@ export function validateVideoDiagnostic(v) {
     validInputs(v.inputs) &&
     VIDEO_DIAGNOSTIC_STAGES.includes(v.stage) &&
     VIDEO_DIAGNOSTIC_STATES.includes(v.rendererState) &&
+    (v.geometry === null ||
+      (v.rendererState.startsWith('DECODE_FAILED:OUTPUT_GEOMETRY / ') &&
+        validateVideoGeometry(v.geometry))) &&
     exact(v.cases, VIDEO_QUALIFICATION_CASES) &&
     VIDEO_QUALIFICATION_CASES.every((k) => typeof v.cases[k] === 'boolean')
   );

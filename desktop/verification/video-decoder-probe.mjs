@@ -33,6 +33,7 @@ import {
   exact,
   VIDEO_DIAGNOSTIC_STATES,
   validateVideoDiagnostic,
+  validateVideoGeometry,
 } from './video-decoder-contract.mjs';
 const ENTRY = 'auto-foundation://app/status.html',
   ORIGIN = 'auto-foundation://app';
@@ -103,7 +104,8 @@ const cases = Object.fromEntries(VIDEO_QUALIFICATION_CASES.map((k) => [k, false]
 let control, landscape, portrait;
 let diagnosticBound = false,
   stage = 'ADMISSION',
-  rendererState = 'UNOBSERVED';
+  rendererState = 'UNOBSERVED',
+  failureGeometry = null;
 function fail() {
   if (done) return;
   done = true;
@@ -120,6 +122,7 @@ function fail() {
         inputs: control.inputs,
         stage,
         rendererState,
+        geometry: failureGeometry,
         cases,
       };
       if (validateVideoDiagnostic(diagnostic))
@@ -198,11 +201,21 @@ async function send(kind, fixture) {
   );
 }
 let baselineChrome = null;
-const canvasFacts = `(()=>{const c=document.querySelector('canvas[aria-label="Video Device 0001"]');if(!c)return null;const r=c.getBoundingClientRect(),s=getComputedStyle(c),t=c.closest('.tile-footprint').getBoundingClientRect(),p=c.parentElement.querySelector('p').getBoundingClientRect();return {tile:[t.x,t.y,t.width,t.height],chrome:[p.x,p.y,p.width,p.height],width:c.width,height:c.height,x:r.x,y:r.y,w:r.width,h:r.height,fit:s.objectFit,visible:s.visibility==='visible'&&s.display!=='none',state:c.parentElement.querySelector('small')?.textContent,clear:Array.from(c.getContext('2d').getImageData(0,0,1,1).data).every(v=>v===0)};})()`;
+const canvasFacts = `(()=>{const c=document.querySelector('canvas[aria-label="Video Device 0001"]');if(!c)return null;const r=c.getBoundingClientRect(),s=getComputedStyle(c),t=c.closest('.tile-footprint').getBoundingClientRect(),p=c.parentElement.querySelector('p').getBoundingClientRect();return {geometry:c.dataset.videoGeometry?.slice(0,513)??null,tile:[t.x,t.y,t.width,t.height],chrome:[p.x,p.y,p.width,p.height],width:c.width,height:c.height,x:r.x,y:r.y,w:r.width,h:r.height,fit:s.objectFit,visible:s.visibility==='visible'&&s.display!=='none',state:c.parentElement.querySelector('small')?.textContent,clear:Array.from(c.getContext('2d').getImageData(0,0,1,1).data).every(v=>v===0)};})()`;
+function observeState(v) {
+  failureGeometry = null;
+  rendererState = VIDEO_DIAGNOSTIC_STATES.includes(v?.state) ? v.state : 'UNRECOGNIZED';
+  if (typeof v?.geometry === 'string' && v.geometry.length <= 512) {
+    try {
+      const g = JSON.parse(v.geometry);
+      if (validateVideoGeometry(g)) failureGeometry = g;
+    } catch {}
+  }
+}
 async function observe(fixture) {
   const f = await until(async () => {
     const v = await js(canvasFacts);
-    rendererState = VIDEO_DIAGNOSTIC_STATES.includes(v?.state) ? v.state : 'UNRECOGNIZED';
+    observeState(v);
     return v?.state === 'DISPLAYING' && v.width === fixture.width && v.height === fixture.height
       ? v
       : null;
@@ -479,7 +492,7 @@ try {
       await until(async () => {
         if (sink) return sink;
         const v = await js(canvasFacts);
-        rendererState = VIDEO_DIAGNOSTIC_STATES.includes(v?.state) ? v.state : 'UNRECOGNIZED';
+        observeState(v);
         return false;
       });
       const wide = generateVideoDecoderFixture('LANDSCAPE'),

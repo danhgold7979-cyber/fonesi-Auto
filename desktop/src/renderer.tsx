@@ -909,6 +909,7 @@ function Diagnostic() {
     const r = videoSession.current;
     if (!r || r.stopped || r.decoder || !r.port || !r.metadata || !r.canvas) return;
     const port = r.port;
+    delete r.canvas.dataset.videoGeometry;
     r.decoder = createTileVideoDecoder({
       videoId: r.metadata.videoId,
       deviceId: r.deviceId,
@@ -926,6 +927,8 @@ function Diagnostic() {
         if (videoSession.current !== r || !videoAlive.current) return;
         setVideoView({ deviceId: r.deviceId, generation: r.generation, state });
         if (state === 'DECODE_FAILED' || state === 'DECODER_UNAVAILABLE') {
+          const geometry = r.decoder?.snapshot().geometryFailure;
+          if (geometry && r.canvas) r.canvas.dataset.videoGeometry = JSON.stringify(geometry);
           r.failure =
             state === 'DECODE_FAILED'
               ? `${state}:${r.decoder?.snapshot().failureReason ?? 'UNOBSERVED'}`
