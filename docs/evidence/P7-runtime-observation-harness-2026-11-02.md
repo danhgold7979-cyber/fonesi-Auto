@@ -165,3 +165,41 @@ Final diagnostic continuation normal aggregate **PASS1739/1739** and
 DESKTOP_SOURCE_CHECK_PASS at2026-11-02 15:54 UTC; all standard source/build stages
 passed uninterrupted. Independent diagnostic delta CLEAR. Actual fresh hosted
 observation remains pending and is not substituted by this Linux evidence.
+
+## Third hosted run — retired processes, capture validation refusal
+
+Public9bb918b43f7e0ff8dd8c5013149e207c1142cfe4 maps local564de17/tree
+1869a8120e7f58a618dfb21b1739cf4e4ba7503b. Terminal
+[run41476377014](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41476377014),
+job125382910910, passed Windows source1739/1739 and DESKTOP_SOURCE_CHECK_PASS.
+At15:59:07 UTC fixed diagnostics recorded validation child NONZERO_EXIT/RETIRED,
+SCHEDULE_CONTROL_STAGE_CAPTURE, SCHEDULE_CONTROL_REASON_SCHEDULE_RUNTIME_REJECTED,
+outer VALIDATE, observer REQUESTED and all owned processes RETIRED. Artifact upload
+SKIPPED. The wrapper would report a failed observer child; none was reported, but
+no validated observation/report exists and no tuple is admitted. These facts do
+not retrospectively resolve the second run's generic native result.
+
+Inspection identified a reproducible private-transport compatibility defect already
+recorded in [P1-10 evidence](P1-10-package-recovery-source-2026-10-31.md): PowerShell
+ConvertTo-Json transport must not be required to equal JSON.stringify bytes. Base64
+protects stream values, not every outer JSON representation difference. The exact
+third-run offending private representation was not retained publicly and remains
+unproven; do not label a guessed character or order as observed cause.
+
+Narrow repair only: parse the flat seven-field private capture with a bounded
+131072-byte duplicate-aware grammar accepting equivalent whitespace/order/escaped
+keys. Unknown/decoded duplicate keys, nested containers, trailing material,
+nonfinite numbers and invalid schema still refuse; -0 exit is refused explicitly.
+Owned state and actual observer JSON remain canonical, process/retirement/capture
+limits unchanged. Added fixed CAPTURE_FILE/ENCODING/PROCESS/FRAMING stages and
+FRAMING/JSON/SCHEMA reason codes, no raw capture output. Regression demonstrates
+old canonical transport failure followed by actual-controller acceptance, without
+claiming reconstruction of the private Windows capture. Independent24/24 targeted
+PASS and source-delta CLEAR. Actual next hosted result remains pending.
+
+Transport production-source aggregate PASS1742/1742 and DESKTOP_SOURCE_CHECK_PASS
+at16:08 UTC. After that frozen run, added only stronger assertions within the same
+24 targeted groups for CRLF/outer whitespace, equivalent0.0/0e0 exit spelling and
+BOM refusal (writer emits UTF-8 without BOM); targeted24/24 again PASS. These last
+assertions were targeted, not a fabricated fresh whole-aggregate run. Production
+source unchanged after the aggregate; diff-check PASS.

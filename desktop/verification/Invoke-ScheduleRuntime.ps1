@@ -14,13 +14,13 @@ $observerRequested=$false
 function Show-FixedProbe($Probe){
  foreach($value in @('SUCCESS','NONZERO_EXIT','TIMEOUT','CAPTURE_FAILED','LAUNCH_FAILED','ACCESS_DENIED','CLEANUP_FAILED','EMPTY_OUTPUT')){if($Probe.Status -ceq $value){Write-Output ('SCHEDULE_CHILD_'+$value)}}
  if($Probe.CleanupComplete){Write-Output 'SCHEDULE_CHILD_RETIRED'}else{Write-Output 'SCHEDULE_CHILD_RETIREMENT_UNCONFIRMED'}
- foreach($phase in @('OWNED','SOURCE','INSTALL','RUNTIME','COPY','APP','STATE','CAPTURE','REPORT','HOST','CONTROL','PROFILE','PATHS','OBSERVATION')){
+ foreach($phase in @('OWNED','SOURCE','INSTALL','RUNTIME','COPY','APP','STATE','CAPTURE','CAPTURE_FILE','CAPTURE_ENCODING','CAPTURE_PROCESS','CAPTURE_FRAMING','REPORT','HOST','CONTROL','PROFILE','PATHS','OBSERVATION')){
   foreach($prefix in @('SCHEDULE_CONTROL_STAGE_','SCHEDULE_OBSERVER_STAGE_')){
    $marker=$prefix+$phase
    if(@(($Probe.Stdout+"`n"+$Probe.Stderr) -split '\r?\n'|Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
   }
  }
- foreach($reason in @('SCHEDULE_RUNTIME_REJECTED','SCHEDULE_RUNTIME_CONTROL_REJECTED','PACKAGE_REJECTED','ENOENT','EINVAL','EPERM','EACCES')){
+ foreach($reason in @('SCHEDULE_CAPTURE_FRAMING','SCHEDULE_CAPTURE_JSON','SCHEDULE_CAPTURE_SCHEMA','SCHEDULE_RUNTIME_REJECTED','SCHEDULE_RUNTIME_CONTROL_REJECTED','PACKAGE_REJECTED','ENOENT','EINVAL','EPERM','EACCES')){
   $marker='SCHEDULE_CONTROL_REASON_'+$reason
   if(@($Probe.Stdout -split '\r?\n'|Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
  }

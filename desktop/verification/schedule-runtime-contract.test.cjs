@@ -591,3 +591,73 @@ test('diagnostic failure markers disclose only fixed stages and preserve retirem
   assert.match(observer, /SCHEDULE_OBSERVER_STAGE_/);
   assert.doesNotMatch(observer, /writeSync\(2, error|writeSync\(2, JSON/);
 });
+
+test('capture diagnostics distinguish strict framing canonical JSON and closed observation schema without exposing content', () => {
+  assert.throws(() => parseObservation(''), /SCHEDULE_CAPTURE_FRAMING/);
+  assert.throws(() => parseObservation('private\n'), /SCHEDULE_CAPTURE_JSON/);
+  assert.throws(() => parseObservation('{}\n'), /SCHEDULE_CAPTURE_SCHEMA/);
+  const raw = JSON.stringify(fixture());
+  assert.throws(() => parseObservation(raw + '\nextra\n'), /SCHEDULE_CAPTURE_JSON/);
+  assert.deepEqual(parseObservation(raw + '\n'), fixture());
+});
+
+test('private PowerShell transport accepts equivalent whitespace key order and escapes but canonical state and stdout remain strict', () => {
+  const { parseCaptureTransport, decodeCapture } = require('./schedule-runtime-control.cjs');
+  const raw = receipt(),
+    { stdout, stderr, ...rest } = raw;
+  const encoded = {
+    ...rest,
+    stdoutBase64: Buffer.from(stdout).toString('base64'),
+    stderrBase64: Buffer.from(stderr).toString('base64'),
+  };
+  const reordered = Object.fromEntries(Object.entries(encoded).reverse());
+  const transport = JSON.stringify(reordered, null, 2).replace('"status"', '"\\u0073tatus"');
+  assert.throws(() => canonical(transport, 131072)); // Reproduces the old transport-as-receipt defect.
+  assert.deepEqual(validateCapture(decodeCapture(parseCaptureTransport(transport))), fixture());
+  for (const text of [
+    '\r\n' + transport.replaceAll('\n', '\r\n') + '\r\n',
+    JSON.stringify(encoded).replace('"exitCode":0', '"exitCode":0.0'),
+    JSON.stringify(encoded).replace('"exitCode":0', '"exitCode":0e0'),
+  ])
+    assert.deepEqual(validateCapture(decodeCapture(parseCaptureTransport(text))), fixture());
+  assert.throws(() => parseCaptureTransport('\uFEFF' + JSON.stringify(encoded)));
+
+  assert.throws(() => parseObservation(' ' + JSON.stringify(fixture()) + '\n'));
+  for (const text of [
+    JSON.stringify(encoded).replace(
+      '"status":"SUCCESS"',
+      '"status":"SUCCESS","\\u0073tatus":"SUCCESS"',
+    ),
+    JSON.stringify(encoded).replace(
+      '"cleanupComplete":true',
+      '"cleanupComplete":true,"cleanupComplete":false',
+    ),
+    JSON.stringify(encoded).replace('"status":"SUCCESS"', '"status":{}'),
+    JSON.stringify(encoded).replace('"exitCode":0', '"exitCode":[]'),
+    JSON.stringify(encoded).replace('"exitCode":0', '"exitCode":1e999'),
+    JSON.stringify(encoded).replace('"status"', '"__proto__"'),
+    JSON.stringify(encoded) + '{}',
+    JSON.stringify(encoded).slice(0, -1) + ',}',
+    ' '.repeat(131073),
+  ])
+    assert.throws(() => parseCaptureTransport(text));
+  assert.throws(() => validateCapture({ ...raw, exitCode: -0 }));
+});
+
+test('actual controller admits equivalent private PowerShell transport without relaxing retirement or public report', () =>
+  temporary((root) => {
+    const { api, run } = controllerFixture(root),
+      file = path.join(run, 'capture.json');
+    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(
+      file,
+      JSON.stringify(Object.fromEntries(Object.entries(value).reverse()), null, 2).replace(
+        '"status"',
+        '"\\u0073tatus"',
+      ),
+    );
+    assert.equal(api.testValidate(run), 'SCHEDULE_RUNTIME_VALIDATED');
+    const report = fs.readFileSync(path.join(run, 'report.json'), 'utf8');
+    assert.equal(report, JSON.stringify(JSON.parse(report)));
+    assert.equal(JSON.parse(report).disposition, 'OBSERVED_NOT_ADMITTED');
+  }));

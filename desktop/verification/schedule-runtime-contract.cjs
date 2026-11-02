@@ -83,9 +83,20 @@ function validateObservation(value) {
   return value;
 }
 function parseObservation(stdout) {
-  if (typeof stdout !== 'string' || !stdout.endsWith('\n') || stdout.endsWith('\n\n')) fail();
+  if (typeof stdout !== 'string' || !stdout.endsWith('\n') || stdout.endsWith('\n\n'))
+    throw new Error('SCHEDULE_CAPTURE_FRAMING');
   const raw = stdout.endsWith('\r\n') ? stdout.slice(0, -2) : stdout.slice(0, -1);
-  return validateObservation(canonical(raw, 16384));
+  let value;
+  try {
+    value = canonical(raw, 16384);
+  } catch {
+    throw new Error('SCHEDULE_CAPTURE_JSON');
+  }
+  try {
+    return validateObservation(value);
+  } catch {
+    throw new Error('SCHEDULE_CAPTURE_SCHEMA');
+  }
 }
 function assertOverridesAbsent(env, execArgv) {
   if (!Array.isArray(execArgv) || execArgv.length) fail();

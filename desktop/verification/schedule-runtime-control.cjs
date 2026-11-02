@@ -186,6 +186,7 @@ function stage(root, head, tree) {
   return 'SCHEDULE_RUNTIME_STAGED';
 }
 function validateCapture(value) {
+  phase = 'CAPTURE_PROCESS';
   record(value, [
     'status',
     'exitCode',
@@ -198,6 +199,7 @@ function validateCapture(value) {
   if (
     value.status !== 'SUCCESS' ||
     value.exitCode !== 0 ||
+    Object.is(value.exitCode, -0) ||
     value.cleanupComplete !== true ||
     value.stdoutTruncated !== false ||
     value.stderrTruncated !== false ||
@@ -205,7 +207,75 @@ function validateCapture(value) {
     Buffer.byteLength(value.stderr) > 32768
   )
     fail();
+  phase = 'CAPTURE_FRAMING';
   return parseObservation(value.stdout);
+}
+// PowerShell capture is transport JSON, unlike canonical owned state and observer stdout.
+// Flat fixed-schema grammar rejects duplicate decoded keys before normalization.
+function parseCaptureTransport(raw) {
+  if (typeof raw !== 'string' || Buffer.byteLength(raw) > 131072) fail();
+  const keys = [
+    'status',
+    'exitCode',
+    'cleanupComplete',
+    'stdoutTruncated',
+    'stderrTruncated',
+    'stdoutBase64',
+    'stderrBase64',
+  ];
+  let offset = 0;
+  const space = () => {
+    while (offset < raw.length && /[ \t\r\n]/.test(raw[offset])) offset++;
+  };
+  const string = () => {
+    const start = offset++;
+    for (; offset < raw.length; offset++) {
+      const c = raw[offset];
+      if (c === '"') {
+        offset++;
+        return JSON.parse(raw.slice(start, offset));
+      }
+      if (c === '\\') {
+        offset++;
+        if (offset >= raw.length) fail();
+      } else if (c.charCodeAt(0) < 32) fail();
+    }
+    fail();
+  };
+  const out = {},
+    seen = new Set();
+  space();
+  if (raw[offset++] !== '{') fail();
+  for (let count = 0; count < 7; count++) {
+    space();
+    if (raw[offset] !== '"') fail();
+    const key = string();
+    if (!keys.includes(key) || seen.has(key)) fail();
+    seen.add(key);
+    space();
+    if (raw[offset++] !== ':') fail();
+    space();
+    let value;
+    if (raw[offset] === '"') value = string();
+    else {
+      const start = offset;
+      while (offset < raw.length && !/[ \t\r\n,}]/.test(raw[offset])) offset++;
+      if (start === offset) fail();
+      value = JSON.parse(raw.slice(start, offset));
+      if (
+        value !== null &&
+        typeof value !== 'boolean' &&
+        (typeof value !== 'number' || !Number.isFinite(value))
+      )
+        fail();
+    }
+    out[key] = value;
+    space();
+    if (raw[offset++] !== (count === 6 ? '}' : ',')) fail();
+  }
+  space();
+  if (offset !== raw.length) fail();
+  return out;
 }
 function decodeCapture(value) {
   record(value, [
@@ -263,8 +333,13 @@ function validate(root) {
     !equal(state.packaged, boundedInventory(path.join(root, 'package')))
   )
     fail();
-  phase = 'CAPTURE';
-  const observation = validateCapture(decodeCapture(read(path.join(root, 'capture.json'), 131072)));
+  phase = 'CAPTURE_FILE';
+  const captureFile = path.join(root, 'capture.json');
+  if (plain(captureFile, false).size > 131072) fail();
+  const encodedCapture = parseCaptureTransport(fs.readFileSync(captureFile, 'utf8'));
+  phase = 'CAPTURE_ENCODING';
+  const decodedCapture = decodeCapture(encodedCapture);
+  const observation = validateCapture(decodedCapture);
   const exe = state.runtime.files.find((f) => f.path === 'electron.exe');
   if (!exe) fail();
   const report = {
@@ -305,6 +380,9 @@ if (require.main === module) {
   } catch (error) {
     console.log('SCHEDULE_CONTROL_STAGE_' + phase);
     const reason = [
+      'SCHEDULE_CAPTURE_FRAMING',
+      'SCHEDULE_CAPTURE_JSON',
+      'SCHEDULE_CAPTURE_SCHEMA',
       'SCHEDULE_RUNTIME_REJECTED',
       'SCHEDULE_RUNTIME_CONTROL_REJECTED',
       'PACKAGE_REJECTED',
@@ -318,4 +396,11 @@ if (require.main === module) {
     process.exitCode = 1;
   }
 }
-module.exports = { SOURCE_FILES, boundedInventory, copyTree, validateCapture, decodeCapture };
+module.exports = {
+  SOURCE_FILES,
+  boundedInventory,
+  copyTree,
+  validateCapture,
+  decodeCapture,
+  parseCaptureTransport,
+};
