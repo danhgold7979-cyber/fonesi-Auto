@@ -128,6 +128,25 @@ class ValidatorTests(unittest.TestCase):
             r, m = fixture(); m['commands.json']['stages'][2]['arguments'].append(extra)
             with self.assertRaises(ValueError): v.validate_report(r, bind(r, m))
 
+    def test_exact_perfdata_disable_flags_are_required_in_both_java_commands(self):
+        r, m = fixture()
+        for index, heap, option in ((2, '-J-Xmx512m', '-J-XX:-UsePerfData'),
+                                    (3, '-Xmx512m', '-XX:-UsePerfData')):
+            self.assertEqual(m['commands.json']['stages'][index]['arguments'][:2], [heap, option])
+            for mutation in ('absent', 'enabled', 'reordered'):
+                with self.subTest(stage=v.STAGES[index], mutation=mutation):
+                    changed_r, changed_m = fixture()
+                    args = changed_m['commands.json']['stages'][index]['arguments']
+                    if mutation == 'absent':
+                        args.pop(1)
+                    elif mutation == 'enabled':
+                        args[1] = option.replace('-UsePerfData', '+UsePerfData')
+                    else:
+                        args[0], args[1] = args[1], args[0]
+                    with self.assertRaises(ValueError):
+                        v.validate_report(changed_r, bind(changed_r, changed_m))
+        self.assertTrue(v.validate_report(r, bind(r, m))['passed'])
+
     def test_build_crossbindings_and_consumer_upstream_identity_refuse(self):
         for name, key in (('consumer-build.json', 'sourceCommit'), ('server-build.json', 'serverSha256')):
             r, m = fixture(); m[name][key] = v.UPSTREAM if key == 'sourceCommit' else '0' * 64
@@ -246,12 +265,13 @@ class ValidatorTests(unittest.TestCase):
             import sys
             (root/'report.json').write_bytes(v.canonical(r))
             (root/'outputs.json').write_bytes(v.canonical(m['outputs.json']))
+            # Binary marker avoids Windows text-stdout CRLF translation; exact bytes stay strict.
             script = ('import importlib.util,sys,pathlib; '
                       's=importlib.util.spec_from_file_location("validator",sys.argv[1]); '
                       'v=importlib.util.module_from_spec(s); s.loader.exec_module(v); '
                       'r=pathlib.Path(sys.argv[2]); '
                       'v.check_output_bytes(r,v.parse((r/"report.json").read_bytes()),'
-                      '{"outputs.json":(r/"outputs.json").read_bytes()}); print("ISOLATED_STATIC_PASS")')
+                      '{"outputs.json":(r/"outputs.json").read_bytes()}); sys.stdout.buffer.write(b"ISOLATED_STATIC_PASS\\n")')
             result = subprocess.run([sys.executable, '-I', '-B', '-c', script,
                                      str(Path(v.__file__).resolve()), str(root)],
                                     capture_output=True, timeout=10, check=False)

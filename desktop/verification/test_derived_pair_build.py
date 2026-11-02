@@ -98,7 +98,7 @@ class DerivedPairBuildTests(unittest.TestCase):
     def test_fixed_absolute_stage_plans_no_implicit_cwd_or_shell_or_default_csc_refs(self):
         base,root,c,s=self.prepared()
         p,pub=d.make_plan(root,'aidlClipboard',s);self.assertTrue(Path(p['arguments'][-1]).is_absolute());self.assertEqual(pub['workingDirectory'],'EXECUTABLE_DIRECTORY')
-        p,pub=d.make_plan(root,'javac',s);self.assertIn('-proc:none',p['arguments']);self.assertIn('-J-Duser.home='+str(root/'private/java-home'),p['arguments']);self.assertEqual(p['deadlineMs'],120000)
+        p,pub=d.make_plan(root,'javac',s);self.assertEqual(p['arguments'][:2],['-J-Xmx512m','-J-XX:-UsePerfData']);self.assertEqual(p['arguments'].count('-J-XX:-UsePerfData'),1);self.assertIn('-proc:none',p['arguments']);self.assertIn('-J-Duser.home='+str(root/'private/java-home'),p['arguments']);self.assertEqual(p['deadlineMs'],120000)
         p,pub=d.make_plan(root,'consumerCsc',s);self.assertEqual(p['arguments'][:2],['/noconfig','/nostdlib+']);self.assertEqual(len([a for a in p['arguments'] if a.startswith('/reference:')]),3)
         self.assertEqual(len([a for a in p['arguments'] if a.endswith('.cs')]),5)
         with self.assertRaises(ValueError):d.make_plan(root,'arbitrary',s)
@@ -157,7 +157,7 @@ class DerivedPairBuildTests(unittest.TestCase):
     def test_d8_uses_all_nested_classes_and_rejects_unknown_packages(self):
         base,root,c,state=self.prepared();folder=root/'classes/com/genymobile/scrcpy';folder.mkdir(parents=True)
         (folder/'Server.class').write_bytes(b'fake');(folder/'Server$Nested.class').write_bytes(b'fake')
-        private,public=d.make_plan(root,'d8',state);self.assertEqual(public['arguments'][-2:],['${CLASSES}/com/genymobile/scrcpy/Server$Nested.class','${CLASSES}/com/genymobile/scrcpy/Server.class'])
+        private,public=d.make_plan(root,'d8',state);self.assertEqual(public['arguments'][:2],['-Xmx512m','-XX:-UsePerfData']);self.assertEqual(public['arguments'].count('-XX:-UsePerfData'),1);self.assertEqual(private['deadlineMs'],120000);self.assertEqual(public['arguments'][-2:],['${CLASSES}/com/genymobile/scrcpy/Server$Nested.class','${CLASSES}/com/genymobile/scrcpy/Server.class'])
         bad=root/'classes/foreign';bad.mkdir();(bad/'Wrong.class').write_bytes(b'fake')
         with self.assertRaises(ValueError):d.make_plan(root,'d8',state)
 

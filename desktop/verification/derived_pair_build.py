@@ -393,10 +393,10 @@ def make_plan(root,stage,state):
         if stage=='aidlDisplay':args+=['-p',t('ANDROID36','framework.aidl')]
         args+=[t('SOURCE','server/src/main/aidl/android/'+('content/IOnPrimaryClipChangedListener.aidl' if stage=='aidlClipboard' else 'view/IDisplayWindowListener.aidl'))];deadline=30000
     elif stage=='javac':
-        ns='JDK17';exe='bin/javac.exe';args=['-J-Xmx512m','-J-Duser.home='+t('PRIVATE','java-home'),'-J-Djava.io.tmpdir='+t('PRIVATE','java-tmp'),'-proc:none','-encoding','UTF-8','-bootclasspath',t('ANDROID36','android.jar'),'-cp',t('BUILD_TOOLS36','core-lambda-stubs.jar')+';'+t('GENERATED',''),'-d',t('CLASSES',''),'-source','1.8','-target','1.8']
+        ns='JDK17';exe='bin/javac.exe';args=['-J-Xmx512m','-J-XX:-UsePerfData','-J-Duser.home='+t('PRIVATE','java-home'),'-J-Djava.io.tmpdir='+t('PRIVATE','java-tmp'),'-proc:none','-encoding','UTF-8','-bootclasspath',t('ANDROID36','android.jar'),'-cp',t('BUILD_TOOLS36','core-lambda-stubs.jar')+';'+t('GENERATED',''),'-d',t('CLASSES',''),'-source','1.8','-target','1.8']
         args += [t('SOURCE',r['path']) for r in state['source']['effective'] if r['namespace']=='SERVER' and r['path'].endswith('.java')];deadline=120000
     elif stage=='d8':
-        ns='JDK17';exe='bin/java.exe';args=['-Xmx512m','-Duser.home='+t('PRIVATE','java-home'),'-Djava.io.tmpdir='+t('PRIVATE','java-tmp'),'-cp',t('BUILD_TOOLS36','lib/d8.jar'),'com.android.tools.r8.D8','--classpath',t('ANDROID36','android.jar'),'--output',t('OUTPUT','classes.zip')]
+        ns='JDK17';exe='bin/java.exe';args=['-Xmx512m','-XX:-UsePerfData','-Duser.home='+t('PRIVATE','java-home'),'-Djava.io.tmpdir='+t('PRIVATE','java-tmp'),'-cp',t('BUILD_TOOLS36','lib/d8.jar'),'com.android.tools.r8.D8','--classpath',t('ANDROID36','android.jar'),'--output',t('OUTPUT','classes.zip')]
         classes=inventory(root/'classes','CLASSES',2048,32*1024**2,32*1024**2,True)
         if not classes:fail('OUTPUT_REJECTED')
         for r in classes:

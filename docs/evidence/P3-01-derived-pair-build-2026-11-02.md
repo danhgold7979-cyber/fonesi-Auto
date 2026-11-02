@@ -80,19 +80,19 @@ The 23-file packet includes only the paths below. Caches, archive/source origina
 
 | Source / gate | SHA256 |
 |---|---|
-| `.github/workflows/phase-02-software.yml` | `09ebcaaf9936255cf1387c8605ad27a20a17197fbf0a5f9b4663f93ea04eb787` |
+| `.github/workflows/phase-02-software.yml` | `4cf915a94a43ac7679540c9d467950f85fc6c1081e2b397fbc4a92ab9411561c` |
 | `desktop/scripts/quality-tool.mjs` | `ccff8a43620c7cea61d81b5c3ae0ea5e963431ae2e7b7fdd73975b5c500f663d` |
 | `desktop/scripts/test-batches.mjs` | `0489ff8d0afaa86a83bad671bc4a762a0343c4bf3b53c600804f985e8f511f63` |
-| `desktop/tests/phase-source-workflow.test.mjs` | `bbe21eeb421eb9e870d030b1714a06fce816ed68bd8776d6c93c56d1d000ca78` |
+| `desktop/tests/phase-source-workflow.test.mjs` | `adc1451d3c81d4498be5f85f4ebad69dada3d39e18221b180ea1433befb63bb8` |
 | `desktop/tests/quality-tool.test.mjs` | `05110e6803d583a3574a3cc93d30c5e6c71f91f485dfb64e5029794296767bf5` |
 | `desktop/tests/retained-managed-fixture.test.mjs` | `a05176ed8fe84fc460d508fb01af5ded49814adb5e2e942124451d04298e09b8` |
-| `desktop/verification/retained-rollback-workflow.test.cjs` | `79762e52d2e25861841480a70c294ba24132de550828faad9bced87dc621c7d0` |
+| `desktop/verification/retained-rollback-workflow.test.cjs` | `443ea0b8a972281774013755dfa1d6ca5b6c97dc79b60f9ba3c128fcd0238da6` |
 | `desktop/verification/Invoke-DerivedPairBuild.ps1` | `d28fc606114ebb628c32ed49260f4496e3bde2738910bb6b49dec391b41b482d` |
 | `desktop/verification/derived-pair-wrapper.test.cjs` | `ddfa9f072cd785734b4db9cf2883d58ba20406c12aadd2e3fa905d34fc148766` |
-| `desktop/verification/derived_pair_build.py` | `9317866c0a8e214af5184d5d595c2c9819172adb3300fc711f1987276f676beb` |
-| `desktop/verification/test_derived_pair_build.py` | `35afed3b08699e52a0ee752ea9f25d4dd5c2ece07974318f801827ebdc21f1a9` |
-| `desktop/verification/test_validate_derived_pair_build.py` | `84e57aaf06c4fabeb724aaa545f68c78d8caa9b4c7508bcd8118eebc6da71d5b` |
-| `desktop/verification/validate_derived_pair_build.py` | `e6cae074e387f2bd39119a3ce38fd6f4022792ce4e6dbd329d4d0090174df3a0` |
+| `desktop/verification/derived_pair_build.py` | `a94d8166adfc86eabd460464c79b380b386bdd1f89074a447d00e8bf571ee766` |
+| `desktop/verification/test_derived_pair_build.py` | `ab1e6867c2bdec12ef8530068a78c9e2510e5daeba472e59f49ded072fc65e14` |
+| `desktop/verification/test_validate_derived_pair_build.py` | `0eeebd9f8fe3ce4a5d97999f7c107f9805e0d4406ea32adef71533426708492e` |
+| `desktop/verification/validate_derived_pair_build.py` | `7d2c7fda2c24cecb487ff03fcb86231804936fc6e14bcff903aeb4f1241d99ce` |
 | `desktop/video-source/README.md` | `71886a1b4a7a210757da499cebe7bbf55e860bd25cf28b51ceaef1fd0f535d42` |
 | `desktop/video-source/auto-video-nonce-v1.patch` | `caaadaecd4b559ef8f980e5eae84c47c9f7174a8d916f8fda05612fed7ff6f8c` |
 | `desktop/video-source/source-provenance.json` | `5903269dca4416213e4acb8be7cdf1c637147ed07a00dc9527684b4a8de574a6` |
@@ -136,3 +136,16 @@ The same pinned `os.open` implementation forwards `_wopen` flags without adding 
 Author affected validation: **35/35 controller+publisher tests PASS**, **4/4 exact workflow/count tests PASS**, and affected shared quality PASS. The four added causal methods establish the new exact Python discovery count **324**; current workflow/fixture predicates bind324 with no skipped tests. These results do not claim an actual Windows rerun or an uninterrupted full324 local suite. Earlier320 local PASS and the actual320/10-error Windows run remain separate history. Desktop expected count stays1598; no native C#/PowerShell/compiler-plan changes, deadline extension or relaxed ownership gate accompanies this correction.
 
 Independent narrow production review is CLEAR for controller `9317866c0a8e214af5184d5d595c2c9819172adb3300fc711f1987276f676beb` and publisher `e6cae074e387f2bd39119a3ce38fd6f4022792ce4e6dbd329d4d0090174df3a0`, with exact causal fixtures. Final nine-file inventory/docs closure is independently CLEAR at 05:31 UTC; the same bounded compile-only retry remains the intended next execution, not device/runtime work.
+
+
+## Third hosted attempt — isolated fixture stdout, 05:38 UTC
+
+Public `424826594685305b4791eb912d156bf642a1d511` / local `c2ee359e488d38ad79296effda27fffefbdf02fa`, tree `a329aad042606a2ec601bdefc322c0cc3c45e8ff`, CI 41394717653 / source job 125113456044, emits actual **1598/1598 desktop PASS plus DESKTOP_SOURCE_CHECK_PASS and foundation109 PASS**. Python runs324 with exactly one failure: the isolated helper emits `ISOLATED_STATIC_PASS\r\n` through Windows text stdout while its exact fixture assertion expects LF. The prior ten stat/root portability errors are absent. The separate jobs API records paired job125114436867 SKIPPED; no Java or consumer compiler stage ran.
+
+The retained source log is89,687 bytes, SHA256 `8d0617152bd54a38d8f45db90f3c149cc67e02a94cc28417e204fe0ad663a54f`, independently audited. The fixture now emits its fixed marker through `sys.stdout.buffer.write`, retaining the exact LF stdout and empty stderr assertions. The one affected isolated composition case passes locally; this is not a full324 rerun or production report-format relaxation.
+
+### Preventive fixed JVM command amendment
+
+Before the first compiler execution, the [official Java17 manual](https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.html#advanced-serviceability-options-for-java) establishes that UsePerfData defaults on and its disabled option suppresses perfdata directory creation. Independently reviewed preventive command closure adds exactly `-J-XX:-UsePerfData` to javac and `-XX:-UsePerfData` to the D8 JVM, binding producer, publisher and command evidence. This is **not observed residue from the hosted installed binary**: all three compile jobs were skipped. Unknown residue still refuses cleanup, original absolute budgets are unchanged, and unsupported options fail without fallback. Tool installation, runtime output loading, retained deployable artifacts and device effects remain outside this campaign.
+
+Author affected validation for this corrective packet: controller2/2, publisher3/3 (including six absent/enabled/reordered-option subcases), and exact workflow/count4/4 PASS. The marker case separately passed1/1 before the option amendment. One new Python method yields measured discovery325 (no full325 local rerun); workflow preserves exact325 and no-skip predicates. Affected quality exits0 with two existing informational style suggestions, not errors/warnings. Initial author quality invocation supplied the wrong npm-version argument and refused RUNTIME_MISMATCH before checking files; corrected invocation uses the admitted11.9.0 value. The worker's initial wrong-directory unittest invocation failed import before cases; its corrected cwd run produced the stated3/3. No compiler output, runtime pair or additional implementation-cell credit is claimed. Independent exact ten-file corrective review is CLEAR at 05:43 UTC: all18 fingerprints, index/disk identity, links, exact325/no-skip predicates and bounded scope verified. The same source-dependent compile-only retry is recommended, with no additional task or implementation-cell credit.
