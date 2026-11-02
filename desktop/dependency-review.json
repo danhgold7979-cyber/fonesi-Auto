@@ -17,6 +17,9 @@
       "react": "19.3.0",
       "react-dom": "19.3.0",
       "typescript": "7.0.2"
+    },
+    "dependencies": {
+      "@js-temporal/polyfill": "0.5.1"
     }
   },
   "lock": {
@@ -38,6 +41,9 @@
           "react": "19.3.0",
           "react-dom": "19.3.0",
           "typescript": "7.0.2"
+        },
+        "dependencies": {
+          "@js-temporal/polyfill": "0.5.1"
         }
       },
       "node_modules/@biomejs/biome": {
@@ -1313,6 +1319,24 @@
         "integrity": "sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==",
         "dev": true,
         "license": "MIT"
+      },
+      "node_modules/@js-temporal/polyfill": {
+        "version": "0.5.1",
+        "license": "ISC",
+        "resolved": "https://registry.npmjs.org/@js-temporal/polyfill/-/polyfill-0.5.1.tgz",
+        "integrity": "sha512-hloP58zRVCRSpgDxmqCWJNlizAlUgJFqG2ypq79DCvyv9tHjRYMDOcPFjzfl/A1/YxDvRCZz8wvZvmapQnKwFQ==",
+        "dependencies": {
+          "jsbi": "^4.3.0"
+        },
+        "engines": {
+          "node": ">=12"
+        }
+      },
+      "node_modules/jsbi": {
+        "version": "4.3.2",
+        "license": "Apache-2.0",
+        "resolved": "https://registry.npmjs.org/jsbi/-/jsbi-4.3.2.tgz",
+        "integrity": "sha512-9fqMSQbhJykSeii05nxKl4m6Eqn2P6rOlYiS+C5Dr/HPIU/7yZxu5qzbs40tgaFORiw2Amd0mirjxatXYMkIew=="
       }
     }
   },
@@ -1862,6 +1886,26 @@
       "resolved": "https://registry.npmjs.org/@biomejs/cli-linux-arm64-musl/-/cli-linux-arm64-musl-2.6.4.tgz",
       "integrity": "sha512-31ZaH/MHqPX+O+evRwRrCHQ8W5/9adY+/eMytGGWZnRx1T41QsWIF09+/WujynLBhWZUxNGS5CtsWLwgOFTAyg==",
       "lifecycle": false
+    },
+    "node_modules/@js-temporal/polyfill": {
+      "version": "0.5.1",
+      "license": "ISC",
+      "resolved": "https://registry.npmjs.org/@js-temporal/polyfill/-/polyfill-0.5.1.tgz",
+      "integrity": "sha512-hloP58zRVCRSpgDxmqCWJNlizAlUgJFqG2ypq79DCvyv9tHjRYMDOcPFjzfl/A1/YxDvRCZz8wvZvmapQnKwFQ==",
+      "dependencies": {
+        "jsbi": "^4.3.0"
+      },
+      "engines": {
+        "node": ">=12"
+      },
+      "lifecycle": true
+    },
+    "node_modules/jsbi": {
+      "version": "4.3.2",
+      "license": "Apache-2.0",
+      "resolved": "https://registry.npmjs.org/jsbi/-/jsbi-4.3.2.tgz",
+      "integrity": "sha512-9fqMSQbhJykSeii05nxKl4m6Eqn2P6rOlYiS+C5Dr/HPIU/7yZxu5qzbs40tgaFORiw2Amd0mirjxatXYMkIew==",
+      "lifecycle": true
     }
   },
   "reviewedFiles": {
@@ -1871,7 +1915,18 @@
     "node_modules/@electron/get/dist/artifact-utils.js": "90c0ba570fe50779c1c9239c60d22be73438c57e3cd718aeb8eb13b43f434a22",
     "node_modules/esbuild/install.js": "612294e278914443bdcf81cb17f54afec34dbdd2ebd999a6ee187912320cc315",
     "node_modules/electron/index.js": "331e1e14d5f00ccbc61af0df6af6767ebabd48cf2f05d38d3d3345b20f8ce3f9",
-    "node_modules/@biomejs/biome/configuration_schema.json": "77b0b52415172200e3a9f1d603b990b5289e645777c7e5201c605ecf039d0893"
+    "node_modules/@biomejs/biome/configuration_schema.json": "77b0b52415172200e3a9f1d603b990b5289e645777c7e5201c605ecf039d0893",
+    "node_modules/@js-temporal/polyfill/package.json": "8406de0f5b7642ee1518c01c40ee6b797da7bc97575fea406e1f17876493e9cc",
+    "node_modules/@js-temporal/polyfill/dist/index.esm.js": "21f067c54fa5f532f20a8e85e3d2401a3ae1cf60d85fafea6502f621dc93b167",
+    "node_modules/@js-temporal/polyfill/dist/index.cjs": "9e3d7aae022f5ec391fc5e3639e474fe90f740c4631806fd741401b9c50f4ee0",
+    "node_modules/@js-temporal/polyfill/index.d.ts": "893fbc7e2a50a3a780d3d6eb6899e45fe8dc4ca56708770b4731e481f55af599",
+    "node_modules/@js-temporal/polyfill/index.d.cts": "893fbc7e2a50a3a780d3d6eb6899e45fe8dc4ca56708770b4731e481f55af599",
+    "node_modules/@js-temporal/polyfill/LICENSE": "ffc4aee7f1279fc0494ff2b27f6829e6b4d16c20aa93aa008c3bd8d8af176387",
+    "node_modules/jsbi/package.json": "756c2c1b6e80e9e8488fe7ad66403a8307b115a0dc141966e69adf41eb39efc6",
+    "node_modules/jsbi/dist/jsbi.mjs": "c0d70fb47e0818e31bdf964805a530d9a0fb4ee5bdadb442a13f3691a5f15583",
+    "node_modules/jsbi/dist/jsbi-cjs.js": "b952fc88337eae5d90b397da4251e207d816056ea4c574df576f17e68626dd94",
+    "node_modules/jsbi/jsbi.d.ts": "57c8f2881edb838ed1dfd43e61f81b063f0f85c4f874ad62dbd2fb230ef76bf2",
+    "node_modules/jsbi/LICENSE": "9568a2b155e66ac3e0ba1fd80b52b827b9460e6cf6f233125e7cbca8e206ddc3"
   },
   "neverExecutedLifecycleCommands": {
     "node_modules/@electron-internal/extract-zip": {
@@ -1889,6 +1944,13 @@
     },
     "node_modules/csstype": {
       "prepublish": "npm install --no-save --prefix __tests__ && npm install --no-save --prefix __tests__/__fixtures__"
+    },
+    "node_modules/@js-temporal/polyfill": {
+      "prepare": "npm run build",
+      "prepublishOnly": "node copy-types.mjs && npm run build"
+    },
+    "node_modules/jsbi": {
+      "prepublish": "npm run ci"
     }
   },
   "biomeReviewSha256": "1adfbb5c5970c1d1586e307e4a2124bce18d5dfe6d2235dfec5f0a88ab0f5722"

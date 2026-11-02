@@ -288,6 +288,18 @@ function syntheticPolicyPackage(packageRoot, approval = null) {
   write('runtime/node/LICENSE', 'SYNTHETIC-NODE-LICENSE');
   for (const name of ['react', 'react-dom', 'scheduler'])
     write(`licenses/${name}-LICENSE`, 'SYNTHETIC-REACT-LICENSE');
+  for (const name of Object.keys(admission.TIMEZONE_LICENSES))
+    write(
+      `licenses/${name}-LICENSE`,
+      readFileSync(
+        resolve(
+          dirname(fileURLToPath(import.meta.url)),
+          '../node_modules',
+          name === 'js-temporal-polyfill' ? '@js-temporal/polyfill' : 'jsbi',
+          'LICENSE',
+        ),
+      ),
+    );
   for (const name of admission.CLOSURE) write(`app/launch/${name}`, 'owned helper');
   for (const name of admission.NATIVE) write(`app/native/${name}`, 'owned helper');
   for (const name of admission.BUILD_OUTPUTS)
@@ -374,6 +386,8 @@ test('synthetic-hash policy composition admits closed package then rejects missi
       'runtime/node/LICENSE',
       'runtime/electron/LICENSE',
       'licenses/react-LICENSE',
+      'licenses/js-temporal-polyfill-LICENSE',
+      'licenses/jsbi-LICENSE',
     ]) {
       const file = resolve(p, name),
         original = readFileSync(file);

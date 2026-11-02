@@ -26,8 +26,8 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual one hundred twenty-four modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 124, runtimeInputs: 124 });
+test('actual one hundred twenty-five modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 125, runtimeInputs: 125 });
 });
 test('synthetic metadata stays unactivated and native owner has only the reviewed facade edge', () => {
   for (const [file, binding] of [
@@ -64,8 +64,8 @@ test('synthetic metadata stays unactivated and native owner has only the reviewe
     assert.deepEqual(incoming(wrong), ['main.ts', ...expected]);
   }
 });
-test('fleet stays in its exact role boundary and graph limit remains finite at one hundred twenty-four', async () => {
-  assert.equal(Object.keys(map.modules).length, 124);
+test('fleet stays in its exact role boundary and graph limit remains finite at one hundred twenty-five', async () => {
+  assert.equal(Object.keys(map.modules).length, 125);
   await assert.rejects(
     () =>
       validateGraph(actual(), {
@@ -418,7 +418,7 @@ test('actual absent installation fails after a passing owned metadata CLI contro
     const positive = spawnSync(process.execPath, [script, '--metadata', npm], options);
     assert.equal(positive.error, undefined);
     assert.equal(positive.status, 0);
-    assert.equal(positive.stdout.trim(), 'DEPENDENCIES_VERIFIED 78');
+    assert.equal(positive.stdout.trim(), 'DEPENDENCIES_VERIFIED 80');
     assert.equal(existsSync(join(directory, 'desktop/node_modules')), false);
     const absent = spawnSync(process.execPath, [script, '--installed', npm], options);
     assert.equal(absent.error, undefined);

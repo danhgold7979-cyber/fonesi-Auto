@@ -1,8 +1,8 @@
 # Phase Status — Fonesi-Auto
 
-**Phase07 — Scheduler and queue:** first independently reviewed fixed47-cell baseline: source3/47=6.4%, integrated3/47=6.4%, technical acceptance0/13. This first baseline is not a comparative progress jump. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
+**Phase07 — Scheduler and queue:** source5/47=10.6%, integrated5/47=10.6%, technical acceptance0/13. Exactly P7-02.A/B N→I: +2/47 (+4.26 percentage points) each versus6.4%/6.4%; fixed47-cell denominator unchanged. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
 
-**Current local Phase07 milestone:** P7-01/03 civil recurrence, slot editing and bounded preview are implemented and software-tested with preserved stitched failures/recoveries. No timezone resolution, persistence, queue, UI or dispatch. Sole local `phase-07` is based on local6cfe03f/public1bf3086c development source, not accepted main. No remote publication or native/physical acceptance claimed. No permission stop for this source lane.
+**Current local Phase07 milestone:** explicit supported-zone resolution now composes the actual civil model with pinned Temporal0.5.1/JSBI4.3.2, preserving gap-skip/earlier-overlap, planned ordinals, runtime attribution and immutable UTC results. Actual14 resolver cases and stitched integrated source checks pass; original failures/recoveries remain recorded. [Evidence](evidence/P7-02-timezone-resolution-2026-11-02.md). No Electron, persistence, queue, UI or dispatch activation. Sole local `phase-07`; no remote publication or task acceptance claimed. **Stop reason / required action:** none; this bounded source milestone is complete, later scheduler integration retains its actual dependencies.
 
 ## Inherited Phase03 history at branch base
 

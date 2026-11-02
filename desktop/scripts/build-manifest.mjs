@@ -63,6 +63,7 @@ export const inputs = [
   'src/foundation-bridge.ts',
   'src/association-contract.ts',
   'src/schedule-civil-contract.ts',
+  'src/schedule-zone-contract.ts',
   'src/input-interaction-contract.ts',
   'src/input-interaction-client.ts',
   'src/input-interaction-bridge.ts',

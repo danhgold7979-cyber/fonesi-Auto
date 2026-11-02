@@ -72,17 +72,18 @@ References identify the canonical task row: **D** deliverable/positive behavior,
 
 Distribution checksum: **4 + 4 + 3 + 2 + 4 + 4 + 4 + 2 + 3 + 5 + 4 + 3 + 5 = 47**. Every canonical task has explicit functional coverage. Harness cells correspond to canonical executable simulation/comparison/fault-injection deliverables, not a cell for each authored test. P7-02 implements timezone behavior; P7-12 implements its cross-path and packaged-runtime regression coverage, not a second timezone engine. Device/account claim semantics in P7-06/07 do not substitute for P7-13 crash/expiry/fencing safety.
 
-## 3. Adopted evidence overlay — first baseline
+## 3. Adopted evidence overlay — baseline and timezone continuation
 
-Current sole local `phase-07` is based on local `6cfe03f25722dcb77fc34c548a79eed43382a765`, corresponding published development `1bf3086c71117d9a4809eae8be48f4eab7758848`, tree `a4e4f8671da3c81f062102cfb32a92a6842cdb02`; it is not accepted main. The source-entry review permits only the civil recurrence/N-slot model. The actual model/edit/preview composition and integrated registration/checks are now terminal and independently reviewed, with stitched attribution below.
+Current sole local `phase-07` is based on local `6cfe03f25722dcb77fc34c548a79eed43382a765`, corresponding published development `1bf3086c71117d9a4809eae8be48f4eab7758848`, tree `a4e4f8671da3c81f062102cfb32a92a6842cdb02`; it is not accepted main. The initial source-entry review permitted the civil recurrence/N-slot model; the [subsequent adopted timezone entry](P7-TIMEZONE-SOURCE-ENTRY.md) permits the explicit supplied resolver and exact dependency/notice integration. The actual model/edit/preview composition and integrated registration/checks are now terminal and independently reviewed, with stitched attribution below.
 
 | Cells | Status | Existing behavior and exact limit |
 |---|---|---|
 | P7-01.A/B | I | Actual `schedule-civil-contract.ts` snapshots a closed immutable `CIVIL_RULE` schema and computes bounded `CIVIL_INTENT` occurrences. Gregorian arithmetic preserves original anchor, inclusive end and planned-slot ordinal/max across preview windows. No Date/Intl/zone/clock/job/success input can substitute host time or create replacement work. This is civil intent only, not the full timezone-bearing durable schedule. |
 | P7-03.A | I | Actual `editCivilSlots` validates the complete explicit replacement, exact ordered discard acknowledgement and stable retained ID/time pairs. Reorder preserves chronological preview identities. The 1440 representational ceiling is minute-domain uniqueness, not an approved posting/product maximum; P7-03.B remains N. |
-| All other 44 cells | N | No complete behavior evidenced here. No credit for future DB/queue/lease/UI types, inherited actor/persistence primitives, or reuse of civil preview as executable P7-11 generation. |
+| P7-02.A/B | I | Explicit supported IANA-zone admission/default identity and actual civil→Temporal→immutable UTC/gap/fold composition, with exact runtime/dependency attribution and no host-zone fallback. Only admitted Node profile; Electron/persistence/job integration remains unavailable. |
+| All other 42 cells | N | No complete behavior evidenced here. No credit for future DB/queue/lease/UI types, inherited actor/persistence primitives, or reuse of civil preview as executable P7-11 generation. |
 
-**Current counts: N44/S0/I3, total47. Source6.4%, integrated6.4%, acceptance0/13.** Exactly P7-01.A/B and P7-03.A qualify as I through actual declared pure API composition and attributable source tests, without waiting for unrelated timezone/hardware. This is the first adopted baseline, not +6.4pp new work against a prior adopted denominator.
+**Current counts: N42/S0/I5, total47. Source5/47=10.6%, integrated5/47=10.6%, acceptance0/13.** Independent final review permits exactly P7-02.A/B N→I, +2/47 (+4.26 percentage points) in each measure versus preserved initial N44/S0/I3 baseline6.4%/6.4%. P7-01.A/B and P7-03.A remain I. No P7-02.C/D or P7-12 credit; denominator unchanged. [Timezone source evidence](../evidence/P7-02-timezone-resolution-2026-11-02.md) records actual14 resolver cases, dependency review and stitched integrated validation, not an uninterrupted aggregate.
 
 [Exact source/integration evidence](../evidence/P7-01-03-civil-model-2026-11-02.md) preserves original batch3 ordinal21 failure (cause unestablished), isolated23/composed87 PASS, batches4–16 953PASS, batch17 sorted-registration failure corrected with5/5 affected PASS, untouched18–23 353PASS, and all seven final refresh stages PASS. No uninterrupted aggregate PASS is claimed. Graph124/map65114bytes; test inventory179; quality538+2 bound540/refusal541.
 
@@ -93,7 +94,7 @@ Read-only source identities at drafting:
 
 ## 4. Acceptance and unresolved scope
 
-**Formal acceptance remains0/13.** Even complete civil source does not accept P7-01 or P7-03: full ScheduleProfile persistence/migration and compatible revision recovery, selectable IANA resolution/versioning, V9 editor/product limits and downstream calendar/job integration remain open. P7-04 advisory behavior is not implemented by accepting close civil times. P7-11 idempotency/transactional generation is not implemented by deterministic in-memory preview.
+**Formal acceptance remains0/13.** Even complete civil source does not accept P7-01 or P7-03: full ScheduleProfile persistence/migration and compatible revision recovery, packaged/persisted IANA resolution/versioning, V9 editor/product limits and downstream calendar/job integration remain open. P7-04 advisory behavior is not implemented by accepting close civil times. P7-11 idempotency/transactional generation is not implemented by deterministic in-memory preview.
 
 Phase1 durable transactions/backup, Phase2 actor ownership, Phase5 verified global principal, Phase6 immutable media/content, timezone data/package compatibility and safe dummy-runner integrations remain their actual dependencies. Whole-workflow phone exclusion, cross-phone same-principal exclusion, no catch-up flood, unknown-effect reconciliation and restore quarantine require their own software and later runtime evidence. No timers, queue, DB records, IPC, UI, native/device commands or social actions are activated by this ledger or the civil model.
 

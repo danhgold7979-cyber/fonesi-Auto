@@ -32,6 +32,7 @@ import {
   NODE_SHA,
   NODE_LICENSE_SHA,
   REACT_LICENSE_SHA,
+  TIMEZONE_LICENSES,
   CLOSURE,
   NATIVE,
 } from './package-manifest.mjs';
@@ -413,6 +414,14 @@ export async function buildPackage({
       join(stage, 'licenses', name + '-LICENSE'),
     );
     if (copied.sha256 !== REACT_LICENSE_SHA) fail();
+  }
+  for (const [name, hash] of Object.entries(TIMEZONE_LICENSES)) {
+    const dependency = name === 'js-temporal-polyfill' ? '@js-temporal/polyfill' : 'jsbi';
+    const copied = copy(
+      join(desktop, 'node_modules', dependency, 'LICENSE'),
+      join(stage, 'licenses', name + '-LICENSE'),
+    );
+    if (copied.sha256 !== hash) fail();
   }
   const build = JSON.parse(readFileSync(join(desktop, 'build/.verified-build.json'), 'utf8'));
   if (Object.keys(build.inputs).length !== inputs.length) fail();

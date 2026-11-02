@@ -8,6 +8,10 @@ const fs = require(process.versions.electron ? 'original-fs' : 'node:fs'),
   { isDeepStrictEqual } = require('node:util');
 const NODE_SHA = 'd702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5';
 const NODE_LICENSE_SHA = '5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace';
+const TIMEZONE_LICENSES = Object.freeze({
+  'js-temporal-polyfill': 'ffc4aee7f1279fc0494ff2b27f6829e6b4d16c20aa93aa008c3bd8d8af176387',
+  jsbi: '9568a2b155e66ac3e0ba1fd80b52b827b9460e6cf6f233125e7cbca8e206ddc3',
+});
 const REACT_LICENSE_SHA = 'da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93';
 const MAX_BYTES = 640 * 1024 * 1024;
 const BUILD_OUTPUTS = [
@@ -612,6 +616,7 @@ function verifyPackage(root) {
     'app/build/.verified-build.json',
     ...PROVENANCE.map((n) => 'provenance/' + n),
     ...['react', 'react-dom', 'scheduler'].map((n) => 'licenses/' + n + '-LICENSE'),
+    ...Object.keys(TIMEZONE_LICENSES).map((n) => 'licenses/' + n + '-LICENSE'),
     ...runtimeFiles,
     ...(manifest.version === 2 ? RETAINED_PAIR_ADDITIONS : []),
   ].sort();
@@ -632,6 +637,8 @@ function verifyPackage(root) {
     fail();
   for (const name of ['react', 'react-dom', 'scheduler'])
     if (byName.get('licenses/' + name + '-LICENSE').sha256 !== REACT_LICENSE_SHA) fail();
+  for (const [name, hash] of Object.entries(TIMEZONE_LICENSES))
+    if (byName.get('licenses/' + name + '-LICENSE').sha256 !== hash) fail();
   const allowedDirs = new Set(
     runtime.entries.filter((e) => e.kind === 'directory').map((e) => 'runtime/electron/' + e.name),
   );
@@ -743,6 +750,7 @@ module.exports = {
   NODE_SHA,
   NODE_LICENSE_SHA,
   REACT_LICENSE_SHA,
+  TIMEZONE_LICENSES,
   BUILD_OUTPUTS,
   CLOSURE,
   NATIVE,

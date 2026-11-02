@@ -2638,6 +2638,7 @@
   "schedule-civil-contract.ts": {
    "role": "contract",
    "imports": {}
-  }
+  },
+  "schedule-zone-contract.ts": {"role":"contract","imports":{"@js-temporal/polyfill":{"Temporal":"value"},"node:process":{"versions":"value","env":"value","execArgv":"value"},"node:crypto":{"createHash":"value"},"./schedule-civil-contract.js":{"previewCivilOccurrences":"value","CivilOccurrence":"type","PreviewCode":"type"}}}
  }
 }

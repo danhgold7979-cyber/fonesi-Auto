@@ -442,6 +442,7 @@ test('leaf has no effect imports or production activation', () => {
       if (entry.isDirectory()) walk(path);
       else if (
         /\.[cm]?[jt]sx?$/.test(entry.name) &&
+        entry.name !== 'schedule-zone-contract.ts' &&
         fileURLToPath(path) !==
           fileURLToPath(new URL('../src/schedule-civil-contract.ts', import.meta.url))
       )
