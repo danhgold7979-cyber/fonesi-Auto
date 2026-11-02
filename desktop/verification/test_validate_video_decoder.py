@@ -94,12 +94,21 @@ class VideoDecoderSourceTests(unittest.TestCase):
 
     def test_tree_missing_link_and_oversize(self):
         with tempfile.TemporaryDirectory(prefix='decoder-source-test-') as directory:
-            root = Path(directory)
+            requested = Path(directory)
+            root = requested.resolve(strict=True)
+            # Windows TEMP may use an 8.3 spelling. Canonicalize only this owned
+            # test fixture; the validator must continue rejecting alias inputs.
+            if root != requested.absolute():
+                print('VIDEO_DECODER_TEST_TEMP_ALIAS_CANONICALIZED')
             base = root / 'desktop/verification'
             base.mkdir(parents=True)
             for name, source in self.sources.items():
                 (base / name).write_text(source, encoding='utf-8')
             self.assertTrue(boundary.validate_tree(root))
+            if root != requested.absolute():
+                with self.assertRaises(ValueError):
+                    boundary.validate_tree(requested)
+                print('VIDEO_DECODER_TEST_TEMP_ALIAS_REJECTED')
             file = base / boundary.FILES[0]
             file.unlink()
             with self.assertRaises(OSError):
