@@ -1,3 +1,4 @@
+import { createInputInteractionClient } from './input-interaction-client.js';
 import { createAssociationClient } from './association-client.js';
 import { createMetadataClient } from './metadata-client.js';
 import { createDiscoveryClient } from './discovery-client.js';
@@ -61,24 +62,47 @@ const association = createAssociationClient(
   undefined,
   readiness,
 );
+const input = createInputInteractionClient(
+  (wire) => ipcRenderer.invoke('foundation:input:v1', wire),
+  budget,
+  undefined,
+  readiness,
+);
+contextBridge.exposeInMainWorld(
+  'input',
+  Object.freeze({
+    get: () => input.get(),
+    press: (
+      revision: unknown,
+      selectionRevision: unknown,
+      registryRevision: unknown,
+      deviceId: unknown,
+      action: unknown,
+    ) => input.press(revision, selectionRevision, registryRevision, deviceId, action),
+  }),
+);
 contextBridge.exposeInMainWorld(
   'association',
   Object.freeze({
     get: () => association.get(),
     candidates: () => association.candidates(),
     begin: (revision: unknown, candidateId: unknown, mode: unknown, deviceId?: unknown) => {
+      input.invalidateObservation();
       metadata.invalidateObservation();
       return association.begin(revision, candidateId, mode, deviceId);
     },
     removal: (revision: unknown, ceremonyId: unknown) => {
+      input.invalidateObservation();
       metadata.invalidateObservation();
       return association.removal(revision, ceremonyId);
     },
     return: (revision: unknown, ceremonyId: unknown) => {
+      input.invalidateObservation();
       metadata.invalidateObservation();
       return association.return(revision, ceremonyId);
     },
     confirm: (revision: unknown, ceremonyId: unknown) => {
+      input.invalidateObservation();
       metadata.invalidateObservation();
       return association.confirm(revision, ceremonyId);
     },
@@ -98,16 +122,19 @@ contextBridge.exposeInMainWorld(
   Object.freeze({
     get: () => discovery.get(),
     start: (revision: unknown, installationRevision: unknown) => {
+      input.invalidateObservation();
       metadata.invalidateObservation();
       association.invalidateObservation();
       return discovery.start(revision, installationRevision);
     },
     refresh: (revision: unknown) => {
+      input.invalidateObservation();
       metadata.invalidateObservation();
       association.invalidateObservation();
       return discovery.refresh(revision);
     },
     stop: () => {
+      input.invalidateObservation();
       metadata.invalidateObservation();
       association.invalidateObservation();
       return discovery.stop();
@@ -124,11 +151,13 @@ contextBridge.exposeInMainWorld(
     requestSetup: (revision: unknown) => {
       runtimeVersion.invalidateObservation();
       discovery.invalidateObservation();
+      input.invalidateObservation();
       metadata.invalidateObservation();
       association.invalidateObservation();
       return platformTools.requestSetup(revision).finally(() => {
         runtimeVersion.invalidateObservation();
         discovery.invalidateObservation();
+        input.invalidateObservation();
         metadata.invalidateObservation();
         association.invalidateObservation();
       });
@@ -139,8 +168,10 @@ contextBridge.exposeInMainWorld(
   'fleet',
   Object.freeze({
     read: () => fleet.read(),
-    replaceSelection: (revision: unknown, selection: unknown) =>
-      fleet.replaceSelection(revision, selection),
+    replaceSelection: (revision: unknown, selection: unknown) => {
+      input.invalidateObservation();
+      return fleet.replaceSelection(revision, selection);
+    },
   }),
 );
 contextBridge.exposeInMainWorld(
@@ -171,6 +202,7 @@ window.addEventListener(
     runtimeVersion.dispose();
     discovery.dispose();
     metadata.dispose();
+    input.dispose();
     association.dispose();
   },
   { once: true },

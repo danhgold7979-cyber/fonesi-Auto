@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { transformSync } from 'esbuild';
+import { ApplicationLogger } from '../src/main/logging.ts';
 import { FoundationDatabase } from '../src/main/foundation-database.ts';
 import { createDurableCoordinator } from '../src/main/durable-coordinator.ts';
 import { createRegistryStore } from '../src/main/registry-store.ts';
@@ -55,7 +56,7 @@ const { createAdbDiscoveryService } = await import(ingestUrl);
 const ownerPath = new URL('../src/main/owned-transport-metadata.ts', import.meta.url);
 const ownerUrl = moduleUrl(
   readFileSync(ownerPath, 'utf8')
-    .replace("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
+    .replaceAll("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
     .replace('const systemClock = Date.now,', 'const systemClock = () => 1000,'),
   ownerPath,
 );
@@ -64,7 +65,7 @@ const { createDiscoverySessionService } = await import(
   moduleUrl(
     readFileSync(facadePath, 'utf8')
       .replace("'./adb-server-service.ts'", JSON.stringify(serverUrl))
-      .replace("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
+      .replaceAll("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
       .replace("'./owned-transport-metadata.ts'", JSON.stringify(ownerUrl))
       // Explicit test-only capacity injection exercises the actual closed exhaustion branch.
       .replace(
@@ -163,7 +164,14 @@ async function fixture(extra = {}) {
       return { ok: true, status: 'RETIRED' };
     },
   };
+  const ownerToken = randomUUID();
+  writeFileSync(join(root, '.owner'), ownerToken, { flag: 'wx' });
+  const logger = await ApplicationLogger.open(
+    { root: join(root, 'logs-main'), parentToken: ownerToken },
+    () => {},
+  );
   const facade = createDiscoverySessionService({
+    logger,
     custody,
     assertOwnedSync: () => extra.owner?.(),
     clock: () => extra.clock?.() ?? 1000,
@@ -361,6 +369,7 @@ async function fixture(extra = {}) {
     },
     async cleanup() {
       await facade.close();
+      await logger.close();
       registry.close();
       await coordinator.close();
       db.close();

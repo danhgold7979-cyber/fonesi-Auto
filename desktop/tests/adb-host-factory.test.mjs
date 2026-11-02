@@ -1226,3 +1226,67 @@ test('discovery epoch observation tolerates pending HEALTH but final holder witn
     f.cleanup();
   }
 });
+
+test('synthetic recognition: factory forwards internal held-token fence after final owner callback before INPUT pipe write', async () => {
+  const { fleetActiveFixture } = await import('./fixtures/fleet-active-input.mjs');
+  const fleet = await fleetActiveFixture();
+  const sourceUrl = new URL('../src/main/adb-host-factory.ts', import.meta.url);
+  let source = readFileSync(sourceUrl, 'utf8');
+  const seam = 'if (real) realFactories.add(factory);';
+  assert.equal(source.split(seam).length, 2);
+  source = source
+    .replace(seam, 'realFactories.add(factory); /* SYNTHETIC_FACTORY_RECOGNITION_ONLY */')
+    .replace(/from '(\.\/[^']+)'/g, (_, relative) => `from '${new URL(relative, sourceUrl).href}'`);
+  const transformed = await import(
+    `data:text/javascript;base64,${Buffer.from(transformSync(source, { loader: 'ts', format: 'esm', target: 'es2022' }).code).toString('base64')}`
+  );
+  let armed = false,
+    calls = 0,
+    inputWrites = 0;
+  const f = fixture({
+    createFactory: transformed.createHostFactory,
+    operationSet: 'SERVER_ONLY',
+    ownerCallback() {
+      if (armed && ++calls === 6) f.invalidateRead();
+    },
+    request(q) {
+      if (q.operation === 'INPUT') inputWrites++;
+    },
+    facts(q) {
+      return {
+        version: 2,
+        kind: 'SESSION',
+        dispatched: true,
+        jobState: q.operation === 'RETIRE' ? 'RETIRED' : 'LIVE',
+        exitCode: q.operation === 'RETIRE' ? 1 : null,
+        endpointState: q.operation === 'RETIRE' ? 'ABSENT' : 'OWNED',
+        observation: q.operation === 'RETIRE' ? 'STOPPED' : 'STARTED',
+      };
+    },
+  });
+  try {
+    assert.equal((await f.factory.execute(f.cap, f.request('SERVER_START'))).outcome, 'OBSERVED');
+    armed = true;
+    const query = f.factory.acquireInput(
+      f.cap,
+      Object.freeze({
+        transportId: '1',
+        action: 'HOME',
+        deadlineUtc: 2000,
+        activeIntent: fleet.capture().intent,
+      }),
+    );
+    await assert.rejects(query.result);
+    assert.equal(calls, 6);
+    assert.equal(inputWrites, 0);
+    assert.equal(query.handoff, 'QUERY');
+    assert.deepEqual(await query.retirement, { status: 'UNRETIRED' });
+    assert.equal(f.spawns, 1);
+    armed = false;
+    f.restoreRead();
+    assert.equal(await f.factory.close(), 'RETIRED');
+  } finally {
+    await fleet.service.close();
+    f.cleanup();
+  }
+});

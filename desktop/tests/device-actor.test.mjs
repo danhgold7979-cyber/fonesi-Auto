@@ -1169,3 +1169,38 @@ test('v4 timeout starts one unknown RESULT independently and retains query plus 
   assert.equal(events.length, 2);
   assert.equal(await f.actor.shutdown(), false);
 });
+
+test('v4 final witness receives the exact normalized request before and after held INTENT', async () => {
+  const held = deferred();
+  let valid = true;
+  const seen = [];
+  let dispatched = 0;
+  const f = inputFixture({
+    finalCurrent: (r) => {
+      seen.push(r);
+      return valid;
+    },
+    audit: async (_r, phase) => {
+      if (phase === 'INTENT') await held.promise;
+      return Object.freeze({ phase, loggingHealth: 'AVAILABLE' });
+    },
+    dispatch: () => {
+      dispatched++;
+      return inputHandle();
+    },
+  });
+  const original = f.request();
+  const work = f.actor.execute(f.cap, original);
+  await tick();
+  valid = false;
+  held.resolve();
+  const result = await work;
+  assert.equal(result.outcome, 'NOT_DISPATCHED');
+  assert.equal(result.code, 'STALE_BINDING');
+  assert.equal(dispatched, 0);
+  assert.ok(seen.length >= 2);
+  assert.ok(seen.every((r) => r === seen[0]));
+  assert.notEqual(seen[0], original);
+  assert.equal(seen[0].commandId, original.commandId);
+  await f.actor.shutdown();
+});

@@ -957,7 +957,32 @@ async function exerciseNativeIssuer(verified = false) {
       assert.equal(inputRecord.ownerAnchor, target.ownerAnchor);
       assert.deepEqual(inputRecord.target, target.target);
       assert.throws(() => inputRecord.begin('TAP', 1100));
-      const h = inputRecord.begin('HOME', 1100);
+      assert.throws(() => inputRecord.begin('HOME', 1100));
+      const fleet = createFleetService({
+        registry: () => ingestion.snapshot(),
+        assertOwnedSync: () => {},
+        newDiagnostic: () => id(9000),
+        audit: async () => 'AVAILABLE',
+        availability: () => 'OBSERVED',
+      });
+      const cap = fleet.grant(() => {});
+      const selected = JSON.parse(
+        await fleet.execute(cap, {
+          version: 1,
+          requestId: 'f1',
+          method: 'fleet.selection.replace',
+          expectedRevision: 0,
+          selection: { selectedDeviceIds: [], activeDeviceId: deviceId, groups: [] },
+        }),
+      );
+      assert.equal(selected.ok, true);
+      const intent = fleet.captureActiveInputIntent({
+        expectedSelectionRevision: 1,
+        expectedRegistryRevision: ingestion.snapshot().revision,
+        deviceId,
+      });
+      assert.equal(intent.ok, true);
+      const h = inputRecord.begin('HOME', 1100, intent.intent);
       assert.equal(h.handoff, 'QUERY');
       assert.equal((await h.result).kind, 'INPUT_QUERY');
       assert.equal((await h.retirement).status, 'RETIRED');

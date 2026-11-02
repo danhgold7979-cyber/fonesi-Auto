@@ -9,6 +9,26 @@ import {
   type FleetSnapshot,
   type FleetErrorCode,
 } from '../fleet-contract.ts';
+export type OwnedFleetActiveIntent = Readonly<{ fleetActiveInput: true }>;
+export type FleetActiveIntentCode =
+  | 'CLOSED'
+  | 'BUSY'
+  | 'STALE_SELECTION'
+  | 'STALE_REGISTRY'
+  | 'NO_ACTIVE_TARGET'
+  | 'MEMBER_UNAVAILABLE'
+  | 'OWNER_REVOKED'
+  | 'LIMIT_EXCEEDED';
+export type FleetActiveIntentRecord = Readonly<{
+  projection: RegistrySnapshot;
+  selectionRevision: number;
+  binding: Readonly<{ deviceId: string; bindingId: string; generation: number; serial: string }>;
+  finalCurrent(): boolean;
+}>;
+const activeIntents = new WeakMap<object, FleetActiveIntentRecord>();
+export function inspectFleetActiveInputIntent(value: unknown): FleetActiveIntentRecord | null {
+  return value !== null && typeof value === 'object' ? (activeIntents.get(value) ?? null) : null;
+}
 type Health = 'AVAILABLE' | 'DEGRADED';
 export type FleetAudit = Readonly<{
   operation: 'READ' | 'SELECT';
@@ -60,6 +80,7 @@ export function createFleetService(options: FleetServiceOptions) {
   const labels = new Map<string, string>();
   let closed = false,
     busy = false;
+  let activeIntentCount = 0;
   let active: Promise<string> | null = null;
   let closing: Promise<void> | null = null;
   function admit(cap: FleetCapability) {
@@ -253,6 +274,92 @@ export function createFleetService(options: FleetServiceOptions) {
     }
   }
   return Object.freeze({
+    captureActiveInputIntent(
+      input: unknown,
+    ):
+      | Readonly<{ ok: true; intent: OwnedFleetActiveIntent }>
+      | Readonly<{ ok: false; code: FleetActiveIntentCode }> {
+      const refuse = (code: FleetActiveIntentCode) => Object.freeze({ ok: false as const, code });
+      if (closed) return refuse('CLOSED');
+      if (busy) return refuse('BUSY');
+      if (activeIntentCount >= 65536) return refuse('LIMIT_EXCEEDED');
+      busy = true;
+      try {
+        if (
+          !input ||
+          typeof input !== 'object' ||
+          ![Object.prototype, null].includes(Object.getPrototypeOf(input))
+        )
+          return refuse('MEMBER_UNAVAILABLE');
+        const d = Object.getOwnPropertyDescriptors(input);
+        const keys = ['expectedSelectionRevision', 'expectedRegistryRevision', 'deviceId'];
+        if (
+          Reflect.ownKeys(d).length !== 3 ||
+          keys.some((k) => !d[k] || !Object.hasOwn(d[k], 'value') || !d[k].enumerable)
+        )
+          return refuse('MEMBER_UNAVAILABLE');
+        const wanted = d.deviceId?.value,
+          selectionRevision = d.expectedSelectionRevision?.value,
+          registryRevision = d.expectedRegistryRevision?.value;
+        if (!uuid(wanted)) return refuse('MEMBER_UNAVAILABLE');
+        owned();
+        const r = current(),
+          state = selection.snapshot();
+        if (
+          !Number.isSafeInteger(selectionRevision) ||
+          Object.is(selectionRevision, -0) ||
+          selectionRevision !== state.revision
+        )
+          return refuse('STALE_SELECTION');
+        if (
+          !Number.isSafeInteger(registryRevision) ||
+          Object.is(registryRevision, -0) ||
+          registryRevision !== r.revision
+        )
+          return refuse('STALE_REGISTRY');
+        if (availability() !== 'OBSERVED') return refuse('MEMBER_UNAVAILABLE');
+        if (state.activeDeviceId === null) return refuse('NO_ACTIVE_TARGET');
+        if (state.activeDeviceId !== wanted) return refuse('MEMBER_UNAVAILABLE');
+        const planned = selection.plan(
+          { expectedRevision: state.revision, scope: 'ACTIVE', groupId: null },
+          r,
+        );
+        if (!planned.ok || planned.plan.bindings.length !== 1) return refuse('MEMBER_UNAVAILABLE');
+        const binding = planned.plan.bindings[0];
+        if (!binding || binding.deviceId !== wanted) return refuse('MEMBER_UNAVAILABLE');
+        owned();
+        if (registry() !== r) return refuse('STALE_REGISTRY');
+        owned();
+        if (finalProjection && !finalProjection(r)) return refuse('STALE_REGISTRY');
+        owned();
+        if (closed) return refuse('CLOSED');
+        if (selection.snapshot() !== state || !selection.isCurrentPlan(planned.plan))
+          return refuse('STALE_SELECTION');
+        const intent = Object.freeze({ fleetActiveInput: true as const });
+        activeIntentCount++;
+        activeIntents.set(
+          intent,
+          Object.freeze({
+            projection: r,
+            selectionRevision: state.revision,
+            binding,
+            finalCurrent: () =>
+              !closed && selection.snapshot() === state && selection.isCurrentPlan(planned.plan),
+          }),
+        );
+        return Object.freeze({ ok: true, intent });
+      } catch (error) {
+        return refuse(
+          error instanceof Fault
+            ? error.code === 'LIMIT_EXCEEDED'
+              ? 'LIMIT_EXCEEDED'
+              : 'MEMBER_UNAVAILABLE'
+            : 'OWNER_REVOKED',
+        );
+      } finally {
+        busy = false;
+      }
+    },
     grant(check: () => void): FleetCapability {
       if (closed || typeof check !== 'function') throw new Error('FLEET_OPTIONS');
       const cap = Object.freeze({ fleetCaller: true as const });

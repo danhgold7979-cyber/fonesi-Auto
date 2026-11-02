@@ -1,3 +1,5 @@
+import * as inputClient from '../src/input-interaction-client.ts';
+import * as inputContract from '../src/input-interaction-contract.ts';
 import * as associationClient from '../src/association-client.ts';
 import * as associationContract from '../src/association-contract.ts';
 import * as metadataClient from '../src/metadata-client.ts';
@@ -164,6 +166,7 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
   const modules = {
     './association-client.js': associationClient,
     './association-contract.js': associationContract,
+    './input-interaction-client.js': inputClient,
     './metadata-client.js': metadataClient,
     './discovery-client.js': discoveryClient,
     './preload-client.js': clients,
@@ -322,6 +325,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
           }),
         };
       if (name === './association-contract.js') return associationContract;
+      if (name === './input-interaction-contract.js') return inputContract;
       if (name === './metadata-contract.js') return metadataContract;
       if (name === './runtime-version-contract.js') return versionContract;
       if (name === './discovery-contract.js') return discoveryContract;

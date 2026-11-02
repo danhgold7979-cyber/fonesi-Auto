@@ -1,3 +1,4 @@
+import { fleetActiveFixture } from './fixtures/fleet-active-input.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHostAdapter, snapshotHostAcquisitionFacts } from '../src/main/adb-host-adapter.ts';
@@ -53,6 +54,10 @@ function fixture(extra = {}) {
       adbPath: '/synthetic/adb.exe',
     });
   const custody = {
+    assertReadInternal(token) {
+      assert.equal(token, read);
+      assert.equal(held, true);
+    },
     assertRead(token) {
       assert.equal(token, read);
       assert.equal(held, true);
@@ -113,6 +118,7 @@ function fixture(extra = {}) {
     operationSet: extra.operationSet,
     assertOwnedSync() {
       if (!owned) throw Error('private');
+      extra.owned?.();
     },
     now: () => now,
     diagnosticId: () => id(n++),
@@ -827,6 +833,8 @@ const inputFacts = () => ({
   observedAtUtc: 1000,
 });
 test('input shares exact foreground custody and ordinary lane without process-result coercion', async () => {
+  const fleet = await fleetActiveFixture(),
+    activeIntent = fleet.capture().intent;
   const pending = deferred();
   let calls = 0;
   const f = fixture({
@@ -840,7 +848,7 @@ test('input shares exact foreground custody and ordinary lane without process-re
     },
   });
   await f.adapter.execute(f.cap, f.request('SERVER_START'));
-  const request = { transportId: '2', action: 'HOME', deadlineUtc: 2000 },
+  const request = { transportId: '2', action: 'HOME', deadlineUtc: 2000, activeIntent },
     h = f.adapter.acquireInput(f.cap, request);
   assert.equal(h.handoff, 'QUERY');
   request.transportId = '3';
@@ -861,6 +869,8 @@ test('input shares exact foreground custody and ordinary lane without process-re
   assert.equal(f.released(), 1);
 });
 test('input late unretired completion invalidates early cleanup and requires fresh confirmation', async () => {
+  const fleet = await fleetActiveFixture(),
+    activeIntent = fleet.capture().intent;
   const pending = deferred();
   let retires = 0;
   const f = fixture({
@@ -875,6 +885,7 @@ test('input late unretired completion invalidates early cleanup and requires fre
   });
   await f.adapter.execute(f.cap, f.request('SERVER_START'));
   const h = f.adapter.acquireInput(f.cap, {
+    activeIntent,
     transportId: '1',
     action: 'HOME',
     deadlineUtc: 2000,
@@ -898,4 +909,95 @@ test('input late unretired completion invalidates early cleanup and requires fre
   assert.equal(await closing, 'UNRETIRED');
   assert.equal(retires, 2);
   assert.equal(f.released(), 0);
+});
+
+test('input held custody revalidation observes actual Fleet selection change: zero provider and conservative QUERY cleanup', async () => {
+  const fleet = await fleetActiveFixture(),
+    activeIntent = fleet.capture().intent,
+    gate = deferred();
+  let providerCalls = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    custody: {
+      revalidateRead: async (token) => {
+        await gate.promise;
+        return { ok: true, token, observation: { release: '37.0.1', installationRevision: 1 } };
+      },
+    },
+    provider: {
+      input() {
+        providerCalls++;
+        return Promise.resolve(inputFacts());
+      },
+    },
+  });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const query = f.adapter.acquireInput(f.cap, {
+    transportId: '1',
+    action: 'HOME',
+    deadlineUtc: 2000,
+    activeIntent,
+  });
+  const result = assert.rejects(query.result, /HOST_DISCOVERY_REJECTED/);
+  await tick();
+  await fleet.select(fleet.devices[1]);
+  gate.resolve();
+  await result;
+  assert.equal(query.handoff, 'QUERY');
+  assert.equal(providerCalls, 0);
+  assert.deepEqual(await query.retirement, { status: 'UNRETIRED' });
+  assert.equal(f.held(), true);
+  assert.equal(await f.adapter.close(), 'RETIRED');
+  assert.equal(f.released(), 1);
+  await fleet.service.close();
+});
+test('input final owned callback invalidates held token after ordinary assertRead: internal assertion blocks provider', async () => {
+  const fleet = await fleetActiveFixture(),
+    activeIntent = fleet.capture().intent;
+  let afterRevalidation = false,
+    ownerCalls = 0,
+    valid = true,
+    providerCalls = 0,
+    internalCalls = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    owned() {
+      if (afterRevalidation && ++ownerCalls === 3) valid = false;
+    },
+    custody: {
+      revalidateRead: async (token) => {
+        afterRevalidation = true;
+        return { ok: true, token, observation: { release: '37.0.1', installationRevision: 1 } };
+      },
+      assertRead() {
+        assert.equal(valid, true);
+      },
+      assertReadInternal() {
+        internalCalls++;
+        if (!valid) throw Error('HELD_TOKEN_REVOKED');
+      },
+    },
+    provider: {
+      input() {
+        providerCalls++;
+        return Promise.resolve(inputFacts());
+      },
+    },
+  });
+  await f.adapter.execute(f.cap, f.request('SERVER_START'));
+  const query = f.adapter.acquireInput(f.cap, {
+    transportId: '1',
+    action: 'HOME',
+    deadlineUtc: 2000,
+    activeIntent,
+  });
+  await assert.rejects(query.result, /HELD_TOKEN_REVOKED/);
+  assert.equal(ownerCalls, 3);
+  assert.equal(internalCalls, 1);
+  assert.equal(providerCalls, 0);
+  assert.equal(query.handoff, 'QUERY');
+  assert.deepEqual(await query.retirement, { status: 'UNRETIRED' });
+  assert.equal(await f.adapter.close(), 'RETIRED');
+  assert.equal(f.released(), 1);
+  await fleet.service.close();
 });

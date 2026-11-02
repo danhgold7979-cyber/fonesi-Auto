@@ -1,3 +1,4 @@
+import { inspectFleetActiveInputIntent } from './fleet-service.ts';
 import {
   snapshotInputQueryFacts,
   validInputAction,
@@ -153,7 +154,7 @@ export function createHostAdapter(
   options: Readonly<{
     runtimeCustody: Pick<
       PlatformToolsRuntimeCustody,
-      'acquireRead' | 'revalidateRead' | 'assertRead' | 'releaseRead'
+      'acquireRead' | 'revalidateRead' | 'assertRead' | 'assertReadInternal' | 'releaseRead'
     >;
     nativeProvider: HostNativeProvider;
     operationSet?: 'VERSION_ONLY' | 'SERVER_ONLY';
@@ -372,12 +373,13 @@ export function createHostAdapter(
     let deadlineUtc: unknown;
     let transportId: unknown;
     let field: unknown;
+    let activeIntent: unknown;
     let validRequest = false;
     try {
       if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
         const d = Object.getOwnPropertyDescriptors(raw);
         if (
-          Reflect.ownKeys(d).length === (kind !== 'DISCOVER' ? 3 : 1) &&
+          Reflect.ownKeys(d).length === (kind === 'INPUT' ? 4 : kind === 'METADATA' ? 3 : 1) &&
           d.deadlineUtc &&
           'value' in d.deadlineUtc &&
           d.deadlineUtc.enumerable
@@ -391,10 +393,18 @@ export function createHostAdapter(
             const selected = d[kind === 'INPUT' ? 'action' : 'field'];
             field = selected && 'value' in selected && selected.enumerable ? selected.value : null;
           }
+          if (kind === 'INPUT')
+            activeIntent =
+              d.activeIntent && 'value' in d.activeIntent && d.activeIntent.enumerable
+                ? d.activeIntent.value
+                : null;
           validRequest =
             kind === 'DISCOVER' ||
             (validMetadataTransportId(transportId) &&
-              (kind === 'INPUT' ? validInputAction(field) : validMetadataField(field)) &&
+              (kind === 'INPUT'
+                ? validInputAction(field) &&
+                  !!inspectFleetActiveInputIntent(activeIntent)?.finalCurrent()
+                : validMetadataField(field)) &&
               validMetadataDeadline(deadlineUtc));
         }
       }
@@ -435,6 +445,11 @@ export function createHostAdapter(
       observation = admission.observation;
       current(cap, grant.ownerId);
       if (attempt !== a || a.terminal || read !== token) throw Error('HOST_DISCOVERY_REJECTED');
+      if (kind === 'INPUT') {
+        custody.assertReadInternal(token);
+        if (!inspectFleetActiveInputIntent(activeIntent)?.finalCurrent())
+          throw Error('HOST_DISCOVERY_REJECTED');
+      }
       a.queries++;
       queryAttempt = a;
       const facts =
@@ -473,6 +488,11 @@ export function createHostAdapter(
       custody.assertRead(token);
       if (closed || uncertain || attempt !== a || a.terminal || read !== token)
         throw Error('HOST_DISCOVERY_REJECTED');
+      if (kind === 'INPUT') {
+        custody.assertReadInternal(token);
+        if (!inspectFleetActiveInputIntent(activeIntent)?.finalCurrent())
+          throw Error('HOST_DISCOVERY_REJECTED');
+      }
       a.observedUtc = facts.observedAtUtc;
       return facts;
     });

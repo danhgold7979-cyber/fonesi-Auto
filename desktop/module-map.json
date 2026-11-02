@@ -4,6 +4,12 @@
   "renderer.tsx": {
    "role": "renderer",
    "imports": {
+    "./input-interaction-contract.js": {
+     "INPUT_ACTIONS": "value",
+     "parseInputInteractionResponse": "value",
+     "InputInteractionSnapshot": "type",
+     "InputInteractionAction": "type"
+    },
     "./association-contract.js": {
      "parseAssociationResponse": "value",
      "AssociationSnapshot": "type"
@@ -55,6 +61,9 @@
   "preload.ts": {
    "role": "preload",
    "imports": {
+    "./input-interaction-client.js": {
+     "createInputInteractionClient": "value"
+    },
     "./association-client.js": {
      "createAssociationClient": "value"
     },
@@ -162,6 +171,9 @@
   "main.ts": {
    "role": "main",
    "imports": {
+    "./input-interaction-bridge.ts": {
+     "installInputInteractionBridge": "value"
+    },
     "./association-bridge.ts": {
      "installAssociationBridge": "value"
     },
@@ -1780,6 +1792,9 @@
   "main/adb-host-adapter.ts": {
    "role": "main-adapter",
    "imports": {
+    "./fleet-service.ts": {
+     "inspectFleetActiveInputIntent": "value"
+    },
     "./input-query-contract.ts": {
      "snapshotInputQueryFacts": "value",
      "validInputAction": "value",
@@ -1878,6 +1893,9 @@
   "main/adb-host-factory.ts": {
    "role": "main-adapter",
    "imports": {
+    "./fleet-service.ts": {
+     "inspectFleetActiveInputIntent": "value"
+    },
     "node:child_process": {
      "spawn": "value",
      "ChildProcessWithoutNullStreams": "type"
@@ -2050,6 +2068,10 @@
   "main/adb-server-service.ts": {
    "role": "main-adapter",
    "imports": {
+    "./fleet-service.ts": {
+     "inspectFleetActiveInputIntent": "value",
+     "OwnedFleetActiveIntent": "type"
+    },
     "./input-query-contract.ts": {
      "snapshotInputQueryFacts": "value",
      "validInputAction": "value",
@@ -2086,6 +2108,10 @@
   "main/adb-discovery-service.ts": {
    "role": "main-adapter",
    "imports": {
+    "./fleet-service.ts": {
+     "inspectFleetActiveInputIntent": "value",
+     "OwnedFleetActiveIntent": "type"
+    },
     "./association-confirmation.ts": {
      "inspectAssociationConfirmation": "value"
     },
@@ -2208,12 +2234,31 @@
     },
     "./adb-discovery-service.ts": {
      "inspectOwnedMetadataTarget": "value",
+     "inspectOwnedInputTarget": "value",
+     "OwnedInputTarget": "type",
      "OwnedMetadataTarget": "type",
      "createAdbDiscoveryService": "type",
      "DiscoveryReceipt": "type"
     },
     "./owned-transport-metadata.ts": {
-     "createOwnedTransportMetadataOwner": "value"
+     "createOwnedDeviceTransportOwner": "value"
+    },
+    "./logging.ts": {
+     "inspectOwnedInputAuditWriter": "value"
+    },
+    "./fleet-service.ts": {
+     "inspectFleetActiveInputIntent": "value",
+     "createFleetService": "type"
+    },
+    "../input-interaction-contract.ts": {
+     "snapshotInputInteractionRequest": "value",
+     "snapshotInputInteractionSnapshot": "value",
+     "snapshotInputInteractionReceipt": "value",
+     "inputInteractionSuccess": "value",
+     "inputInteractionError": "value",
+     "InputInteractionRequest": "type",
+     "InputInteractionSnapshot": "type",
+     "InputInteractionCode": "type"
     },
     "./device-actor.ts": {
      "createDeviceQueueBudget": "value"
@@ -2296,6 +2341,10 @@
   "main/owned-transport-metadata.ts": {
    "role": "main-adapter",
    "imports": {
+    "./fleet-service.ts": {
+     "inspectFleetActiveInputIntent": "value",
+     "OwnedFleetActiveIntent": "type"
+    },
     "node:crypto": {
      "randomUUID": "value"
     },
@@ -2466,6 +2515,48 @@
     },
     "../foundation-bridge.ts": {
      "inspectAssociationAdmission": "value"
+    }
+   }
+  },
+  "input-interaction-contract.ts": {
+   "role": "contract",
+   "imports": {}
+  },
+  "input-interaction-client.ts": {
+   "role": "client",
+   "imports": {
+    "./invocation-budget.ts": {
+     "createInvocationBudget": "value",
+     "InvocationBudget": "type"
+    },
+    "./input-interaction-contract.ts": {
+     "parseInputInteractionRequest": "value",
+     "validInputInteractionRevision": "value",
+     "validInputInteractionUuid": "value",
+     "INPUT_ACTIONS": "value",
+     "parseInputInteractionResponse": "value",
+     "inputInteractionError": "value",
+     "InputInteractionRequest": "type",
+     "InputInteractionCode": "type"
+    }
+   }
+  },
+  "input-interaction-bridge.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "electron": {
+     "IpcMain": "type",
+     "IpcMainInvokeEvent": "type"
+    },
+    "./view-session.ts": {
+     "Admission": "type"
+    },
+    "./input-interaction-contract.ts": {
+     "INPUT_INTERACTION_CODES": "value",
+     "parseInputInteractionRequest": "value",
+     "inputInteractionError": "value",
+     "InputInteractionRequest": "type",
+     "InputInteractionCode": "type"
     }
    }
   }

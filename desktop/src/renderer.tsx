@@ -1,3 +1,9 @@
+import {
+  INPUT_ACTIONS,
+  parseInputInteractionResponse,
+  type InputInteractionSnapshot,
+  type InputInteractionAction,
+} from './input-interaction-contract.js';
 import { parseAssociationResponse, type AssociationSnapshot } from './association-contract.js';
 import {
   METADATA_FIELDS,
@@ -20,6 +26,16 @@ import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
   interface Window {
+    input: Readonly<{
+      get: () => Promise<string>;
+      press: (
+        revision: unknown,
+        selectionRevision: unknown,
+        registryRevision: unknown,
+        deviceId: unknown,
+        action: unknown,
+      ) => Promise<string>;
+    }>;
     association: Readonly<{
       get: () => Promise<string>;
       candidates: () => Promise<string>;
@@ -95,6 +111,17 @@ function Diagnostic() {
   const [discoveryReconcile, setDiscoveryReconcile] = useState(true);
   const discoveryInFlight = useRef(false),
     discoveryStopInFlight = useRef(false);
+  const [inputSnapshot, setInputSnapshot] = useState<InputInteractionSnapshot | null>(null);
+  const [inputStatus, setInputStatus] = useState('Chưa đọc lịch sử input; không tự gửi phím.');
+  const [inputReconcile, setInputReconcile] = useState(true);
+  const [inputPending, setInputPending] = useState(false);
+  const inputInFlight = useRef(false),
+    inputGeneration = useRef<object>(Object.freeze({}));
+  const invalidateInput = useCallback(() => {
+    inputGeneration.current = Object.freeze({});
+    setInputReconcile(true);
+    setInputStatus('Lịch sử input chỉ thuộc đích gốc; Get để đối chiếu trước thao tác mới.');
+  }, []);
   const metadataGeneration = useRef<object>(Object.freeze({}));
   const [metadata, setMetadata] = useState<MetadataSnapshot | null>(null);
   const [metadataDevice, setMetadataDevice] = useState<string | null>(null);
@@ -143,6 +170,7 @@ function Diagnostic() {
     setMetadataStatus('REFRESH_REQUIRED / Cần đọc lại trạng thái metadata; không tự thử lại.');
   }, []);
   const invalidateFleet = useCallback(() => {
+    invalidateInput();
     invalidateMetadata();
     fleetGeneration.current = Object.freeze({});
     setFleet(null);
@@ -151,7 +179,7 @@ function Diagnostic() {
     setFleetStatus(
       'LIVE_DISCOVERY_UNAVAILABLE / CACHED OBSERVATION CLEARED / EXPLICIT FLEET READ REQUIRED',
     );
-  }, [invalidateMetadata]);
+  }, [invalidateMetadata, invalidateInput]);
   const invalidateDiscovery = useCallback(() => {
     invalidateAssociation();
     discoveryGeneration.current = Object.freeze({});
@@ -361,6 +389,7 @@ function Diagnostic() {
   const fleetAction = useCallback(
     async (selection?: FleetSelection) => {
       if (fleetInFlight.current || (selection !== undefined && (!fleet || fleetReconcile))) return;
+      if (selection !== undefined) invalidateInput();
       fleetInFlight.current = true;
       const generation = fleetGeneration.current;
       setFleetPending(true);
@@ -377,6 +406,7 @@ function Diagnostic() {
         if (!response?.ok) {
           if (response && !response.ok) observeRevocation(response.code);
           invalidateMetadata();
+          invalidateInput();
           setFleet(null);
           setFleetFailed(true);
           setFleetReconcile(true);
@@ -390,6 +420,13 @@ function Diagnostic() {
           (fleet && fleet.registryRevision !== response.fleet.registryRevision)
         )
           invalidateMetadata();
+        if (
+          !fleet ||
+          response.fleet.availability !== 'OBSERVED' ||
+          fleet.registryRevision !== response.fleet.registryRevision ||
+          fleet.selection.revision !== response.fleet.selection.revision
+        )
+          invalidateInput();
         setFleet(response.fleet);
         setFleetFailed(false);
         setFleetReconcile(false);
@@ -399,6 +436,7 @@ function Diagnostic() {
       } catch {
         if (generation !== fleetGeneration.current) return;
         invalidateMetadata();
+        invalidateInput();
         setFleet(null);
         setFleetFailed(true);
         setFleetReconcile(true);
@@ -408,13 +446,73 @@ function Diagnostic() {
         setFleetPending(false);
       }
     },
-    [fleet, fleetReconcile, observeRevocation, invalidateMetadata],
+    [fleet, fleetReconcile, observeRevocation, invalidateMetadata, invalidateInput],
   );
   useEffect(() => {
     if (fleetHydrationStarted.current) return;
     fleetHydrationStarted.current = true;
     void fleetAction();
   }, [fleetAction]);
+  const inputActive =
+    fleet?.availability === 'OBSERVED' && !fleetFailed && !fleetReconcile && !fleetPending
+      ? fleet.devices.find(
+          (d) =>
+            d.deviceId === fleet.selection.activeDeviceId &&
+            d.verification === 'VERIFIED' &&
+            d.state === 'DEVICE',
+        )
+      : undefined;
+  const inputBlocked =
+    inputPending ||
+    inputReconcile ||
+    !inputSnapshot ||
+    !inputActive ||
+    ['PENDING', 'OUTCOME_UNKNOWN', 'STALE', 'CLOSED'].includes(inputSnapshot.state);
+  async function inputAction(action?: InputInteractionAction) {
+    if (inputInFlight.current || (action !== undefined && inputBlocked)) return;
+    inputInFlight.current = true;
+    setInputPending(true);
+    const generation = inputGeneration.current;
+    if (action !== undefined) setInputReconcile(true);
+    try {
+      const raw =
+        action === undefined
+          ? await window.input.get()
+          : await window.input.press(
+              inputSnapshot?.revision,
+              fleet?.selection.revision,
+              fleet?.registryRevision,
+              inputActive?.deviceId,
+              action,
+            );
+      if (generation !== inputGeneration.current) return;
+      const response = parseInputInteractionResponse(raw);
+      if (!response) throw Error('INVALID_RESPONSE');
+      if (!response.ok) {
+        setInputReconcile(true);
+        observeRevocation(response.code);
+        setInputStatus(
+          `${response.code} / LOG ${response.loggingHealth}. Lịch sử cũ được giữ; Get để đối chiếu, không tự thử lại.`,
+        );
+        return;
+      }
+      setInputSnapshot(response.snapshot);
+      setInputReconcile(
+        response.outcome !== 'STATUS' ||
+          ['PENDING', 'OUTCOME_UNKNOWN', 'STALE', 'CLOSED'].includes(response.snapshot.state),
+      );
+      setInputStatus(
+        `${response.outcome} / ${response.snapshot.state} / ${response.snapshot.code ?? 'NONE'} / LOG ${response.loggingHealth}. Chỉ là biên nhận lệnh, không chứng minh hiệu ứng Android.`,
+      );
+    } catch {
+      if (generation !== inputGeneration.current) return;
+      setInputReconcile(true);
+      setInputStatus('INTERNAL_FAILURE / Get để đối chiếu; không tự thử lại.');
+    } finally {
+      inputInFlight.current = false;
+      setInputPending(false);
+    }
+  }
   const metadataCandidate =
     fleet?.availability === 'OBSERVED'
       ? fleet.devices.find((device) => device.deviceId === metadataDevice)
@@ -1012,6 +1110,45 @@ function Diagnostic() {
             <p id="fleet-status" aria-live="polite">
               {fleetStatus}
             </p>
+          </section>
+          <section aria-label="Explicit ACTIVE input">
+            <h3>Input — đích ACTIVE thực tế</h3>
+            <p id="input-active">
+              ACTIVE: {inputActive?.label ?? 'UNAVAILABLE'} /{' '}
+              {inputActive?.deviceId ?? 'không có đích VERIFIED DEVICE'}. Không dùng tập chọn hoặc
+              nhóm.
+            </p>
+            <button
+              type="button"
+              id="input-get"
+              disabled={inputPending}
+              onClick={() => void inputAction()}
+            >
+              Get lịch sử input
+            </button>
+            {INPUT_ACTIONS.map((action) => (
+              <button
+                type="button"
+                key={action}
+                id={`input-${action.toLowerCase()}`}
+                disabled={inputBlocked}
+                onClick={() => void inputAction(action)}
+              >
+                {action}
+              </button>
+            ))}
+            <output id="input-status">{inputStatus}</output>
+            {inputSnapshot && (
+              <p id="input-history">
+                Đích gốc {inputSnapshot.deviceId ?? 'NONE'} / {inputSnapshot.action ?? 'NONE'} /{' '}
+                {inputSnapshot.receipt?.actor.outcome ?? inputSnapshot.state} /{' '}
+                {inputSnapshot.code ?? 'NONE'} —{' '}
+                {inputSnapshot.current && !inputReconcile
+                  ? 'hiện hành tại thời điểm chụp'
+                  : 'lịch sử, không phải quyền hiện hành'}
+                ; không chứng minh hiệu ứng Android.
+              </p>
+            )}
           </section>
           <section aria-label="Device session association" id="association-panel">
             <h3>Liên kết điện thoại đang cầm / Device association</h3>

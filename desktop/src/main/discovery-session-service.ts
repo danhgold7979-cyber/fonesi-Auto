@@ -16,11 +16,25 @@ import {
 } from './adb-server-service.ts';
 import {
   inspectOwnedMetadataTarget,
+  inspectOwnedInputTarget,
+  type OwnedInputTarget,
   type OwnedMetadataTarget,
   type createAdbDiscoveryService,
   type DiscoveryReceipt,
 } from './adb-discovery-service.ts';
-import { createOwnedTransportMetadataOwner } from './owned-transport-metadata.ts';
+import { createOwnedDeviceTransportOwner } from './owned-transport-metadata.ts';
+import { inspectOwnedInputAuditWriter } from './logging.ts';
+import { inspectFleetActiveInputIntent, type createFleetService } from './fleet-service.ts';
+import {
+  snapshotInputInteractionRequest,
+  snapshotInputInteractionSnapshot,
+  snapshotInputInteractionReceipt,
+  inputInteractionSuccess,
+  inputInteractionError,
+  type InputInteractionRequest,
+  type InputInteractionSnapshot,
+  type InputInteractionCode,
+} from '../input-interaction-contract.ts';
 import { createDeviceQueueBudget } from './device-actor.ts';
 import {
   METADATA_FIELDS,
@@ -62,6 +76,8 @@ type Policy =
   | 'CLOSED';
 export type DiscoverySessionOptions = Readonly<{
   custody: PlatformToolsRuntimeCustody;
+  fleet?: ReturnType<typeof createFleetService>;
+  logger?: unknown;
   assertOwnedSync(): void;
   clock(): number;
   newId(): string;
@@ -157,9 +173,13 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     observedAtUtc: null,
     restartRequired: false,
   });
-  type MetadataOwner = ReturnType<typeof createOwnedTransportMetadataOwner>;
+  type MetadataOwner = ReturnType<typeof createOwnedDeviceTransportOwner>;
   type MetadataProof = NonNullable<ReturnType<typeof inspectOwnedMetadataTarget>>;
   const metadataBudget = createDeviceQueueBudget();
+  const fleet = options.fleet,
+    logger = options.logger;
+  const captureInputIntent = fleet?.captureActiveInputIntent.bind(fleet);
+  const inputWriter = inspectOwnedInputAuditWriter(logger);
   const metadataAudit = options.metadataAudit?.bind(options);
   const metadataRequests = new Set<string>();
   let metadataOwner: MetadataOwner | null = null,
@@ -1081,6 +1101,313 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       metadataFailure(request, 'INTERNAL_FAILURE', diagnostic, true)
     );
   }
+  const inputRequests = new Set<string>();
+  let inputState: InputInteractionSnapshot = Object.freeze({
+    revision: 0,
+    state: 'EMPTY',
+    operationId: null,
+    deviceId: null,
+    generation: null,
+    selectionRevision: null,
+    registryRevision: null,
+    action: null,
+    deadlineUtc: null,
+    receipt: null,
+    code: null,
+    current: false,
+  });
+  let inputWitness: (() => boolean) | null = null;
+  let inputActive: { base: number; stopped: boolean; settled: boolean } | null = null;
+  function inputPut(value: InputInteractionSnapshot) {
+    const captured = snapshotInputInteractionSnapshot(value);
+    if (!captured) throw new Error('INPUT_SNAPSHOT');
+    inputState = captured;
+  }
+  function inputClose() {
+    if (inputState.state === 'CLOSED') return;
+    if (inputActive && !inputActive.settled) inputActive.stopped = true;
+    inputPut({
+      ...inputState,
+      state: 'CLOSED',
+      current: false,
+      revision:
+        inputActive && !inputActive.settled
+          ? inputState.revision >= inputActive.base + 2
+            ? inputActive.base + 3
+            : inputActive.base + 2
+          : inputState.operationId
+            ? inputState.revision + 1
+            : 0,
+    });
+  }
+  function inputStatus(request: InputInteractionRequest, current: () => boolean): string {
+    try {
+      if (current() !== true)
+        return inputInteractionError(request.requestId, 'SESSION_REVOKED', 'DEGRADED');
+      const captured = inputState;
+      const valid = captured.current && !revoked && !cleanup && !!inputWitness?.();
+      return (
+        inputInteractionSuccess(
+          request.requestId,
+          'STATUS',
+          Object.freeze({ ...captured, current: valid }),
+          captured.receipt?.loggingHealth === 'AVAILABLE' && inputWriter?.current()
+            ? 'AVAILABLE'
+            : 'DEGRADED',
+        ) ?? inputInteractionError(request.requestId, 'INTERNAL_FAILURE', 'DEGRADED')
+      );
+    } catch {
+      return inputInteractionError(request.requestId, 'INTERNAL_FAILURE', 'DEGRADED');
+    }
+  }
+  function inputPress(
+    request: Extract<InputInteractionRequest, { method: 'input.press' }>,
+    current: () => boolean,
+  ): Promise<string> {
+    const baseState = inputState,
+      g = generation;
+    busy = true;
+    let retained = false;
+    const fail = (code: InputInteractionCode) =>
+      inputInteractionError(request.requestId, code, 'DEGRADED');
+    try {
+      const start = clock(),
+        deadline = start + 30000;
+      if (
+        !Number.isSafeInteger(start) ||
+        start < 0 ||
+        !Number.isSafeInteger(deadline) ||
+        deadline > 8640000000000000
+      )
+        return Promise.resolve(fail('INTERNAL_FAILURE'));
+      internal(g);
+      if (inputState !== baseState) return Promise.resolve(fail('STALE_REVISION'));
+      const admit = () => {
+        if (current() !== true) throw new Fault('SESSION_REVOKED');
+      };
+      fence(g, admit);
+      if (request.expectedRevision !== baseState.revision)
+        return Promise.resolve(fail('STALE_REVISION'));
+      if (
+        baseState.revision > Number.MAX_SAFE_INTEGER - 3 ||
+        inputRequests.size >= 65536 ||
+        inputRequests.has(request.requestId)
+      )
+        return Promise.resolve(fail('LIMIT_EXCEEDED'));
+      inputRequests.add(request.requestId);
+      if (!captureInputIntent || !inputWriter?.current())
+        return Promise.resolve(fail('AUDIT_UNAVAILABLE'));
+      const captured = captureInputIntent({
+        expectedSelectionRevision: request.expectedSelectionRevision,
+        expectedRegistryRevision: request.expectedRegistryRevision,
+        deviceId: request.deviceId,
+      });
+      if (!captured.ok) return Promise.resolve(fail(captured.code));
+      const intent = captured.intent,
+        intentRecord = inspectFleetActiveInputIntent(intent);
+      const expected = projection;
+      if (
+        !intentRecord ||
+        !expected ||
+        !ingestion ||
+        intentRecord.projection !== expected ||
+        !currentProjection(expected)
+      )
+        return Promise.resolve(fail('STALE_REGISTRY'));
+      if (consumedProjection !== expected) {
+        consumedProjection = expected;
+        consumed.clear();
+      }
+      const same =
+        metadataOwnerProjection === expected && metadataProof?.target.deviceId === request.deviceId;
+      if (!same && consumed.has(request.deviceId)) return Promise.resolve(fail('REFRESH_REQUIRED'));
+      const ticket = ingestion.metadataTarget(request.deviceId),
+        inputTicket = ingestion.inputTarget(request.deviceId);
+      const proof = inspectOwnedMetadataTarget(ticket),
+        inputProof = inspectOwnedInputTarget(inputTicket);
+      if (
+        !ticket ||
+        !inputTicket ||
+        !proof ||
+        !inputProof ||
+        proof.ownerAnchor !== inputProof.ownerAnchor ||
+        proof.projection !== expected ||
+        inputProof.projection !== expected
+      )
+        return Promise.resolve(fail('REFRESH_REQUIRED'));
+      const operationId = allocate();
+      const witness = () =>
+        generation === g &&
+        !revoked &&
+        !cleanup &&
+        currentProjection(expected) &&
+        intentRecord.finalCurrent() &&
+        proof.finalCurrent() &&
+        inputProof.finalCurrent();
+      const preOwner = () => {
+        fence(g, admit);
+        const now = clock();
+        if (!Number.isSafeInteger(now) || now < start || now >= deadline)
+          throw new MetadataFault('DEADLINE_EXCEEDED');
+        if (!witness()) throw new MetadataFault('STALE_BINDING');
+        return now;
+      };
+      const admittedAt = preOwner();
+      if (inputState !== baseState) return Promise.resolve(fail('STALE_REVISION'));
+      const op = { base: baseState.revision, stopped: false, settled: false };
+      let preOwnerExpired = false;
+      const pending: InputInteractionSnapshot = Object.freeze({
+        revision: op.base + 1,
+        state: 'PENDING',
+        operationId,
+        deviceId: request.deviceId,
+        generation: proof.target.generation,
+        selectionRevision: request.expectedSelectionRevision,
+        registryRevision: expected.revision,
+        action: request.action,
+        deadlineUtc: deadline,
+        receipt: null,
+        code: null,
+        current: false,
+      });
+      const wire = inputInteractionSuccess(request.requestId, 'PENDING', pending, 'DEGRADED');
+      if (!wire) return Promise.resolve(fail('INTERNAL_FAILURE'));
+      inputActive = op;
+      inputWitness = witness;
+      inputPut(pending);
+      // Install the actual work obligation before the first continuation callback.
+      let entered = false;
+      const admissionTimer = setTimeout(
+        () => {
+          if (entered || op.settled || op.stopped) return;
+          preOwnerExpired = true;
+          inputPut({
+            ...pending,
+            revision: op.base + 2,
+            state: 'FAILED',
+            code: 'DEADLINE_EXCEEDED',
+            current: false,
+          });
+        },
+        Math.max(1, deadline - admittedAt),
+      );
+      const continuation = Promise.resolve().then(async () => {
+        try {
+          if (preOwnerExpired) throw new MetadataFault('DEADLINE_EXCEEDED');
+          preOwner();
+          if (!same) {
+            const old = metadataOwner;
+            if (old && (!(await old.close()) || !old.retired))
+              throw new MetadataFault('OUTCOME_UNKNOWN');
+            preOwner();
+            consumed.add(request.deviceId);
+            const made = createOwnedDeviceTransportOwner({
+              metadataTarget: ticket,
+              inputTarget: inputTicket,
+              budget: metadataBudget,
+              logger,
+            });
+            metadataOwner = made;
+            metadataProof = proof;
+            metadataOwnerProjection = expected;
+            preOwner();
+          }
+          const owner = metadataOwner;
+          if (!owner) throw new MetadataFault('INTERNAL_FAILURE');
+          preOwner();
+          if (preOwnerExpired) throw new MetadataFault('DEADLINE_EXCEEDED');
+          entered = true;
+          clearTimeout(admissionTimer);
+          // The actor owns this same absolute deadline; no competing facade timeout.
+          const raw = await owner.input.press(request.action, deadline, intent);
+          const receipt = snapshotInputInteractionReceipt(raw);
+          if (!receipt) {
+            uncertain = true;
+            void startCleanup();
+            return;
+          }
+          if (receipt.actor.outcome === 'OUTCOME_UNKNOWN') {
+            uncertain = true;
+            void startCleanup();
+          }
+          let fresh = false;
+          try {
+            fresh = current() === true && witness();
+          } catch {}
+          const closed = op.stopped || revoked || !!cleanup;
+          inputPut({
+            ...pending,
+            revision: op.base + (closed ? 3 : 2),
+            state: closed
+              ? 'CLOSED'
+              : receipt.actor.outcome === 'OUTCOME_UNKNOWN'
+                ? 'OUTCOME_UNKNOWN'
+                : 'SETTLED',
+            receipt,
+            code: receipt.actor.code,
+            current: !closed && fresh && receipt.actor.outcome !== 'OUTCOME_UNKNOWN',
+          });
+        } catch (e) {
+          if (entered) {
+            uncertain = true;
+            void startCleanup();
+          }
+          const mapped = metadataCode(e);
+          const code: InputInteractionCode =
+            mapped === 'DEADLINE_EXCEEDED'
+              ? 'DEADLINE_EXCEEDED'
+              : mapped === 'SESSION_REVOKED'
+                ? 'SESSION_REVOKED'
+                : mapped === 'OWNER_REVOKED'
+                  ? 'OWNER_REVOKED'
+                  : mapped === 'STALE_BINDING'
+                    ? 'STALE_BINDING'
+                    : mapped === 'AUDIT_UNAVAILABLE'
+                      ? 'AUDIT_UNAVAILABLE'
+                      : 'INTERNAL_FAILURE';
+          if (!preOwnerExpired)
+            inputPut({
+              ...pending,
+              revision: op.base + (op.stopped ? 3 : 2),
+              state: op.stopped ? 'CLOSED' : 'FAILED',
+              code,
+              current: false,
+            });
+        } finally {
+          op.settled = true;
+          clearTimeout(admissionTimer);
+          if (cleanup && metadataOwner)
+            try {
+              if (!(await metadataOwner.close())) uncertain = true;
+            } catch {
+              uncertain = true;
+            }
+          busy = false;
+        }
+      });
+      retained = true;
+      track(continuation);
+      return Promise.resolve(wire);
+    } catch (e) {
+      const code = metadataCode(e);
+      return Promise.resolve(
+        fail(
+          code === 'DEADLINE_EXCEEDED'
+            ? 'DEADLINE_EXCEEDED'
+            : code === 'OWNER_REVOKED'
+              ? 'OWNER_REVOKED'
+              : code === 'SESSION_REVOKED'
+                ? 'SESSION_REVOKED'
+                : code === 'LIMIT_EXCEEDED'
+                  ? 'LIMIT_EXCEEDED'
+                  : 'INTERNAL_FAILURE',
+        ),
+      );
+    } finally {
+      if (!retained) busy = false;
+    }
+  }
+
   async function metadataGet(request: MetadataRequest, current: () => boolean): Promise<string> {
     let diagnostic: string | null = null,
       written = false;
@@ -1141,6 +1468,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     expected: RegistrySnapshot,
     proof: MetadataProof,
     ticket: OwnedMetadataTarget,
+    inputTicket: OwnedInputTarget,
     deadline: number,
     operationId: string,
     baseRevision: number,
@@ -1181,7 +1509,12 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
           throw new MetadataFault('OUTCOME_UNKNOWN');
         metadataFence(g, current, expected, proof, deadline);
         consumed.add(request.deviceId); // Reserve before construction; construction may fail after claiming.
-        const made = createOwnedTransportMetadataOwner({ target: ticket, budget: metadataBudget });
+        const made = createOwnedDeviceTransportOwner({
+          metadataTarget: ticket,
+          inputTarget: inputTicket,
+          budget: metadataBudget,
+          logger,
+        });
         metadataOwner = made;
         metadataProof = proof;
         metadataOwnerProjection = expected;
@@ -1190,7 +1523,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       const owner = metadataOwner;
       if (!owner) throw new MetadataFault('INTERNAL_FAILURE');
       metadataFence(g, current, expected, proof, deadline);
-      const result = await owner.read(request.field, deadline);
+      const result = await owner.metadata.read(request.field, deadline);
       outcome = result.actor.outcome;
       code = result.actor.code === 'OK' ? 'OK' : metadataActorCode(result.actor.code);
       // Capture the actual logical result before owner snapshot/audit callbacks can reenter.
@@ -1212,7 +1545,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       });
       if (outcome === 'OUTCOME_UNKNOWN') uncertain = true;
       // Capture only at result settlement, never in GET. Native owner preserves unavailable/stale fields.
-      const snapshot = owner.snapshot();
+      const snapshot = owner.metadata.snapshot();
       const observations = Object.freeze(
         Object.fromEntries(
           METADATA_FIELDS.map((f) => [f, snapshot.observations[f]?.metadata ?? null]),
@@ -1389,7 +1722,18 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
         if (!same && consumed.has(request.deviceId)) throw new MetadataFault('REFRESH_REQUIRED');
         const ticket = ingestion.metadataTarget(request.deviceId);
         const proof = inspectOwnedMetadataTarget(ticket);
-        if (!ticket || !proof) throw new MetadataFault('REFRESH_REQUIRED');
+        const inputTicket = ingestion.inputTarget(request.deviceId);
+        const inputProof = inspectOwnedInputTarget(inputTicket);
+        if (
+          !ticket ||
+          !proof ||
+          !inputTicket ||
+          !inputProof ||
+          proof.ownerAnchor !== inputProof.ownerAnchor ||
+          proof.projection !== inputProof.projection
+        )
+          throw new MetadataFault('REFRESH_REQUIRED');
+        if (!inputWriter?.current()) throw new MetadataFault('AUDIT_UNAVAILABLE');
         metadataFence(g, current, expected, proof, deadline);
         operationId = allocate();
         metadataFence(g, current, expected, proof, deadline);
@@ -1457,6 +1801,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
             expected,
             proof,
             ticket,
+            inputTicket,
             deadline,
             operationId,
             baseRevision,
@@ -1692,6 +2037,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       complete = resolve;
     });
     cleanup = retained;
+    inputClose();
     associationCancel(true);
     // Latch before calling either external cleanup implementation.
     let metadataClose: Promise<boolean> | undefined;
@@ -2347,7 +2693,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
           generation++;
         } else return Promise.resolve(error(request, attempted ? 'RESTART_REQUIRED' : 'BUSY'));
       }
-      if (busy) return Promise.resolve(error(request, 'BUSY'));
+      if (busy || metadataOwner?.pending) return Promise.resolve(error(request, 'BUSY'));
       if (request.method !== 'discovery.start' && request.method !== 'discovery.refresh')
         return Promise.resolve(error(request, 'INVALID_SHAPE'));
       associationCancel();
@@ -2409,9 +2755,31 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
         return track(associationRead(request, current));
       if (revoked || cleanup)
         return Promise.resolve(associationError(request.requestId, 'CLOSED', null, 'DEGRADED'));
-      if (busy)
+      if (busy || metadataOwner?.pending)
         return Promise.resolve(associationError(request.requestId, 'BUSY', null, 'DEGRADED'));
       return associationStart(request as AssociationOperation['request'], current, admissionToken);
+    },
+    executeInput(input: unknown, operationCurrent: () => boolean): Promise<string> {
+      const request = snapshotInputInteractionRequest(input);
+      if (!request || typeof operationCurrent !== 'function')
+        return Promise.resolve(inputInteractionError(null, 'INVALID_SHAPE', 'DEGRADED'));
+      if (request.method === 'input.get') {
+        if (inputRequests.size >= 65536 || inputRequests.has(request.requestId))
+          return Promise.resolve(
+            inputInteractionError(request.requestId, 'LIMIT_EXCEEDED', 'DEGRADED'),
+          );
+        inputRequests.add(request.requestId);
+        return Promise.resolve(inputStatus(request, operationCurrent));
+      }
+      if (revoked || cleanup)
+        return Promise.resolve(inputInteractionError(request.requestId, 'CLOSED', 'DEGRADED'));
+      if (uncertain)
+        return Promise.resolve(
+          inputInteractionError(request.requestId, 'OUTCOME_UNKNOWN', 'DEGRADED'),
+        );
+      if (busy || metadataOwner?.pending)
+        return Promise.resolve(inputInteractionError(request.requestId, 'BUSY', 'DEGRADED'));
+      return inputPress(request, operationCurrent);
     },
     executeMetadata(input: unknown, operationCurrent: () => boolean): Promise<string> {
       const request = snapshotMetadataRequest(input);
@@ -2421,7 +2789,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       if (revoked || cleanup) return Promise.resolve(metadataFailure(request, 'CLOSED'));
       if (uncertain)
         return Promise.resolve(metadataFailure(request, 'OUTCOME_UNKNOWN', null, true));
-      if (busy) return Promise.resolve(metadataFailure(request, 'BUSY'));
+      if (busy || metadataOwner?.pending) return Promise.resolve(metadataFailure(request, 'BUSY'));
       const current = () => {
         if (operationCurrent() !== true) throw new MetadataFault('SESSION_REVOKED');
       };

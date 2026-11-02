@@ -1,6 +1,7 @@
+import { fleetActiveFixture } from './fixtures/fleet-active-input.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createFleetService } from '../src/main/fleet-service.ts';
+import { createFleetService, inspectFleetActiveInputIntent } from '../src/main/fleet-service.ts';
 import { emptyRegistry, reconcileRegistry } from '../src/main/transport-registry.ts';
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const read = { version: 1, requestId: 'f1', method: 'fleet.get' };
@@ -405,4 +406,59 @@ test('final internal projection denies read and preserves applied selection when
     );
     await f.service.close();
   }
+});
+
+test('actual Fleet ACTIVE intent is independent of selected set, survives IPC revoke, and rejects A-B-A replay', async () => {
+  const f = await fleetActiveFixture(),
+    captured = f.capture();
+  assert.equal(captured.ok, true);
+  const record = inspectFleetActiveInputIntent(captured.intent);
+  assert.equal(record.projection, f.registry);
+  assert.equal(record.binding.deviceId, f.devices[0]);
+  assert.equal(record.finalCurrent(), true);
+  assert.ok(Object.isFrozen(record.binding));
+  assert.equal(inspectFleetActiveInputIntent({ ...captured.intent }), null);
+  assert.equal(f.capture(f.devices[1]).code, 'MEMBER_UNAVAILABLE');
+  assert.equal(
+    f.service.captureActiveInputIntent({
+      expectedSelectionRevision: 0,
+      expectedRegistryRevision: f.registry.revision,
+      deviceId: f.devices[0],
+    }).code,
+    'STALE_SELECTION',
+  );
+  await f.select(f.devices[0], [f.devices[1]]);
+  assert.equal(record.finalCurrent(), true);
+  await f.select(f.devices[1]);
+  assert.equal(record.finalCurrent(), false);
+  await f.select(f.devices[0]);
+  assert.equal(record.finalCurrent(), false);
+  assert.equal(f.capture().ok, true);
+  await f.service.close();
+  assert.equal(f.capture().code, 'CLOSED');
+});
+test('Fleet capture reserves before callbacks and final witness invokes no caller code', async () => {
+  let service,
+    reenter = false,
+    nested,
+    trap = false;
+  const f = await fleetActiveFixture({
+    assertOwnedSync() {
+      if (trap) throw Error('CALLBACK');
+      if (reenter) {
+        reenter = false;
+        nested = service.captureActiveInputIntent({});
+      }
+    },
+  });
+  service = f.service;
+  reenter = true;
+  const r = f.capture();
+  assert.equal(r.ok, true);
+  assert.equal(nested.code, 'BUSY');
+  trap = true;
+  assert.equal(inspectFleetActiveInputIntent(r.intent).finalCurrent(), true);
+  assert.equal(f.capture().code, 'OWNER_REVOKED');
+  await service.close();
+  assert.equal(inspectFleetActiveInputIntent(r.intent).finalCurrent(), false);
 });

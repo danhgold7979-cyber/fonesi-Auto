@@ -247,7 +247,7 @@ export type ActorInputConfig = Readonly<{
     code: ActorCode,
   ): Promise<Readonly<{ phase: 'INTENT' | 'RESULT'; loggingHealth: 'AVAILABLE' | 'DEGRADED' }>>;
   dispatch(request: InputQueryRequest): InputQueryHandle;
-  finalCurrent(): boolean;
+  finalCurrent(request: InputQueryRequest): boolean;
   localBusy(): boolean;
 }>;
 export type ActorOptions = Readonly<{
@@ -369,7 +369,7 @@ export function createDeviceActor(options: ActorOptions) {
       if (r.version === 2 && current(target) !== true) return 'STALE_BINDING';
       if (r.version === 3 && phase === 'DISPATCH' && metadata?.localBusy() === true) return 'BUSY';
       if (r.version === 4 && phase === 'DISPATCH' && input?.localBusy() === true) return 'BUSY';
-      if (r.version === 4 && input?.finalCurrent() !== true) return 'STALE_BINDING';
+      if (r.version === 4 && input?.finalCurrent(r) !== true) return 'STALE_BINDING';
       if (r.version === 3 && metadata?.finalCurrent() !== true) return 'STALE_BINDING';
       if (closed || draining || uncertain || owner !== cap) return 'OWNER_REVOKED';
     } catch {
@@ -424,7 +424,7 @@ export function createDeviceActor(options: ActorOptions) {
         return;
       }
       if (r.version === 4) {
-        if (!input || r.transportId !== input.transportId || !input.finalCurrent()) {
+        if (!input || r.transportId !== input.transportId || !input.finalCurrent(r)) {
           finish(result(r, 'STALE_BINDING'));
           return;
         }

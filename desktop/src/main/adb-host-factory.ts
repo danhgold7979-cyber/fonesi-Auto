@@ -1,3 +1,4 @@
+import { inspectFleetActiveInputIntent } from './fleet-service.ts';
 /** Default VERSION_ONLY; SERVER_ONLY remains private and unwired from main. */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { join, resolve } from 'node:path';
@@ -485,6 +486,16 @@ export function createHostFactory(
       )
         fail();
     },
+    assertReadInternal(token: object) {
+      custody.assertReadInternal(token);
+      if (
+        readToken !== token ||
+        !liveObservation ||
+        (expectedInstallationRevision !== undefined &&
+          liveObservation.installationRevision !== expectedInstallationRevision)
+      )
+        fail();
+    },
     async releaseRead(token: object) {
       const r = await custody.releaseRead(token);
       if (r.ok && r.status === 'RETIRED' && readToken === token) {
@@ -566,6 +577,17 @@ export function createHostFactory(
   const factory = Object.freeze({
     acquireInput(capability: HostCapability, request: unknown) {
       if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY') fail();
+      const descriptor =
+        request && typeof request === 'object'
+          ? Object.getOwnPropertyDescriptor(request, 'activeIntent')
+          : null;
+      if (
+        !descriptor ||
+        !Object.hasOwn(descriptor, 'value') ||
+        !descriptor.enumerable ||
+        !inspectFleetActiveInputIntent(descriptor.value)?.finalCurrent()
+      )
+        fail();
       return adapter.acquireInput(capability, request);
     },
     acquireMetadata(capability: HostCapability, request: unknown) {

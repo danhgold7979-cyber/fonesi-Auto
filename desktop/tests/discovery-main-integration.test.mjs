@@ -20,6 +20,7 @@ function composition() {
     provider = {};
   const context = {
     registry,
+    ownedFleetService: {},
     runtimeCustody: custody,
     closing: false,
     resourcesDisposed: false,
@@ -71,6 +72,8 @@ test('actual main builders preserve shared custody, selected revision, private a
   const f = composition();
   assert.deepEqual(f.calls, [], 'constructing the facade does not construct a native controller');
   assert.equal(await f.captured.facade.associationAudit({}), 'AVAILABLE');
+  assert.equal(f.captured.facade.fleet, f.context.ownedFleetService);
+  assert.equal(f.captured.facade.logger, f.context.logger);
   assert.equal(f.captured.facade.readDurableRevision(), 17);
   const admission = () => f.calls.push('current');
   const audit = async () => 'DEGRADED';

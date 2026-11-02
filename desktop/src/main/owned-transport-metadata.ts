@@ -1,3 +1,4 @@
+import { inspectFleetActiveInputIntent, type OwnedFleetActiveIntent } from './fleet-service.ts';
 /** Main-only sealed-target composition; never accepts provider/clock/authority callbacks. */
 import { randomUUID } from 'node:crypto';
 import { inspectOwnedMetadataTarget, type OwnedMetadataTarget } from './adb-discovery-service.ts';
@@ -22,6 +23,7 @@ import { parseAdbMetadata, staleMetadata, type MetadataResult } from './adb-meta
 const systemClock = Date.now,
   uuid = randomUUID;
 const claimed = new WeakSet<object>();
+const consumedInputIntents = new WeakSet<object>();
 type Target = NonNullable<ReturnType<typeof inspectOwnedMetadataTarget>>['target'];
 type Observation = Readonly<{ target: Target; metadata: MetadataResult }>;
 type State = 'ACTIVE' | 'INVALIDATED' | 'CLOSING' | 'CLOSED' | 'UNCERTAIN';
@@ -104,6 +106,9 @@ export function createOwnedDeviceTransportOwner(
   return Object.freeze({
     metadata: Object.freeze({ read: core.metadata.read, snapshot: core.metadata.snapshot }),
     input: core.input,
+    get pending() {
+      return core.pending;
+    },
     close: core.close,
     get retired() {
       return core.retired;
@@ -188,6 +193,8 @@ function createCore(
     string,
     {
       request: InputQueryRequest;
+      activeIntent: OwnedFleetActiveIntent;
+      intentRecord: NonNullable<ReturnType<typeof inspectFleetActiveInputIntent>>;
       normalized: InputQueryRequest | null;
       diagnosticId: string | null;
       intent: boolean;
@@ -195,6 +202,20 @@ function createCore(
       loggingHealth: 'AVAILABLE' | 'DEGRADED';
     }
   >();
+  function inputCurrent(request: InputQueryRequest): boolean {
+    const w = inputWorks.get(request.commandId);
+    return (
+      !!w &&
+      (w.normalized === null
+        ? Object.keys(w.request).every(
+            (k) =>
+              w.request[k as keyof InputQueryRequest] === request[k as keyof InputQueryRequest],
+          )
+        : w.normalized === request) &&
+      internal() &&
+      w.intentRecord.finalCurrent()
+    );
+  }
   if (!fence()) throw Error('OWNED_METADATA_OPTIONS');
   const ownerId = nextId();
   const actor = createDeviceActor({
@@ -217,7 +238,7 @@ function createCore(
       ? {
           input: {
             transportId: initial.transportId,
-            finalCurrent: internal,
+            finalCurrent: inputCurrent,
             localBusy: inputProof.localBusy,
             dispatch(request: InputQueryRequest) {
               if (
@@ -226,7 +247,9 @@ function createCore(
                 request.transportId !== initial.transportId
               )
                 throw Error('OWNED_INPUT_STATE');
-              return inputProof.begin(request.action, request.deadlineUtc);
+              const work = inputWorks.get(request.commandId);
+              if (!work || !inputCurrent(request)) throw Error('OWNED_INPUT_STATE');
+              return inputProof.begin(request.action, request.deadlineUtc, work.activeIntent);
             },
             async audit(
               request: InputQueryRequest,
@@ -469,8 +492,12 @@ function createCore(
   });
   return Object.freeze({
     metadata: metadataScope,
+    get pending() {
+      const actual = actor.snapshot();
+      return logical > 0 || actual.active || actual.queued > 0;
+    },
     input: Object.freeze({
-      async press(action: unknown, deadlineUtc: unknown) {
+      async press(action: unknown, deadlineUtc: unknown, activeIntent: OwnedFleetActiveIntent) {
         const wrapInput = (
           actorResult: ActorResult,
           health: 'AVAILABLE' | 'DEGRADED' = 'DEGRADED',
@@ -495,6 +522,27 @@ function createCore(
             }),
           );
         if (!inputProof || !writer) return denied('INVALID_REQUEST');
+        const intentRecord = inspectFleetActiveInputIntent(activeIntent);
+        if (
+          !intentRecord ||
+          !activeIntent ||
+          typeof activeIntent !== 'object' ||
+          consumedInputIntents.has(activeIntent)
+        )
+          return denied('INVALID_REQUEST');
+        // Claim before any authority/clock/UUID callback; failure never returns a reusable token.
+        consumedInputIntents.add(activeIntent);
+        if (
+          intentRecord.projection !== proof.projection ||
+          intentRecord.projection !== inputProof.projection ||
+          Object.keys(intentRecord.binding).some(
+            (k) =>
+              intentRecord.binding[k as keyof typeof intentRecord.binding] !==
+              initial[k as keyof Target],
+          ) ||
+          !intentRecord.finalCurrent()
+        )
+          return denied('STALE_BINDING');
         if (!validInputAction(action) || !validMetadataDeadline(deadlineUtc))
           return denied('INVALID_REQUEST');
         if (state !== 'ACTIVE') return denied(sticky ? 'OUTCOME_UNKNOWN' : 'CLOSED');
@@ -522,6 +570,8 @@ function createCore(
         sequence++;
         const work = {
           request,
+          activeIntent,
+          intentRecord,
           normalized: null as InputQueryRequest | null,
           diagnosticId: null as string | null,
           intent: false,

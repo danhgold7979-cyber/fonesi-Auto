@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { syntheticAssociationFixture } from './fixtures/association-confirmation.mjs';
+import { parseInputInteractionResponse } from '../src/input-interaction-contract.ts';
 import { parseDiscoveryResponse } from '../src/discovery-contract.ts';
 import { parseMetadataResponse } from '../src/metadata-contract.ts';
 import { parseAssociationResponse } from '../src/association-contract.ts';
@@ -32,6 +33,15 @@ async function fixture(extra = {}) {
         [['!isRealHostFactory(factory)', 'false /* SYNTHETIC_NATIVE_ADMISSION_ONLY */']],
       ],
       [
+        'main/owned-transport-metadata.ts',
+        [
+          [
+            'void actor.shutdown().then(',
+            'void actor.shutdown().then(async (actual) => { await globalThis.__inputReplacementDrain?.(); return actual; }).then(',
+          ],
+        ],
+      ],
+      [
         'main/discovery-session-service.ts',
         [
           [
@@ -52,6 +62,8 @@ async function fixture(extra = {}) {
   const { createAdbServerService } = ui.loadSource('main/adb-server-service.ts');
   const { createAdbDiscoveryService } = ui.loadSource('main/adb-discovery-service.ts');
   const { createDiscoverySessionService } = ui.loadSource('main/discovery-session-service.ts');
+  const { ApplicationLogger } = ui.loadSource('main/logging.ts');
+  const { createFleetService } = ui.loadSource('main/fleet-service.ts');
   const associationEvents = [];
   let rows = 'private-device device transport_id:1\n';
 
@@ -141,7 +153,25 @@ async function fixture(extra = {}) {
       return { ok: true, status: 'RETIRED' };
     },
   };
-  const facade = createDiscoverySessionService({
+  const ownerToken = randomUUID();
+  writeFileSync(join(root, '.owner'), ownerToken, { flag: 'wx' });
+  const logger = await ApplicationLogger.open(
+    { root: join(root, 'logs-main'), parentToken: ownerToken },
+    () => {},
+  );
+  let facade;
+  const fleet = createFleetService({
+    registry: () => registry.snapshot(),
+    assertOwnedSync: () => {},
+    newDiagnostic: next,
+    audit: async () => 'AVAILABLE',
+    availability: () => facade?.availability() ?? 'BINARY_UNAVAILABLE',
+    finalProjection: (p) => facade?.finalProjection(p) ?? false,
+  });
+  const fleetCap = fleet.grant(() => {});
+  facade = createDiscoverySessionService({
+    fleet,
+    logger,
     custody,
     assertOwnedSync: () => extra.owner?.(),
     clock: () => extra.clock?.() ?? Date.now(),
@@ -215,6 +245,31 @@ async function fixture(extra = {}) {
               factoryState = 'STOPPED';
               await extra.close?.();
               return 'RETIRED';
+            },
+            acquireInput() {
+              extra.inputHandoff?.();
+              return Object.freeze({
+                handoff: 'QUERY',
+                result: Promise.resolve().then(async () => {
+                  await extra.inputQuery?.();
+                  return Object.freeze({
+                    version: 1,
+                    kind: 'INPUT_QUERY',
+                    status: 'COMPLETE',
+                    code: 'OK',
+                    dispatched: true,
+                    operationRetired: true,
+                    remoteExitCode: 0,
+                    stdoutEmpty: true,
+                    stderrEmpty: true,
+                    observedAtUtc: Date.now(),
+                  });
+                }),
+                retirement: Promise.resolve().then(async () => {
+                  await extra.inputRetirement?.();
+                  return Object.freeze({ status: 'RETIRED' });
+                }),
+              });
             },
             acquireMetadata() {
               extra.metadataHandoff?.();
@@ -309,6 +364,28 @@ async function fixture(extra = {}) {
   };
   return {
     facade,
+    fleet,
+    logger,
+    async select(deviceId, revision = 0) {
+      return JSON.parse(
+        await fleet.execute(fleetCap, {
+          version: 1,
+          requestId: `f${++request}`,
+          method: 'fleet.selection.replace',
+          expectedRevision: revision,
+          selection: { selectedDeviceIds: [], activeDeviceId: deviceId, groups: [] },
+        }),
+      );
+    },
+    async input(method, fields = {}) {
+      const raw = await facade.executeInput(
+        { version: 1, requestId: `p${++request}`, method: 'input.' + method, ...fields },
+        () => true,
+      );
+      const result = parseInputInteractionResponse(raw);
+      assert.ok(result, raw);
+      return result;
+    },
     ui,
     associationEvents,
     setRows(value) {
@@ -402,6 +479,7 @@ async function fixture(extra = {}) {
     },
     async cleanup() {
       await facade.close();
+      await logger.close();
       registry.close();
       await coordinator.close();
       db.close();
@@ -1030,6 +1108,355 @@ test('post-lower BEGIN arm failure retains exact lower obligation and its eventu
     assert.equal(f.db.readDurable().associationReceipts.length, 0);
   } finally {
     gate.resolve();
+    await f.cleanup();
+  }
+});
+
+async function inputReady(f) {
+  const r = await throughReturn(f);
+  await f.association('confirm', {
+    expectedRevision: r.snapshot.revision,
+    ceremonyId: r.snapshot.ceremonyId,
+  });
+  const done = await f.associationTerminal();
+  assert.equal(done.snapshot.state, 'COMMITTED');
+  const deviceId = done.snapshot.deviceId;
+  const selected = await f.select(deviceId);
+  assert.equal(selected.ok, true, JSON.stringify(selected));
+  return {
+    deviceId,
+    expectedSelectionRevision: selected.fleet.selection.revision,
+    expectedRegistryRevision: f.registry.snapshot().revision,
+  };
+}
+async function inputTerminal(f) {
+  for (let n = 0; n < 200; n++) {
+    await new Promise((r) => setTimeout(r, 5));
+    const r = await f.input('get');
+    if (r.ok && r.snapshot.state !== 'PENDING') return r;
+  }
+  throw Error('INPUT_TERMINAL');
+}
+test('main ACTIVE input composes actual SQLite association/Fleet/logger with one native-fact owner, metadata first and repeated keys', async () => {
+  let handoffs = 0;
+  const f = await fixture({ inputHandoff: () => handoffs++ });
+  try {
+    const target = await inputReady(f);
+    const m = await f.metadata('get');
+    await f.metadata('read', {
+      expectedRevision: m.snapshot.revision,
+      expectedRegistryRevision: target.expectedRegistryRevision,
+      deviceId: target.deviceId,
+      field: 'MODEL',
+    });
+    assert.equal((await f.metadataTerminal()).snapshot.lastOutcome, 'OBSERVED');
+    const ack = await f.input('press', { ...target, expectedRevision: 0, action: 'HOME' });
+    assert.equal(ack.outcome, 'PENDING');
+    assert.equal(ack.loggingHealth, 'DEGRADED');
+    const r = await inputTerminal(f);
+    assert.equal(r.snapshot.state, 'SETTLED');
+    assert.equal(r.snapshot.receipt.actor.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.equal(r.snapshot.code, 'OK');
+    assert.equal(r.snapshot.current, true);
+    assert.equal(handoffs, 1);
+    await f.input('press', { ...target, expectedRevision: r.snapshot.revision, action: 'BACK' });
+    assert.equal((await inputTerminal(f)).snapshot.code, 'OK');
+    assert.equal(handoffs, 2);
+  } finally {
+    await f.cleanup();
+  }
+});
+test('input ACTIVE CAS rejects selected-device substitution and preserves history; input first permits same owner metadata', async () => {
+  let handoffs = 0;
+  const f = await fixture({ inputHandoff: () => handoffs++ });
+  try {
+    const target = await inputReady(f);
+    assert.equal(
+      (
+        await f.input('press', {
+          ...target,
+          deviceId: id(999),
+          expectedRevision: 0,
+          action: 'HOME',
+        })
+      ).ok,
+      false,
+    );
+    assert.equal((await f.input('get')).snapshot.state, 'EMPTY');
+    assert.equal(handoffs, 0);
+    await f.input('press', { ...target, expectedRevision: 0, action: 'ENTER' });
+    const r = await inputTerminal(f);
+    assert.equal(r.snapshot.code, 'OK');
+    const m = await f.metadata('get');
+    await f.metadata('read', {
+      expectedRevision: m.snapshot.revision,
+      expectedRegistryRevision: target.expectedRegistryRevision,
+      deviceId: target.deviceId,
+      field: 'MODEL',
+    });
+    assert.equal((await f.metadataTerminal()).snapshot.lastOutcome, 'OBSERVED');
+    await f.select(null, target.expectedSelectionRevision);
+    const old = await f.input('get');
+    assert.equal(old.snapshot.current, false);
+    assert.equal(old.snapshot.receipt.actor.code, 'OK');
+    assert.equal(old.snapshot.revision, r.snapshot.revision);
+  } finally {
+    await f.cleanup();
+  }
+});
+test('input Stop retains actual pending receipt and appends only that historical receipt at reserved revision', async () => {
+  const wait = deferred();
+  let calls = 0;
+  const f = await fixture({ inputHandoff: () => calls++, inputQuery: () => wait.promise });
+  try {
+    const target = await inputReady(f);
+    const ack = await f.input('press', { ...target, expectedRevision: 0, action: 'HOME' });
+    while (!calls) await tick();
+    const closing = f.facade.close();
+    const closed = await f.input('get');
+    assert.equal(closed.snapshot.state, 'CLOSED');
+    assert.equal(closed.snapshot.revision, 2);
+    wait.resolve();
+    await closing;
+    const final = await f.input('get');
+    assert.equal(final.snapshot.state, 'CLOSED');
+    assert.equal(final.snapshot.revision, 3);
+    assert.ok(final.snapshot.receipt);
+    assert.equal(final.snapshot.current, false);
+    assert.equal(ack.snapshot.revision, 1);
+  } finally {
+    wait.resolve();
+    await f.cleanup();
+  }
+});
+test('actual ACTIVE selection change during owned schema11 INTENT prevents handoff without retargeting', async () => {
+  let handoffs = 0;
+  const f = await fixture({ inputHandoff: () => handoffs++ });
+  const wait = deferred(),
+    entered = deferred();
+  try {
+    const target = await inputReady(f);
+    const flush = f.logger.store.flush.bind(f.logger.store);
+    let count = 0;
+    f.logger.store.flush = async () => {
+      if (++count === 1) {
+        entered.resolve();
+        await wait.promise;
+      }
+      return flush();
+    };
+    await f.input('press', { ...target, expectedRevision: 0, action: 'HOME' });
+    await entered.promise;
+    await f.select(null, target.expectedSelectionRevision);
+    wait.resolve();
+    const done = await inputTerminal(f);
+    assert.equal(done.snapshot.receipt.actor.outcome, 'NOT_DISPATCHED');
+    assert.equal(done.snapshot.code, 'STALE_BINDING');
+    assert.equal(handoffs, 0);
+    assert.equal(done.snapshot.current, false);
+  } finally {
+    wait.resolve();
+    await f.cleanup();
+  }
+});
+test('known logical input receipt keeps all ordinary effects BUSY through actual held RESULT drain', async () => {
+  const f = await fixture();
+  const wait = deferred(),
+    entered = deferred(),
+    drained = deferred();
+  const nativeTimer = globalThis.setTimeout;
+  try {
+    const target = await inputReady(f);
+    const flush = f.logger.store.flush.bind(f.logger.store);
+    let count = 0;
+    f.logger.store.flush = async () => {
+      if (++count === 2) {
+        entered.resolve();
+        await wait.promise;
+      }
+      const result = await flush();
+      if (count === 2) drained.resolve();
+      return result;
+    };
+    // Test-only elapsed scheduling: original absolute deadline remains in every request.
+    globalThis.setTimeout = (fn, delay, ...args) =>
+      nativeTimer(fn, delay > 29000 && delay <= 30000 ? 30 : delay, ...args);
+    await f.input('press', { ...target, expectedRevision: 0, action: 'HOME' });
+    await entered.promise;
+    const result = await inputTerminal(f);
+    assert.equal(result.snapshot.receipt.actor.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.equal(result.snapshot.code, 'OK');
+    assert.equal(
+      (
+        await f.input('press', {
+          ...target,
+          expectedRevision: result.snapshot.revision,
+          action: 'BACK',
+        })
+      ).code,
+      'BUSY',
+    );
+    const m = await f.metadata('get');
+    assert.equal(
+      (
+        await f.metadata('read', {
+          expectedRevision: m.snapshot.revision,
+          expectedRegistryRevision: target.expectedRegistryRevision,
+          deviceId: target.deviceId,
+          field: 'MODEL',
+        })
+      ).code,
+      'BUSY',
+    );
+    const d = await f.call('get');
+    assert.equal(
+      (await f.call('refresh', { expectedRevision: d.snapshot?.revision ?? 0 })).code,
+      'BUSY',
+    );
+    assert.equal(
+      (await f.association('begin', { expectedRevision: 0, candidateId: id(999), mode: 'CURRENT' }))
+        .code,
+      'BUSY',
+    );
+    wait.resolve();
+    globalThis.setTimeout = nativeTimer;
+    await drained.promise;
+    await tick();
+    await tick();
+    const ack = await f.input('press', {
+      ...target,
+      expectedRevision: result.snapshot.revision,
+      action: 'BACK',
+    });
+    assert.equal(ack.outcome, 'PENDING');
+    assert.equal((await inputTerminal(f)).snapshot.code, 'OK');
+  } finally {
+    globalThis.setTimeout = nativeTimer;
+    wait.resolve();
+    await f.cleanup();
+  }
+});
+
+test('input original deadline includes allocator/preflight time and never grants a fresh thirty seconds', async () => {
+  let time = Date.now(),
+    armed = false,
+    handoffs = 0;
+  const f = await fixture({
+    clock: () => time,
+    id: () => {
+      if (armed) {
+        armed = false;
+        time += 30001;
+      }
+      return undefined;
+    },
+    inputHandoff: () => handoffs++,
+  });
+  try {
+    const target = await inputReady(f);
+    armed = true;
+    const r = await f.input('press', { ...target, expectedRevision: 0, action: 'HOME' });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'DEADLINE_EXCEEDED');
+    assert.equal(handoffs, 0);
+    assert.equal((await f.input('get')).snapshot.state, 'EMPTY');
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('pre-owner replacement expiry then Stop advances once and actual drain preserves the entire CLOSED history', async () => {
+  const f = await fixture();
+  const held = deferred(),
+    entered = deferred();
+  const nativeTimer = globalThis.setTimeout;
+  let expire;
+  async function enroll(candidate, rowsAbsent, rowsReturn) {
+    let r = await f.association('get');
+    await f.association('begin', {
+      expectedRevision: r.snapshot.revision,
+      candidateId: candidate.candidateId,
+      mode: 'CURRENT',
+    });
+    r = await f.associationTerminal();
+    f.setRows(rowsAbsent);
+    await f.association('removal', {
+      expectedRevision: r.snapshot.revision,
+      ceremonyId: r.snapshot.ceremonyId,
+    });
+    r = await f.associationTerminal();
+    f.setRows(rowsReturn);
+    await f.association('return', {
+      expectedRevision: r.snapshot.revision,
+      ceremonyId: r.snapshot.ceremonyId,
+    });
+    r = await f.associationTerminal();
+    await f.association('confirm', {
+      expectedRevision: r.snapshot.revision,
+      ceremonyId: r.snapshot.ceremonyId,
+    });
+    r = await f.associationTerminal();
+    assert.equal(r.snapshot.state, 'COMMITTED');
+    return r.snapshot.deviceId;
+  }
+  try {
+    f.setRows('private-device device transport_id:1\nsecond-device device transport_id:10\n');
+    let c = await f.ready();
+    const a = await enroll(
+      c.snapshot.candidates[0],
+      'second-device device transport_id:10\n',
+      'private-device device transport_id:2\nsecond-device device transport_id:10\n',
+    );
+    c = await f.association('candidates');
+    const b = await enroll(
+      c.snapshot.candidates.find((x) => x.deviceId !== a),
+      'private-device device transport_id:2\n',
+      'private-device device transport_id:2\nsecond-device device transport_id:11\n',
+    );
+    const projection = f.registry.snapshot();
+    const m = await f.metadata('get');
+    await f.metadata('read', {
+      expectedRevision: m.snapshot.revision,
+      expectedRegistryRevision: projection.revision,
+      deviceId: a,
+      field: 'MODEL',
+    });
+    assert.equal((await f.metadataTerminal()).snapshot.lastOutcome, 'OBSERVED');
+    const selection = await f.select(b);
+    assert.equal(selection.ok, true);
+    globalThis.__inputReplacementDrain = () => {
+      entered.resolve();
+      return held.promise;
+    };
+    globalThis.setTimeout = (fn, delay, ...args) => {
+      if (delay > 29000 && delay <= 30000) expire = fn;
+      return nativeTimer(fn, delay, ...args);
+    };
+    const ack = await f.input('press', {
+      expectedRevision: 0,
+      expectedSelectionRevision: selection.fleet.selection.revision,
+      expectedRegistryRevision: projection.revision,
+      deviceId: b,
+      action: 'HOME',
+    });
+    assert.equal(ack.outcome, 'PENDING');
+    await entered.promise;
+    expire();
+    const failed = await f.input('get');
+    assert.equal(failed.snapshot.state, 'FAILED');
+    assert.equal(failed.snapshot.revision, 2);
+    const closing = f.facade.close();
+    const closed = await f.input('get');
+    assert.equal(closed.snapshot.state, 'CLOSED');
+    assert.equal(closed.snapshot.revision, 3);
+    assert.equal(closed.snapshot.receipt, null);
+    held.resolve();
+    await closing;
+    assert.deepEqual((await f.input('get')).snapshot, closed.snapshot);
+  } finally {
+    globalThis.setTimeout = nativeTimer;
+    delete globalThis.__inputReplacementDrain;
+    held.resolve();
     await f.cleanup();
   }
 });

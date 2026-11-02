@@ -1,3 +1,4 @@
+import * as inputContract from '../src/input-interaction-contract.ts';
 import * as associationContract from '../src/association-contract.ts';
 import * as metadataContract from '../src/metadata-contract.ts';
 import * as discoveryContract from '../src/discovery-contract.ts';
@@ -32,6 +33,7 @@ function mount(
   discoveryApi = null,
   metadataApi = null,
   associationApi = null,
+  inputApi = null,
 ) {
   let component,
     cursor = 0;
@@ -44,6 +46,7 @@ function mount(
     preferences: api,
     discovery: discoveryApi,
     association: associationApi,
+    input: inputApi,
     metadata: metadataApi ?? {
       get: async () =>
         metadataContract.metadataError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
@@ -122,6 +125,7 @@ function mount(
             },
           }),
         };
+      if (name === './input-interaction-contract.js') return inputContract;
       if (name === './association-contract.js') return associationContract;
       if (name === './metadata-contract.js') return metadataContract;
       if (name === './discovery-contract.js') return discoveryContract;
@@ -1591,4 +1595,194 @@ test('association timeout preserves known COMMITTED history and Stop suppresses 
   assert.equal(m.find('association-confirm').props.disabled, true);
   assert.doesNotMatch(m.find('association-status').props.children, /SETTLED \/ COMMITTED/);
   m.dispose();
+});
+
+const inputEmpty = () => ({
+  revision: 0,
+  state: 'EMPTY',
+  operationId: null,
+  deviceId: null,
+  generation: null,
+  selectionRevision: null,
+  registryRevision: null,
+  action: null,
+  deadlineUtc: null,
+  receipt: null,
+  code: null,
+  current: false,
+});
+const inputAnswer = (snapshot, outcome = 'STATUS') => {
+  const wire = inputContract.inputInteractionSuccess('p1', outcome, snapshot, 'DEGRADED');
+  assert.ok(wire);
+  return wire;
+};
+function inputMount(api, verification = 'VERIFIED') {
+  const f = fleetState(3, [fleetId]);
+  f.devices[0] = { ...f.devices[0], state: 'DEVICE', verification };
+  const b = '00000002-1234-4234-8234-123456789abc';
+  f.devices.push({ ...f.devices[0], deviceId: b, label: 'Device 0002' });
+  f.selection.activeDeviceId = b;
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    {
+      read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE'),
+      replaceSelection: async (rev, selection) => {
+        f.selection = { ...selection, revision: rev + 1 };
+        return fleetContract.fleetSuccess('f2', 'APPLIED', f, 'AVAILABLE');
+      },
+    },
+    null,
+    {
+      stop: async () => discoveryContract.discoveryError('p1', 'SESSION_REVOKED', null, 'DEGRADED'),
+    },
+    null,
+    null,
+    api,
+  );
+  return { m, f, b };
+}
+test('input UI never auto sends or reads; nine keys target actual ACTIVE rather than selected set', async () => {
+  const calls = [];
+  const { m, b } = inputMount({
+    get: async () => {
+      calls.push('get');
+      return inputAnswer(inputEmpty());
+    },
+    press: async (...args) => {
+      calls.push(args);
+      return inputAnswer(
+        {
+          ...inputEmpty(),
+          revision: 1,
+          state: 'PENDING',
+          operationId: metadataOp,
+          deviceId: args[3],
+          generation: 1,
+          selectionRevision: args[1],
+          registryRevision: args[2],
+          action: args[4],
+          deadlineUtc: 1000,
+        },
+        'PENDING',
+      );
+    },
+  });
+  m.effects();
+  await flush();
+  assert.deepEqual(calls, []);
+  assert.equal(m.find('input-home').props.disabled, true);
+  m.find('fleet-read').props.onClick();
+  await flush();
+  m.find('input-get').props.onClick();
+  await flush();
+  for (const action of inputContract.INPUT_ACTIONS)
+    assert.ok(m.find(`input-${action.toLowerCase()}`));
+  assert.match(JSON.stringify(m.find('input-active')), /Device 0002/);
+  assert.equal(m.find('input-home').props.disabled, false);
+  const press = m.find('input-home').props.onClick;
+  press();
+  press();
+  await flush();
+  assert.deepEqual(calls, ['get', [0, 3, 1, b, 'HOME']]);
+  assert.equal(m.find('input-back').props.disabled, true);
+  m.effects();
+  await flush();
+  assert.equal(calls.length, 2);
+  m.dispose();
+});
+test('input refuses PROVISIONAL and preserves original result target across selection changes and timeout', async () => {
+  const denied = inputMount(
+    {
+      get: async () => inputAnswer(inputEmpty()),
+      press: async () => {
+        throw Error('NO_EFFECT');
+      },
+    },
+    'PROVISIONAL',
+  );
+  denied.m.effects();
+  await flush();
+  denied.m.find('fleet-read').props.onClick();
+  await flush();
+  denied.m.find('input-get').props.onClick();
+  await flush();
+  assert.equal(denied.m.find('input-home').props.disabled, true);
+  denied.m.dispose();
+  const { m, b } = inputMount({
+    get: async () =>
+      inputAnswer({
+        ...inputEmpty(),
+        revision: 2,
+        state: 'SETTLED',
+        operationId: metadataOp,
+        deviceId: b,
+        generation: 1,
+        selectionRevision: 3,
+        registryRevision: 1,
+        action: 'HOME',
+        deadlineUtc: 1000,
+        code: 'OK',
+        current: true,
+        receipt: {
+          version: 1,
+          evidence: 'NATIVE_INPUT_QUERY',
+          actor: {
+            outcome: 'DISPATCHED_UNCONFIRMED',
+            code: 'OK',
+            commandId: metadataOp,
+            correlationId: '00000000-0000-4000-8000-000000000099',
+            diagnosticId: null,
+          },
+          loggingHealth: 'DEGRADED',
+        },
+      }),
+    press: async () => inputContract.inputInteractionError('p2', 'TIMEOUT', 'DEGRADED'),
+  });
+  m.effects();
+  await flush();
+  m.find('fleet-read').props.onClick();
+  await flush();
+  m.find('input-get').props.onClick();
+  await flush();
+  m.find('input-home').props.onClick();
+  await flush();
+  assert.match(JSON.stringify(m.find('input-history')), /DISPATCHED_UNCONFIRMED/);
+  assert.match(m.find('input-status').props.children, /TIMEOUT/);
+  assert.equal(m.find('input-home').props.disabled, true);
+  m.render().props.onSelection({
+    selectedDeviceIds: [fleetId],
+    activeDeviceId: fleetId,
+    groups: [],
+  });
+  await flush();
+  assert.match(JSON.stringify(m.find('input-history')), new RegExp(b));
+  assert.match(JSON.stringify(m.find('input-active')), new RegExp(fleetId));
+  assert.equal(m.find('input-home').props.disabled, true);
+  m.dispose();
+});
+test('late input STATUS cannot rearm after ACTIVE selection or Stop invalidation', async () => {
+  for (const action of ['selection', 'stop']) {
+    let finish;
+    const { m } = inputMount({
+      get: () => new Promise((r) => (finish = r)),
+      press: async () => {
+        throw Error('NO_EFFECT');
+      },
+    });
+    m.effects();
+    await flush();
+    m.find('fleet-read').props.onClick();
+    await flush();
+    m.find('input-get').props.onClick();
+    await flush();
+    if (action === 'selection')
+      m.render().props.onSelection({ selectedDeviceIds: [], activeDeviceId: fleetId, groups: [] });
+    else m.find('discovery-stop').props.onClick();
+    await flush();
+    finish(inputAnswer(inputEmpty()));
+    await flush();
+    assert.equal(m.find('input-home').props.disabled, true);
+    m.dispose();
+  }
 });

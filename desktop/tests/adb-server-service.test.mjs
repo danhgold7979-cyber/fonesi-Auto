@@ -1,3 +1,4 @@
+import { fleetActiveFixture } from './fixtures/fleet-active-input.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAdbServerService } from '../src/main/adb-server-service.ts';
@@ -888,6 +889,7 @@ const inputHandle = (value = inputFacts()) =>
     result: Promise.resolve(value),
     retirement: Promise.resolve(Object.freeze({ status: 'RETIRED' })),
   });
+const inputFleet = await fleetActiveFixture();
 const inputRequest = (record, n = 1) =>
   Object.freeze({
     requestId: id(1900 + n),
@@ -895,6 +897,7 @@ const inputRequest = (record, n = 1) =>
     sequence: n,
     transportId: '1',
     action: 'HOME',
+    activeIntent: inputFleet.capture().intent,
     deadlineUtc: 31000,
   });
 test('input shares the discovery lane and retains the foreground on known remote nonzero', async () => {
@@ -1113,6 +1116,30 @@ test('sealed provider captures actual installation scalar and refuses absent or 
     const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
     assert.equal(record.installationRevision, 7);
     assert(Object.isFrozen(record));
+  } finally {
+    await f.service.close();
+  }
+});
+
+test('input sealed Fleet intent lost after QUERY reservation before service microtask forces cleanup without handoff', async () => {
+  const module = await transformedService(),
+    fleet = await fleetActiveFixture();
+  const f = fixture({ createService: module.createAdbServerService, input: () => inputHandle() });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    const request = Object.freeze({
+      ...inputRequest(record),
+      activeIntent: fleet.capture().intent,
+    });
+    const h = record.beginInput(request);
+    assert.equal(h.handoff, 'QUERY');
+    void fleet.service.close();
+    const result = await h.result;
+    assert.notEqual(result.status, 'COMPLETE');
+    await h.retirement;
+    assert.equal(f.calls.filter((x) => x === 'input').length, 0);
+    assert.ok(f.closes() > 0);
   } finally {
     await f.service.close();
   }

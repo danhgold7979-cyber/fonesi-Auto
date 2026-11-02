@@ -1,3 +1,4 @@
+import { installInputInteractionBridge } from './input-interaction-bridge.ts';
 import { installAssociationBridge } from './association-bridge.ts';
 import { installRuntimeVersionBridge } from './runtime-version-bridge.js';
 import { installDiscoveryBridge } from './discovery-bridge.ts';
@@ -92,6 +93,7 @@ let runtimeVersionService: RuntimeVersionService | undefined;
 let runtimeVersionBridge: ReturnType<typeof installRuntimeVersionBridge> | undefined;
 let discoverySessionService: DiscoverySessionService | undefined;
 let discoveryBridge: ReturnType<typeof installDiscoveryBridge> | undefined;
+let inputBridge: ReturnType<typeof installInputInteractionBridge> | undefined;
 let associationBridge: ReturnType<typeof installAssociationBridge> | undefined;
 let platformToolsService: PlatformToolsSetupService | undefined;
 let platformToolsBridge: ReturnType<typeof installPlatformToolsSetupBridge> | undefined;
@@ -128,6 +130,7 @@ function cleanup(): boolean {
   const disposed = disposeResources([
     () => discoverySessionService?.revoke(),
     () => discoveryBridge?.dispose(),
+    () => inputBridge?.dispose(),
     () => associationBridge?.dispose(),
     () => platformToolsBridge?.dispose(),
     () => runtimeVersionBridge?.dispose(),
@@ -513,6 +516,8 @@ try {
           return durable.readDurable().meta.revision;
         };
         discoverySessionService = createDiscoverySessionService({
+          fleet: ownedFleetService,
+          logger,
           custody: runtimeCustody,
           assertOwnedSync: cleanupOwned,
           clock: () => Date.now(),
@@ -623,6 +628,11 @@ try {
           ipcMain,
           bridge.admitPreferences,
           bridge.admitCleanup,
+          () => discoverySessionService,
+        );
+        inputBridge = installInputInteractionBridge(
+          ipcMain,
+          bridge.admitPreferences,
           () => discoverySessionService,
         );
         associationBridge = installAssociationBridge(
@@ -787,6 +797,7 @@ try {
       closing = true;
       discoverySessionService?.revoke();
       discoveryBridge?.dispose();
+      inputBridge?.dispose();
       associationBridge?.dispose();
       if (backupTimer !== undefined) clearInterval(backupTimer);
       platformToolsBridge?.dispose();

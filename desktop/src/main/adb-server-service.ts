@@ -1,3 +1,4 @@
+import { inspectFleetActiveInputIntent, type OwnedFleetActiveIntent } from './fleet-service.ts';
 import {
   snapshotInputQueryFacts,
   validInputAction,
@@ -80,7 +81,10 @@ export type OwnedMetadataRequest = Readonly<{
   deadlineUtc: number;
 }>;
 export type OwnedInputRequest = Readonly<
-  Omit<OwnedMetadataRequest, 'field'> & { action: InputQueryAction }
+  Omit<OwnedMetadataRequest, 'field'> & {
+    action: InputQueryAction;
+    activeIntent: OwnedFleetActiveIntent;
+  }
 >;
 type OwnedProviderRecord = Readonly<{
   epoch: object;
@@ -514,6 +518,7 @@ export function createAdbServerService(
           'transportId',
           mode === 'INPUT' ? 'action' : 'field',
           'deadlineUtc',
+          ...(mode === 'INPUT' ? ['activeIntent'] : []),
         ];
         if (
           ![Object.prototype, null].includes(Object.getPrototypeOf(input)) ||
@@ -531,7 +536,8 @@ export function createAdbServerService(
           d.sequence?.value > 65536 ||
           !validMetadataTransportId(d.transportId?.value) ||
           !(mode === 'INPUT'
-            ? validInputAction(d.action?.value)
+            ? validInputAction(d.action?.value) &&
+              !!inspectFleetActiveInputIntent(d.activeIntent?.value)?.finalCurrent()
             : validMetadataField(d.field?.value)) ||
           !validMetadataDeadline(d.deadlineUtc?.value)
         )
@@ -582,6 +588,13 @@ export function createAdbServerService(
           )
             throw Error('ADMISSION_REJECTED');
           currentEpoch(true);
+          if (
+            mode === 'INPUT' &&
+            !inspectFleetActiveInputIntent(
+              (request as OwnedInputRequest).activeIntent,
+            )?.finalCurrent()
+          )
+            throw Error('ADMISSION_REJECTED');
           discoveryCalls++;
           invoked = true;
           const handle =
@@ -591,6 +604,7 @@ export function createAdbServerService(
                   Object.freeze({
                     transportId: request.transportId,
                     action: (request as OwnedInputRequest).action,
+                    activeIntent: (request as OwnedInputRequest).activeIntent,
                     deadlineUtc: request.deadlineUtc,
                   }),
                 )

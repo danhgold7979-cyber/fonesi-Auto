@@ -1,3 +1,4 @@
+import { inspectFleetActiveInputIntent, type OwnedFleetActiveIntent } from './fleet-service.ts';
 import { inspectAssociationConfirmation } from './association-confirmation.ts';
 import {
   associationRowsSha256,
@@ -205,6 +206,7 @@ function classify(error: unknown): LocalCode | Exclude<DurableCode, 'OUTCOME_UNK
 export type OwnedMetadataTarget = Readonly<{ ownedMetadataTarget: true }>;
 export type MetadataTargetRecord = Readonly<{
   ownerAnchor: object;
+  projection: RegistrySnapshot;
   target: Readonly<{
     deviceId: string;
     bindingId: string;
@@ -223,7 +225,11 @@ export type MetadataTargetRecord = Readonly<{
 export type OwnedInputTarget = Readonly<{ ownedInputTarget: true }>;
 export type InputTargetRecord = Readonly<
   Omit<MetadataTargetRecord, 'begin'> & {
-    begin(action: InputQueryAction, deadlineUtc: number): InputQueryHandle;
+    begin(
+      action: InputQueryAction,
+      deadlineUtc: number,
+      activeIntent: OwnedFleetActiveIntent,
+    ): InputQueryHandle;
   }
 >;
 const inputTargets = new WeakMap<object, InputTargetRecord>();
@@ -1405,11 +1411,29 @@ export function createAdbDiscoveryService(
       });
       const record = Object.freeze({
         ownerAnchor,
+        projection: captured,
         target,
         current,
         finalCurrent,
         localBusy,
-        begin(field: MetadataQueryField | InputQueryAction, deadlineUtc: number) {
+        begin(
+          field: MetadataQueryField | InputQueryAction,
+          deadlineUtc: number,
+          activeIntent?: OwnedFleetActiveIntent,
+        ) {
+          if (mode === 'INPUT') {
+            const intent = inspectFleetActiveInputIntent(activeIntent);
+            if (
+              !intent ||
+              intent.projection !== captured ||
+              intent.binding.deviceId !== target.deviceId ||
+              intent.binding.bindingId !== target.bindingId ||
+              intent.binding.generation !== target.generation ||
+              intent.binding.serial !== target.serial ||
+              !intent.finalCurrent()
+            )
+              throw Error('INVALID_REQUEST');
+          }
           if (
             !(mode === 'INPUT' ? validInputAction(field) : validMetadataField(field)) ||
             !validMetadataDeadline(deadlineUtc)
@@ -1470,6 +1494,7 @@ export function createAdbDiscoveryService(
                   transportId: target.transportId,
                   action: field as InputQueryAction,
                   deadlineUtc,
+                  activeIntent: activeIntent as OwnedFleetActiveIntent,
                 }),
               )
             : native.beginMetadata(

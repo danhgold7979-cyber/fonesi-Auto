@@ -1,3 +1,4 @@
+import * as inputClient from '../src/input-interaction-client.ts';
 import * as associationClient from '../src/association-client.ts';
 import * as metadataClient from '../src/metadata-client.ts';
 import * as discoveryClient from '../src/discovery-client.ts';
@@ -45,6 +46,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
       if (name === './preload-client.js') return clients;
       if (name === './settings-client.js') return preferences;
       if (name === './association-client.js') return associationClient;
+      if (name === './input-interaction-client.js') return inputClient;
       if (name === './metadata-client.js') return metadataClient;
       if (name === './discovery-client.js') return discoveryClient;
       if (name === './fleet-client.js') return fleet;
@@ -61,6 +63,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'discovery',
     'fleet',
     'foundation',
+    'input',
     'metadata',
     'platformTools',
     'preferences',
@@ -72,6 +75,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'restorePrevious',
     'update',
   ]);
+  assert.deepEqual(Object.keys(exposed.input).sort(), ['get', 'press']);
   assert.deepEqual(Object.keys(exposed.metadata).sort(), ['get', 'read']);
   assert.deepEqual(Object.keys(exposed.association).sort(), [
     'begin',
@@ -110,6 +114,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   assert.equal(JSON.parse(await exposed.preferences.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.fleet.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.metadata.get()).code, 'BUSY');
+  assert.equal(JSON.parse(await exposed.input.get()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.association.get()).code, 'BUSY');
   assert.equal(
     JSON.parse(await exposed.association.cancel(1, '11111111-1111-4111-8111-111111111111')).code,

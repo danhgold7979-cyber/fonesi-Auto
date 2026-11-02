@@ -1,3 +1,5 @@
+import { createFleetService } from '../src/main/fleet-service.ts';
+import { emptyRegistry, reconcileRegistry } from '../src/main/transport-registry.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -362,21 +364,88 @@ async function combinedFixture(extra = {}) {
   const metadataTicket = Object.freeze({ metadata: true }),
     inputTicket = Object.freeze({ input: true }),
     anchor = Object.freeze({});
+  let next = 101;
+  const row = { serial: 'synthetic-private', transportId: '7', state: 'DEVICE' };
+  const options = {
+    nextId: () => id(next++),
+    budget: { maxDevices: 256, maxBindings: 4096, maxEvidence: 4096, maxClaims: 256 },
+  };
+  const first = reconcileRegistry(
+    emptyRegistry(),
+    { sequence: 1, observedAtUtc: 1000, source: 'ADB_DISCOVERY', rows: [row], proofs: [] },
+    options,
+  );
+  assert.equal(first.ok, true);
+  const device = first.snapshot.devices[0];
+  const verified = reconcileRegistry(
+    first.snapshot,
+    {
+      sequence: 2,
+      observedAtUtc: 1000,
+      source: 'ADB_DISCOVERY',
+      rows: [row],
+      proofs: [
+        {
+          serial: row.serial,
+          transportId: row.transportId,
+          deviceId: device.deviceId,
+          evidenceId: id(900),
+        },
+      ],
+    },
+    options,
+  );
+  assert.equal(verified.ok, true);
+  const projection = verified.snapshot;
   const target = Object.freeze({
-    deviceId: id(101),
-    bindingId: id(102),
-    generation: 0,
-    serial: 'synthetic-private',
-    transportId: '7',
+    deviceId: device.deviceId,
+    bindingId: projection.devices[0].currentBindingId,
+    generation: projection.devices[0].generation,
+    serial: row.serial,
+    transportId: row.transportId,
     hostEpoch: 1,
-    registryRevision: 3,
-    observationSequence: 1,
+    registryRevision: projection.revision,
+    observationSequence: 2,
   });
+  const fleet = createFleetService({
+    registry: () => projection,
+    assertOwnedSync: () => {},
+    newDiagnostic: () => randomUUID(),
+    audit: async () => 'AVAILABLE',
+    availability: () => 'OBSERVED',
+    finalProjection: (p) => p === projection,
+  });
+  const fleetCap = fleet.grant(() => {});
+  let selectionRevision = 0;
+  async function select(active = target.deviceId) {
+    const result = JSON.parse(
+      await fleet.execute(fleetCap, {
+        version: 1,
+        requestId: 'f1',
+        method: 'fleet.selection.replace',
+        expectedRevision: selectionRevision,
+        selection: { selectedDeviceIds: [target.deviceId], activeDeviceId: active, groups: [] },
+      }),
+    );
+    assert.equal(result.ok, true);
+    selectionRevision = result.fleet.selection.revision;
+  }
+  await select();
+  function intent() {
+    const r = fleet.captureActiveInputIntent({
+      expectedSelectionRevision: selectionRevision,
+      expectedRegistryRevision: projection.revision,
+      deviceId: target.deviceId,
+    });
+    assert.equal(r.ok, true);
+    return r.intent;
+  }
   const calls = [];
   let valid = true;
   const shared = {
     target,
     ownerAnchor: anchor,
+    projection,
     current() {
       if (!valid) throw Error('REVOKED');
     },
@@ -430,6 +499,9 @@ async function combinedFixture(extra = {}) {
   let owner;
   return {
     root,
+    fleet,
+    intent,
+    select,
     logger,
     metadataTicket,
     inputTicket,
@@ -450,6 +522,7 @@ async function combinedFixture(extra = {}) {
     async cleanup() {
       if (owner) assert.equal(await owner.close(), true);
       await logger.close();
+      await fleet.close();
       assert.equal(readFileSync(join(root, '.owner'), 'utf8'), token);
       assert.equal(realpathSync(root), root);
       rmSync(root, { recursive: true, force: false });
@@ -460,12 +533,18 @@ test('combined scopes use one actual actor and actual durable input audit withou
   const f = await combinedFixture();
   try {
     const owner = f.build();
-    assert.deepEqual(Object.keys(owner).sort(), ['close', 'input', 'metadata', 'retired']);
+    assert.deepEqual(Object.keys(owner).sort(), [
+      'close',
+      'input',
+      'metadata',
+      'pending',
+      'retired',
+    ]);
     assert.deepEqual(Object.keys(owner.metadata).sort(), ['read', 'snapshot']);
     assert.deepEqual(Object.keys(owner.input), ['press']);
     const [metadata, input] = await Promise.all([
       owner.metadata.read('MODEL', Date.now() + 10000),
-      owner.input.press('HOME', Date.now() + 10000),
+      owner.input.press('HOME', Date.now() + 10000, f.intent()),
     ]);
     assert.equal(metadata.actor.outcome, 'OBSERVED');
     assert.equal(input.actor.outcome, 'DISPATCHED_UNCONFIRMED');
@@ -581,16 +660,13 @@ test('combined rejects unbranded logger before effects and no live upgrade of co
     await g.cleanup();
   }
 });
-test('existing main facade remains metadata-only despite the shared module exporting a combined source constructor', () => {
-  for (const name of ['../src/main.ts', '../src/main/discovery-session-service.ts']) {
-    const source = readFileSync(new URL(name, import.meta.url), 'utf8');
-    assert.doesNotMatch(source, /createOwnedDeviceTransportOwner|\.input\.press\(/);
-  }
+test('main facade now imports one combined owner instead of attaching a second input actor', () => {
   const facade = readFileSync(
     new URL('../src/main/discovery-session-service.ts', import.meta.url),
     'utf8',
   );
-  assert.match(facade, /createOwnedTransportMetadataOwner/);
+  assert.match(facade, /createOwnedDeviceTransportOwner/);
+  assert.doesNotMatch(facade, /import\s*\{\s*createOwnedTransportMetadataOwner\s*\}/);
 });
 test('combined closed logger after INTENT reports degraded RESULT instead of retaining old AVAILABLE', async () => {
   const f = await combinedFixture();
@@ -607,10 +683,101 @@ test('combined closed logger after INTENT reports degraded RESULT instead of ret
   );
   try {
     const owner = f.build();
-    const r = await owner.input.press('HOME', Date.now() + 10000);
+    const r = await owner.input.press('HOME', Date.now() + 10000, f.intent());
     assert.equal(r.actor.outcome, 'DISPATCHED_UNCONFIRMED');
     assert.equal(r.loggingHealth, 'DEGRADED');
     assert.equal(f.calls.length, 1);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+const deferredInput = () => {
+  let resolve;
+  const promise = new Promise((r) => (resolve = r));
+  return { promise, resolve };
+};
+test('actual Fleet intent changed during owned INTENT flush prevents query; replay fails and fresh intent reuses owner', async () => {
+  const f = await combinedFixture();
+  const entered = deferredInput(),
+    release = deferredInput();
+  const original = f.logger.store.flush.bind(f.logger.store);
+  let hold = true;
+  f.logger.store.flush = async () => {
+    if (hold) {
+      hold = false;
+      entered.resolve();
+      await release.promise;
+    }
+    return original();
+  };
+  try {
+    const owner = f.build(),
+      intent = f.intent();
+    const pending = owner.input.press('HOME', Date.now() + 10000, intent);
+    await entered.promise;
+    assert.equal(owner.pending, true);
+    await f.select(null);
+    await f.select();
+    release.resolve();
+    const result = await pending;
+    assert.equal(result.actor.outcome, 'NOT_DISPATCHED');
+    assert.equal(result.actor.code, 'STALE_BINDING');
+    assert.equal(f.calls.length, 0);
+    assert.equal(
+      (await owner.input.press('HOME', Date.now() + 10000, intent)).actor.code,
+      'INVALID_REQUEST',
+    );
+    const fresh = await owner.input.press('BACK', Date.now() + 10000, f.intent());
+    assert.equal(fresh.actor.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.deepEqual(f.calls, ['input:BACK']);
+  } finally {
+    release.resolve();
+    await f.cleanup();
+  }
+});
+test('logical known receipt while owned RESULT flush held leaves combined pending until actual drain', async () => {
+  const f = await combinedFixture(),
+    entered = deferredInput(),
+    release = deferredInput();
+  const original = f.logger.store.flush.bind(f.logger.store);
+  let count = 0;
+  f.logger.store.flush = async () => {
+    if (++count === 2) {
+      entered.resolve();
+      await release.promise;
+    }
+    return original();
+  };
+  try {
+    const owner = f.build();
+    const pending = owner.input.press('HOME', Date.now() + 1000, f.intent());
+    await entered.promise;
+    assert.equal(owner.pending, true);
+    const receipt = await pending;
+    assert.equal(receipt.actor.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.equal(owner.pending, true);
+    assert.equal(owner.retired, false);
+    release.resolve();
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(await owner.close(), true);
+    assert.equal(owner.pending, false);
+  } finally {
+    release.resolve();
+    await f.cleanup();
+  }
+});
+test('combined input requires genuine per-request Fleet intent and cannot cast or omit it', async () => {
+  const f = await combinedFixture();
+  try {
+    const owner = f.build();
+    for (const token of [undefined, {}, f.metadataTicket, f.inputTicket])
+      assert.equal(
+        (await owner.input.press('HOME', Date.now() + 10000, token)).actor.outcome,
+        'NOT_DISPATCHED',
+      );
+    assert.equal(f.calls.length, 0);
   } finally {
     await f.cleanup();
   }
