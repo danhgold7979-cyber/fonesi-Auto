@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import workflowFixture from '../verification/workflow-fixture.cjs';
+const { workflowEncodings } = workflowFixture;
 const raw = readFileSync(
   new URL('../../.github/workflows/phase-02-software.yml', import.meta.url),
   'utf8',
 );
-const condition =
+const historicalCondition =
   "(github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[fleet-ui]'))";
+const condition = `false && (${historicalCondition})`;
 function validate(input) {
   const source = input.replace(/\r\n/g, '\n');
   assert.match(
@@ -16,7 +19,11 @@ function validate(input) {
   const parts = source.split('  owned-fleet-ui-development:\n');
   assert.equal(parts.length, 2);
   const job = parts[1].split(/\n {2}[a-z0-9-]+:\n/)[0];
-  assert.ok(job.startsWith(`    needs: windows-software-only\n    if: ${condition}\n`));
+  assert.ok(
+    job.startsWith(
+      `    needs: windows-software-only\n    # Historical schema4 UI envelope is suspended until an exact schema5 campaign is reviewed.\n    if: ${condition}\n`,
+    ),
+  );
   assert.doesNotMatch(
     job,
     /Invoke-Foundation|Invoke-Persistence|PlatformTools|fetch_platform_tools|check\.mjs/,
@@ -31,20 +38,28 @@ function validate(input) {
   assert.match(job, /FLEET_UI_SCREENSHOTS_BOUND/);
   assert.match(job, /fleet-light\.png\n {12}desktop\/\.fleet-ui-runtime\/fleet-dark\.png/);
 }
-test('schema4 fleet UI requires exact manual or phase02 marker opt-in and preserves publication gates', () => {
-  validate(raw);
-  validate(raw.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'));
-  for (const changed of [
-    raw.replace(condition, 'true'),
-    raw.replace(condition, condition.replace("github.event_name == 'workflow_dispatch' && ", '')),
-    raw.replace(condition, condition.replace("github.ref == 'refs/heads/phase-02' && ", '')),
-    raw.replace(condition, condition.replace("github.event_name == 'push' && ", '')),
-    raw.replace("contains(github.event.head_commit.message, '[fleet-ui]')", 'true'),
-    raw.replace('default: false', 'default: true').replace(/default: false/g, 'default: true'),
-    raw.replace(
-      "steps.fleet_validation.outputs.images == 'true'",
-      "steps.fleet_validation.outputs.written == 'true'",
-    ),
-  ])
-    assert.throws(() => validate(changed));
+test('historical schema4 fleet UI stays suspended with original opt-in and publication gates retained', () => {
+  for (const source of workflowEncodings(raw)) {
+    validate(source);
+    assert.deepEqual(workflowEncodings(source), workflowEncodings(raw));
+    for (const changed of [
+      source.replace(condition, historicalCondition),
+      source.replace(condition, 'true'),
+      source.replace(
+        condition,
+        condition.replace("github.event_name == 'workflow_dispatch' && ", ''),
+      ),
+      source.replace(condition, condition.replace("github.ref == 'refs/heads/phase-02' && ", '')),
+      source.replace(condition, condition.replace("github.event_name == 'push' && ", '')),
+      source.replace("contains(github.event.head_commit.message, '[fleet-ui]')", 'true'),
+      source.replace('default: false', 'default: true').replace(/default: false/g, 'default: true'),
+      source.replace(
+        "steps.fleet_validation.outputs.images == 'true'",
+        "steps.fleet_validation.outputs.written == 'true'",
+      ),
+    ]) {
+      assert.notEqual(changed, source);
+      assert.throws(() => validate(changed));
+    }
+  }
 });

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import {
   MIGRATIONS,
@@ -9,8 +10,17 @@ import {
   epoch,
   checksum,
 } from '../src/persistence-contract.ts';
-test('exact foundation schema has four migrations and twelve exact named tables only', () => {
-  assert.equal(MIGRATIONS.length, 4);
+test('exact foundation schema has five migrations and thirteen exact named tables only', () => {
+  assert.equal(MIGRATIONS.length, 5);
+  assert.deepEqual(
+    MIGRATIONS.slice(0, 4).map((sql) => createHash('sha256').update(sql).digest('hex')),
+    [
+      'a7dcc15acf94d6f8617716d4b096d1aa080fe59ecbf0b306688c4c81f2d14d73',
+      '5f9d4df89fbf0ee078120acd0810c8b1e0367bbee6cb60f9be64f35814cd44b3',
+      '9fd96888dcbfbf6a8a35d400be2eacc83fa54fecf89ca8d596d95fc5c4d177f6',
+      '45b22427ff3579017424b0cff1e0bcd9ba2ecab05692d9b42023869a07562882',
+    ],
+  );
   const names = [...MIGRATIONS.join('\n').matchAll(/CREATE TABLE ([a-z_]+)/g)].map((m) => m[1]);
   assert.deepEqual(names, Object.keys(TABLES));
   assert.deepEqual(names.slice(6), [
@@ -20,9 +30,13 @@ test('exact foundation schema has four migrations and twelve exact named tables 
     'registry_identity_evidence',
     'capture_artifact',
     'capture_hold',
+    'device_session_association',
   ]);
-  assert.equal((MIGRATIONS.join('\n').match(/\) STRICT;/g) || []).length, 12);
-  assert.equal(/CREATE TABLE (?:device|account|job|secret)/.test(MIGRATIONS.join('\n')), false);
+  assert.equal((MIGRATIONS.join('\n').match(/\) STRICT;/g) || []).length, 13);
+  assert.equal(
+    /CREATE TABLE (?:device|account|job|secret)\s*\(/.test(MIGRATIONS.join('\n')),
+    false,
+  );
 });
 test('maintenance admits only normal startup or one exact reviewed literal', () => {
   assert.equal(maintenanceArgument([]), 'NORMAL');

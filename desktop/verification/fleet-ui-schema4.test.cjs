@@ -1,4 +1,5 @@
 'use strict';
+const { migrateSchema4, commitEmptySchema4 } = require('./schema4-fixture.cjs');
 const test = require('node:test'),
   assert = require('node:assert/strict'),
   fs = require('node:fs'),
@@ -60,45 +61,38 @@ test('actual read-only schema4 inspection binds synthetic receipt closure and co
   const receipts = [];
   try {
     db = new FoundationDatabase(path.join(root, 'active.sqlite'), storeId);
-    await db.migrate(async (version) => {
-      const fingerprint = db.fingerprint(),
-        backupId = randomUUID();
-      receipts.push({
-        version: 1,
-        header: {
-          formatVersion: 1,
-          storeId,
-          locationId,
-          backupId,
-          keyRef: randomUUID(),
-          reason: 'PRE_MIGRATION',
-          snapshotUtc: 1000,
-          schemaVersion: version,
-          plaintextBytes: 1,
-          plaintextSha256: 'a'.repeat(64),
-          nonceBase64: Buffer.alloc(12).toString('base64'),
-          wrappedKeyBase64: Buffer.from('synthetic').toString('base64'),
-        },
-        encryptedSha256: 'b'.repeat(64),
-        fingerprint,
-        validatedUtc: 1000,
-      });
-      return { backupId, fingerprint, schemaVersion: version };
-    }, 1000);
+    await migrateSchema4(
+      db,
+      async (version) => {
+        const fingerprint = db.fingerprint(),
+          backupId = randomUUID();
+        receipts.push({
+          version: 1,
+          header: {
+            formatVersion: 1,
+            storeId,
+            locationId,
+            backupId,
+            keyRef: randomUUID(),
+            reason: 'PRE_MIGRATION',
+            snapshotUtc: 1000,
+            schemaVersion: version,
+            plaintextBytes: 1,
+            plaintextSha256: 'a'.repeat(64),
+            nonceBase64: Buffer.alloc(12).toString('base64'),
+            wrappedKeyBase64: Buffer.from('synthetic').toString('base64'),
+          },
+          encryptedSha256: 'b'.repeat(64),
+          fingerprint,
+          validatedUtc: 1000,
+        });
+        return { backupId, fingerprint, schemaVersion: version };
+      },
+      1000,
+    );
     fs.writeFileSync(receiptFile, JSON.stringify(receipts), { flag: 'wx' });
-    const delta = (kind) => ({
-      operationId: randomUUID(),
-      kind,
-      utc: 1001,
-      hostEpoch: 1,
-      devices: { insert: [], update: [] },
-      bindings: { insert: [], refresh: [], retireIds: [] },
-      identityEvidence: { insert: [] },
-      captures: { insert: [], transition: [] },
-      holds: { insert: [], releaseIds: [] },
-    });
-    assert.equal(db.commitDurable(0, delta('STARTUP'), () => {}).ok, true);
-    assert.equal(db.commitDurable(1, delta('PRUNE'), () => {}).ok, true);
+    commitEmptySchema4(db, 0, 'STARTUP', 1, 1001);
+    commitEmptySchema4(db, 1, 'PRUNE', 1, 1001);
     db.close();
     db = null;
     assert.deepEqual(inspectSchema4(root, storeId), {
@@ -152,6 +146,17 @@ test('actual read-only schema4 inspection binds synthetic receipt closure and co
     assert.throws(() => inspectSchema4(root, storeId), /FLEET_UI_SCHEMA4/);
     fs.rmdirSync(path.join(root, 'captures-v1'));
     assert.equal(assertCaptureAbsent(root), true);
+    // Current schema5 must not be accepted by the retained historical schema4 observer.
+    // These prerequisite facts remain synthetic, as in this fixture's original setup.
+    db = new FoundationDatabase(path.join(root, 'active.sqlite'), storeId);
+    await db.migrate(async (version) => {
+      assert.equal(version, 4);
+      return { backupId: randomUUID(), fingerprint: db.fingerprint(), schemaVersion: version };
+    }, 1002);
+    assert.equal(db.version, 5);
+    db.close();
+    db = null;
+    assert.throws(() => inspectSchema4(root, storeId), /FLEET_UI_SCHEMA4/);
   } finally {
     db?.close();
     for (const name of fs.readdirSync(root)) {

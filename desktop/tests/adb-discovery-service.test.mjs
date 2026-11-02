@@ -828,6 +828,7 @@ async function exerciseNativeIssuer(verified = false) {
         },
         discoveryEpochWitness() {
           return Object.freeze({
+            installationRevision: 1,
             get valid() {
               return state === 'READY' && !closed;
             },
@@ -1169,6 +1170,7 @@ test('full transformed ingestion respects pending actual HEALTH lane and callbac
         },
         discoveryEpochWitness() {
           return Object.freeze({
+            installationRevision: 1,
             get valid() {
               return (
                 !inspection &&
@@ -1330,5 +1332,562 @@ test('synthetic committed SQLite projection cannot issue native metadata targets
     assert.equal(inspectOwnedMetadataTarget(Object.freeze({ ownedMetadataTarget: true })), null);
   } finally {
     await f.cleanup();
+  }
+});
+
+// Real SQLite/store/ingestion/server WeakMaps; only OS factory recognition and the
+// unavailable operator-intent seam are source-transformed. No proof-array injection.
+async function associationFixture(options = {}) {
+  const { readFileSync } = await import('node:fs');
+  const { transformSync } = await import('esbuild');
+  const moduleUrl = (s, path) =>
+    'data:text/javascript;base64,' +
+    Buffer.from(
+      transformSync(
+        s.replace(/from '(\.\.?\/[^']+)'/g, (_, rel) => `from '${new URL(rel, path).href}'`),
+        { loader: 'ts', format: 'esm', target: 'es2022' },
+      ).code,
+    ).toString('base64');
+  const serverPath = new URL('../src/main/adb-server-service.ts', import.meta.url);
+  const serverUrl = moduleUrl(
+    readFileSync(serverPath, 'utf8').replace(
+      '!isRealHostFactory(factory)',
+      'false /* SYNTHETIC_NATIVE_ADMISSION */',
+    ),
+    serverPath,
+  );
+  const serverModule = await import(serverUrl);
+  const ingestPath = new URL('../src/main/adb-discovery-service.ts', import.meta.url);
+  let src = readFileSync(ingestPath, 'utf8').replace(
+    "'./adb-server-service.ts'",
+    JSON.stringify(serverUrl),
+  );
+  if (options.operator !== false) {
+    assert.equal(src.split('return null; /* OPERATOR_CONFIRMATION_UNAVAILABLE */').length, 2);
+    src = src.replace(
+      'return null; /* OPERATOR_CONFIRMATION_UNAVAILABLE */',
+      'return globalThis.__associationOperatorFixtures?.get(_intent) ?? null; /* SYNTHETIC_OPERATOR_ONLY */',
+    );
+  }
+  const ingest = await import(moduleUrl(src, ingestPath));
+  let time = 1000,
+    n = 60000,
+    state = 'STOPPED',
+    closed = false,
+    calls = 0,
+    held = null;
+  const rows = (tid = '1') => `phone device transport_id:${tid}\nother device transport_id:9\n`;
+  let raw = rows();
+  let intentCurrent = true,
+    owned = true;
+  const f = await fixture({
+    ...options.dbOptions,
+    assertOwnedSync() {
+      if (!owned) throw Error('OWNER_REVOKED');
+      options.owned?.();
+    },
+  });
+  await f.store.startup();
+  const server = serverModule.createAdbServerService({
+    ownerId: id(1),
+    expectedInstallationRevision: 7,
+    assertOwnedSync() {
+      if (!owned) throw Error();
+    },
+    assertCurrentSync() {
+      if (!owned) throw Error();
+    },
+    clock: () => time,
+    newId: () => id(n++),
+    audit: async () => 'AVAILABLE',
+    createFactory: () => ({
+      grant: () => Object.freeze({}),
+      snapshot: () => Object.freeze({ state, busy: false, closed }),
+      execute: async (_c, r) => {
+        state = r.operation === 'SERVER_STOP' ? 'STOPPED' : 'READY';
+        return Object.freeze({ outcome: 'OBSERVED', code: 'OK', diagnosticId: null });
+      },
+      assertCurrentSession() {
+        if (closed || state !== 'READY') throw Error();
+      },
+      assertDiscoveryEpochCurrent() {
+        if (closed || state !== 'READY') throw Error();
+      },
+      assertRetiredSession() {
+        if (state !== 'STOPPED') throw Error();
+      },
+      discoveryEpochWitness() {
+        return Object.freeze({
+          installationRevision: 7,
+          get valid() {
+            return !closed && owned && state === 'READY';
+          },
+        });
+      },
+      get retired() {
+        return closed;
+      },
+      close: async () => {
+        closed = true;
+        state = 'STOPPED';
+        return 'RETIRED';
+      },
+      acquireDiscovery() {
+        calls++;
+        if (held) return held;
+        return Object.freeze({
+          result: Promise.resolve(
+            Object.freeze({
+              version: 1,
+              kind: 'ACQUISITION',
+              status: 'COMPLETE',
+              code: 'OK',
+              dispatched: true,
+              operationRetired: true,
+              payloadBase64: Buffer.from(raw).toString('base64'),
+              observedAtUtc: time,
+            }),
+          ),
+          retirement: retired(),
+        });
+      },
+    }),
+  });
+  await server.start();
+  const service = ingest.createAdbDiscoveryService({
+    provider: server.discoveryProvider(),
+    registry: f.store,
+    readDurableRevision: () => f.db.readDurable().meta.revision,
+    assertOwnedSync() {
+      if (!owned) throw Error();
+    },
+    clock: () => time,
+    newId: () => id(n++),
+  });
+  await service.refresh(f.db.readDurable().meta.revision);
+  globalThis.__associationOperatorFixtures ??= new WeakMap();
+  const operatorMap = globalThis.__associationOperatorFixtures;
+  const intent = (handle, mode = 'CURRENT', overrides = {}) => {
+    const token = Object.freeze({ associationConfirmation: true }),
+      snap = service.associationSnapshot();
+    operatorMap.set(
+      token,
+      Object.freeze({
+        handle,
+        mode,
+        deviceId: snap.deviceId,
+        projection: service.snapshot(),
+        expectedDurableRevision: f.db.readDurable().meta.revision,
+        operatorSession: Object.freeze({}),
+        requestId: id(n++),
+        attestation: Object.freeze({
+          heldHandset: true,
+          cableCycle: true,
+          sameHistoricalHandset: mode === 'HISTORICAL',
+        }),
+        finalCurrent: () => intentCurrent,
+        ...overrides,
+      }),
+    );
+    return token;
+  };
+  return {
+    f,
+    server,
+    service,
+    rows,
+    intent,
+    raw(v) {
+      raw = v;
+    },
+    time(v) {
+      time = v;
+    },
+    calls: () => calls,
+    setHeld(v) {
+      held = v;
+    },
+    revokeIntent() {
+      intentCurrent = false;
+    },
+    revokeOwner() {
+      owned = false;
+    },
+    async begin(mode = 'CURRENT', deviceId) {
+      const chosen = service.associationCandidates()[0];
+      assert(chosen);
+      return service.beginAssociation({
+        mode,
+        candidate: chosen.candidate,
+        expectedDurableRevision: f.db.readDurable().meta.revision,
+        ...(mode === 'HISTORICAL' ? { deviceId } : {}),
+      });
+    },
+    async throughReturn(mode = 'CURRENT', deviceId) {
+      const b = await this.begin(mode, deviceId);
+      assert.equal(b.receipt.outcome, 'COMMITTED');
+      assert(b.handle);
+      raw = 'other device transport_id:9\n';
+      assert.equal((await service.observeAssociation(b.handle, 'REMOVAL')).outcome, 'COMMITTED');
+      raw = rows('2');
+      assert.equal((await service.observeAssociation(b.handle, 'RETURN')).outcome, 'COMMITTED');
+      return b.handle;
+    },
+    async close() {
+      await service.close();
+      await server.close();
+      await f.close();
+    },
+  };
+}
+test('association CURRENT four stages commit one real SQLite receipt; production operator issuer stays unavailable', async () => {
+  for (const operator of [false, true]) {
+    const f = await associationFixture({ operator });
+    try {
+      const handle = await f.throughReturn();
+      const before = f.calls(),
+        rev = f.f.db.readDurable().meta.revision;
+      assert.equal(f.service.associationSnapshot().state, 'AWAIT_CONFIRMATION');
+      const denied = await f.service.confirmAssociation(handle, {
+        heldHandset: true,
+        cableCycle: true,
+        sameHistoricalHandset: false,
+      });
+      assert.equal(denied.code, 'ATTESTATION_REQUIRED');
+      assert.equal(f.calls(), before);
+      const result = await f.service.confirmAssociation(handle, f.intent(handle));
+      if (!operator) {
+        assert.equal(result.code, 'ATTESTATION_REQUIRED');
+        assert.equal(f.calls(), before);
+        assert.equal(f.f.db.readDurable().meta.revision, rev);
+        continue;
+      }
+      assert.equal(result.outcome, 'COMMITTED');
+      assert.equal(result.auditHealth, 'AVAILABLE');
+      assert.equal(result.projectionCurrent, true);
+      assert.equal(f.calls(), before + 1);
+      const db = f.f.db.readDurable();
+      assert.equal(db.associationReceipts.length, 1);
+      assert.equal(db.identityEvidence.length, 1);
+      assert.equal(db.identityEvidence[0].identity_sha256, null);
+      const receipt = JSON.parse(db.associationReceipts[0].receipt_json);
+      assert.equal(receipt.installationRevision, 7);
+      assert.equal(receipt.beforeRow.transportId, '1');
+      assert.equal(receipt.returnRow.transportId, '2');
+      assert.equal(receipt.stages.confirmation.durableRevision, db.meta.revision);
+      assert.equal(
+        f.service.snapshot().devices.find((d) => d.deviceId === receipt.deviceId).verification,
+        'VERIFIED',
+      );
+      assert.equal(
+        (await f.service.confirmAssociation(handle, f.intent(handle))).code,
+        'INVALID_SEQUENCE',
+      );
+      assert.equal(db.associationReceipts.length, 1);
+    } finally {
+      await f.close();
+    }
+  }
+});
+test('association HISTORICAL explicitly relinks disconnected history and never derives identity from reused serial', async () => {
+  const f = await associationFixture();
+  try {
+    const deviceId = f.service
+      .snapshot()
+      .devices.find(
+        (d) =>
+          d.currentBindingId &&
+          f.service.snapshot().bindings.find((b) => b.bindingId === d.currentBindingId)?.serial ===
+            'phone',
+      ).deviceId;
+    f.raw('other device transport_id:9\n');
+    await f.service.refresh(f.f.db.readDurable().meta.revision);
+    f.raw(f.rows('3'));
+    await f.service.refresh(f.f.db.readDurable().meta.revision);
+    assert.equal(f.service.associationCandidates()[0].eligibility, 'HISTORICAL');
+    const b = await f.begin('HISTORICAL', deviceId);
+    assert.equal(b.receipt.outcome, 'COMMITTED');
+    f.raw('other device transport_id:9\n');
+    await f.service.observeAssociation(b.handle, 'REMOVAL');
+    f.raw(f.rows('4'));
+    await f.service.observeAssociation(b.handle, 'RETURN');
+    assert.equal(
+      (await f.service.confirmAssociation(b.handle, f.intent(b.handle, 'CURRENT'))).code,
+      'ATTESTATION_REQUIRED',
+    );
+    const r = await f.service.confirmAssociation(b.handle, f.intent(b.handle, 'HISTORICAL'));
+    assert.equal(r.outcome, 'COMMITTED');
+    const receipt = JSON.parse(f.f.db.readDurable().associationReceipts[0].receipt_json);
+    assert.equal(receipt.mode, 'HISTORICAL');
+    assert.equal(receipt.priorBindingId, null);
+    assert.equal(receipt.deviceId, deviceId);
+  } finally {
+    await f.close();
+  }
+});
+test('association refuses changed other row, reused tid, changed serial and missing return before reconciliation', async () => {
+  for (const [phase, raw, code] of [
+    ['REMOVAL', 'other offline transport_id:9\n', 'OTHER_ROWS_CHANGED'],
+    ['REMOVAL', 'phone device transport_id:1\nother device transport_id:9\n', 'TARGET_NOT_REMOVED'],
+    ['RETURN', 'phone device transport_id:1\nother device transport_id:9\n', 'RETURN_NOT_UNIQUE'],
+    [
+      'RETURN',
+      'different device transport_id:2\nother device transport_id:9\n',
+      'RETURN_NOT_UNIQUE',
+    ],
+    ['RETURN', 'other device transport_id:9\n', 'RETURN_NOT_UNIQUE'],
+  ]) {
+    const f = await associationFixture();
+    try {
+      const b = await f.begin();
+      if (phase === 'RETURN') {
+        f.raw('other device transport_id:9\n');
+        await f.service.observeAssociation(b.handle, 'REMOVAL');
+      }
+      const before = f.f.db.readDurable().meta.revision;
+      f.raw(raw);
+      const r = await f.service.observeAssociation(b.handle, phase);
+      assert.equal(r.code, code);
+      assert.equal(r.outcome, 'NOT_COMMITTED');
+      assert.equal(f.f.db.readDurable().meta.revision, before);
+      assert.equal(f.service.snapshot(), null);
+      assert.equal(f.f.db.readDurable().associationReceipts.length, 0);
+    } finally {
+      await f.close();
+    }
+  }
+});
+test('association final fresh observation and sealed intent CAS refuse stale confirmation without proof COMMIT', async () => {
+  for (const change of ['rows', 'intent', 'owner']) {
+    const f = await associationFixture();
+    try {
+      const handle = await f.throughReturn();
+      const token = f.intent(handle);
+      const before = f.f.db.readDurable().meta.revision;
+      if (change === 'rows') f.raw('phone device transport_id:2\nother offline transport_id:9\n');
+      if (change === 'intent') f.revokeIntent();
+      if (change === 'owner') f.revokeOwner();
+      const r = await f.service.confirmAssociation(handle, token);
+      assert.equal(r.outcome, 'NOT_COMMITTED');
+      assert.equal(f.f.db.readDurable().meta.revision, before);
+      assert.equal(f.f.db.readDurable().associationReceipts.length, 0);
+    } finally {
+      await f.close();
+    }
+  }
+});
+test('association idle expiry/cancel is known no-effect; no server cleanup or invented query uncertainty', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = await associationFixture();
+  try {
+    const b = await f.begin();
+    const calls = f.calls();
+    t.mock.timers.tick(120000);
+    assert.equal(f.service.associationSnapshot().code, 'DEADLINE');
+    assert.equal(f.calls(), calls);
+    assert.equal(f.server.snapshot().state, 'READY');
+    assert.equal(f.service.retired, false);
+    assert.equal(
+      (await f.service.observeAssociation(b.handle, 'REMOVAL')).outcome,
+      'NOT_COMMITTED',
+    );
+  } finally {
+    await f.close();
+    t.mock.timers.reset();
+  }
+});
+test('association cancellation retains pending actual native work and blocks a new ceremony', async () => {
+  const f = await associationFixture();
+  const gate = deferred(),
+    retirement = deferred();
+  try {
+    const b = await f.begin();
+    f.setHeld(Object.freeze({ result: gate.promise, retirement: retirement.promise }));
+    const pending = f.service.observeAssociation(b.handle, 'REMOVAL');
+    await new Promise((r) => setImmediate(r));
+    f.service.cancelAssociation(b.handle);
+    assert.equal(f.service.associationSnapshot().state, 'CANCELLED');
+    assert.equal((await f.service.beginAssociation({})).receipt.code, 'BUSY');
+    const close = f.service.close();
+    assert.equal(f.service.retired, false);
+    gate.resolve(
+      Object.freeze({
+        version: 1,
+        kind: 'ACQUISITION',
+        status: 'COMPLETE',
+        code: 'OK',
+        dispatched: true,
+        operationRetired: true,
+        payloadBase64: Buffer.from('other device transport_id:9\n').toString('base64'),
+        observedAtUtc: 1000,
+      }),
+    );
+    retirement.resolve(Object.freeze({ status: 'RETIRED' }));
+    assert.equal((await pending).outcome, 'NOT_COMMITTED');
+    assert.equal((await close).status, 'RETIRED');
+    assert.equal(f.f.db.readDurable().associationReceipts.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+test('association known final COMMIT survives held RESULT expiry without fresh authority or fabricated rollback', async () => {
+  const audit = deferred();
+  let hold = false,
+    entered = false;
+  const f = await associationFixture({
+    dbOptions: {
+      audit: async (e) => {
+        if (hold && e.phase === 'RESULT') {
+          entered = true;
+          return audit.promise;
+        }
+        return 'AVAILABLE';
+      },
+    },
+  });
+  try {
+    const handle = await f.throughReturn();
+    const token = f.intent(handle);
+    hold = true;
+    const pending = f.service.confirmAssociation(handle, token);
+    while (!entered) await new Promise((r) => setImmediate(r));
+    assert.equal(f.f.db.readDurable().associationReceipts.length, 1);
+    const closing = f.service.close();
+    assert.equal(f.service.retired, false);
+    audit.resolve('DEGRADED');
+    const result = await pending;
+    assert.equal(result.outcome, 'COMMITTED');
+    assert.equal(result.projectionCurrent, false);
+    assert.equal(result.auditHealth, 'DEGRADED');
+    assert.equal(f.f.db.readDurable().associationReceipts.length, 1);
+    assert.equal((await closing).status, 'RETIRED');
+    assert.equal(f.service.associationSnapshot().state, 'CLOSED');
+  } finally {
+    audit.resolve('DEGRADED');
+    await f.close();
+  }
+});
+test('association failed final INTENT is NOT_COMMITTED and does not insert identity or receipt', async () => {
+  let fail = false;
+  const f = await associationFixture({
+    dbOptions: { audit: async (e) => (fail && e.phase === 'INTENT' ? 'DEGRADED' : 'AVAILABLE') },
+  });
+  try {
+    const handle = await f.throughReturn();
+    const before = f.f.db.readDurable().meta.revision;
+    fail = true;
+    const result = await f.service.confirmAssociation(handle, f.intent(handle));
+    assert.equal(result.outcome, 'NOT_COMMITTED');
+    assert.equal(result.code, 'AUDIT_UNAVAILABLE');
+    assert.equal(result.auditHealth, 'DEGRADED');
+    assert.equal(f.f.db.readDurable().meta.revision, before);
+    assert.equal(f.f.db.readDurable().identityEvidence.length, 0);
+    assert.equal(f.f.db.readDurable().associationReceipts.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+test('association candidates and handles cannot be forged or minted by synthetic discovery', async () => {
+  const f = await associationFixture();
+  try {
+    const candidate = f.service.associationCandidates()[0];
+    const before = f.calls();
+    assert.equal(
+      (
+        await f.service.beginAssociation({
+          mode: 'CURRENT',
+          candidate: { ...candidate.candidate },
+          expectedDurableRevision: f.f.db.readDurable().meta.revision,
+        })
+      ).receipt.code,
+      'STALE_CANDIDATE',
+    );
+    assert.equal(f.calls(), before);
+    const b = await f.begin();
+    assert.equal(
+      (await f.service.observeAssociation({ ...b.handle }, 'REMOVAL')).code,
+      'INVALID_REQUEST',
+    );
+    assert.equal(f.calls(), before + 1);
+    f.service.cancelAssociation(b.handle);
+    assert.equal(f.server.snapshot().state, 'READY');
+  } finally {
+    await f.close();
+  }
+  const synthetic = await setup();
+  try {
+    await synthetic.service.refresh(1);
+    assert.deepEqual(synthetic.service.associationCandidates(), []);
+    assert.equal((await synthetic.service.beginAssociation({})).receipt.code, 'POLICY_DENIED');
+  } finally {
+    await synthetic.cleanup();
+  }
+});
+
+test('association reserves actual drain before last owned callback can reenter close', async () => {
+  let arm = false,
+    close,
+    inside,
+    f;
+  f = await associationFixture({
+    owned() {
+      if (arm) {
+        arm = false;
+        close = f.service.close();
+        inside = f.service.retired;
+      }
+    },
+  });
+  try {
+    const b = await f.begin();
+    f.raw('other device transport_id:9\n');
+    const calls = f.calls(),
+      before = f.f.db.readDurable().meta.revision;
+    arm = true;
+    const pending = f.service.observeAssociation(b.handle, 'REMOVAL');
+    assert.equal(inside, false);
+    assert.equal((await pending).outcome, 'NOT_COMMITTED');
+    assert.equal((await close).status, 'RETIRED');
+    assert.equal(f.calls(), calls);
+    assert.equal(f.f.db.readDurable().meta.revision, before);
+  } finally {
+    await f.close();
+  }
+});
+test('association original deadline during actual final RESULT drain preserves confirmed commit', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const gate = deferred();
+  let hold = false,
+    entered = false;
+  const f = await associationFixture({
+    dbOptions: {
+      audit: async (e) => {
+        if (hold && e.phase === 'RESULT') {
+          entered = true;
+          return gate.promise;
+        }
+        return 'AVAILABLE';
+      },
+    },
+  });
+  try {
+    const handle = await f.throughReturn();
+    hold = true;
+    const pending = f.service.confirmAssociation(handle, f.intent(handle));
+    while (!entered) await new Promise((r) => setImmediate(r));
+    assert.equal(f.f.db.readDurable().associationReceipts.length, 1);
+    t.mock.timers.tick(120000);
+    assert.equal(f.service.associationSnapshot().code, 'DEADLINE');
+    assert.equal((await f.service.beginAssociation({})).receipt.code, 'BUSY');
+    gate.resolve('AVAILABLE');
+    const result = await pending;
+    assert.equal(result.outcome, 'COMMITTED');
+    assert.equal(result.projectionCurrent, false);
+    assert.equal(result.auditHealth, 'AVAILABLE');
+    assert.equal(f.f.db.readDurable().associationReceipts.length, 1);
+  } finally {
+    gate.resolve('AVAILABLE');
+    await f.close();
+    t.mock.timers.reset();
   }
 });

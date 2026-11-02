@@ -17,6 +17,13 @@ import {
   type DurableContext,
   type DurableMutationResult,
 } from './durable-coordinator.ts';
+import {
+  snapshotAssociationTranscript,
+  createAssociationReceipt,
+  associationRowsSha256,
+  type AssociationTranscript,
+} from './association-receipt-contract.ts';
+import { snapshotDiscoveryRow } from './adb-discovery.ts';
 const budget = Object.freeze({
   maxDevices: 256,
   maxBindings: 4096,
@@ -43,6 +50,7 @@ function base(ctx: DurableContext, kind: 'STARTUP' | 'RECONCILE' | 'DISPLAY'): D
     devices: { insert: [], update: [] },
     bindings: { insert: [], refresh: [], retireIds: [] },
     identityEvidence: { insert: [] },
+    associationReceipts: { insert: [] },
     captures: { insert: [], transition: [] },
     holds: { insert: [], releaseIds: [] },
   };
@@ -125,6 +133,143 @@ function reconciliation(ctx: DurableContext, next: RegistrySnapshot): DurableDel
     identityEvidence: { insert: newEvidence },
   };
 }
+// The store binds a supplied, already-admitted transcript to its actual allocator and
+// transaction. This is not an operator-confirmation issuer or physical identity proof.
+function dataRecord(input: unknown, keys: readonly string[]): Record<string, unknown> | null {
+  try {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+    const proto = Object.getPrototypeOf(input);
+    if (proto !== Object.prototype && proto !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(input);
+    if (Reflect.ownKeys(descriptors).length !== keys.length) return null;
+    const result: Record<string, unknown> = Object.create(null);
+    for (const key of keys) {
+      const d = descriptors[key];
+      if (!d || !('value' in d) || !d.enumerable) return null;
+      result[key] = d.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+function associationObservation(input: unknown, transcript: AssociationTranscript): unknown | null {
+  try {
+    const value = dataRecord(input, ['sequence', 'observedAtUtc', 'source', 'rows', 'proofs']);
+    if (!value || !Array.isArray(value.proofs)) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value.proofs) as Record<
+      string,
+      PropertyDescriptor
+    >;
+    if (
+      Reflect.ownKeys(descriptors).length !== 2 ||
+      descriptors.length?.value !== 1 ||
+      !descriptors['0'] ||
+      !('value' in descriptors['0'])
+    )
+      return null;
+    const proof = dataRecord(descriptors['0'].value, [
+      'serial',
+      'transportId',
+      'deviceId',
+      'evidenceId',
+    ]);
+    if (
+      !proof ||
+      proof.deviceId !== transcript.deviceId ||
+      proof.evidenceId !== transcript.evidenceId ||
+      proof.serial !== transcript.returnRow.serial ||
+      proof.transportId !== transcript.returnRow.transportId ||
+      value.sequence !== transcript.stages.confirmation.sequence ||
+      value.observedAtUtc !== transcript.stages.confirmation.observedUtc ||
+      value.source !== 'ADB_DISCOVERY'
+    )
+      return null;
+    if (!Array.isArray(value.rows)) return null;
+    const length = Object.getOwnPropertyDescriptor(value.rows, 'length');
+    if (
+      !length ||
+      !('value' in length) ||
+      !Number.isSafeInteger(length.value) ||
+      length.value < 0 ||
+      length.value > 256
+    )
+      return null;
+    const rd = Object.getOwnPropertyDescriptors(value.rows);
+    if (Reflect.ownKeys(rd).length !== length.value + 1) return null;
+    const rows = [];
+    for (let i = 0; i < length.value; i++) {
+      const d = rd[String(i)];
+      if (!d || !('value' in d) || !d.enumerable) return null;
+      const row = snapshotDiscoveryRow(d.value);
+      if (!row) return null;
+      rows.push(row);
+    }
+    if (associationRowsSha256(rows) !== transcript.stages.confirmation.rowsSha256) return null;
+    return Object.freeze({
+      ...value,
+      rows: Object.freeze(rows),
+      proofs: Object.freeze([Object.freeze(proof)]),
+    });
+  } catch {
+    return null;
+  }
+}
+function associationDelta(
+  ctx: DurableContext,
+  original: RegistrySnapshot,
+  candidate: RegistrySnapshot,
+  delta: DurableDelta,
+  transcript: AssociationTranscript,
+): DurableDelta {
+  const prior = transcript.stages.return,
+    confirmation = transcript.stages.confirmation,
+    evidence = delta.identityEvidence.insert,
+    device = candidate.devices.find((d) => d.deviceId === transcript.deviceId),
+    binding = candidate.bindings.find((b) => b.bindingId === device?.currentBindingId);
+  if (
+    ctx.snapshot.meta.host_epoch !== transcript.hostEpoch ||
+    ctx.snapshot.meta.revision !== prior.durableRevision ||
+    original.revision !== prior.registryRevision ||
+    original.sequence !== prior.sequence ||
+    original.observedAtUtc !== prior.observedUtc ||
+    candidate.sequence !== confirmation.sequence ||
+    candidate.observedAtUtc !== confirmation.observedUtc ||
+    candidate.source !== 'ADB_DISCOVERY' ||
+    !candidate.claims.some(
+      (c) =>
+        c.serial === transcript.returnRow.serial &&
+        c.transportId === transcript.returnRow.transportId &&
+        c.state === 'DEVICE' &&
+        c.reason === 'CURRENT' &&
+        c.deviceId === transcript.deviceId &&
+        c.bindingId === binding?.bindingId,
+    ) ||
+    evidence.length !== 1 ||
+    evidence[0]?.evidence_id !== transcript.evidenceId ||
+    evidence[0]?.device_id !== transcript.deviceId ||
+    evidence[0]?.identity_sha256 !== null ||
+    device?.verification !== 'VERIFIED' ||
+    device.state !== 'DEVICE' ||
+    !binding ||
+    binding.retired ||
+    binding.serial !== transcript.returnRow.serial ||
+    binding.transportId !== transcript.returnRow.transportId ||
+    binding.state !== 'DEVICE' ||
+    binding.source !== 'ADB_DISCOVERY' ||
+    !delta.bindings.insert.some((b) => b.binding_id === binding.bindingId) ||
+    ctx.snapshot.meta.revision === Number.MAX_SAFE_INTEGER
+  )
+    throw new DurableFault('INVALID_REQUEST');
+  const row = createAssociationReceipt(transcript, {
+    finalBindingId: binding.bindingId,
+    finalGeneration: binding.generation,
+    registryRevision: candidate.revision,
+    durableRevision: ctx.snapshot.meta.revision + 1,
+  });
+  if (!row) throw new DurableFault('INVALID_REQUEST');
+  return { ...delta, associationReceipts: { insert: [row] } };
+}
 export type RegistryProjectionWitness = Readonly<{
   snapshot: RegistrySnapshot;
   hostEpoch: number;
@@ -175,6 +320,77 @@ export function createRegistryStore(
     } catch {
       return null;
     }
+  }
+  async function reconcile(
+    expectedDurableRevision: number,
+    observation: unknown,
+    assertObservationCurrent?: () => void,
+    finalInternal?: () => void,
+    transcript?: AssociationTranscript,
+  ): Promise<DurableMutationResult> {
+    if (
+      (assertObservationCurrent !== undefined && typeof assertObservationCurrent !== 'function') ||
+      (finalInternal !== undefined && typeof finalInternal !== 'function')
+    )
+      return Object.freeze({ ...denial(), code: 'INVALID_REQUEST' });
+    const observationAdmission = assertObservationCurrent,
+      observationFence = finalInternal;
+    const original = current();
+    if (!original) return denial();
+    const finalFence =
+      observationFence === undefined
+        ? undefined
+        : () => {
+            observationFence();
+            if (stopped) throw new DurableFault('OWNER_REVOKED');
+            if (runtime !== original) throw new DurableFault('STALE_REVISION');
+          };
+    // Pure reconciler snapshots all descriptors before any asynchronous lane admission.
+    const reconciled = reconcileRegistry(original, observation, { nextId, budget });
+    if (!reconciled.ok)
+      return Object.freeze({
+        ...denial(),
+        code:
+          reconciled.code === 'LIMIT_EXCEEDED'
+            ? 'LIMIT_EXCEEDED'
+            : reconciled.code === 'GENERATION_OVERFLOW'
+              ? 'REVISION_EXHAUSTED'
+              : 'INVALID_REQUEST',
+      }) as DurableMutationResult;
+    const candidate = reconciled.snapshot;
+    return withLane(async (lane) => {
+      const result = await lane.step(
+        'RECONCILE',
+        expectedDurableRevision,
+        (ctx) => {
+          if (runtime !== original) throw new DurableFault('STALE_REVISION');
+          let delta = reconciliation(ctx, candidate);
+          if (transcript) delta = associationDelta(ctx, original, candidate, delta, transcript);
+          return { delta: () => delta };
+        },
+        () => {
+          admit();
+          observationAdmission?.();
+          if (runtime !== original) throw new DurableFault('STALE_REVISION');
+        },
+        finalFence,
+      );
+      if (result.ok) {
+        try {
+          lane.assertCurrent(() => {
+            admit();
+            observationAdmission?.();
+          }, finalFence);
+          runtime = candidate;
+          ledger = result.snapshot;
+        } catch {
+          stopped = true;
+          runtime = null;
+          ledger = null;
+        }
+      }
+      return result.result;
+    });
   }
   const store = Object.freeze({
     async startup(): Promise<DurableMutationResult> {
@@ -233,75 +449,31 @@ export function createRegistryStore(
         ledger?.devices.find((d) => d.device_id === deviceId)?.display_profile_revision ?? null
       );
     },
-    async reconcile(
+    reconcile(
       expectedDurableRevision: number,
       observation: unknown,
-      assertObservationCurrent?: () => void,
+      admitObservation?: () => void,
       finalInternal?: () => void,
     ): Promise<DurableMutationResult> {
-      if (
-        (assertObservationCurrent !== undefined &&
-          typeof assertObservationCurrent !== 'function') ||
-        (finalInternal !== undefined && typeof finalInternal !== 'function')
-      )
-        return Object.freeze({ ...denial(), code: 'INVALID_REQUEST' });
-      const observationAdmission = assertObservationCurrent,
-        observationFence = finalInternal;
-      const original = current();
-      if (!original) return denial();
-      const finalFence =
-        observationFence === undefined
-          ? undefined
-          : () => {
-              observationFence();
-              if (stopped) throw new DurableFault('OWNER_REVOKED');
-              if (runtime !== original) throw new DurableFault('STALE_REVISION');
-            };
-      // Pure reconciler snapshots all descriptors before any asynchronous lane admission.
-      const reconciled = reconcileRegistry(original, observation, { nextId, budget });
-      if (!reconciled.ok)
-        return Object.freeze({
-          ...denial(),
-          code:
-            reconciled.code === 'LIMIT_EXCEEDED'
-              ? 'LIMIT_EXCEEDED'
-              : reconciled.code === 'GENERATION_OVERFLOW'
-                ? 'REVISION_EXHAUSTED'
-                : 'INVALID_REQUEST',
-        }) as DurableMutationResult;
-      const candidate = reconciled.snapshot;
-      return withLane(async (lane) => {
-        const result = await lane.step(
-          'RECONCILE',
-          expectedDurableRevision,
-          (ctx) => {
-            if (runtime !== original) throw new DurableFault('STALE_REVISION');
-            const delta = reconciliation(ctx, candidate);
-            return { delta: () => delta };
-          },
-          () => {
-            admit();
-            observationAdmission?.();
-            if (runtime !== original) throw new DurableFault('STALE_REVISION');
-          },
-          finalFence,
-        );
-        if (result.ok) {
-          try {
-            lane.assertCurrent(() => {
-              admit();
-              observationAdmission?.();
-            }, finalFence);
-            runtime = candidate;
-            ledger = result.snapshot;
-          } catch {
-            stopped = true;
-            runtime = null;
-            ledger = null;
-          }
-        }
-        return result.result;
-      });
+      return reconcile(expectedDurableRevision, observation, admitObservation, finalInternal);
+    },
+    async reconcileAssociation(
+      expectedDurableRevision: number,
+      observation: unknown,
+      transcriptInput: unknown,
+      admitObservation?: () => void,
+      finalInternal?: () => void,
+    ): Promise<DurableMutationResult> {
+      const transcript = snapshotAssociationTranscript(transcriptInput);
+      const captured = transcript ? associationObservation(observation, transcript) : null;
+      if (!transcript || !captured) return Object.freeze({ ...denial(), code: 'INVALID_REQUEST' });
+      return reconcile(
+        expectedDurableRevision,
+        captured,
+        admitObservation,
+        finalInternal,
+        transcript,
+      );
     },
     async display(
       expectedDurableRevision: number,

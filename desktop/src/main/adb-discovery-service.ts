@@ -1,4 +1,8 @@
 import {
+  associationRowsSha256,
+  snapshotAssociationTranscript,
+} from './association-receipt-contract.ts';
+import {
   validInputAction,
   type InputQueryAction,
   type InputQueryHandle,
@@ -93,7 +97,13 @@ type LocalCode =
   | 'DEADLINE'
   | 'PROVIDER_FAILED'
   | 'UNRETIRED'
-  | 'ID_EXHAUSTED';
+  | 'ID_EXHAUSTED'
+  | 'OTHER_ROWS_CHANGED'
+  | 'TARGET_NOT_REMOVED'
+  | 'RETURN_NOT_UNIQUE'
+  | 'ATTESTATION_REQUIRED'
+  | 'CANCELLED'
+  | 'STALE_CANDIDATE';
 type DurableCode = Exclude<
   Extract<DurableMutationResult, { ok: false }>['code'],
   'OUTCOME_UNKNOWN'
@@ -150,6 +160,12 @@ class Fault extends Error {
   }
 }
 const refusalCodes = Object.freeze([
+  'OTHER_ROWS_CHANGED',
+  'TARGET_NOT_REMOVED',
+  'RETURN_NOT_UNIQUE',
+  'ATTESTATION_REQUIRED',
+  'CANCELLED',
+  'STALE_CANDIDATE',
   'BUSY',
   'CLOSED',
   'INVALID_REQUEST',
@@ -217,6 +233,117 @@ const metadataTargets = new WeakMap<object, MetadataTargetRecord>();
 export function inspectOwnedMetadataTarget(value: unknown): MetadataTargetRecord | null {
   return value !== null && typeof value === 'object' ? (metadataTargets.get(value) ?? null) : null;
 }
+export type OwnedAssociationCandidate = Readonly<{ associationCandidate: true }>;
+export type OwnedAssociationHandle = Readonly<{ associationHandle: true }>;
+export type OwnedAssociationConfirmation = Readonly<{ associationConfirmation: true }>;
+type AssociationMode = 'CURRENT' | 'HISTORICAL';
+type AssociationStage = 'BASELINE' | 'REMOVAL' | 'RETURN' | 'CONFIRMATION';
+type AssociationCode =
+  | 'OK'
+  | 'INVALID_REQUEST'
+  | 'BUSY'
+  | 'CLOSED'
+  | 'NOT_READY'
+  | 'STALE_REVISION'
+  | 'STALE_CANDIDATE'
+  | 'POLICY_DENIED'
+  | 'INVALID_SEQUENCE'
+  | 'OTHER_ROWS_CHANGED'
+  | 'TARGET_NOT_REMOVED'
+  | 'RETURN_NOT_UNIQUE'
+  | 'ATTESTATION_REQUIRED'
+  | 'DEADLINE'
+  | 'OWNER_REVOKED'
+  | 'EPOCH_REVOKED'
+  | 'INVALID_DISCOVERY'
+  | 'DISCOVERY_LIMIT'
+  | 'ID_EXHAUSTED'
+  | 'LIMIT_EXCEEDED'
+  | 'AUDIT_UNAVAILABLE'
+  | 'STORAGE_FAILED'
+  | 'RECOVERY_REQUIRED'
+  | 'CANCELLED'
+  | 'UNRETIRED'
+  | 'OUTCOME_UNKNOWN';
+type AssociationState =
+  | 'IDLE'
+  | 'BASELINE_PENDING'
+  | 'AWAIT_REMOVAL'
+  | 'REMOVAL_PENDING'
+  | 'AWAIT_RETURN'
+  | 'RETURN_PENDING'
+  | 'AWAIT_CONFIRMATION'
+  | 'CONFIRM_PENDING'
+  | 'COMMITTED'
+  | 'CANCELLED'
+  | 'FAILED'
+  | 'OUTCOME_UNKNOWN'
+  | 'CLOSED';
+export type AssociationPhaseReceipt = Readonly<{
+  version: 1;
+  outcome: 'COMMITTED' | 'NOT_COMMITTED' | 'OUTCOME_UNKNOWN';
+  code: AssociationCode;
+  stage: AssociationStage;
+  ceremonyId: string | null;
+  revision: number | null;
+  projectionCurrent: boolean;
+  auditHealth: 'AVAILABLE' | 'DEGRADED';
+}>;
+type StageWitness = Readonly<{
+  sequence: number;
+  observedUtc: number;
+  registryRevision: number;
+  durableRevision: number;
+  rowsSha256: string;
+}>;
+type ConfirmationRecord = Readonly<{
+  handle: OwnedAssociationHandle;
+  mode: AssociationMode;
+  deviceId: string;
+  projection: RegistrySnapshot;
+  expectedDurableRevision: number;
+  operatorSession: object;
+  requestId: string;
+  attestation: Readonly<{ heldHandset: true; cableCycle: true; sameHistoricalHandset: boolean }>;
+  finalCurrent(): boolean;
+}>;
+// Deliberately unavailable until a separately reviewed actual main UI/ViewSession issuer.
+// Tests transform this one private seam; no registration or boolean mint API exists.
+function inspectAssociationConfirmation(_intent: unknown): ConfirmationRecord | null {
+  return null; /* OPERATOR_CONFIRMATION_UNAVAILABLE */
+}
+type AssociationTransaction = {
+  handle: OwnedAssociationHandle;
+  id: string;
+  evidenceId: string;
+  mode: AssociationMode;
+  deviceId: string;
+  priorBindingId: string | null;
+  priorGeneration: number;
+  installationRevision: number;
+  epoch: object;
+  admittedUtc: number;
+  deadlineUtc: number;
+  baselineRow: AdbDiscoveryRow;
+  otherRows: readonly AdbDiscoveryRow[];
+  returnRow: AdbDiscoveryRow | null;
+  expectedProjection: RegistrySnapshot;
+  expectedRevision: number;
+  stages: Partial<Record<'baseline' | 'removal' | 'return', StageWitness>>;
+  state: AssociationState;
+  stage: AssociationStage;
+  code: AssociationCode;
+  valid: boolean;
+  pending: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+  intent: ConfirmationRecord | null;
+};
+type AssociationContext = {
+  transaction: AssociationTransaction;
+  stage: AssociationStage;
+  witness: NonNullable<ReturnType<typeof inspectRegistryProjection>>;
+  committed: boolean;
+};
 export function createAdbDiscoveryService(
   options: Readonly<{
     provider: SyntheticDiscoveryProvider | OwnedDiscoveryProvider;
@@ -245,6 +372,7 @@ export function createAdbDiscoveryService(
   const actualRegistry = options.registry;
   const snapshot = options.registry.snapshot.bind(options.registry),
     reconcile = options.registry.reconcile.bind(options.registry),
+    reconcileAssociation = options.registry.reconcileAssociation.bind(options.registry),
     readRevision = options.readDurableRevision.bind(options),
     owned = options.assertOwnedSync.bind(options),
     clock = options.clock.bind(options),
@@ -274,6 +402,588 @@ export function createAdbDiscoveryService(
   const inputTickets = new Map<string, OwnedInputTarget>();
   const ownerAnchors = new Map<string, object>();
 
+  let ceremony: AssociationTransaction | null = null,
+    associationBusy = false;
+  const associationWorks = new Set<Promise<unknown>>();
+  type CandidateRecord = {
+    row: AdbDiscoveryRow;
+    projection: RegistrySnapshot;
+    rows: readonly AdbDiscoveryRow[];
+    mode: AssociationMode;
+    deviceId: string | null;
+  };
+  const candidates = new WeakMap<object, CandidateRecord>();
+  const consumedIntents = new WeakSet<object>();
+  let candidateProjection: RegistrySnapshot | null = null;
+  const candidateMemo = new Map<string, OwnedAssociationCandidate>();
+  const phaseKey = (stage: AssociationStage) =>
+    stage === 'BASELINE'
+      ? 'baseline'
+      : stage === 'REMOVAL'
+        ? 'removal'
+        : stage === 'RETURN'
+          ? 'return'
+          : 'confirmation';
+  const rowEqual = (a: AdbDiscoveryRow, b: AdbDiscoveryRow) =>
+    a.serial === b.serial && a.transportId === b.transportId && a.state === b.state;
+  function invalidateAssociation(tx: AssociationTransaction, code: AssociationCode, clear = false) {
+    tx.valid = false;
+    tx.code = code;
+    tx.state =
+      code === 'CANCELLED'
+        ? 'CANCELLED'
+        : code === 'OUTCOME_UNKNOWN'
+          ? 'OUTCOME_UNKNOWN'
+          : 'FAILED';
+    if (tx.timer !== null) {
+      clearTimeout(tx.timer);
+      tx.timer = null;
+    }
+    if (clear) {
+      projection = null;
+      nativeRows = null;
+      tickets.clear();
+      inputTickets.clear();
+      ownerAnchors.clear();
+    }
+  }
+  function associationInternal(ctx: AssociationContext) {
+    const tx = ctx.transaction;
+    if (
+      ceremony !== tx ||
+      !tx.valid ||
+      !tx.pending ||
+      closed ||
+      !native ||
+      native.revoked ||
+      native.epoch !== tx.epoch ||
+      native.installationRevision !== tx.installationRevision ||
+      !native.finalCurrent() ||
+      lastClock === null ||
+      lastClock >= tx.deadlineUtc ||
+      (!ctx.committed && !ctx.witness.finalCurrent()) ||
+      (tx.intent && !tx.intent.finalCurrent())
+    )
+      throw new DurableFault('OWNER_REVOKED');
+  }
+  function associationReceipt(
+    code: AssociationCode,
+    stage: AssociationStage,
+    tx: AssociationTransaction | null = null,
+  ): AssociationPhaseReceipt {
+    return Object.freeze({
+      version: 1,
+      outcome: 'NOT_COMMITTED',
+      code,
+      stage,
+      ceremonyId: tx?.id ?? null,
+      revision: null,
+      projectionCurrent: false,
+      auditHealth: 'DEGRADED',
+    });
+  }
+  function associationCode(raw: unknown): AssociationCode {
+    const code = classify(raw);
+    if (
+      code === 'PROVIDER_FAILED' ||
+      code === 'INVALID_CAPTURE' ||
+      code === 'STALE_CAPTURE' ||
+      code === 'STALE_OBSERVATION'
+    )
+      return 'INVALID_DISCOVERY';
+    if (code === 'REVISION_EXHAUSTED') return 'LIMIT_EXCEEDED';
+    return code;
+  }
+  function allocateAssociationId() {
+    if (ids.size >= 65536) throw new Fault('ID_EXHAUSTED');
+    const id = newId();
+    if (!uuid(id) || ids.has(id)) throw new Fault('ID_EXHAUSTED');
+    ids.add(id);
+    return id;
+  }
+  function associationCandidates(): readonly Readonly<{
+    candidate: OwnedAssociationCandidate;
+    deviceId: string | null;
+    eligibility: AssociationMode;
+  }>[] {
+    if (!native || closed || active || associationBusy || !projection || !nativeRows)
+      return Object.freeze([]);
+    try {
+      admission();
+      const current = projection,
+        rows = nativeRows;
+      if (!current || !rows || !associationRowsSha256(rows) || !native.finalCurrent())
+        return Object.freeze([]);
+      const witness = inspectRegistryProjection(actualRegistry, current);
+      if (!witness?.finalCurrent()) return Object.freeze([]);
+      if (candidateProjection !== current) {
+        candidateProjection = current;
+        candidateMemo.clear();
+      }
+      const out: Readonly<{
+        candidate: OwnedAssociationCandidate;
+        deviceId: string | null;
+        eligibility: AssociationMode;
+      }>[] = [];
+      for (const row of rows) {
+        if (row.state !== 'DEVICE' || !validMetadataTransportId(row.transportId)) continue;
+        const claims = current.claims.filter(
+          (c) => c.serial === row.serial || c.transportId === row.transportId,
+        );
+        if (claims.length !== 1) continue;
+        const claim = claims[0];
+        if (!claim || claim.serial !== row.serial || claim.transportId !== row.transportId)
+          continue;
+        const device = current.devices.find((d) => d.deviceId === claim.deviceId);
+        const mode: AssociationMode | null =
+          claim.state === 'DEVICE' &&
+          device?.verification === 'PROVISIONAL' &&
+          device.state === 'DEVICE' &&
+          device.currentBindingId === claim.bindingId
+            ? 'CURRENT'
+            : claim.reason === 'IDENTITY_REQUIRED' && claim.deviceId === null
+              ? 'HISTORICAL'
+              : null;
+        if (!mode) continue;
+        let candidate = candidateMemo.get(row.serial);
+        if (!candidate) {
+          if (issuedTickets >= 65536 || candidateMemo.size >= 256) break;
+          candidate = Object.freeze({ associationCandidate: true });
+          issuedTickets++;
+          candidateMemo.set(row.serial, candidate);
+          candidates.set(candidate, {
+            row,
+            projection: current,
+            rows,
+            mode,
+            deviceId: mode === 'CURRENT' ? claim.deviceId : null,
+          });
+        }
+        out.push(
+          Object.freeze({
+            candidate,
+            deviceId: mode === 'CURRENT' ? claim.deviceId : null,
+            eligibility: mode,
+          }),
+        );
+      }
+      admission();
+      if (
+        projection !== current ||
+        nativeRows !== rows ||
+        !witness.finalCurrent() ||
+        !native.finalCurrent()
+      )
+        return Object.freeze([]);
+      return Object.freeze(out);
+    } catch {
+      return Object.freeze([]);
+    }
+  }
+  function validateAssociationRows(ctx: AssociationContext, rows: readonly AdbDiscoveryRow[]) {
+    associationInternal(ctx);
+    const tx = ctx.transaction;
+    if (!associationRowsSha256(rows)) throw new Fault('INVALID_DISCOVERY');
+    if (ctx.stage === 'BASELINE') {
+      if (associationRowsSha256(rows) !== associationRowsSha256([...tx.otherRows, tx.baselineRow]))
+        throw new Fault('OTHER_ROWS_CHANGED');
+    } else if (ctx.stage === 'REMOVAL') {
+      if (
+        rows.some(
+          (r) => r.serial === tx.baselineRow.serial || r.transportId === tx.baselineRow.transportId,
+        )
+      )
+        throw new Fault('TARGET_NOT_REMOVED');
+      if (associationRowsSha256(rows) !== associationRowsSha256(tx.otherRows))
+        throw new Fault('OTHER_ROWS_CHANGED');
+    } else if (ctx.stage === 'RETURN') {
+      const matches = rows.filter((r) => !tx.otherRows.some((o) => rowEqual(r, o)));
+      if (
+        matches.length !== 1 ||
+        rows.length !== tx.otherRows.length + 1 ||
+        !tx.otherRows.every((o) => rows.some((r) => rowEqual(r, o)))
+      )
+        throw new Fault('RETURN_NOT_UNIQUE');
+      const r = matches[0];
+      if (
+        r?.state !== 'DEVICE' ||
+        !validMetadataTransportId(r.transportId) ||
+        r.serial !== tx.baselineRow.serial ||
+        r.transportId === tx.baselineRow.transportId
+      )
+        throw new Fault('RETURN_NOT_UNIQUE');
+      tx.returnRow = r;
+    } else if (
+      !tx.returnRow ||
+      associationRowsSha256(rows) !== associationRowsSha256([...tx.otherRows, tx.returnRow])
+    )
+      throw new Fault('OTHER_ROWS_CHANGED');
+    associationInternal(ctx);
+  }
+  function associationTranscript(
+    tx: AssociationTransaction,
+    seq: number,
+    observedUtc: number,
+    rows: readonly AdbDiscoveryRow[],
+  ) {
+    const witness = inspectRegistryProjection(actualRegistry, tx.expectedProjection);
+    const transcript = snapshotAssociationTranscript({
+      version: 1,
+      kind: 'OPERATOR_CABLE_SESSION',
+      evidenceId: tx.evidenceId,
+      deviceId: tx.deviceId,
+      mode: tx.mode,
+      hostEpoch: witness?.hostEpoch,
+      installationRevision: tx.installationRevision,
+      admittedUtc: tx.admittedUtc,
+      deadlineUtc: tx.deadlineUtc,
+      priorBindingId: tx.priorBindingId,
+      priorGeneration: tx.priorGeneration,
+      beforeRow: tx.baselineRow,
+      returnRow: tx.returnRow,
+      attestation: tx.intent?.attestation,
+      stages: {
+        ...tx.stages,
+        confirmation: { sequence: seq, observedUtc, rowsSha256: associationRowsSha256(rows) },
+      },
+    });
+    if (!transcript) throw new Fault('INVALID_REQUEST');
+    return transcript;
+  }
+  function associationBarrier() {
+    let finish!: () => void;
+    const work = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    associationWorks.add(work);
+    return () => {
+      associationWorks.delete(work);
+      finish();
+    };
+  }
+  function runAssociation(
+    tx: AssociationTransaction,
+    stage: AssociationStage,
+  ): Promise<AssociationPhaseReceipt> {
+    const release = associationBarrier();
+    tx.pending = true;
+    associationBusy = true;
+    tx.stage = stage;
+    tx.state = stage === 'CONFIRMATION' ? 'CONFIRM_PENDING' : `${stage}_PENDING`;
+    let work: Promise<AssociationPhaseReceipt>;
+    try {
+      admission();
+      const witness = inspectRegistryProjection(actualRegistry, tx.expectedProjection);
+      if (
+        !witness ||
+        projection !== tx.expectedProjection ||
+        witness.durableRevision !== tx.expectedRevision
+      )
+        throw new Fault('STALE_REVISION');
+      const ctx: AssociationContext = { transaction: tx, stage, witness, committed: false };
+      associationInternal(ctx);
+      work = refreshInternal(tx.expectedRevision, ctx).then((receipt) => {
+        if (receipt.outcome === 'COMMITTED') {
+          const candidate = projection,
+            rows = nativeRows;
+          const hash = rows ? associationRowsSha256(rows) : null;
+          const current =
+            hash !== null &&
+            candidate?.observedAtUtc !== null &&
+            receipt.projectionCurrent &&
+            tx.valid &&
+            !closed &&
+            !!native?.finalCurrent() &&
+            candidate !== null &&
+            rows !== null;
+          if (current && candidate && rows && hash && candidate.observedAtUtc !== null) {
+            if (stage !== 'CONFIRMATION')
+              tx.stages[phaseKey(stage) as 'baseline' | 'removal' | 'return'] = Object.freeze({
+                sequence: receipt.sequence,
+                observedUtc: candidate.observedAtUtc,
+                registryRevision: candidate.revision,
+                durableRevision: receipt.revision,
+                rowsSha256: hash,
+              });
+            tx.expectedProjection = candidate;
+            tx.expectedRevision = receipt.revision;
+            tx.state =
+              stage === 'BASELINE'
+                ? 'AWAIT_REMOVAL'
+                : stage === 'REMOVAL'
+                  ? 'AWAIT_RETURN'
+                  : stage === 'RETURN'
+                    ? 'AWAIT_CONFIRMATION'
+                    : 'COMMITTED';
+            tx.code = 'OK';
+            if (stage === 'CONFIRMATION') {
+              tx.valid = false;
+              if (tx.timer !== null) clearTimeout(tx.timer);
+              tx.timer = null;
+            }
+          } else invalidateAssociation(tx, tx.code === 'OK' ? 'OWNER_REVOKED' : tx.code, true);
+          return Object.freeze({
+            version: 1,
+            outcome: 'COMMITTED',
+            code: 'OK',
+            stage,
+            ceremonyId: tx.id,
+            revision: receipt.revision,
+            projectionCurrent: current,
+            auditHealth: receipt.auditHealth,
+          });
+        }
+        const code: AssociationCode =
+          receipt.outcome === 'OUTCOME_UNKNOWN'
+            ? 'OUTCOME_UNKNOWN'
+            : associationCode(new Fault(receipt.code));
+        invalidateAssociation(tx, code, true);
+        return Object.freeze({
+          version: 1,
+          outcome: receipt.outcome,
+          code,
+          stage,
+          ceremonyId: tx.id,
+          revision: null,
+          projectionCurrent: false,
+          auditHealth: 'DEGRADED',
+        });
+      });
+    } catch (error) {
+      const code = associationCode(error);
+      invalidateAssociation(tx, code, true);
+      work = Promise.resolve(associationReceipt(code, stage, tx));
+    }
+    const final = work.finally(() => {
+      tx.pending = false;
+      associationBusy = false;
+      associationWorks.delete(final);
+      release();
+    });
+    associationWorks.add(final);
+    return final;
+  }
+  function beginAssociation(
+    raw: unknown,
+  ): Promise<
+    Readonly<{ receipt: AssociationPhaseReceipt; handle: OwnedAssociationHandle | null }>
+  > {
+    const deny = (code: AssociationCode) =>
+      Promise.resolve(
+        Object.freeze({ receipt: associationReceipt(code, 'BASELINE'), handle: null }),
+      );
+    if (!native) return deny('POLICY_DENIED');
+    if (closed) return deny('CLOSED');
+    if (active || associationBusy || associationWorks.size || ceremony?.valid) return deny('BUSY');
+    associationBusy = true;
+    const release = associationBarrier();
+    try {
+      const descriptors = record(raw, [
+        'mode',
+        'candidate',
+        'expectedDurableRevision',
+        ...(Object.getOwnPropertyDescriptor(raw as object, 'mode')?.value === 'HISTORICAL'
+          ? ['deviceId']
+          : []),
+      ]);
+      if (descriptors.mode !== 'CURRENT' && descriptors.mode !== 'HISTORICAL')
+        throw new Fault('INVALID_REQUEST');
+      const candidate =
+        typeof descriptors.candidate === 'object' && descriptors.candidate
+          ? candidates.get(descriptors.candidate)
+          : undefined;
+      if (
+        !candidate ||
+        candidate.mode !== descriptors.mode ||
+        candidate.projection !== projection ||
+        candidate.rows !== nativeRows
+      )
+        throw new Fault('STALE_CANDIDATE');
+      if (!integer(descriptors.expectedDurableRevision)) throw new Fault('INVALID_REQUEST');
+      admission();
+      const witness = inspectRegistryProjection(actualRegistry, candidate.projection);
+      if (
+        !witness ||
+        witness.durableRevision !== descriptors.expectedDurableRevision ||
+        readRevision() !== descriptors.expectedDurableRevision
+      )
+        throw new Fault('STALE_REVISION');
+      const deviceId = descriptors.mode === 'CURRENT' ? candidate.deviceId : descriptors.deviceId;
+      if (!uuid(deviceId)) throw new Fault('INVALID_REQUEST');
+      const device = candidate.projection.devices.find((d) => d.deviceId === deviceId);
+      if (
+        !device ||
+        (descriptors.mode === 'CURRENT'
+          ? device.verification !== 'PROVISIONAL' ||
+            device.state !== 'DEVICE' ||
+            !device.currentBindingId
+          : device.state !== 'DISCONNECTED' || device.currentBindingId !== null)
+      )
+        throw new Fault('INVALID_REQUEST');
+      if (
+        ids.size > 65534 ||
+        candidate.projection.bindings.length >= 4096 ||
+        candidate.projection.devices.reduce((n, d) => n + d.evidenceIds.length, 0) >= 4096
+      )
+        throw new Fault('LIMIT_EXCEEDED');
+      const id = allocateAssociationId(),
+        evidenceId = allocateAssociationId(),
+        started = now();
+      admission();
+      if (
+        started + 120000 > 8640000000000000 ||
+        projection !== candidate.projection ||
+        nativeRows !== candidate.rows ||
+        !witness.finalCurrent() ||
+        !native.finalCurrent() ||
+        closed
+      )
+        throw new Fault('STALE_CANDIDATE');
+      const tx: AssociationTransaction = {
+        handle: Object.freeze({ associationHandle: true }),
+        id,
+        evidenceId,
+        mode: descriptors.mode,
+        deviceId,
+        priorBindingId: descriptors.mode === 'CURRENT' ? device.currentBindingId : null,
+        priorGeneration: device.generation,
+        installationRevision: native.installationRevision,
+        epoch: native.epoch,
+        admittedUtc: started,
+        deadlineUtc: started + 120000,
+        baselineRow: candidate.row,
+        otherRows: Object.freeze(candidate.rows.filter((r) => r !== candidate.row)),
+        returnRow: null,
+        expectedProjection: candidate.projection,
+        expectedRevision: descriptors.expectedDurableRevision,
+        stages: {},
+        state: 'BASELINE_PENDING',
+        stage: 'BASELINE',
+        code: 'OK',
+        valid: true,
+        pending: false,
+        timer: null,
+        intent: null,
+      };
+      ceremony = tx;
+      tx.timer = setTimeout(() => {
+        if (tx.valid) invalidateAssociation(tx, 'DEADLINE', tx.pending);
+      }, 120000);
+      return runAssociation(tx, 'BASELINE')
+        .then((receipt) =>
+          Object.freeze({
+            receipt,
+            handle: receipt.outcome === 'COMMITTED' && receipt.projectionCurrent ? tx.handle : null,
+          }),
+        )
+        .finally(release);
+    } catch (error) {
+      associationBusy = false;
+      release();
+      return deny(associationCode(error));
+    }
+  }
+  function observeAssociation(handle: unknown, stage: unknown): Promise<AssociationPhaseReceipt> {
+    const tx = ceremony;
+    if (!tx || tx.handle !== handle)
+      return Promise.resolve(associationReceipt('INVALID_REQUEST', 'BASELINE'));
+    if (active || associationBusy || associationWorks.size)
+      return Promise.resolve(associationReceipt('BUSY', tx.stage, tx));
+    if (
+      !tx.valid ||
+      !(
+        (stage === 'REMOVAL' && tx.state === 'AWAIT_REMOVAL') ||
+        (stage === 'RETURN' && tx.state === 'AWAIT_RETURN')
+      )
+    )
+      return Promise.resolve(associationReceipt('INVALID_SEQUENCE', tx.stage, tx));
+    return runAssociation(tx, stage);
+  }
+  function confirmAssociation(handle: unknown, intent: unknown): Promise<AssociationPhaseReceipt> {
+    const tx = ceremony;
+    if (!tx || tx.handle !== handle)
+      return Promise.resolve(associationReceipt('INVALID_REQUEST', 'CONFIRMATION'));
+    if (active || associationBusy || associationWorks.size)
+      return Promise.resolve(associationReceipt('BUSY', 'CONFIRMATION', tx));
+    if (!tx.valid || tx.state !== 'AWAIT_CONFIRMATION')
+      return Promise.resolve(associationReceipt('INVALID_SEQUENCE', 'CONFIRMATION', tx));
+    associationBusy = true;
+    const release = associationBarrier();
+    try {
+      const supplied = inspectAssociationConfirmation(intent);
+      if (!supplied || !intent || typeof intent !== 'object' || consumedIntents.has(intent))
+        return Promise.resolve(associationReceipt('ATTESTATION_REQUIRED', 'CONFIRMATION', tx));
+      consumedIntents.add(intent as object);
+      const v = record(supplied, [
+        'handle',
+        'mode',
+        'deviceId',
+        'projection',
+        'expectedDurableRevision',
+        'operatorSession',
+        'requestId',
+        'attestation',
+        'finalCurrent',
+      ]);
+      const attest = record(v.attestation, ['heldHandset', 'cableCycle', 'sameHistoricalHandset']);
+      if (
+        v.handle !== tx.handle ||
+        v.mode !== tx.mode ||
+        v.deviceId !== tx.deviceId ||
+        v.projection !== tx.expectedProjection ||
+        v.expectedDurableRevision !== tx.expectedRevision ||
+        !v.operatorSession ||
+        typeof v.operatorSession !== 'object' ||
+        !uuid(v.requestId) ||
+        ids.has(v.requestId) ||
+        ids.size >= 65536 ||
+        attest.heldHandset !== true ||
+        attest.cableCycle !== true ||
+        attest.sameHistoricalHandset !== (tx.mode === 'HISTORICAL') ||
+        typeof v.finalCurrent !== 'function'
+      )
+        return Promise.resolve(associationReceipt('ATTESTATION_REQUIRED', 'CONFIRMATION', tx));
+      ids.add(v.requestId);
+      tx.intent = Object.freeze({
+        ...v,
+        attestation: Object.freeze(attest),
+        finalCurrent: v.finalCurrent.bind(supplied),
+      }) as ConfirmationRecord;
+      if (!tx.intent.finalCurrent())
+        return Promise.resolve(associationReceipt('ATTESTATION_REQUIRED', 'CONFIRMATION', tx));
+      return runAssociation(tx, 'CONFIRMATION');
+    } catch {
+      return Promise.resolve(associationReceipt('ATTESTATION_REQUIRED', 'CONFIRMATION', tx));
+    } finally {
+      if (!tx.pending) associationBusy = false;
+      release();
+    }
+  }
+  function cancelAssociation(handle: unknown) {
+    const tx = ceremony;
+    if (tx && tx.handle === handle && tx.valid) invalidateAssociation(tx, 'CANCELLED');
+  }
+  function associationSnapshot() {
+    const tx = ceremony;
+    return Object.freeze({
+      version: 1 as const,
+      state: closed ? 'CLOSED' : (tx?.state ?? 'IDLE'),
+      ceremonyId: tx?.id ?? null,
+      mode: tx?.mode ?? null,
+      deviceId: tx?.deviceId ?? null,
+      stage: tx?.stage ?? null,
+      code: tx?.code ?? (closed ? 'CLOSED' : 'OK'),
+      deadlineUtc: tx?.deadlineUtc ?? null,
+    });
+  }
+  function refresh(expectedRevision: number) {
+    if (associationBusy || associationWorks.size) return Promise.resolve(refusal('BUSY'));
+    if (ceremony?.valid) {
+      invalidateAssociation(ceremony, 'STALE_CANDIDATE', true);
+      return Promise.resolve(refusal('BUSY'));
+    }
+    return refreshInternal(expectedRevision);
+  }
   function now() {
     const value = clock();
     if (!integer(value) || (lastClock !== null && value < lastClock))
@@ -311,7 +1021,10 @@ export function createAdbDiscoveryService(
     closed = true;
     projection = null;
   }
-  function refresh(expectedRevision: number): Promise<DiscoveryReceipt> {
+  function refreshInternal(
+    expectedRevision: number,
+    association?: AssociationContext,
+  ): Promise<DiscoveryReceipt> {
     if (closed) return Promise.resolve(refusal('CLOSED'));
     if (active) return Promise.resolve(refusal('BUSY'));
     let deliver!: (value: DiscoveryReceipt) => void;
@@ -349,6 +1062,7 @@ export function createAdbDiscoveryService(
             (lastClock !== null && lastClock >= deadline)
           )
             throw new DurableFault('OWNER_REVOKED');
+          if (association) associationInternal(association);
         }
         function external() {
           admission();
@@ -379,13 +1093,18 @@ export function createAdbDiscoveryService(
           seq = ++sequence;
           const started = now();
           if (!integer(started + 30000)) throw new Fault('INVALID_REQUEST');
-          deadline = started + 30000;
+          deadline = association
+            ? Math.min(started + 30000, association.transaction.deadlineUtc)
+            : started + 30000;
           external();
-          timer = setTimeout(() => {
-            expired = true;
-            projection = null;
-            if (!entered) deliver(refusal('DEADLINE', requestId, seq));
-          }, 30000);
+          timer = setTimeout(
+            () => {
+              expired = true;
+              projection = null;
+              if (!entered) deliver(refusal('DEADLINE', requestId, seq));
+            },
+            Math.max(0, deadline - started),
+          );
           let handle: Record<string, unknown>;
           try {
             const supplied = provider.begin(
@@ -476,19 +1195,42 @@ export function createAdbDiscoveryService(
           const value = result.value;
           requireCustody = true;
           external();
+          if (association) validateAssociationRows(association, value.rows);
+          const observation = Object.freeze({
+            sequence: seq,
+            observedAtUtc: value.observedAtUtc,
+            source,
+            rows: value.rows,
+            proofs: Object.freeze([]),
+            ...(association?.stage === 'CONFIRMATION'
+              ? {
+                  proofs: Object.freeze([
+                    Object.freeze({
+                      serial: association.transaction.returnRow?.serial,
+                      transportId: association.transaction.returnRow?.transportId,
+                      deviceId: association.transaction.deviceId,
+                      evidenceId: association.transaction.evidenceId,
+                    }),
+                  ]),
+                }
+              : {}),
+          });
+          const transcript =
+            association?.stage === 'CONFIRMATION'
+              ? associationTranscript(association.transaction, seq, value.observedAtUtc, value.rows)
+              : null;
+          external();
           entered = true;
-          const committed = await reconcile(
-            expectedRevision,
-            Object.freeze({
-              sequence: seq,
-              observedAtUtc: value.observedAtUtc,
-              source,
-              rows: value.rows,
-              proofs: Object.freeze([]),
-            }),
-            external,
-            internal,
-          );
+          const committed = transcript
+            ? await reconcileAssociation(
+                expectedRevision,
+                observation,
+                transcript,
+                external,
+                internal,
+              )
+            : await reconcile(expectedRevision, observation, external, internal);
+          if (association) association.committed = committed.ok;
           if (committed.ok) {
             let valid = false;
             try {
@@ -761,6 +1503,12 @@ export function createAdbDiscoveryService(
       issueTarget(deviceId, 'METADATA') as OwnedMetadataTarget | null,
     inputTarget: (deviceId: string) => issueTarget(deviceId, 'INPUT') as OwnedInputTarget | null,
     refresh,
+    associationCandidates,
+    beginAssociation,
+    observeAssociation,
+    confirmAssociation,
+    cancelAssociation,
+    associationSnapshot,
     snapshot(): RegistrySnapshot | null {
       if (!projection) return null;
       try {
@@ -789,10 +1537,15 @@ export function createAdbDiscoveryService(
     close(): Promise<Readonly<{ status: 'RETIRED' | 'UNRETIRED' }>> {
       if (closing) return closing;
       closed = true;
+      if (ceremony) {
+        ceremony.valid = false;
+        ceremony.state = 'CLOSED';
+        if (ceremony.timer !== null) clearTimeout(ceremony.timer);
+      }
       projection = null;
       closing = new Promise((resolve) => {
         const timer = setTimeout(() => resolve(Object.freeze({ status: 'UNRETIRED' })), 120000);
-        void (active ?? Promise.resolve()).then(() => {
+        void Promise.allSettled([active ?? Promise.resolve(), ...associationWorks]).then(() => {
           clearTimeout(timer);
           resolve(Object.freeze({ status: uncertainRetirement ? 'UNRETIRED' : 'RETIRED' }));
         });
@@ -800,7 +1553,7 @@ export function createAdbDiscoveryService(
       return closing;
     },
     get retired(): boolean {
-      return closed && !active && !uncertainRetirement;
+      return closed && !active && associationWorks.size === 0 && !uncertainRetirement;
     },
   });
 }

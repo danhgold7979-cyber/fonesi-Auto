@@ -63,8 +63,8 @@ test('encrypted SQLite prerequisites validate old bytes before each migration; f
       ids.push(receipt.header.backupId);
       return service.prerequisite(receipt);
     }, 1000);
-    assert.equal(db.version, 4);
-    assert.equal(ids.length, 4);
+    assert.equal(db.version, 5);
+    assert.equal(ids.length, 5);
     const reopened = new BackupService(authority, keys);
     for (let i = 0; i < ids.length; i++) {
       const receipt = await reopened.validate(location, ids[i]);
@@ -208,7 +208,7 @@ test('restore targets a separate fresh database and persists quarantine without 
       reopened.close();
     }
     await assert.rejects(service.restoreToNew(location, receipt.header.backupId, target));
-    assert.equal(db.version, 4);
+    assert.equal(db.version, 5);
   }));
 
 // The test runner isolates this file in its own process. The temporary builtin

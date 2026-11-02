@@ -78,7 +78,7 @@ test('canonical header round trip rejects duplicate, unknown and noncanonical re
     const { result } = await encrypted(f);
     const raw = JSON.stringify(result.header);
     assert.deepEqual(parseBackupHeader(raw), result.header);
-    for (const version of [0, 1, 2, 3, 4])
+    for (const version of [0, 1, 2, 3, 4, 5])
       assert.equal(
         parseBackupHeader(raw.replace('"schemaVersion":2', `"schemaVersion":${version}`))
           .schemaVersion,
@@ -98,7 +98,7 @@ test('canonical header round trip rejects duplicate, unknown and noncanonical re
       raw.replace('"formatVersion":1', '"formatVersion":1,"path":"PRIVATE"'),
       ` ${raw}`,
       raw.replace('"formatVersion":1', '"formatVersion":2'),
-      raw.replace('"schemaVersion":2', '"schemaVersion":5'),
+      raw.replace('"schemaVersion":2', '"schemaVersion":6'),
       raw.replace('"snapshotUtc":1793426400000', '"snapshotUtc":-0'),
       raw.replace('"snapshotUtc":1793426400000', '"snapshotUtc":NaN'),
       ' '.repeat(65537),

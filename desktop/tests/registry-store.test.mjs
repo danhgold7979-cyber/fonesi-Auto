@@ -477,3 +477,385 @@ test('private projection witness binds actual store ledger epoch and invalidates
     await f.close();
   }
 });
+
+// Synthetic operator transcript at the store boundary, NOT proof of the native
+// four-stage ceremony or human confirmation. Ingestion tests own that composition.
+async function associationFixture(options = {}) {
+  const f = await fixture(options);
+  const { associationRowsSha256 } = await import('../src/main/association-receipt-contract.ts');
+  try {
+    await f.store.startup();
+    const beforeRow = { serial: 'synthetic-private-device', transportId: '1', state: 'DEVICE' };
+    const returnRow = { ...beforeRow, transportId: '2' };
+    const stage = (rows) => {
+      const r = f.store.snapshot();
+      return {
+        sequence: r.sequence,
+        observedUtc: r.observedAtUtc,
+        registryRevision: r.revision,
+        durableRevision: f.db.readDurable().meta.revision,
+        rowsSha256: associationRowsSha256(rows),
+      };
+    };
+    await f.store.reconcile(1, { ...observation(), rows: [beforeRow] });
+    const device = f.store.snapshot().devices[0];
+    const baseline = stage([beforeRow]);
+    await f.store.reconcile(2, { ...observation(2), rows: [] });
+    const removal = stage([]);
+    await f.store.reconcile(3, { ...observation(3), rows: [returnRow] });
+    const returned = stage([returnRow]);
+    const transcript = {
+      version: 1,
+      kind: 'OPERATOR_CABLE_SESSION',
+      evidenceId: id(7000),
+      deviceId: device.deviceId,
+      mode: 'CURRENT',
+      hostEpoch: f.db.readDurable().meta.host_epoch,
+      installationRevision: 1,
+      admittedUtc: 1000,
+      deadlineUtc: 121000,
+      priorBindingId: device.currentBindingId,
+      priorGeneration: device.generation,
+      beforeRow,
+      returnRow,
+      attestation: { heldHandset: true, cableCycle: true, sameHistoricalHandset: false },
+      stages: {
+        baseline,
+        removal,
+        return: returned,
+        confirmation: {
+          sequence: 4,
+          observedUtc: 1000,
+          rowsSha256: associationRowsSha256([returnRow]),
+        },
+      },
+    };
+    const finalObservation = {
+      ...observation(4),
+      rows: [returnRow],
+      proofs: [
+        {
+          serial: returnRow.serial,
+          transportId: returnRow.transportId,
+          deviceId: device.deviceId,
+          evidenceId: transcript.evidenceId,
+        },
+      ],
+    };
+    return { ...f, transcript, finalObservation };
+  } catch (error) {
+    await f.close();
+    throw error;
+  }
+}
+
+test('association commits real allocated binding, evidence and canonical receipt atomically; reopen keeps history only', async () => {
+  const f = await associationFixture();
+  try {
+    const result = await f.store.reconcileAssociation(4, f.finalObservation, f.transcript);
+    assert.equal(result.outcome, 'COMMITTED');
+    assert.equal(result.revision, 5);
+    const before = f.db.readDurable();
+    assert.equal(before.identityEvidence.length, 1);
+    assert.equal(before.identityEvidence[0].identity_sha256, null);
+    assert.equal(before.associationReceipts.length, 1);
+    const receipt = JSON.parse(before.associationReceipts[0].receipt_json);
+    const current = f.store.snapshot();
+    assert.equal(receipt.finalBindingId, current.devices[0].currentBindingId);
+    assert.equal(receipt.finalGeneration, current.devices[0].generation);
+    assert.equal(receipt.stages.confirmation.registryRevision, current.revision);
+    assert.equal(receipt.stages.confirmation.durableRevision, result.revision);
+    f.store.close();
+    const reopened = createRegistryStore({
+      coordinator: f.coordinator,
+      nextId: f.nextId,
+      quarantined: () => false,
+      assertOwnedSync: () => {},
+    });
+    assert.equal((await reopened.startup()).outcome, 'COMMITTED');
+    assert.deepEqual(f.db.readDurable().associationReceipts, before.associationReceipts);
+    assert.equal(reopened.snapshot().devices[0].verification, 'PROVISIONAL');
+    assert.equal(reopened.snapshot().devices[0].currentBindingId, null);
+    reopened.close();
+  } finally {
+    await f.close();
+  }
+});
+
+test('association stale CAS, mismatched proof/transcript and accessor refuse without partial evidence', async () => {
+  const f = await associationFixture();
+  try {
+    const before = f.db.fingerprint();
+    assert.equal(
+      (await f.store.reconcileAssociation(3, f.finalObservation, f.transcript)).code,
+      'STALE_REVISION',
+    );
+    assert.equal(
+      (await f.store.reconcileAssociation(4, { ...f.finalObservation, proofs: [] }, f.transcript))
+        .code,
+      'INVALID_REQUEST',
+    );
+    assert.equal(
+      (
+        await f.store.reconcileAssociation(4, f.finalObservation, {
+          ...f.transcript,
+          stages: {
+            ...f.transcript.stages,
+            return: { ...f.transcript.stages.return, registryRevision: 999 },
+          },
+        })
+      ).code,
+      'INVALID_REQUEST',
+    );
+    let getters = 0;
+    const hostile = { ...f.finalObservation };
+    Object.defineProperty(hostile, 'proofs', {
+      enumerable: true,
+      get() {
+        getters++;
+        throw Error('private');
+      },
+    });
+    assert.equal(
+      (await f.store.reconcileAssociation(4, hostile, f.transcript)).code,
+      'INVALID_REQUEST',
+    );
+    assert.equal(getters, 0);
+    assert.equal(f.db.fingerprint(), before);
+    assert.equal(f.db.readDurable().associationReceipts.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test('association failed INTENT and final owner revocation commit neither evidence nor receipt', async () => {
+  for (const cause of ['AUDIT', 'OWNER']) {
+    let armed = false,
+      revoked = false;
+    const f = await associationFixture({
+      audit: async () => (armed && cause === 'AUDIT' ? 'DEGRADED' : 'AVAILABLE'),
+      assertOwnedSync() {
+        if (armed && cause === 'OWNER') revoked = true;
+      },
+    });
+    try {
+      const before = f.db.fingerprint();
+      armed = true;
+      const result = await f.store.reconcileAssociation(
+        4,
+        f.finalObservation,
+        f.transcript,
+        () => {},
+        () => {
+          if (revoked) throw new DurableFault('OWNER_REVOKED');
+        },
+      );
+      assert.equal(result.outcome, 'NOT_COMMITTED');
+      assert.equal(result.code, cause === 'AUDIT' ? 'AUDIT_UNAVAILABLE' : 'OWNER_REVOKED');
+      assert.equal(f.db.fingerprint(), before);
+    } finally {
+      await f.close();
+    }
+  }
+});
+
+test('association late RESULT revocation preserves exact COMMITTED receipt but suppresses live projection', async () => {
+  let armed = false,
+    revoked = false;
+  const f = await associationFixture({
+    audit: async (event) => {
+      if (armed && event.phase === 'RESULT') revoked = true;
+      return 'AVAILABLE';
+    },
+  });
+  try {
+    armed = true;
+    const result = await f.store.reconcileAssociation(
+      4,
+      f.finalObservation,
+      f.transcript,
+      () => {},
+      () => {
+        if (revoked) throw new DurableFault('OWNER_REVOKED');
+      },
+    );
+    assert.equal(result.outcome, 'COMMITTED');
+    assert.equal(f.db.readDurable().associationReceipts.length, 1);
+    assert.equal(f.store.snapshot(), null);
+  } finally {
+    await f.close();
+  }
+});
+
+test('association uncertain actual COMMIT latches recovery instead of publishing fabricated verification', async () => {
+  let armed = false;
+  const f = await associationFixture({
+    wrapDb(db) {
+      return {
+        readDurable: () => db.readDurable(),
+        commitDurable(revision, delta, admit) {
+          const result = db.commitDurable(revision, delta, admit);
+          return armed && result.ok ? { ok: false, code: 'OUTCOME_UNKNOWN' } : result;
+        },
+      };
+    },
+  });
+  try {
+    armed = true;
+    const result = await f.store.reconcileAssociation(4, f.finalObservation, f.transcript);
+    assert.equal(result.outcome, 'OUTCOME_UNKNOWN');
+    assert.equal(f.store.snapshot(), null);
+    // Actual SQLite committed; wrapper deliberately withholds that certainty.
+    assert.equal(f.db.readDurable().associationReceipts.length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('association last SQLite COMMIT owner callback cannot outlive the callback-free transcript fence', async () => {
+  let withinCommit = false,
+    armed = false,
+    revoked = false,
+    finalSeen = false;
+  const f = await associationFixture({
+    wrapDb(db) {
+      return {
+        readDurable: () => db.readDurable(),
+        commitDurable(revision, delta, admit) {
+          return db.commitDurable(revision, delta, () => {
+            withinCommit = true;
+            try {
+              admit();
+            } finally {
+              withinCommit = false;
+            }
+          });
+        },
+      };
+    },
+    assertOwnedSync() {
+      if (withinCommit && armed) revoked = true;
+    },
+  });
+  try {
+    const before = f.db.fingerprint();
+    const result = await f.store.reconcileAssociation(
+      4,
+      f.finalObservation,
+      f.transcript,
+      () => {
+        if (withinCommit) armed = true;
+      },
+      () => {
+        if (withinCommit) finalSeen = true;
+        if (revoked) throw new DurableFault('OWNER_REVOKED');
+      },
+    );
+    assert.equal(finalSeen, true);
+    assert.equal(revoked, true);
+    assert.equal(result.code, 'OWNER_REVOKED');
+    assert.equal(result.outcome, 'NOT_COMMITTED');
+    assert.equal(f.db.fingerprint(), before);
+    assert.equal(f.db.readDurable().associationReceipts.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test('historical association promotes only selected row while unchanged second historical claimant stays unresolved', async () => {
+  const f = await fixture();
+  let store;
+  try {
+    const { associationRowsSha256 } = await import('../src/main/association-receipt-contract.ts');
+    const a = { serial: 'synthetic-handset-a', transportId: '1', state: 'DEVICE' };
+    const b = { serial: 'synthetic-handset-b', transportId: '2', state: 'DEVICE' };
+    await f.store.startup();
+    await f.store.reconcile(1, { ...observation(), rows: [a, b] });
+    const ids = f.store.snapshot().devices.map((d) => d.deviceId);
+    f.store.close();
+    store = createRegistryStore({
+      coordinator: f.coordinator,
+      nextId: f.nextId,
+      quarantined: () => false,
+      assertOwnedSync: () => {},
+    });
+    await store.startup();
+    const destination = store.snapshot().devices.find((d) => d.deviceId === ids[0]);
+    const beforeRow = { ...a, transportId: '3' },
+      other = { ...b, transportId: '4' },
+      returnRow = { ...a, transportId: '5' };
+    const stage = (rows) => {
+      const r = store.snapshot();
+      return {
+        sequence: r.sequence,
+        observedUtc: r.observedAtUtc,
+        registryRevision: r.revision,
+        durableRevision: f.db.readDurable().meta.revision,
+        rowsSha256: associationRowsSha256(rows),
+      };
+    };
+    await store.reconcile(3, { ...observation(1), rows: [beforeRow, other] });
+    assert.equal(store.snapshot().claims.filter((c) => c.reason === 'IDENTITY_REQUIRED').length, 2);
+    const baseline = stage([beforeRow, other]);
+    await store.reconcile(4, { ...observation(2), rows: [other] });
+    const removal = stage([other]);
+    await store.reconcile(5, { ...observation(3), rows: [returnRow, other] });
+    const returned = stage([returnRow, other]);
+    const transcript = {
+      version: 1,
+      kind: 'OPERATOR_CABLE_SESSION',
+      evidenceId: id(7001),
+      deviceId: destination.deviceId,
+      mode: 'HISTORICAL',
+      hostEpoch: 2,
+      installationRevision: 1,
+      admittedUtc: 1000,
+      deadlineUtc: 121000,
+      priorBindingId: null,
+      priorGeneration: destination.generation,
+      beforeRow,
+      returnRow,
+      attestation: { heldHandset: true, cableCycle: true, sameHistoricalHandset: true },
+      stages: {
+        baseline,
+        removal,
+        return: returned,
+        confirmation: {
+          sequence: 4,
+          observedUtc: 1000,
+          rowsSha256: associationRowsSha256([returnRow, other]),
+        },
+      },
+    };
+    const result = await store.reconcileAssociation(
+      6,
+      {
+        ...observation(4),
+        rows: [returnRow, other],
+        proofs: [
+          {
+            serial: returnRow.serial,
+            transportId: returnRow.transportId,
+            deviceId: destination.deviceId,
+            evidenceId: transcript.evidenceId,
+          },
+        ],
+      },
+      transcript,
+    );
+    assert.equal(result.outcome, 'COMMITTED');
+    const projection = store.snapshot();
+    assert.equal(projection.devices.length, 2);
+    assert.equal(projection.devices.filter((d) => d.verification === 'VERIFIED').length, 1);
+    assert.equal(projection.devices.find((d) => d.deviceId === ids[1]).currentBindingId, null);
+    assert.equal(
+      projection.claims.find((c) => c.serial === other.serial).reason,
+      'IDENTITY_REQUIRED',
+    );
+    assert.equal(f.db.readDurable().identityEvidence.length, 1);
+    assert.equal(f.db.readDurable().associationReceipts.length, 1);
+  } finally {
+    store?.close();
+    await f.close();
+  }
+});

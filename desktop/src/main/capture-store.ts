@@ -276,6 +276,7 @@ function delta(ctx: DurableContext, kind: DurableDelta['kind']): DurableDelta {
     devices: { insert: [], update: [] },
     bindings: { insert: [], refresh: [], retireIds: [] },
     identityEvidence: { insert: [] },
+    associationReceipts: { insert: [] },
     captures: { insert: [], transition: [] },
     holds: { insert: [], releaseIds: [] },
   };

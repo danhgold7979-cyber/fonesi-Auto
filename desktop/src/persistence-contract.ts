@@ -1,5 +1,5 @@
 // Approved foundation/settings plus bounded durable registry/capture schema. No account/secret fields.
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 export const MIGRATIONS = [
   `CREATE TABLE foundation_store (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
@@ -122,6 +122,12 @@ CREATE TABLE capture_hold (
  evidence_id TEXT NOT NULL REFERENCES capture_artifact(evidence_id) ON DELETE RESTRICT,
  reason TEXT NOT NULL CHECK(reason IN('OUTCOME_UNKNOWN','RECONCILIATION'))
 ) STRICT;`,
+  `CREATE TABLE device_session_association (
+ evidence_id TEXT PRIMARY KEY NOT NULL REFERENCES registry_identity_evidence(evidence_id) ON DELETE RESTRICT,
+ receipt_version INTEGER NOT NULL CHECK(receipt_version=1),
+ receipt_json TEXT NOT NULL,
+ transcript_sha256 TEXT NOT NULL CHECK(length(transcript_sha256)=64)
+) STRICT;`,
 ] as const;
 export const MAINTENANCE_ARGUMENTS = [
   '--maintenance=backup-now',
@@ -159,6 +165,7 @@ export const TABLES = {
   registry_identity_evidence: 'evidence_id',
   capture_artifact: 'evidence_id',
   capture_hold: 'hold_id',
+  device_session_association: 'evidence_id',
 } as const;
 export const ORDINARY_BACKUP_LIMIT = 7;
 export const AUTOMATIC_INTERVAL_MS = 86_400_000;

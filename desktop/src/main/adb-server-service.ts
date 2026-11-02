@@ -86,6 +86,7 @@ type OwnedProviderRecord = Readonly<{
   epoch: object;
   revoked: boolean;
   source: 'ADB_DISCOVERY';
+  installationRevision: number;
   current(): void;
   finalCurrent(): boolean;
   localBusy(): boolean;
@@ -441,6 +442,14 @@ export function createAdbServerService(
     }
     const assertEpochCurrent = factory.assertDiscoveryEpochCurrent.bind(factory);
     const epochWitness = factory.discoveryEpochWitness();
+    const installationRevision = epochWitness.installationRevision;
+    if (
+      typeof installationRevision !== 'number' ||
+      !Number.isSafeInteger(installationRevision) ||
+      installationRevision <= 0 ||
+      !epochWitness.valid
+    )
+      throw Error('NOT_READY');
     const currentEpoch = (requireIdleProof = false) => {
       try {
         fence();
@@ -690,6 +699,7 @@ export function createAdbServerService(
     const record: OwnedProviderRecord = Object.freeze({
       epoch,
       source: 'ADB_DISCOVERY' as const,
+      installationRevision,
       get revoked() {
         return discoveryRevoked || closed;
       },

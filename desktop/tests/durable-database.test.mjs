@@ -10,7 +10,18 @@ import {
   isCurrentBinding,
 } from '../src/main/transport-registry.ts';
 import { DatabaseSync } from 'node:sqlite';
-import { FoundationDatabase, MIGRATION_HASHES } from '../src/main/foundation-database.ts';
+import {
+  createAssociationReceipt,
+  snapshotAssociationTranscript,
+  snapshotAssociationRow,
+  parseAssociationReceipt,
+  associationRowsSha256,
+} from '../src/main/association-receipt-contract.ts';
+import {
+  FoundationDatabase,
+  MIGRATION_HASHES,
+  statement,
+} from '../src/main/foundation-database.ts';
 import {
   snapshotDurable,
   snapshotDurableDelta,
@@ -64,6 +75,7 @@ const delta = (kind = 'RECONCILE', utc = 1000) => ({
   devices: { insert: [], update: [] },
   bindings: { insert: [], refresh: [], retireIds: [] },
   identityEvidence: { insert: [] },
+  associationReceipts: { insert: [] },
   captures: { insert: [], transition: [] },
   holds: { insert: [], releaseIds: [] },
 });
@@ -127,11 +139,12 @@ async function opened(fn) {
     f.cleanup();
   }
 }
-test('migration4 preserves all three historical SQL hashes and authenticated synthetic snapshot sequence0..3', async () => {
-  assert.deepEqual(MIGRATION_HASHES.slice(0, 3), [
+test('migration5 preserves all four historical SQL hashes and synthetic snapshot sequence0..4', async () => {
+  assert.deepEqual(MIGRATION_HASHES.slice(0, 4), [
     'a7dcc15acf94d6f8617716d4b096d1aa080fe59ecbf0b306688c4c81f2d14d73',
     '5f9d4df89fbf0ee078120acd0810c8b1e0367bbee6cb60f9be64f35814cd44b3',
     '9fd96888dcbfbf6a8a35d400be2eacc83fa54fecf89ca8d596d95fc5c4d177f6',
+    '45b22427ff3579017424b0cff1e0bcd9ba2ecab05692d9b42023869a07562882',
   ]);
   const f = fixture();
   let db;
@@ -144,8 +157,8 @@ test('migration4 preserves all three historical SQL hashes and authenticated syn
     assert.throws(() => db.readDurable());
     const before = db.readSettings();
     await db.migrate(provider(db, f, seen), 1001);
-    assert.deepEqual(seen, [0, 1, 2, 3]);
-    assert.equal(db.version, 4);
+    assert.deepEqual(seen, [0, 1, 2, 3, 4]);
+    assert.equal(db.version, 5);
     assert.deepEqual(db.readSettings(), before);
     assert.deepEqual(db.readDurable(), {
       meta: {
@@ -159,6 +172,7 @@ test('migration4 preserves all three historical SQL hashes and authenticated syn
       devices: [],
       bindings: [],
       identityEvidence: [],
+      associationReceipts: [],
       captures: [],
       holds: [],
     });
@@ -305,7 +319,7 @@ test('malformed actual SQL rows and unknown schema version reject, never importe
   for (const sql of [
     "UPDATE registry_meta SET last_operation_id='not-a-uuid',last_change_utc=1,last_change_kind='STARTUP',revision=1",
     'DELETE FROM registry_meta',
-    'PRAGMA user_version=5',
+    'PRAGMA user_version=6',
   ])
     await opened(async (db) => {
       db.connection.exec(sql);
@@ -450,4 +464,328 @@ test('durable relationship/time invariants and capture immutable hash reject wit
     ];
     assert.equal(db.commitDurable(3, bad, () => {}).ok, false);
     assert.equal(db.fingerprint(), fingerprint);
+  }));
+
+// Actual SQLite, synthetic operator transcript only; not device/physical enrollment evidence.
+function associationCandidate(db) {
+  const initial = delta('STARTUP', 1000);
+  initial.hostEpoch = 1;
+  assert.equal(db.commitDurable(0, initial, () => {}).ok, true);
+  const baseline = seed();
+  baseline.hostEpoch = 1;
+  baseline.utc = 1100;
+  baseline.devices.insert[0].created_utc = 1100;
+  baseline.devices.insert[0].updated_utc = 1100;
+  baseline.devices.insert[0].last_seen_utc = 1100;
+  baseline.bindings.insert[0].observed_utc = 1100;
+  assert.equal(db.commitDurable(1, baseline, () => {}).ok, true);
+  const removal = delta('RECONCILE', 1200);
+  removal.hostEpoch = 1;
+  removal.devices.update = [{ ...db.readDurable().devices[0], generation: 1, updated_utc: 1200 }];
+  removal.bindings.retireIds = [id(2)];
+  assert.equal(db.commitDurable(2, removal, () => {}).ok, true);
+  const returned = delta('RECONCILE', 1300);
+  returned.hostEpoch = 1;
+  assert.equal(db.commitDurable(3, returned, () => {}).ok, true);
+  const beforeRow = { serial: 'synthetic-private-serial', transportId: '1', state: 'DEVICE' },
+    returnRow = { ...beforeRow, transportId: '2' };
+  const stage = (sequence, observedUtc, registryRevision, durableRevision, rows) => ({
+    sequence,
+    observedUtc,
+    registryRevision,
+    durableRevision,
+    rowsSha256: associationRowsSha256(rows),
+  });
+  const transcript = {
+    version: 1,
+    kind: 'OPERATOR_CABLE_SESSION',
+    evidenceId: id(3),
+    deviceId: id(1),
+    mode: 'CURRENT',
+    hostEpoch: 1,
+    installationRevision: 1,
+    admittedUtc: 1000,
+    deadlineUtc: 121000,
+    priorBindingId: id(2),
+    priorGeneration: 0,
+    beforeRow,
+    returnRow,
+    attestation: { heldHandset: true, cableCycle: true, sameHistoricalHandset: false },
+    stages: {
+      baseline: stage(1, 1100, 1, 2, [beforeRow]),
+      removal: stage(2, 1200, 2, 3, []),
+      return: stage(3, 1300, 3, 4, [returnRow]),
+      confirmation: {
+        sequence: 4,
+        observedUtc: 1400,
+        rowsSha256: associationRowsSha256([returnRow]),
+      },
+    },
+  };
+  const receipt = createAssociationReceipt(transcript, {
+    finalBindingId: id(4),
+    finalGeneration: 1,
+    registryRevision: 4,
+    durableRevision: 5,
+  });
+  assert.ok(receipt);
+  const d = delta('RECONCILE', 1400);
+  d.hostEpoch = 1;
+  d.devices.update = [{ ...db.readDurable().devices[0], updated_utc: 1400, last_seen_utc: 1400 }];
+  d.bindings.insert = [
+    {
+      ...baseline.bindings.insert[0],
+      binding_id: id(4),
+      generation: 1,
+      transport_id: '2',
+      observed_utc: 1400,
+    },
+  ];
+  d.identityEvidence.insert = [
+    {
+      evidence_id: id(3),
+      device_id: id(1),
+      observed_utc: 1400,
+      source: 'SYNTHETIC_TEST',
+      identity_sha256: null,
+    },
+  ];
+  d.associationReceipts.insert = [receipt];
+  return { d, transcript, receipt };
+}
+test('association canonical parser is bounded descriptor-only and hashes exact normalized rowsets', async () =>
+  opened(async (db) => {
+    const { transcript, receipt } = associationCandidate(db);
+    const value = snapshotAssociationTranscript(transcript);
+    assert.ok(value);
+    assert.ok(Object.isFrozen(value.stages.confirmation));
+    assert.deepEqual(snapshotAssociationRow(receipt), receipt);
+    assert.equal(parseAssociationReceipt(receipt.receipt_json).finalBindingId, id(4));
+    for (const raw of [
+      ' ' + receipt.receipt_json,
+      receipt.receipt_json.replace('"version":1', '"version":1,"version":1'),
+      receipt.receipt_json + '\n',
+      'x'.repeat(4097),
+    ])
+      assert.equal(parseAssociationReceipt(raw), null);
+    for (const change of [
+      { transcript_sha256: 'a'.repeat(64) },
+      { receipt_version: 2 },
+      { evidence_id: id(5) },
+    ])
+      assert.equal(snapshotAssociationRow({ ...receipt, ...change }), null);
+    let calls = 0;
+    const getter = { ...transcript };
+    Object.defineProperty(getter, 'beforeRow', {
+      get() {
+        calls++;
+        throw Error('private');
+      },
+      enumerable: true,
+    });
+    assert.equal(snapshotAssociationTranscript(getter), null);
+    assert.equal(calls, 0);
+    assert.equal(snapshotAssociationTranscript({ ...transcript, deadlineUtc: 120999 }), null);
+    assert.equal(
+      snapshotAssociationTranscript({
+        ...transcript,
+        attestation: { ...transcript.attestation, sameHistoricalHandset: true },
+      }),
+      null,
+    );
+    for (const change of [
+      { extra: true },
+      { mode: 'OTHER' },
+      { evidenceId: transcript.deviceId },
+      { priorBindingId: transcript.deviceId },
+      { deadlineUtc: -0 },
+    ])
+      assert.equal(snapshotAssociationTranscript({ ...transcript, ...change }), null);
+    for (const [name, change] of [
+      ['removal', { sequence: 1 }],
+      ['return', { observedUtc: 1199 }],
+      ['return', { registryRevision: 2 }],
+      ['return', { durableRevision: 3 }],
+      ['confirmation', { observedUtc: 121001 }],
+      ['confirmation', { rowsSha256: 'a'.repeat(64) }],
+    ])
+      assert.equal(
+        snapshotAssociationTranscript({
+          ...transcript,
+          stages: { ...transcript.stages, [name]: { ...transcript.stages[name], ...change } },
+        }),
+        null,
+      );
+    assert.equal(
+      createAssociationReceipt(transcript, {
+        finalBindingId: transcript.priorBindingId,
+        finalGeneration: 1,
+        registryRevision: 4,
+        durableRevision: 5,
+      }),
+      null,
+    );
+    const later = { serial: 'other', transportId: '3', state: 'OFFLINE' };
+    assert.equal(
+      associationRowsSha256([transcript.returnRow, later]),
+      associationRowsSha256([later, transcript.returnRow]),
+    );
+    assert.equal(associationRowsSha256([later, later]), null);
+    let enumerated = false;
+    assert.equal(
+      associationRowsSha256(
+        new Proxy(Array(257), {
+          ownKeys() {
+            enumerated = true;
+            throw Error();
+          },
+        }),
+      ),
+      null,
+    );
+    assert.equal(enumerated, false);
+    const missing = { ...db.readDurable() };
+    delete missing.associationReceipts;
+    assert.equal(snapshotDurable(missing), null);
+    const missingDelta = { ...delta() };
+    delete missingDelta.associationReceipts;
+    assert.equal(snapshotDurableDelta(missingDelta), null);
+  }));
+test('association receipt/evidence/binding commit atomically, remain immutable across startup and actual reopen', async () =>
+  opened(async (db, f) => {
+    const { d, receipt } = associationCandidate(db);
+    assert.equal(db.commitDurable(4, d, () => {}).ok, true);
+    const committed = db.readDurable();
+    assert.deepEqual(committed.associationReceipts, [receipt]);
+    assert.equal(committed.identityEvidence[0].identity_sha256, null);
+    const startup = delta('STARTUP', 1500);
+    startup.hostEpoch = 2;
+    startup.devices.update = committed.devices.map((x) => ({
+      ...x,
+      generation: x.generation + 1,
+      updated_utc: 1500,
+    }));
+    startup.bindings.retireIds = [id(4)];
+    assert.equal(db.commitDurable(5, startup, () => {}).ok, true);
+    const reopened = new FoundationDatabase(f.file, f.id);
+    try {
+      assert.deepEqual(reopened.readDurable().associationReceipts, [receipt]);
+      const runtime = reconstructDisconnectedRegistry(reopened.readDurable());
+      assert.ok(runtime);
+      assert.equal(runtime.devices[0].state, 'DISCONNECTED');
+      assert.equal(runtime.devices[0].verification, 'PROVISIONAL');
+    } finally {
+      reopened.close();
+    }
+  }));
+test('association missing/tampered refs, wrong delta kind and duplicate receipt refuse without changing SQL', async () =>
+  opened(async (db) => {
+    const { d } = associationCandidate(db);
+    const before = db.fingerprint();
+    for (const mutate of [
+      (x) => (x.identityEvidence.insert = []),
+      (x) => (x.bindings.insert = []),
+      (x) => (x.kind = 'DISPLAY'),
+      (x) => (x.associationReceipts.insert[0].transcript_sha256 = 'b'.repeat(64)),
+      (x) => (x.identityEvidence.insert[0].identity_sha256 = 'c'.repeat(64)),
+      (x) => (x.bindings.insert[0].transport_id = '9'),
+    ]) {
+      const bad = structuredClone(d);
+      mutate(bad);
+      assert.equal(db.commitDurable(4, bad, () => {}).ok, false);
+      assert.equal(db.fingerprint(), before);
+    }
+    assert.throws(
+      () =>
+        db.commitDurable(4, d, () => {
+          throw Error('revoked');
+        }),
+      /revoked/,
+    );
+    assert.equal(db.fingerprint(), before);
+    assert.equal(db.commitDurable(3, d, () => {}).code, 'CONFLICT');
+    assert.equal(db.fingerprint(), before);
+    assert.equal(db.commitDurable(4, d, () => {}).ok, true);
+    const after = db.fingerprint();
+    const duplicate = delta('RECONCILE', 1500);
+    duplicate.hostEpoch = 1;
+    duplicate.associationReceipts.insert = d.associationReceipts.insert;
+    assert.equal(db.commitDurable(5, duplicate, () => {}).ok, false);
+    assert.equal(db.fingerprint(), after);
+    statement(db.connection, 'UPDATE device_session_association SET transcript_sha256=?', (q) =>
+      q.run('f'.repeat(64)),
+    );
+    assert.throws(() => db.readDurable(), /DURABLE_RECOVERY_REQUIRED/);
+  }));
+test('historical schema4 normalizes only absent receipt table and refuses current writes until protected migration5', async () => {
+  const f = fixture();
+  let db;
+  try {
+    db = new FoundationDatabase(f.file, f.id);
+    await assert.rejects(db.migrate(provider(db, f, [], 4), 1000));
+    assert.equal(db.version, 4);
+    db.validate();
+    assert.deepEqual(db.readDurable().associationReceipts, []);
+    assert.equal(db.commitDurable(0, seed(), () => {}).ok, false);
+    const original = db.fingerprint();
+    await assert.rejects(
+      db.migrate(async () => {
+        throw Error('NO_PROTECTED_BACKUP');
+      }, 1100),
+      /NO_PROTECTED_BACKUP/,
+    );
+    assert.equal(db.fingerprint(), original);
+    assert.equal(db.version, 4);
+    await db.migrate(provider(db, f), 1200);
+    assert.equal(db.version, 5);
+    assert.deepEqual(db.readDurable().associationReceipts, []);
+  } finally {
+    db?.close();
+    f.cleanup();
+  }
+});
+
+test('association insertion uses actual SQLite page budget and rolls back before final admission over64MiB', async () =>
+  opened(async (db) => {
+    const { d } = associationCandidate(db);
+    const before = db.fingerprint();
+    // Test-owned temporary growth of a known TEXT column, restored before admission.
+    // Freed pages remain in this actual SQLite database; no schema or cap override.
+    statement(
+      db.connection,
+      'UPDATE registry_binding SET serial=CAST(zeroblob(?) AS TEXT) WHERE binding_id=?',
+      (q) => q.run(64 * 1024 * 1024, id(2)),
+    );
+    statement(db.connection, 'UPDATE registry_binding SET serial=? WHERE binding_id=?', (q) =>
+      q.run('synthetic-private-serial', id(2)),
+    );
+    assert.equal(db.fingerprint(), before);
+    const pages = statement(db.connection, 'PRAGMA page_count', (q) => q.get().page_count),
+      size = statement(db.connection, 'PRAGMA page_size', (q) => q.get().page_size);
+    assert.ok(pages * size > 64 * 1024 * 1024);
+    let admitted = false;
+    const result = db.commitDurable(4, d, () => {
+      admitted = true;
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'WRITE_FAILED');
+    assert.equal(admitted, false);
+    assert.equal(db.fingerprint(), before);
+    assert.equal(db.readDurable().associationReceipts.length, 0);
+  }));
+
+test('closed durable database refuses commit before reading SQLite version', async () =>
+  opened(async (db) => {
+    db.close();
+    Object.defineProperty(db, 'version', {
+      get() {
+        throw Error('VERSION_READ_AFTER_CLOSE');
+      },
+    });
+    assert.deepEqual(
+      db.commitDurable(0, delta(), () => {
+        throw Error('ADMISSION');
+      }),
+      { ok: false, code: 'RECOVERY_REQUIRED' },
+    );
   }));

@@ -98,6 +98,7 @@ async function fixture() {
       },
     ],
     identityEvidence: [],
+    associationReceipts: [],
     captures: [],
     holds: [],
   });

@@ -604,11 +604,16 @@ export function createHostFactory(
       )
         fail();
     },
-    discoveryEpochWitness(): Readonly<{ readonly valid: boolean }> {
+    discoveryEpochWitness(): Readonly<{
+      readonly valid: boolean;
+      installationRevision: number | null;
+    }> {
       const token = readToken,
         key = liveObservationKey,
-        generation = readGeneration;
+        generation = readGeneration,
+        installationRevision = liveObservation?.installationRevision ?? null;
       return Object.freeze({
+        installationRevision,
         get valid(): boolean {
           // Exact captured holder only. Never calls owner, clock, filesystem or runtime callbacks.
           if (

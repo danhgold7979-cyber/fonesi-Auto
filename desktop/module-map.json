@@ -627,6 +627,7 @@
      "DURABLE_LIMITS": "value",
      "snapshotDurable": "value",
      "snapshotDurableDelta": "value",
+     "snapshotHistoricalDurableV4": "value",
      "applyDurableDelta": "value",
      "DurableSnapshot": "type",
      "DurableCommitResult": "type"
@@ -1422,6 +1423,11 @@
     "./adb-discovery.ts": {
      "validAdbSerial": "value",
      "validTransportId": "value"
+    },
+    "./association-receipt-contract.ts": {
+     "snapshotAssociationRow": "value",
+     "parseAssociationReceipt": "value",
+     "DurableAssociationReceipt": "type"
     }
    }
   },
@@ -1463,6 +1469,15 @@
      "DurableCoordinator": "type",
      "DurableContext": "type",
      "DurableMutationResult": "type"
+    },
+    "./association-receipt-contract.ts": {
+     "snapshotAssociationTranscript": "value",
+     "createAssociationReceipt": "value",
+     "associationRowsSha256": "value",
+     "AssociationTranscript": "type"
+    },
+    "./adb-discovery.ts": {
+     "snapshotDiscoveryRow": "value"
     }
    }
   },
@@ -2055,6 +2070,10 @@
   "main/adb-discovery-service.ts": {
    "role": "main-adapter",
    "imports": {
+    "./association-receipt-contract.ts": {
+     "associationRowsSha256": "value",
+     "snapshotAssociationTranscript": "value"
+    },
     "./input-query-contract.ts": {
      "validInputAction": "value",
      "InputQueryAction": "type",
@@ -2324,6 +2343,18 @@
    "imports": {
     "./adb-discovery.ts": {
      "validAdbSerial": "value"
+    }
+   }
+  },
+  "main/association-receipt-contract.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "node:crypto": {
+     "createHash": "value"
+    },
+    "./adb-discovery.ts": {
+     "validAdbSerial": "value",
+     "validTransportId": "value"
     }
    }
   }

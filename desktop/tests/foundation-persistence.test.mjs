@@ -83,7 +83,7 @@ test('orchestrator refuses migration without separate durability evidence, then 
     );
     await app.initialize(1002);
     await assert.rejects(app.initialize(1002), /DATABASE_ALREADY_OPEN/);
-    assert.equal((await app.list()).length, 4);
+    assert.equal((await app.list()).length, 5);
     assert.ok((await app.list()).every((row) => row.protected));
     const manual = await app.backup(1003);
     assert.equal(manual.header.reason, 'MANUAL');
@@ -108,7 +108,7 @@ test('orchestrator refuses migration without separate durability evidence, then 
     try {
       await reopened.initialize(1006);
       assert.equal(await reopened.backup(1007, true), null);
-      assert.equal((await reopened.list()).length, 6);
+      assert.equal((await reopened.list()).length, 7);
     } finally {
       reopened.close();
     }
@@ -172,7 +172,7 @@ test('existing version1 active database migrates behind authenticated content wi
       previous.close();
     }
     await app.initialize(1002);
-    assert.equal((await app.list()).length, 4);
+    assert.equal((await app.list()).length, 5);
     assert.ok((await app.list()).every((row) => row.protected));
   }));
 
@@ -207,7 +207,7 @@ test('corrupted final activation copy is never promoted', async () =>
     }
   }));
 
-for (const snapshotVersion of [0, 2, 3, 4])
+for (const snapshotVersion of [0, 1, 2, 3, 4, 5])
   test(`restored schema${snapshotVersion} root stays quarantined after reopen/migration and automatic admission stays off`, async () =>
     fixture(async ({ root, location, storeId, app }) => {
       const selected = join(root, 'selected');
@@ -228,7 +228,7 @@ for (const snapshotVersion of [0, 2, 3, 4])
       const backup =
         snapshotVersion === 0
           ? bootstrap
-          : snapshotVersion === 4
+          : snapshotVersion === 5
             ? await app.backup(1002)
             : JSON.parse(readFileSync(join(location.root, 'migration-backups.json'), 'utf8')).find(
                 (receipt) => receipt.header.schemaVersion === snapshotVersion,
@@ -453,7 +453,7 @@ test('actual persistence adapter composes durable startup and PNG lifecycle; DB-
       await first.coordinator.close();
     }
     const backup = await app.backup(1200);
-    assert.equal(backup.header.schemaVersion, 4);
+    assert.equal(backup.header.schemaVersion, 5);
     app.close();
     assert.throws(() => adapter.readDurable(), /DURABLE_RECOVERY_REQUIRED/);
     assert.throws(() => adapter.commitDurable(0, {}, () => {}), /DURABLE_RECOVERY_REQUIRED/);

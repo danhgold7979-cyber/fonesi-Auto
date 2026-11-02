@@ -1193,10 +1193,13 @@ test('discovery epoch observation tolerates pending HEALTH but final holder witn
   try {
     const absent = f.factory.discoveryEpochWitness();
     assert.equal(absent.valid, false);
+    assert.equal(absent.installationRevision, null);
     assert.equal((await f.factory.execute(f.cap, f.request('SERVER_START'))).outcome, 'OBSERVED');
     const witness = f.factory.discoveryEpochWitness();
+    assert.equal(witness.installationRevision, 1);
     assert.equal(witness.valid, true);
     assert.equal(absent.valid, false);
+    assert.equal(absent.installationRevision, null);
     options.hold = true;
     const health = f.factory.execute(f.cap, f.request('SERVER_HEALTH'));
     while (!heldHealth) await new Promise((r) => setImmediate(r));

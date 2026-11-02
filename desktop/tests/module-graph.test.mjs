@@ -27,7 +27,7 @@ const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
 test('actual one hundred eleven modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 111, runtimeInputs: 111 });
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 112, runtimeInputs: 112 });
 });
 test('synthetic metadata stays unactivated and native owner has only the reviewed facade edge', () => {
   for (const [file, binding] of [
@@ -64,8 +64,8 @@ test('synthetic metadata stays unactivated and native owner has only the reviewe
     assert.deepEqual(incoming(wrong), ['main.ts', ...expected]);
   }
 });
-test('fleet stays in its exact role boundary and graph limit remains finite at one hundred nine', async () => {
-  assert.equal(Object.keys(map.modules).length, 111);
+test('fleet stays in its exact role boundary and graph limit remains finite at one hundred twelve', async () => {
+  assert.equal(Object.keys(map.modules).length, 112);
   await assert.rejects(
     () =>
       validateGraph(actual(), {

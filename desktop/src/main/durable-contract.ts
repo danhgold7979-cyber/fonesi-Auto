@@ -1,9 +1,15 @@
 // Pure bounded durable rows/deltas, never runtime VERIFIED or filesystem authority.
 import { validAdbSerial, validTransportId } from './adb-discovery.ts';
+import {
+  snapshotAssociationRow,
+  parseAssociationReceipt,
+  type DurableAssociationReceipt,
+} from './association-receipt-contract.ts';
 export const DURABLE_LIMITS = Object.freeze({
   devices: 256,
   bindings: 4096,
   identityEvidence: 4096,
+  associationReceipts: 4096,
   captures: 4096,
   holds: 4096,
 });
@@ -80,6 +86,7 @@ export type DurableSnapshot = Readonly<{
   devices: readonly DurableDevice[];
   bindings: readonly DurableBinding[];
   identityEvidence: readonly DurableIdentityEvidence[];
+  associationReceipts: readonly DurableAssociationReceipt[];
   captures: readonly DurableCapture[];
   holds: readonly DurableHold[];
 }>;
@@ -102,6 +109,7 @@ export type DurableDelta = Readonly<{
     retireIds: readonly string[];
   }>;
   identityEvidence: Readonly<{ insert: readonly DurableIdentityEvidence[] }>;
+  associationReceipts: Readonly<{ insert: readonly DurableAssociationReceipt[] }>;
   captures: Readonly<{
     insert: readonly DurableCapture[];
     transition: readonly DurableTransition[];
@@ -165,6 +173,12 @@ export const DURABLE_COLUMNS = Object.freeze({
     'state',
   ]),
   capture_hold: Object.freeze(['hold_id', 'evidence_id', 'reason']),
+  device_session_association: Object.freeze([
+    'evidence_id',
+    'receipt_version',
+    'receipt_json',
+    'transcript_sha256',
+  ]),
 });
 const kinds = ['STARTUP', 'RECONCILE', 'DISPLAY', 'CAPTURE', 'HOLD', 'PRUNE'];
 const states = ['RESERVED', 'VALIDATED', 'STALE', 'DELETE_PENDING', 'DELETED', 'UNCERTAIN'];
@@ -216,6 +230,11 @@ function ids(input: unknown, max: number): readonly string[] {
   return Object.freeze((a as string[]).slice().sort());
 }
 function row(table: keyof typeof DURABLE_COLUMNS, input: unknown): Record<string, unknown> {
+  if (table === 'device_session_association') {
+    const value = snapshotAssociationRow(input);
+    if (!value) reject();
+    return value;
+  }
   const v = record(input, DURABLE_COLUMNS[table]);
   for (const [k, x] of Object.entries(v)) {
     if (k === 'singleton') {
@@ -327,13 +346,27 @@ function rows<T>(
   return Object.freeze(a) as readonly T[];
 }
 function snapshot(input: unknown): DurableSnapshot {
-  const v = record(input, ['meta', 'devices', 'bindings', 'identityEvidence', 'captures', 'holds']);
+  const v = record(input, [
+    'meta',
+    'devices',
+    'bindings',
+    'identityEvidence',
+    'associationReceipts',
+    'captures',
+    'holds',
+  ]);
   const meta = row('registry_meta', v.meta) as DurableMeta;
   const devices = rows<DurableDevice>('registry_device', v.devices, 256, 'device_id');
   const bindings = rows<DurableBinding>('registry_binding', v.bindings, 4096, 'binding_id');
   const identityEvidence = rows<DurableIdentityEvidence>(
     'registry_identity_evidence',
     v.identityEvidence,
+    4096,
+    'evidence_id',
+  );
+  const associationReceipts = rows<DurableAssociationReceipt>(
+    'device_session_association',
+    v.associationReceipts,
     4096,
     'evidence_id',
   );
@@ -360,6 +393,41 @@ function snapshot(input: unknown): DurableSnapshot {
     }
   }
   for (const e of identityEvidence) if (!ds.has(e.device_id)) reject();
+  for (const a of associationReceipts) {
+    const r = parseAssociationReceipt(a.receipt_json);
+    if (!r) reject();
+    const e = identityEvidence.find((x) => x.evidence_id === r.evidenceId),
+      b = bs.get(r.finalBindingId),
+      p = r.priorBindingId === null ? null : bs.get(r.priorBindingId);
+    if (
+      !e ||
+      !b ||
+      e.device_id !== r.deviceId ||
+      e.identity_sha256 !== null ||
+      e.observed_utc !== r.stages.confirmation.observedUtc ||
+      b.device_id !== r.deviceId ||
+      b.generation !== r.finalGeneration ||
+      b.serial !== r.returnRow.serial ||
+      b.transport_id !== r.returnRow.transportId ||
+      b.last_state !== 'DEVICE' ||
+      b.source !== e.source ||
+      b.observed_utc < e.observed_utc ||
+      r.hostEpoch > meta.host_epoch ||
+      r.stages.confirmation.durableRevision > meta.revision
+    )
+      reject();
+    if (
+      r.priorBindingId !== null &&
+      (!p ||
+        p.device_id !== r.deviceId ||
+        p.generation !== r.priorGeneration ||
+        p.serial !== r.beforeRow.serial ||
+        p.transport_id !== r.beforeRow.transportId ||
+        p.source !== e.source ||
+        p.retired !== 1)
+    )
+      reject();
+  }
   for (const c of captures) {
     const d = ds.get(c.device_id),
       b = bs.get(c.binding_id);
@@ -377,7 +445,31 @@ function snapshot(input: unknown): DurableSnapshot {
     const c = cs.get(h.evidence_id);
     if (!c || ['DELETE_PENDING', 'DELETED'].includes(c.state)) reject();
   }
-  return Object.freeze({ meta, devices, bindings, identityEvidence, captures, holds });
+  return Object.freeze({
+    meta,
+    devices,
+    bindings,
+    identityEvidence,
+    associationReceipts,
+    captures,
+    holds,
+  });
+}
+// Explicit historical schema4 normalization only; current callers must supply the new field.
+export function snapshotHistoricalDurableV4(input: unknown): DurableSnapshot | null {
+  try {
+    const v = record(input, [
+      'meta',
+      'devices',
+      'bindings',
+      'identityEvidence',
+      'captures',
+      'holds',
+    ]);
+    return snapshot({ ...v, associationReceipts: [] });
+  } catch {
+    return null;
+  }
 }
 export function snapshotDurable(input: unknown): DurableSnapshot | null {
   try {
@@ -396,6 +488,7 @@ export function snapshotDurableDelta(input: unknown): DurableDelta | null {
       'devices',
       'bindings',
       'identityEvidence',
+      'associationReceipts',
       'captures',
       'holds',
     ]);
@@ -409,6 +502,7 @@ export function snapshotDurableDelta(input: unknown): DurableDelta | null {
     const d = record(v.devices, ['insert', 'update']),
       b = record(v.bindings, ['insert', 'refresh', 'retireIds']),
       e = record(v.identityEvidence, ['insert']),
+      a = record(v.associationReceipts, ['insert']),
       c = record(v.captures, ['insert', 'transition']),
       h = record(v.holds, ['insert', 'releaseIds']);
     const refresh = array(b.refresh, 4096).map((x) => {
@@ -455,6 +549,14 @@ export function snapshotDurableDelta(input: unknown): DurableDelta | null {
           'evidence_id',
         ),
       }),
+      associationReceipts: Object.freeze({
+        insert: rows<DurableAssociationReceipt>(
+          'device_session_association',
+          a.insert,
+          4096,
+          'evidence_id',
+        ),
+      }),
       captures: Object.freeze({
         insert: rows<DurableCapture>('capture_artifact', c.insert, 4096, 'evidence_id'),
         transition: Object.freeze(transition),
@@ -485,7 +587,8 @@ export function applyDurableDelta(before: unknown, input: unknown): DurableSnaps
         d.bindings.insert.length +
         d.bindings.refresh.length +
         d.bindings.retireIds.length +
-        d.identityEvidence.insert.length >
+        d.identityEvidence.insert.length +
+        d.associationReceipts.insert.length >
       0;
     const hasCapture = d.captures.insert.length + d.captures.transition.length > 0,
       hasHolds = d.holds.insert.length + d.holds.releaseIds.length > 0;
@@ -504,7 +607,9 @@ export function applyDurableDelta(before: unknown, input: unknown): DurableSnaps
       bindings = new Map(old.bindings.map((x) => [x.binding_id, x])),
       evidence = new Map(old.identityEvidence.map((x) => [x.evidence_id, x])),
       captures = new Map(old.captures.map((x) => [x.evidence_id, x])),
-      holds = new Map(old.holds.map((x) => [x.hold_id, x]));
+      holds = new Map(old.holds.map((x) => [x.hold_id, x])),
+      associations = new Map(old.associationReceipts.map((x) => [x.evidence_id, x]));
+    if (d.associationReceipts.insert.length && d.kind !== 'RECONCILE') reject();
     const insert = <T>(map: Map<string, T>, entries: readonly T[], key: (x: T) => string) => {
       for (const x of entries) {
         if (map.has(key(x))) reject();
@@ -601,6 +706,29 @@ export function applyDurableDelta(before: unknown, input: unknown): DurableSnaps
     insert(bindings, d.bindings.insert, (x) => x.binding_id);
     for (const x of d.identityEvidence.insert) if (x.observed_utc > d.utc) reject();
     insert(evidence, d.identityEvidence.insert, (x) => x.evidence_id);
+    for (const a of d.associationReceipts.insert) {
+      const r = parseAssociationReceipt(a.receipt_json);
+      if (!r) reject();
+      const e = d.identityEvidence.insert.find((x) => x.evidence_id === r.evidenceId),
+        b = d.bindings.insert.find((x) => x.binding_id === r.finalBindingId),
+        prior = old.devices.find((x) => x.device_id === r.deviceId);
+      if (
+        !e ||
+        !b ||
+        !prior ||
+        r.hostEpoch !== d.hostEpoch ||
+        r.stages.return.durableRevision !== old.meta.revision ||
+        r.stages.confirmation.durableRevision !== old.meta.revision + 1 ||
+        d.utc < r.stages.confirmation.observedUtc ||
+        d.utc > r.deadlineUtc ||
+        b.retired !== 0 ||
+        b.observed_utc !== r.stages.confirmation.observedUtc ||
+        r.finalGeneration !== prior.generation ||
+        d.devices.insert.some((x) => x.device_id === r.deviceId)
+      )
+        reject();
+    }
+    insert(associations, d.associationReceipts.insert, (x) => x.evidence_id);
     if (d.kind === 'PRUNE' && d.captures.insert.length) reject();
     for (const x of d.captures.insert)
       if (
@@ -654,6 +782,7 @@ export function applyDurableDelta(before: unknown, input: unknown): DurableSnaps
       devices: [...devices.values()],
       bindings: [...bindings.values()],
       identityEvidence: [...evidence.values()],
+      associationReceipts: [...associations.values()],
       captures: [...captures.values()],
       holds: [...holds.values()],
     });

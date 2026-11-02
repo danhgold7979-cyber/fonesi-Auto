@@ -1,4 +1,5 @@
 'use strict';
+const { migrateSchema4, commitEmptySchema4 } = require('./schema4-fixture.cjs');
 const test = require('node:test'),
   assert = require('node:assert/strict'),
   fs = require('node:fs'),
@@ -178,18 +179,22 @@ test('real SQLite first/reopen startup tuples cannot be interchanged (synthetic 
     const storeId = crypto.randomUUID(),
       ids = [];
     db = new actual.FoundationDatabase(path.join(data, 'active.sqlite'), storeId);
-    await db.migrate(async (version) => {
-      const file = path.join(f.root, `snapshot-${version}.sqlite`);
-      await db.snapshot(file);
-      const copy = new actual.FoundationDatabase(file, storeId, true);
-      try {
-        const backupId = crypto.randomUUID();
-        ids.push(backupId);
-        return { backupId, schemaVersion: version, fingerprint: copy.fingerprint() };
-      } finally {
-        copy.close();
-      }
-    }, 1000);
+    await migrateSchema4(
+      db,
+      async (version) => {
+        const file = path.join(f.root, `snapshot-${version}.sqlite`);
+        await db.snapshot(file);
+        const copy = new actual.FoundationDatabase(file, storeId, true);
+        try {
+          const backupId = crypto.randomUUID();
+          ids.push(backupId);
+          return { backupId, schemaVersion: version, fingerprint: copy.fingerprint() };
+        } finally {
+          copy.close();
+        }
+      },
+      1000,
+    );
     const source = fs.readFileSync(path.join(__dirname, 'recipient-setup-control.cjs'), 'utf8'),
       module = { exports: {} },
       normal = createRequire(path.join(__dirname, 'recipient-setup-control.cjs')),
@@ -215,23 +220,7 @@ test('real SQLite first/reopen startup tuples cannot be interchanged (synthetic 
       { filename: 'recipient-setup-control.synthetic-dependencies.cjs' },
     );
     const commit = (kind, epoch) => {
-      const before = db.readDurable();
-      const result = db.commitDurable(
-        before.meta.revision,
-        {
-          operationId: crypto.randomUUID(),
-          kind,
-          utc: 1001,
-          hostEpoch: epoch,
-          devices: { insert: [], update: [] },
-          bindings: { insert: [], refresh: [], retireIds: [] },
-          identityEvidence: { insert: [] },
-          captures: { insert: [], transition: [] },
-          holds: { insert: [], releaseIds: [] },
-        },
-        () => {},
-      );
-      assert.equal(result.ok, true);
+      commitEmptySchema4(db, db.readDurable().meta.revision, kind, epoch, 1001);
     };
     commit('STARTUP', 1);
     commit('CAPTURE', 1);

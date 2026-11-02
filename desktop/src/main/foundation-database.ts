@@ -11,6 +11,7 @@ import {
   DURABLE_LIMITS,
   snapshotDurable,
   snapshotDurableDelta,
+  snapshotHistoricalDurableV4,
   applyDurableDelta,
   type DurableSnapshot,
   type DurableCommitResult,
@@ -87,6 +88,7 @@ function settingsRow(row: Record<string, unknown>): SettingsSnapshot {
 }
 function visibleTable(name: string, version: number): boolean {
   if (version < 1) return false;
+  if (name === 'device_session_association') return version >= 5;
   if (Object.hasOwn(DURABLE_COLUMNS, name)) return version >= 4;
   if (name === 'app_settings_revision') return version >= 3;
   return version >= 2 || ['foundation_store', 'schema_migration'].includes(name);
@@ -468,14 +470,24 @@ export class FoundationDatabase {
         ),
       );
     const meta = read('registry_meta', 1);
-    const value = snapshotDurable({
+    const historical = {
       meta: meta.length === 1 ? meta[0] : null,
       devices: read('registry_device', DURABLE_LIMITS.devices),
       bindings: read('registry_binding', DURABLE_LIMITS.bindings),
       identityEvidence: read('registry_identity_evidence', DURABLE_LIMITS.identityEvidence),
       captures: read('capture_artifact', DURABLE_LIMITS.captures),
       holds: read('capture_hold', DURABLE_LIMITS.holds),
-    });
+    };
+    const value =
+      this.version === 4
+        ? snapshotHistoricalDurableV4(historical)
+        : snapshotDurable({
+            ...historical,
+            associationReceipts: read(
+              'device_session_association',
+              DURABLE_LIMITS.associationReceipts,
+            ),
+          });
     if (!value) throw new Error('DURABLE_RECOVERY_REQUIRED');
     return value;
   }
@@ -485,7 +497,7 @@ export class FoundationDatabase {
       this.migrating ||
       this.durableUncertain ||
       this.settingsUncertain ||
-      this.version !== 4
+      (this.version !== 4 && this.version !== DATABASE_VERSION)
     )
       throw new Error('DURABLE_RECOVERY_REQUIRED');
     this.validate();
@@ -502,6 +514,7 @@ export class FoundationDatabase {
       this.migrating ||
       this.durableUncertain ||
       this.settingsUncertain ||
+      this.version !== DATABASE_VERSION ||
       !epoch(expectedRevision) ||
       expectedRevision === Number.MAX_SAFE_INTEGER ||
       !delta ||
@@ -526,6 +539,7 @@ export class FoundationDatabase {
       if (!next) throw new Error('DURABLE_DELTA_REJECTED');
       // Closed table/column inventory only; no caller SQL. Replace within one FK-safe transaction.
       for (const table of [
+        'device_session_association',
         'capture_hold',
         'capture_artifact',
         'registry_identity_evidence',
@@ -541,6 +555,7 @@ export class FoundationDatabase {
         registry_identity_evidence: next.identityEvidence,
         capture_artifact: next.captures,
         capture_hold: next.holds,
+        device_session_association: next.associationReceipts,
       };
       for (const table of Object.keys(DURABLE_COLUMNS) as (keyof typeof DURABLE_COLUMNS)[]) {
         const columns = DURABLE_COLUMNS[table];
@@ -553,6 +568,18 @@ export class FoundationDatabase {
         });
       }
       this.validate();
+      if (delta.associationReceipts.insert.length) {
+        const pages = rows(this.connection, 'PRAGMA page_count')[0]?.page_count,
+          size = rows(this.connection, 'PRAGMA page_size')[0]?.page_size;
+        if (
+          typeof pages !== 'bigint' ||
+          typeof size !== 'bigint' ||
+          pages < 0n ||
+          size <= 0n ||
+          pages * size > 64n * 1024n * 1024n
+        )
+          throw new Error('DURABLE_SIZE_LIMIT');
+      }
       try {
         admit();
       } catch (error) {

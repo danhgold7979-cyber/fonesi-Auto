@@ -143,6 +143,9 @@ function fixture(extra = {}) {
         },
         discoveryEpochWitness() {
           return Object.freeze({
+            installationRevision: Object.hasOwn(extra, 'installationRevision')
+              ? extra.installationRevision
+              : 7,
             get valid() {
               return (
                 adapter.snapshot().state === 'READY' &&
@@ -1088,6 +1091,28 @@ test('input reserves ordinary lane before hostile descriptor inspection can reen
     assert.equal((await outer.result).status, 'COMPLETE');
     await outer.retirement;
     assert.equal(f.calls.filter((x) => x === 'input').length, 1);
+  } finally {
+    await f.service.close();
+  }
+});
+
+test('sealed provider captures actual installation scalar and refuses absent or malformed witness', async () => {
+  const module = await transformedService();
+  for (const installationRevision of [null, undefined, 0, -0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const f = fixture({ createService: module.createAdbServerService, installationRevision });
+    try {
+      await f.service.start();
+      assert.throws(() => f.service.discoveryProvider(), /NOT_READY/);
+    } finally {
+      await f.service.close();
+    }
+  }
+  const f = fixture({ createService: module.createAdbServerService, installationRevision: 7 });
+  try {
+    await f.service.start();
+    const record = module.inspectOwnedDiscoveryProvider(f.service.discoveryProvider());
+    assert.equal(record.installationRevision, 7);
+    assert(Object.isFrozen(record));
   } finally {
     await f.service.close();
   }

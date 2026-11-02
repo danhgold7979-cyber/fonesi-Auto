@@ -249,7 +249,8 @@ jobs:
   # Schema4 source-only smoke is opt-in; historical schema3 evidence remains separately versioned.
   owned-fleet-ui-development:
     needs: windows-software-only
-    if: (github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[fleet-ui]'))
+    # Historical schema4 UI envelope is suspended until an exact schema5 campaign is reviewed.
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[fleet-ui]')))
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:

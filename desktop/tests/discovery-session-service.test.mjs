@@ -214,6 +214,7 @@ async function fixture(extra = {}) {
             },
             discoveryEpochWitness() {
               return Object.freeze({
+                installationRevision: 1,
                 get valid() {
                   return live && !factoryClosed && factoryState === 'READY';
                 },

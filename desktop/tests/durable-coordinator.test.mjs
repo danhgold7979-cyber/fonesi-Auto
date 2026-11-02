@@ -16,6 +16,7 @@ function fixture(overrides = {}) {
     devices: [],
     bindings: [],
     identityEvidence: [],
+    associationReceipts: [],
     captures: [],
     holds: [],
   });
@@ -55,6 +56,7 @@ function fixture(overrides = {}) {
       devices: { insert: [], update: [] },
       bindings: { insert: [], refresh: [], retireIds: [] },
       identityEvidence: { insert: [] },
+      associationReceipts: { insert: [] },
       captures: { insert: [], transition: [] },
       holds: { insert: [], releaseIds: [] },
     }),
@@ -148,6 +150,7 @@ test('known rollback and unknown commit are distinct; final admission revocation
             devices: [],
             bindings: [],
             identityEvidence: [],
+            associationReceipts: [],
             captures: [],
             holds: [],
           }),

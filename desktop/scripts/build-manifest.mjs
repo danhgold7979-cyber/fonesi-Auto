@@ -117,6 +117,7 @@ export const inputs = [
   'src/main/device-actor.ts',
   'src/main/input-contract.ts',
   'src/main/capture-contract.ts',
+  'src/main/association-receipt-contract.ts',
   'src/main/durable-contract.ts',
   'src/main/durable-coordinator.ts',
   'src/main/registry-store.ts',

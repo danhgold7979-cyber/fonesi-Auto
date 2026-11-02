@@ -1,4 +1,5 @@
 'use strict';
+const { migrateSchema4, commitEmptySchema4 } = require('./schema4-fixture.cjs');
 // Actual materialization and owned files; package/build semantic admission is explicitly synthetic here.
 const test = require('node:test'),
   assert = require('node:assert/strict'),
@@ -238,18 +239,22 @@ test('actual SQLite stage inspection distinguishes durable epochs 1..4 and revis
     db = new dbModule.FoundationDatabase(filename, storeId),
     receipts = [];
   try {
-    await db.migrate(async (version) => {
-      const snapshot = path.join(f.parent, `snapshot-${version}.sqlite`);
-      await db.snapshot(snapshot);
-      const opened = new dbModule.FoundationDatabase(snapshot, storeId, true);
-      try {
-        const backupId = randomUUID();
-        receipts[version] = { header: { backupId } };
-        return { backupId, fingerprint: opened.fingerprint(), schemaVersion: version };
-      } finally {
-        opened.close();
-      }
-    }, 1000);
+    await migrateSchema4(
+      db,
+      async (version) => {
+        const snapshot = path.join(f.parent, `snapshot-${version}.sqlite`);
+        await db.snapshot(snapshot);
+        const opened = new dbModule.FoundationDatabase(snapshot, storeId, true);
+        try {
+          const backupId = randomUUID();
+          receipts[version] = { header: { backupId } };
+          return { backupId, fingerprint: opened.fingerprint(), schemaVersion: version };
+        } finally {
+          opened.close();
+        }
+      },
+      1000,
+    );
     const module = { exports: {} },
       real = createRequire(file),
       schema = { receipts: () => receipts },
@@ -287,18 +292,7 @@ test('actual SQLite stage inspection distinguishes durable epochs 1..4 and revis
     for (const stage of c.STAGES) {
       const epoch = c.EXPECTED[stage].epoch;
       for (const kind of ['STARTUP', 'CAPTURE']) {
-        const d = {
-          operationId: randomUUID(),
-          kind,
-          utc: 1000 + revision + 1,
-          hostEpoch: epoch,
-          devices: { insert: [], update: [] },
-          bindings: { insert: [], refresh: [], retireIds: [] },
-          identityEvidence: { insert: [] },
-          captures: { insert: [], transition: [] },
-          holds: { insert: [], releaseIds: [] },
-        };
-        assert.equal(db.commitDurable(revision, d, () => {}).ok, true);
+        commitEmptySchema4(db, revision, kind, epoch, 1000 + revision + 1);
         revision++;
       }
       assert.doesNotThrow(() => local.inspectDatabase(s, stage));
