@@ -85,6 +85,15 @@ function validateObservation(value) {
 function parseObservation(stdout) {
   if (typeof stdout !== 'string' || !stdout.endsWith('\n') || stdout.endsWith('\n\n'))
     throw new Error('SCHEDULE_CAPTURE_FRAMING');
+  // Electron may emit empty preamble lines. Admit only this finite framing,
+  // never trim JSON whitespace or extract a record from arbitrary output.
+  for (let count = 0; count < 2; count++) {
+    if (stdout.startsWith('\r\n')) stdout = stdout.slice(2);
+    else if (stdout.startsWith('\n')) stdout = stdout.slice(1);
+    else break;
+  }
+  if (stdout.startsWith('\n') || stdout.startsWith('\r\n'))
+    throw new Error('SCHEDULE_CAPTURE_FRAMING');
   const raw = stdout.endsWith('\r\n') ? stdout.slice(0, -2) : stdout.slice(0, -1);
   if (Buffer.byteLength(raw) > 16384) throw new Error('SCHEDULE_CAPTURE_LIMIT');
   let value;

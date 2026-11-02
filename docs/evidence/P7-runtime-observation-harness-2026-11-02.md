@@ -228,3 +228,26 @@ retirement, state canonicality and no-report-on-failure gates remain.
 Final diagnostic-delta aggregate: TESTS_PASS1743/1743 and
 DESKTOP_SOURCE_CHECK_PASS on Linux; diff-check PASS. Native characterization
 remains pending a fresh hosted run; no admission or acceptance credit.
+
+### Fifth hosted characterization and finite preamble repair
+
+Public b9947f85e3bce1d0b4333cc696f599ab56792479 / local cd07b055 maps tree
+077cc5f597f9e16563b91eb9c364323040af918a. Terminal
+[run 41481290891](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41481290891),
+job 125399973292, passed Windows source 1743/1743 at 16:27:51 UTC.
+Native validation failed REPRESENTATION at CAPTURE_FRAMING; fixed facts were
+LEADING_WHITESPACE, ONE_NONEMPTY_LINE, ONE_CANONICAL_OBSERVATION_LINE,
+TRIM_ONLY_CANONICAL, FIRST_WHITESPACE and LAST_CLOSE_BRACE. All owned processes
+RETIRED; report upload SKIPPED. This proves the sole nonempty captured line was
+already canonical, with a blank preamble; exact count and emitter are not proven.
+No raw capture or tuple was published and no runtime admitted.
+
+Coordinator adopted independently reviewed finite framing amendment: accept only
+0–2 leading empty LF/CRLF lines, at most4 bytes, before the canonical JSON line and
+existing final terminator. Still refuse spaces/tabs/BOM/text, more prefix lines,
+trailing blank lines, extra records and noncanonical JSON. No general trim or
+record-extraction fallback. Targeted26/26 tests cover all prefix/terminator pairs
+through actual capture validation plus rejected boundaries; native recovery pending.
+
+Final finite-prefix source aggregate: TESTS_PASS1744/1744 and
+DESKTOP_SOURCE_CHECK_PASS; independent26/26 targeted CLEAR, diff-check PASS.

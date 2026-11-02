@@ -154,7 +154,11 @@ credentials, vault, SQLite, ADB, device helper, default application or productio
 entry. Framework-internal behavior is not falsely asserted absent; package is
 used only for tuple/Intl observation and never calls application network APIs.
 
-Parent demands exit0, exact one JSON stdout line at most16,384 UTF-8 bytes,
+Parent demands exit0, exact one canonical JSON stdout line at most16,384 UTF-8 bytes,
+with one LF/CRLF final terminator. The reviewed 2026-11-02 framing amendment
+allows only zero to two leading empty LF/CRLF lines (at most4 bytes). Spaces,
+tabs, BOM, text, excess prefix, extra records and trailing blank lines still fail.
+This finite framing is not trim/extraction fallback. Parent also requires
 nontruncated capture and **confirmed whole Job retirement** before success or
 cleanup. stderr is retained privately only as bounded process capture and never
 published; no raw stack/path/environment in public output. Any malformed result,

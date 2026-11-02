@@ -694,3 +694,30 @@ test('framing description reveals only bounded fixed categories and never admits
   assert.throws(() => parseObservation(' ' + line + '\n'), /SCHEDULE_CAPTURE_REPRESENTATION/);
   assert.throws(() => parseObservation('x'.repeat(16385) + '\n'), /SCHEDULE_CAPTURE_LIMIT/);
 });
+
+test('finite observed empty preamble admits only zero to two LF or CRLF lines', () => {
+  const value = fixture(),
+    raw = JSON.stringify(value);
+  for (const prefix of ['', '\n', '\r\n', '\n\n', '\n\r\n', '\r\n\n', '\r\n\r\n']) {
+    for (const ending of ['\n', '\r\n']) {
+      assert.deepEqual(parseObservation(prefix + raw + ending), value);
+      assert.deepEqual(validateCapture({ ...receipt(), stdout: prefix + raw + ending }), value);
+    }
+  }
+  for (const prefix of [
+    '\n\n\n',
+    '\r\n\r\n\r\n',
+    ' ',
+    '\t',
+    '\uFEFF',
+    '\n ',
+    '\n\t',
+    '\n\uFEFF',
+    '\r',
+    'text\n',
+  ])
+    assert.throws(() => parseObservation(prefix + raw + '\n'));
+  for (const suffix of ['', '\n\n', '\r\n\r\n', '\n ', '\n\t', '\ntext\n', '\n' + raw + '\n'])
+    assert.throws(() => parseObservation('\n' + raw + suffix));
+  assert.throws(() => parseObservation('\n' + raw.replace(':1,', ': 1,') + '\n'));
+});
