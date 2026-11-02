@@ -247,9 +247,10 @@ test('Windows workflow compiles by default and keeps actual native ownership exp
     assert.match(s, /persist-credentials: false/);
     assert.match(s, /runs-on: windows-2022\n {4}timeout-minutes: 15/);
     assert.match(s, /run_native_ownership:[\s\S]*?default: false/);
-    assert.match(
-      s,
-      /if: github.ref == 'refs\/heads\/phase-04' && github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true/,
+    assert.ok(
+      s.includes(
+        "if: github.ref == 'refs/heads/phase-04' && ((github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[vision-managed]')))",
+      ),
     );
     assert.match(s, /Invoke-VisionQualification.ps1 -Mode Compile/);
     assert.match(s, /run_vision_source_tests.py/);
@@ -259,11 +260,28 @@ test('Windows workflow compiles by default and keeps actual native ownership exp
     assert.match(s, /WINDOWS_OCR_MODEL_NOT_RUN/);
   }
   closed(raw);
+  const admitted = (ref, event, input, message) =>
+    ref === 'refs/heads/phase-04' &&
+    ((event === 'workflow_dispatch' && input === true) ||
+      (event === 'push' && message.includes('[vision-managed]')));
+  assert.equal(admitted('refs/heads/phase-04', 'push', false, 'reviewed [vision-managed]'), true);
+  assert.equal(admitted('refs/heads/phase-04', 'workflow_dispatch', true, ''), true);
+  for (const args of [
+    ['refs/heads/main', 'push', false, '[vision-managed]'],
+    ['refs/heads/phase-04', 'pull_request', true, '[vision-managed]'],
+    ['refs/heads/phase-04', 'push', true, 'ordinary compile'],
+    ['refs/heads/phase-04', 'workflow_dispatch', false, '[vision-managed]'],
+  ])
+    assert.equal(admitted(...args), false);
+
   for (const changed of [
     raw.replace('default: false', 'default: true'),
     raw.replace('contents: read', 'contents: write'),
     raw.replace('&& inputs.run_native_ownership == true', '|| inputs.run_native_ownership == true'),
     raw.replace('-Mode Compile', '-Mode Runtime'),
+    raw.replace("github.ref == 'refs/heads/phase-04' && (", '('),
+    raw.replace("github.event_name == 'push' && contains", 'contains'),
+    raw.replace('[vision-managed]', '[unrelated-marker]'),
   ])
     assert.throws(() => closed(changed));
 });

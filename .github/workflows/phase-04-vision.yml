@@ -67,7 +67,7 @@ jobs:
           Write-Output 'VI_REQUIRED_UNAVAILABLE'
           Write-Output 'DEVICE_HARDWARE_NOT_RUN'
       - name: Explicit reviewed synthetic native ownership cases, never OCR runtime
-        if: github.ref == 'refs/heads/phase-04' && github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true
+        if: github.ref == 'refs/heads/phase-04' && ((github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[vision-managed]')))
         run: |
           & desktop/verification/Invoke-VisionQualification.ps1 -Mode Managed
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
