@@ -80,19 +80,19 @@ The 23-file packet includes only the paths below. Caches, archive/source origina
 
 | Source / gate | SHA256 |
 |---|---|
-| `.github/workflows/phase-02-software.yml` | `44b0678747b1ae40f12bcc870846547a69db8b91bfaeafd6e358defe55ab8c58` |
+| `.github/workflows/phase-02-software.yml` | `09ebcaaf9936255cf1387c8605ad27a20a17197fbf0a5f9b4663f93ea04eb787` |
 | `desktop/scripts/quality-tool.mjs` | `ccff8a43620c7cea61d81b5c3ae0ea5e963431ae2e7b7fdd73975b5c500f663d` |
 | `desktop/scripts/test-batches.mjs` | `0489ff8d0afaa86a83bad671bc4a762a0343c4bf3b53c600804f985e8f511f63` |
-| `desktop/tests/phase-source-workflow.test.mjs` | `0ba8d5b507faaf5ec6a1700be581136480ef2fb0518307947a798d375da91e9c` |
+| `desktop/tests/phase-source-workflow.test.mjs` | `bbe21eeb421eb9e870d030b1714a06fce816ed68bd8776d6c93c56d1d000ca78` |
 | `desktop/tests/quality-tool.test.mjs` | `05110e6803d583a3574a3cc93d30c5e6c71f91f485dfb64e5029794296767bf5` |
 | `desktop/tests/retained-managed-fixture.test.mjs` | `a05176ed8fe84fc460d508fb01af5ded49814adb5e2e942124451d04298e09b8` |
-| `desktop/verification/retained-rollback-workflow.test.cjs` | `7c7f4bce4ad867a5d72b3b2dd85f879fc82a8a65908eea360345b2352c16855c` |
+| `desktop/verification/retained-rollback-workflow.test.cjs` | `79762e52d2e25861841480a70c294ba24132de550828faad9bced87dc621c7d0` |
 | `desktop/verification/Invoke-DerivedPairBuild.ps1` | `d28fc606114ebb628c32ed49260f4496e3bde2738910bb6b49dec391b41b482d` |
 | `desktop/verification/derived-pair-wrapper.test.cjs` | `ddfa9f072cd785734b4db9cf2883d58ba20406c12aadd2e3fa905d34fc148766` |
-| `desktop/verification/derived_pair_build.py` | `3fca5b84ad7192c7dc92005af9eef0cf0cfa59dd1433e01f792e71493b2ebb9f` |
-| `desktop/verification/test_derived_pair_build.py` | `d3eb7cce3f58078afb9dcede40525ea277d59f91f75cdcc0e50d251688d44508` |
-| `desktop/verification/test_validate_derived_pair_build.py` | `b7adbacc4403dff05ef730e85a92077aa1cf78020e57f71b67234afba6278f83` |
-| `desktop/verification/validate_derived_pair_build.py` | `ac010c9a15046487ff776c3b40f3989e5c378dccd0786693ffa68eb2edd8d106` |
+| `desktop/verification/derived_pair_build.py` | `9317866c0a8e214af5184d5d595c2c9819172adb3300fc711f1987276f676beb` |
+| `desktop/verification/test_derived_pair_build.py` | `35afed3b08699e52a0ee752ea9f25d4dd5c2ece07974318f801827ebdc21f1a9` |
+| `desktop/verification/test_validate_derived_pair_build.py` | `84e57aaf06c4fabeb724aaa545f68c78d8caa9b4c7508bcd8118eebc6da71d5b` |
+| `desktop/verification/validate_derived_pair_build.py` | `e6cae074e387f2bd39119a3ce38fd6f4022792ce4e6dbd329d4d0090174df3a0` |
 | `desktop/video-source/README.md` | `71886a1b4a7a210757da499cebe7bbf55e860bd25cf28b51ceaef1fd0f535d42` |
 | `desktop/video-source/auto-video-nonce-v1.patch` | `caaadaecd4b559ef8f980e5eae84c47c9f7174a8d916f8fda05612fed7ff6f8c` |
 | `desktop/video-source/source-provenance.json` | `5903269dca4416213e4acb8be7cdf1c637147ed07a00dc9527684b4a8de574a6` |
@@ -118,3 +118,21 @@ The test-only CRLF checkout composition reproduced exactly those two named failu
 Only the test and two evidence/status documents change in this corrective packet. Expected hosted counts stay1598/109/320; the actual previous host result remains FAILED and paired compilation remains NOT_RUN until the corrected run produces evidence.
 
 Independent exact three-file corrective review is CLEAR at 05:21 UTC, including index/disk identity, the unchanged production/compiler gate and the bounded static-normalization check. The same source-dependent compile-only retry is supported; no new scope or acceptance follows.
+
+
+## Second hosted attempt — Windows Python portability, 05:25 UTC
+
+Public `f0048fd39edb40a6752b2fd025dda8631fa84866` / local `6b190cf77c881b5f15d5ea470d195b5a9c0686ad`, tree `1aab67fc80bd6ea0e22c106e77e5230802ff3b93`, CI41393632505/source job125110153830, now emits actual **TESTS_PASS1598/1598 and DESKTOP_SOURCE_CHECK_PASS**, followed by foundation109/109 with zero failure/cancellation/skip/todo. Python runs the exact320 cases but reports **10 errors**, so the source job is not PASS. The separately observed jobs API reports paired compilation SKIPPED again; no compiler/output evidence exists yet.
+
+The retained log is114,776 bytes, SHA256 `e71c8dccd57a81e91a44f3ca10468ea6174aeb18b864b8d4a1009839b592b697`, independently audited. Seven errors occur in the new controller's path-stat/open-handle identity comparisons, and three in strict canonical path checks on synthetic temporary roots. The log does not identify which stat field differs. The correction must preserve same-API change-time stability, device/inode binding, exact bytes and reparse refusal; it is not permission to discard identity checks. Only test-created temporary roots are canonicalized once, not arbitrary production path aliases. Exact primary-backed Windows/Python semantics and causal correction results follow in the final repair record.
+
+
+### Exact portability correction
+
+Pinned [CPython3.12.10 `posixmodule.c`](https://github.com/python/cpython/blob/v3.12.10/Modules/posixmodule.c) path-stat handling copies birthtime into `ctime`, whereas [`Python/fileutils.c`](https://github.com/python/cpython/blob/v3.12.10/Python/fileutils.c) open-handle stat retains Windows ChangeTime. These primary semantics explain why comparing the two complete tuples is invalid; the host log itself does not reveal individual values. The controller and publisher now retain **full path-before/path-after and fd-before/fd-after** witnesses (including change time, birthtime, links and attributes), while the cross-API binding compares device, inode, size, modification time, common birthtime and links. Windows birthtime is mandatory, not a fallback. Replacement/change-time/reparse refusal is preserved.
+
+The same pinned `os.open` implementation forwards `_wopen` flags without adding binary mode. The controller's three raw open paths now explicitly include `O_BINARY`, preserving exact CRLF, LF and control-Z bytes rather than text-mode translation. The publisher already uses `rb`. Only synthetic temporary roots are resolved once before constructing fixtures; strict production canonical-path checks remain unchanged.
+
+Author affected validation: **35/35 controller+publisher tests PASS**, **4/4 exact workflow/count tests PASS**, and affected shared quality PASS. The four added causal methods establish the new exact Python discovery count **324**; current workflow/fixture predicates bind324 with no skipped tests. These results do not claim an actual Windows rerun or an uninterrupted full324 local suite. Earlier320 local PASS and the actual320/10-error Windows run remain separate history. Desktop expected count stays1598; no native C#/PowerShell/compiler-plan changes, deadline extension or relaxed ownership gate accompanies this correction.
+
+Independent narrow production review is CLEAR for controller `9317866c0a8e214af5184d5d595c2c9819172adb3300fc711f1987276f676beb` and publisher `e6cae074e387f2bd39119a3ce38fd6f4022792ce4e6dbd329d4d0090174df3a0`, with exact causal fixtures. Final nine-file inventory/docs closure is independently CLEAR at 05:31 UTC; the same bounded compile-only retry remains the intended next execution, not device/runtime work.

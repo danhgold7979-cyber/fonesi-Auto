@@ -172,7 +172,13 @@ class ValidatorTests(unittest.TestCase):
 
     def test_bound_failure_publication_keeps_scratch_and_json_only(self):
         with tempfile.TemporaryDirectory() as temp:
+            # Fixture custody starts from one canonical spelling (Windows TEMP may use 8.3).
+            temp = str(Path(temp).resolve())
             base = Path(temp) / '.derived-pair-build-runtime'; base.mkdir()
+            # Canonicalizing the fixture does not relax production alias refusal.
+            with patch.object(type(base), 'resolve', return_value=base / 'alias'):
+                with self.assertRaises(ValueError): v.directory(base)
+            self.assertEqual(v.directory(base), base)
             root = Path(temp) / ('derived-pair-' + str(uuid.uuid4())); root.mkdir()
             for folder in (base, root): (folder / '.owner').write_text(str(uuid.uuid4()), encoding='ascii')
             (root / 'private').mkdir(); (root / 'evidence').mkdir()
@@ -217,6 +223,8 @@ class ValidatorTests(unittest.TestCase):
         from test_derived_pair_build import pe_fixture
         dll = pe_fixture()
         with tempfile.TemporaryDirectory() as temp:
+            # Fixture custody starts from one canonical spelling (Windows TEMP may use 8.3).
+            temp = str(Path(temp).resolve())
             root = Path(temp); (root/'evidence').mkdir()
             (root/'evidence/server.jar').write_bytes(archive.getvalue())
             (root/'evidence/RetainedVideoConsumer.dll').write_bytes(dll)
@@ -281,6 +289,8 @@ class ValidatorTests(unittest.TestCase):
         # Model an already validated staged handoff with synthetic process facts.
         # This does not exercise or claim a real compiler campaign.
         with tempfile.TemporaryDirectory() as temp:
+            # Fixture custody starts from one canonical spelling (Windows TEMP may use 8.3).
+            temp = str(Path(temp).resolve())
             base = Path(temp)/'.derived-pair-build-runtime'; base.mkdir(); (base/'upload').mkdir()
             token = str(uuid.uuid4()); run_id = str(uuid.uuid4())
             (base/'.owner').write_text(token)
@@ -306,8 +316,50 @@ class ValidatorTests(unittest.TestCase):
                 self.assertEqual(set(p.name for p in (base/'upload').iterdir()), {*v.NAMES, 'report.json'})
                 self.assertTrue(v.parse((base/'upload/report.json').read_bytes())['directoryCleanup'])
 
+    def test_read_file_cross_api_windows_ctime_uses_common_birthtime(self):
+        self._read_stat_fixture({})
+
+    def test_read_file_same_api_ctime_change_still_refuses(self):
+        for location in ('path_after', 'fd_after'):
+            with self.subTest(location=location), self.assertRaises(ValueError):
+                self._read_stat_fixture({location: {'st_ctime_ns': 999}})
+
+    def test_read_file_replacement_birthtime_and_link_change_refuse(self):
+        for location, change in (('fd_before', {'st_ino': 999}),
+                                 ('path_after', {'st_ino': 999}),
+                                 ('fd_before', {'st_birthtime_ns': 999}),
+                                 ('fd_after', {'st_nlink': 2})):
+            with self.subTest(location=location, change=change), self.assertRaises(ValueError):
+                self._read_stat_fixture({location: change})
+
+        with self.assertRaises(ValueError):
+            self._read_stat_fixture({'omit_birth': True})
+
+    def _read_stat_fixture(self, changes):
+        from types import SimpleNamespace
+        import os
+        with tempfile.TemporaryDirectory() as temp:
+            file = Path(temp).resolve() / 'bytes.bin'
+            payload = b'line\r\ncontrol\x1aend'
+            file.write_bytes(payload)
+            actual = file.stat()
+            fields = {k: getattr(actual, k) for k in
+                      ('st_mode', 'st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_nlink')}
+            fields.update(st_birthtime_ns=50, st_file_attributes=0)
+            stats = {}
+            for key in ('path_before', 'path_after', 'fd_before', 'fd_after'):
+                stats[key] = SimpleNamespace(**(fields | {'st_ctime_ns': 100 if key.startswith('path') else 200} | changes.get(key, {})))
+            if changes.get('omit_birth'):
+                for record in stats.values(): del record.st_birthtime_ns
+            with patch.object(type(file), 'lstat', side_effect=[stats['path_before'], stats['path_after']]), \
+                    patch.object(os, 'fstat', side_effect=[stats['fd_before'], stats['fd_after']]), \
+                    patch.object(v.sys, 'platform', 'win32'):
+                self.assertEqual(v.read_file(file, 1024), payload)
+
     def test_bound_cleanup_receipt_cannot_retarget_or_reuse_owner(self):
         with tempfile.TemporaryDirectory() as temp:
+            # Fixture custody starts from one canonical spelling (Windows TEMP may use 8.3).
+            temp = str(Path(temp).resolve())
             base = Path(temp) / '.derived-pair-build-runtime'; base.mkdir()
             token = str(uuid.uuid4()); (base / '.owner').write_text(token)
             record = {'version': 1, 'scratchRoot': temp + '/elsewhere', 'runId': token,

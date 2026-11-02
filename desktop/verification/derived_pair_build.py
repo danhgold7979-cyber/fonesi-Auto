@@ -82,7 +82,21 @@ def relative(value):
     return value
 
 
-def identity(s): return (s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def identity(s):
+    # Same-API snapshots retain ChangeTime as well as creation time where exposed.
+    return (s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,
+            getattr(s,'st_birthtime_ns',None),s.st_nlink,
+            getattr(s,'st_file_attributes',0))
+
+
+def cross_identity(s):
+    # CPython 3.12 Windows path stat reports creation time in ctime; fstat may
+    # report ChangeTime. Birthtime is the common creation-time field. Keep the
+    # full same-API identity checks too; never discard the fd ChangeTime fence.
+    if sys.platform=='win32' and not hasattr(s,'st_birthtime_ns'):fail()
+    return (s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,
+            getattr(s,'st_birthtime_ns',s.st_ctime_ns),s.st_nlink)
+
 
 
 def plain(path, directory=False):
@@ -99,16 +113,16 @@ def plain(path, directory=False):
 def read(path, maximum, owned=True):
     path=Path(path); initial=plain(path)
     if initial.st_size > maximum or (owned and initial.st_nlink!=1): fail()
-    fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
+    fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0))
     try:
         before=os.fstat(fd)
-        if identity(before)!=identity(initial): fail()
+        if cross_identity(before)!=cross_identity(initial): fail()
         data=bytearray()
         while len(data)<=before.st_size:
             chunk=os.read(fd,min(65536,before.st_size+1-len(data)))
             if not chunk: break
             data.extend(chunk)
-        if len(data)!=before.st_size or identity(before)!=identity(os.fstat(fd)) or identity(before)!=identity(plain(path)): fail()
+        if len(data)!=before.st_size or identity(before)!=identity(os.fstat(fd)) or identity(initial)!=identity(plain(path)): fail()
         return bytes(data)
     finally: os.close(fd)
 
@@ -116,14 +130,15 @@ def read(path, maximum, owned=True):
 def digest_file(path, maximum, owned=False):
     s=plain(path)
     if s.st_size>maximum or (owned and s.st_nlink!=1): fail()
-    fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)); h=hashlib.sha256(); count=0
+    fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0)); h=hashlib.sha256(); count=0
     try:
-        if identity(s)!=identity(os.fstat(fd)): fail()
+        before=os.fstat(fd)
+        if cross_identity(s)!=cross_identity(before): fail()
         while count<=s.st_size:
             b=os.read(fd,min(65536,s.st_size+1-count))
             if not b: break
             count+=len(b);h.update(b)
-        if count!=s.st_size or identity(s)!=identity(os.fstat(fd)) or identity(s)!=identity(plain(path)): fail()
+        if count!=s.st_size or identity(before)!=identity(os.fstat(fd)) or identity(s)!=identity(plain(path)): fail()
     finally: os.close(fd)
     return {'bytes':s.st_size,'sha256':h.hexdigest()}
 
@@ -131,7 +146,7 @@ def digest_file(path, maximum, owned=False):
 def write_new(path, raw, maximum):
     if type(raw) is not bytes or len(raw)>maximum: fail()
     plain(Path(path).parent,True)
-    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0),0o600)
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0),0o600)
     try:
         view=memoryview(raw)
         while view:

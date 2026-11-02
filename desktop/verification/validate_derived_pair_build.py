@@ -218,8 +218,18 @@ def read_file(file, cap):
         raw = handle.read(cap + 1)
         after = os.fstat(handle.fileno())
     final = file.lstat()
-    identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
-    if any(identity(s) != identity(before) for s in (opened, after, final)) or len(raw) != before.st_size:
+    # Windows CPython3.12 path ctime may mean birthtime while fd ctime is
+    # ChangeTime. Compare like APIs fully; cross API uses common birthtime.
+    identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+                          getattr(s, 'st_birthtime_ns', None), s.st_nlink,
+                          getattr(s, 'st_file_attributes', 0))
+    if sys.platform == 'win32' and (not hasattr(before, 'st_birthtime_ns') or not hasattr(opened, 'st_birthtime_ns')):
+        reject()
+    cross_identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns,
+                                getattr(s, 'st_birthtime_ns', s.st_ctime_ns), s.st_nlink)
+    if (cross_identity(before) != cross_identity(opened) or
+            identity(opened) != identity(after) or identity(before) != identity(final) or
+            len(raw) != before.st_size):
         reject()
     return raw
 

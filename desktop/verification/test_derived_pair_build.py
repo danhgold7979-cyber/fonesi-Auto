@@ -234,5 +234,44 @@ class DerivedPairBuildTests(unittest.TestCase):
         (root/'output/classes.zip').write_bytes(bad)
         with self.assertRaises(ValueError):d.inspect_outputs(root)
 
+    def test_windows_stat_semantics_binary_bytes_and_same_api_mutation_fences(self):
+        from types import SimpleNamespace
+        base,root=self.root();file=root/'bytes';raw=b'A\r\nB\x1aC\x00\xff';file.write_bytes(raw)
+        real_plain=d.plain;real_fstat=os.fstat
+        def decorated(s,ctime):
+            values={name:getattr(s,name) for name in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_nlink','st_mode')}
+            values.update(st_birthtime_ns=17,st_ctime_ns=ctime)
+            return SimpleNamespace(**values)
+        def path_stat(path,directory=False):return decorated(real_plain(path,directory),17)
+        def fd_stat(fd):return decorated(real_fstat(fd),29)
+        with patch.object(d,'plain',side_effect=path_stat),patch.object(d.os,'fstat',side_effect=fd_stat):
+            self.assertEqual(d.read(file,100),raw)
+            self.assertEqual(d.digest_file(file,100),{'bytes':len(raw),'sha256':d.sha(raw)})
+            count=0
+            def changed(fd):
+                nonlocal count
+                count+=1;return decorated(real_fstat(fd),29 if count==1 else 30)
+            with patch.object(d.os,'fstat',side_effect=changed):
+                with self.assertRaises(ValueError):d.digest_file(file,100)
+            count=0
+            with patch.object(d.os,'fstat',side_effect=changed):
+                with self.assertRaises(ValueError):d.read(file,100)
+            def replaced(fd):
+                value=fd_stat(fd);value.st_ino+=1;return value
+            with patch.object(d.os,'fstat',side_effect=replaced):
+                with self.assertRaises(ValueError):d.read(file,100)
+        path_calls=0
+        def changed_path(path,directory=False):
+            nonlocal path_calls
+            path_calls+=1;return decorated(real_plain(path,directory),17 if path_calls==1 else 18)
+        with patch.object(d,'plain',side_effect=changed_path),patch.object(d.os,'fstat',side_effect=fd_stat):
+            with self.assertRaises(ValueError):d.read(file,100)
+        missing=decorated(real_plain(file),17);del missing.st_birthtime_ns
+        with patch.object(d.sys,'platform','win32'):
+            with self.assertRaises(ValueError):d.cross_identity(missing)
+        output=root/'written';d.write_new(output,raw,100)
+        self.assertEqual(output.read_bytes(),raw)
+        self.assertEqual(d.read(output,100),raw)
+
 
 if __name__=='__main__':unittest.main()
