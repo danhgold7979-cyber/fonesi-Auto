@@ -594,10 +594,10 @@ test('diagnostic failure markers disclose only fixed stages and preserve retirem
 
 test('capture diagnostics distinguish strict framing canonical JSON and closed observation schema without exposing content', () => {
   assert.throws(() => parseObservation(''), /SCHEDULE_CAPTURE_FRAMING/);
-  assert.throws(() => parseObservation('private\n'), /SCHEDULE_CAPTURE_JSON/);
+  assert.throws(() => parseObservation('private\n'), /SCHEDULE_CAPTURE_GRAMMAR/);
   assert.throws(() => parseObservation('{}\n'), /SCHEDULE_CAPTURE_SCHEMA/);
   const raw = JSON.stringify(fixture());
-  assert.throws(() => parseObservation(raw + '\nextra\n'), /SCHEDULE_CAPTURE_JSON/);
+  assert.throws(() => parseObservation(raw + '\nextra\n'), /SCHEDULE_CAPTURE_GRAMMAR/);
   assert.deepEqual(parseObservation(raw + '\n'), fixture());
 });
 
@@ -661,3 +661,36 @@ test('actual controller admits equivalent private PowerShell transport without r
     assert.equal(report, JSON.stringify(JSON.parse(report)));
     assert.equal(JSON.parse(report).disposition, 'OBSERVED_NOT_ADMITTED');
   }));
+
+test('framing description reveals only bounded fixed categories and never admits an embedded record', () => {
+  const { describeCaptureFraming } = require('./schedule-runtime-control.cjs'),
+    line = JSON.stringify(fixture());
+  assert.deepEqual(describeCaptureFraming('PRIVATE_PREFIX\n' + line + '\n'), [
+    'MULTIPLE_NONEMPTY_LINES',
+    'ONE_CANONICAL_OBSERVATION_LINE',
+    'FIRST_OTHER',
+    'LAST_CLOSE_BRACE',
+  ]);
+  assert.deepEqual(describeCaptureFraming(' ' + line + '\n'), [
+    'LEADING_WHITESPACE',
+    'ONE_NONEMPTY_LINE',
+    'NO_CANONICAL_OBSERVATION_LINE',
+    'TRIM_ONLY_CANONICAL',
+    'FIRST_WHITESPACE',
+    'LAST_CLOSE_BRACE',
+  ]);
+  assert.deepEqual(describeCaptureFraming('\uFEFF' + line + '\n'), [
+    'LEADING_BOM',
+    'ONE_NONEMPTY_LINE',
+    'NO_CANONICAL_OBSERVATION_LINE',
+    'TRIM_ONLY_CANONICAL',
+    'FIRST_OTHER',
+    'LAST_CLOSE_BRACE',
+  ]);
+  assert.throws(
+    () => parseObservation('PRIVATE_PREFIX\n' + line + '\n'),
+    /SCHEDULE_CAPTURE_GRAMMAR/,
+  );
+  assert.throws(() => parseObservation(' ' + line + '\n'), /SCHEDULE_CAPTURE_REPRESENTATION/);
+  assert.throws(() => parseObservation('x'.repeat(16385) + '\n'), /SCHEDULE_CAPTURE_LIMIT/);
+});

@@ -86,12 +86,14 @@ function parseObservation(stdout) {
   if (typeof stdout !== 'string' || !stdout.endsWith('\n') || stdout.endsWith('\n\n'))
     throw new Error('SCHEDULE_CAPTURE_FRAMING');
   const raw = stdout.endsWith('\r\n') ? stdout.slice(0, -2) : stdout.slice(0, -1);
+  if (Buffer.byteLength(raw) > 16384) throw new Error('SCHEDULE_CAPTURE_LIMIT');
   let value;
   try {
-    value = canonical(raw, 16384);
+    value = JSON.parse(raw);
   } catch {
-    throw new Error('SCHEDULE_CAPTURE_JSON');
+    throw new Error('SCHEDULE_CAPTURE_GRAMMAR');
   }
+  if (JSON.stringify(value) !== raw) throw new Error('SCHEDULE_CAPTURE_REPRESENTATION');
   try {
     return validateObservation(value);
   } catch {

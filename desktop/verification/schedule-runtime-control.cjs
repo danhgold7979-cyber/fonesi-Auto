@@ -28,6 +28,7 @@ const SOURCE_FILES = Object.freeze([
   'tools/phase-00/HostProbeNative.cs',
 ]);
 let phase = 'HOST';
+let captureFacts = [];
 const fail = () => {
   throw new Error('SCHEDULE_RUNTIME_CONTROL_REJECTED');
 };
@@ -185,6 +186,56 @@ function stage(root, head, tree) {
   });
   return 'SCHEDULE_RUNTIME_STAGED';
 }
+function describeCaptureFraming(text) {
+  if (typeof text !== 'string') return ['TYPE_INVALID'];
+  const facts = [];
+  if (Buffer.byteLength(text) > 16384) facts.push('OVER_OBSERVATION_LIMIT');
+  if (text.startsWith('\uFEFF')) facts.push('LEADING_BOM');
+  if (/^[ \t\r\n]/.test(text)) facts.push('LEADING_WHITESPACE');
+  const lines = text.split(/\r?\n/);
+  const nonempty = lines.filter((line) => line.trim().length > 0);
+  facts.push(
+    nonempty.length === 0
+      ? 'NO_NONEMPTY_LINES'
+      : nonempty.length === 1
+        ? 'ONE_NONEMPTY_LINE'
+        : 'MULTIPLE_NONEMPTY_LINES',
+  );
+  let valid = 0;
+  for (const line of nonempty.slice(0, 32)) {
+    try {
+      parseObservation(line + '\n');
+      valid++;
+    } catch {}
+  }
+  facts.push(
+    valid === 0
+      ? 'NO_CANONICAL_OBSERVATION_LINE'
+      : valid === 1
+        ? 'ONE_CANONICAL_OBSERVATION_LINE'
+        : 'MULTIPLE_CANONICAL_OBSERVATION_LINES',
+  );
+  if (lines.length > 33) facts.push('LINE_SCAN_BOUND');
+  try {
+    parseObservation(text.trim() + '\n');
+    facts.push('TRIM_ONLY_CANONICAL');
+  } catch {}
+  const body = text.endsWith('\r\n')
+    ? text.slice(0, -2)
+    : text.endsWith('\n')
+      ? text.slice(0, -1)
+      : text;
+  const category = (char) =>
+    char === '{'
+      ? 'OPEN_BRACE'
+      : char === '}'
+        ? 'CLOSE_BRACE'
+        : /[ \t\r\n]/.test(char ?? '')
+          ? 'WHITESPACE'
+          : 'OTHER';
+  facts.push('FIRST_' + category(body[0]), 'LAST_' + category(body.at(-1)));
+  return facts;
+}
 function validateCapture(value) {
   phase = 'CAPTURE_PROCESS';
   record(value, [
@@ -208,6 +259,7 @@ function validateCapture(value) {
   )
     fail();
   phase = 'CAPTURE_FRAMING';
+  captureFacts = describeCaptureFraming(value.stdout);
   return parseObservation(value.stdout);
 }
 // PowerShell capture is transport JSON, unlike canonical owned state and observer stdout.
@@ -379,8 +431,12 @@ if (require.main === module) {
     console.log(out);
   } catch (error) {
     console.log('SCHEDULE_CONTROL_STAGE_' + phase);
+    for (const fact of captureFacts) console.log('SCHEDULE_CAPTURE_FACT_' + fact);
     const reason = [
       'SCHEDULE_CAPTURE_FRAMING',
+      'SCHEDULE_CAPTURE_LIMIT',
+      'SCHEDULE_CAPTURE_GRAMMAR',
+      'SCHEDULE_CAPTURE_REPRESENTATION',
       'SCHEDULE_CAPTURE_JSON',
       'SCHEDULE_CAPTURE_SCHEMA',
       'SCHEDULE_RUNTIME_REJECTED',
@@ -403,4 +459,5 @@ module.exports = {
   validateCapture,
   decodeCapture,
   parseCaptureTransport,
+  describeCaptureFraming,
 };

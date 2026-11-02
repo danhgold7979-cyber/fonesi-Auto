@@ -203,3 +203,28 @@ at16:08 UTC. After that frozen run, added only stronger assertions within the sa
 BOM refusal (writer emits UTF-8 without BOM); targeted24/24 again PASS. These last
 assertions were targeted, not a fabricated fresh whole-aggregate run. Production
 source unchanged after the aggregate; diff-check PASS.
+
+## Fourth hosted run — observer stdout canonical-JSON boundary
+
+Publicbb41c69f928756d2dcae69b8bcbccc7d6a1daa53 maps local5e81318/tree
+c515b9412ea337eed170e3cf753d635fe3d379f4. Terminal
+[run41478923459](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41478923459),
+job125391752141, passed Windows source1742/1742 at16:13:35 UTC. Native diagnostics
+at16:13:47 showed CAPTURE_FRAMING/SCHEDULE_CAPTURE_JSON, observer REQUESTED,
+validation child NONZERO_EXIT/RETIRED and all owned processes RETIRED. Upload SKIPPED.
+Private file/encoding/process validation reached the strict observer-stdout parser;
+no successful report or tuple was admitted. This narrows the unresolved boundary,
+not proof of an exact extra character or framework message.
+
+Next diagnostic-only continuation keeps the same rejection set, splitting input
+limit/JSON grammar/noncanonical representation/schema failure. Fixed categorical
+facts report BOM/leading whitespace, zero/one/multiple nonempty and canonical
+observation lines (scan<=32), first/last character classes and trim-only canonical
+possibility. These are diagnostics only: an embedded/trimmed record never becomes
+a successful observation. No raw bytes, strings, path, private output or tuple is
+published on failure. Independent25/25 targeted PASS and CLEAR; all actual bounds,
+retirement, state canonicality and no-report-on-failure gates remain.
+
+Final diagnostic-delta aggregate: TESTS_PASS1743/1743 and
+DESKTOP_SOURCE_CHECK_PASS on Linux; diff-check PASS. Native characterization
+remains pending a fresh hosted run; no admission or acceptance credit.
