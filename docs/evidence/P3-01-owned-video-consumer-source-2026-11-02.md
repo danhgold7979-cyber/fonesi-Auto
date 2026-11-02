@@ -1,6 +1,6 @@
 # P3-01/P3-02 — owned headless video consumer source
 
-**Host implementation and bounded managed gate independently source-reviewed CLEAR. Integrated source validation and final seven-stage refresh have completed with the stitched attribution below; no current compile, native execution or task acceptance is claimed.**
+**Hosted source PASS and independently audited current compilation plus 74 pure/fake groups PASS. No derived pair, live deployment/stream/device or task acceptance is claimed.**
 
 ## Original scope and source entry
 
@@ -22,7 +22,7 @@ Retrieval of four exact public pinned Java source files was tool-policy denied; 
 - Existing launch RELEASE still requires host-root absence. Trusted pre-clean validation checks canonical video intent/settlement before deletion; RELEASE does not pretend to read already-deleted receipts. Unknown/partial evidence remains retained and blocks automatic recovery.
 - Startup retains one original30s budget; cleanup retains the existing native10s/outer120s partition. READY is readiness only, not instance identity or a received frame. No retry, serial reacquisition, broad deletion or name/PID kill is added.
 
-## Validation attribution so far
+## Historical source-freeze validation attribution
 
 The TS author's first coherent affected run had189 cases with188 pass/1 failure. The failed STATUS-invalid-history path was corrected to initiate cleanup; its targeted case passed, and an additional cross-binding case passed. That is stitched190 distinct cases, not a clean190 aggregate. Strict TypeScript and scoped formatting passed at that checkpoint. Subsequent independent review closed four further boundaries: Stop joins actual held STATUS drain; cached Stop requires the exact session ID; TS/native stage tuples agree; and late unretired video invalidates an earlier terminal witness. Causal before/fixed runs and one malformed-frame case pass. A final regression reproduced one forbidden handoff when Stop was deferred to a microtask; installing the latch before synchronous lower cancellation closes that interval, with both affected cases passing. Final TS attribution is 195 distinct cases through overlapping runs, not an uninterrupted 195-case aggregate. One earlier test ordering accidentally created a wait cycle and was interrupted (exit 130), then corrected; it is not hidden as a product pass.
 
@@ -41,7 +41,7 @@ After the quality correction, the integrated check passed dependency, graph, qua
 
 Batch 14 established 43/34/9 and batch 21 established 65/62/3: the current session-source assertion and historical pipe materialization were stale. The exact PowerShell source is now 19,378 bytes, exceeding the previous 16 KiB source-read bound. The verification-only derivation admits at most 32 KiB with the exact current source SHA, removes the uniquely matched new video-admission block, and then requires byte-identical historical generated scripts (parameter SHA `ce092c9606548923cec4254602bafc2fff8a1f2000944ebf6f94bb42e465740d`, plain SHA `2bbe32ee4de81e6d2197320fa272eaea20aeb1ebe61c081b769526482c51d026`). The historical body/prefix remained identical. Two affected files pass 16/16 and four selected control cases pass 4/4, including all three failures. The existing first pipe case additionally rehashes an explicitly synthetic source after removing the video boundary and proves exact shape rejection; its targeted rerun passes 1/1 (overlapping the 16). This does not reopen an old native route or certify the changed bootstrap with historical native evidence.
 
-Unaffected remainder batches 15–20 pass 387 tests, and batch 22 passes 26. Together with repaired affected cases, the registered inventory has stitched source coverage; no uninterrupted final local total is invented. The final hosted desktop total remains NOT_RUN. Current Python inventory is 289; foundation remains 109 expected for the next hosted source gate, not a newly observed local result.
+Unaffected remainder batches 15–20 pass 387 tests, and batch 22 passes 26. Together with repaired affected cases, the registered inventory has stitched source coverage; no uninterrupted final local total is invented. At source freeze the final hosted desktop total was NOT_RUN; the actual result below supersedes that pending status. At source freeze, Python inventory 289 and foundation 109 were expected for the next hosted source gate, not newly observed local results; the actual hosted result below now establishes both.
 
 Final refresh log emits all seven named PASS markers: MODULE_GRAPH, QUALITY, TYPECHECK, BUILD, DEMO_TYPECHECK, DEMO_BUILD and MANIFEST. No native/managed execution is included.
 
@@ -125,3 +125,12 @@ Final refresh log emits all seven named PASS markers: MODULE_GRAPH, QUALITY, TYP
 | `desktop/verification/Invoke-RetainedManagedFixture.ps1` | `7d69ee3c6f753d45b3bbfe30ed5cb3f0ac91fe64349395708a25463eaffa68a1` |
 | `desktop/verification/retained-pipe-startup.cjs` | `d9601ab9ab52c338435c053bab66d374c0e984992099fc9cf8988bebfc98d997` |
 | `desktop/verification/validate_retained_host.py` | `f0d5714459b13e2ec516b4a8b760e2aa3873843ac296a5233722663a5f14d443` |
+
+
+## Actual hosted and controlled managed result — 04:03 UTC
+
+CI [41385778285](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41385778285) is terminal SUCCESS at exact public `840fef16f175205c8531af9b7377b273323b6af9`, local `a9a9531fc6a0dd6ea984000ba1aa9476c3f79c82`, shared tree `e3cea236e714995028e75d418a57237b3464dd31`. Source job `125086165969` emits actual **1587/1587 desktop + DESKTOP_SOURCE_CHECK_PASS, foundation 109/109 with zero fail/cancel/skip/todo, Python 289/OK**, plus PHASE03_SOFTWARE_ONLY and SOURCE_JOB_NO_ADB_EXECUTION. Exact retained log: 82,825 bytes, SHA256 `5644ca63d138f2e18d6e09170431ff905ba205cb956b6e2bae3c5e00982bcdfd`. Independent retained-log audit PASS at 04:01 UTC. Ten other optional jobs were SKIPPED, separately observed through the jobs API rather than inferred from this log.
+
+Managed job `125087048582` compiles the five current production C# sources and executes **74 controlled memory/fake groups**. The [exact sanitized report](P3-01-video-managed-v7-sample-2026-11-02.json) is 1,272 bytes, no trailing LF, SHA256 `0e545efbdabce316022f5133f05d79fda5c4fda4b1d704c9443583d207261e8d`. Artifact `13115322684` is a 927-byte ZIP, SHA256 `b16a4438e0ace4e223105d8816de1448ca101983af92096e139459ab8e617282`, containing only that canonical JSON. Both compiler and fixture report SUCCESS/0, actual process cleanup complete, no truncation; compiler diagnostics are empty; all 11 committed inputs match, source unchanged and owned-directory cleanup true. Managed log is 25,952 bytes, SHA256 `ef93c5b3c37904ef78559f3f3b4ebaf410ded95f2300673f0eaec7eb31ec57f6`.
+
+Independent audit at 04:03 UTC reconstructed the exact committed validator/import closure and report bytes, checked all 11 committed source pins and sole ZIP member, and confirmed actual fixture/strict publication PASS. This is actual controlled compilation/fixture evidence, not merely authored tests. It does **not** provide a reviewed derived Java artifact or pair, use NativeVideoIo sockets, deploy anything, receive a live stream, identify a phone, or accept P3-01/P3-02. The exact denied Java downloads remain paused and both pair pins remain null. [Implementation checklist coverage](../phases/P3-IMPLEMENTATION-CHECKLIST.md) is separately 1/19 = 5.3%; technical P3 acceptance remains 0/19.
