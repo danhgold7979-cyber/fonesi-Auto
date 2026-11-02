@@ -34,7 +34,11 @@ function composition() {
     },
     randomUUID: () => '11111111-1111-4111-8111-111111111111',
     context: () => ({ ok: true, launchRoot: '/synthetic/launch' }),
-    logger: { discoveryAudit: async () => 'AVAILABLE', metadataAudit: async () => 'DEGRADED' },
+    logger: {
+      discoveryAudit: async () => 'AVAILABLE',
+      metadataAudit: async () => 'DEGRADED',
+      associationAudit: async () => 'AVAILABLE',
+    },
     createDiscoverySessionService(options) {
       captured.facade = options;
       return {};
@@ -66,6 +70,7 @@ function composition() {
 test('actual main builders preserve shared custody, selected revision, private audit and registry identity', async () => {
   const f = composition();
   assert.deepEqual(f.calls, [], 'constructing the facade does not construct a native controller');
+  assert.equal(await f.captured.facade.associationAudit({}), 'AVAILABLE');
   assert.equal(f.captured.facade.readDurableRevision(), 17);
   const admission = () => f.calls.push('current');
   const audit = async () => 'DEGRADED';

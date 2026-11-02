@@ -13,9 +13,9 @@ import {
   parseDiagnosticRequest,
   errorResponse,
   publicResponse,
-} from './ipc-contract.js';
-import { ViewSession, type Caller } from './view-session.js';
-import { ENTRY_URL } from './main/asset-policy.js';
+} from './ipc-contract.ts';
+import { ViewSession, type Caller } from './view-session.ts';
+import { ENTRY_URL } from './main/asset-policy.ts';
 
 // Only these public reads are admitted. No process/filesystem/domain adapter here.
 export type BridgeLogging = Readonly<{
@@ -23,11 +23,28 @@ export type BridgeLogging = Readonly<{
   outcome: (code: LogCode, reference: string | null) => void;
   health: LogHealth;
 }>;
+export type AssociationAdmissionRecord = Readonly<{
+  ipcMain: object;
+  window: BrowserWindow;
+  sender: object;
+  operatorSession: object;
+  check(): boolean;
+  finalCurrent(): boolean;
+}>;
+const associationAdmissions = new WeakMap<object, AssociationAdmissionRecord>();
+export function inspectAssociationAdmission(value: unknown): AssociationAdmissionRecord | null {
+  return value !== null && typeof value === 'object'
+    ? (associationAdmissions.get(value) ?? null)
+    : null;
+}
+
 export function installFoundationBridge(
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>,
   logging: BridgeLogging = { newDiagnostic: randomUUID, outcome: () => {}, health: 'DEGRADED' },
 ) {
   const sessions = new Map<object, ViewSession>();
+  const windows = new Map<object, BrowserWindow>();
+  const operatorSessions = new Map<object, object>();
   function caller(event: IpcMainInvokeEvent): Caller | null {
     try {
       const frame = event.senderFrame;
@@ -129,11 +146,53 @@ export function installFoundationBridge(
   return {
     admitPreferences: (event: IpcMainInvokeEvent) => admitView(event, false),
     admitCleanup: (event: IpcMainInvokeEvent) => admitView(event, true),
+    admitAssociation(event: IpcMainInvokeEvent) {
+      const admission = admitView(event, false);
+      if (!admission.ok) return admission;
+      const window = windows.get(event.sender),
+        view = sessions.get(event.sender),
+        operatorSession = operatorSessions.get(event.sender);
+      if (!window || !view || !operatorSession || !admission.current()) {
+        admission.release();
+        return { ok: false as const, code: 'SESSION_REVOKED' as const };
+      }
+      const token = Object.freeze({});
+      const witness = admission.operationCurrent;
+      const sender = event.sender;
+      associationAdmissions.set(
+        token,
+        Object.freeze({
+          ipcMain,
+          window,
+          sender,
+          operatorSession,
+          check: () => {
+            const latest = caller(event);
+            return (
+              witness() &&
+              latest !== null &&
+              latest.sender === sender &&
+              latest.isMainFrame &&
+              latest.origin === 'auto-foundation://app' &&
+              latest.url === ENTRY_URL &&
+              windows.get(sender) === window &&
+              sessions.get(sender) === view &&
+              witness()
+            );
+          },
+          // Only source-owned state: no Electron, event or caller callback at COMMIT.
+          finalCurrent: () => witness(),
+        }),
+      );
+      return { ...admission, associationAdmission: token };
+    },
     attach(window: BrowserWindow, onRevoke?: () => void) {
       const contents = window.webContents;
       if (sessions.has(contents)) throw new Error('DUPLICATE_VIEW');
       const view = new ViewSession(contents, 'auto-foundation://app', ENTRY_URL, onRevoke);
       sessions.set(contents, view);
+      windows.set(contents, window);
+      operatorSessions.set(contents, Object.freeze({}));
       contents.on('did-start-navigation', (details) => {
         if (details.isMainFrame) view.beginMainLoad(details.url);
       });
@@ -149,11 +208,15 @@ export function installFoundationBridge(
       contents.on('destroyed', () => {
         view.close();
         sessions.delete(contents);
+        windows.delete(contents);
+        operatorSessions.delete(contents);
       });
       window.on('close', () => view.revoke());
       window.on('closed', () => {
         view.close();
         sessions.delete(contents);
+        windows.delete(contents);
+        operatorSessions.delete(contents);
       });
       return {
         arm() {
@@ -176,6 +239,8 @@ export function installFoundationBridge(
     dispose() {
       for (const view of sessions.values()) view.close();
       sessions.clear();
+      windows.clear();
+      operatorSessions.clear();
       ipcMain.removeHandler(CHANNEL);
       ipcMain.removeHandler(DIAGNOSTIC_CHANNEL);
     },

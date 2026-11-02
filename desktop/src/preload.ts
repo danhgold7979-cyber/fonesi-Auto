@@ -1,3 +1,4 @@
+import { createAssociationClient } from './association-client.js';
 import { createMetadataClient } from './metadata-client.js';
 import { createDiscoveryClient } from './discovery-client.js';
 import { createRuntimeVersionClient } from './runtime-version-client.js';
@@ -54,6 +55,36 @@ const metadata = createMetadataClient(
   undefined,
   readiness,
 );
+const association = createAssociationClient(
+  (wire) => ipcRenderer.invoke('foundation:association:v1', wire),
+  budget,
+  undefined,
+  readiness,
+);
+contextBridge.exposeInMainWorld(
+  'association',
+  Object.freeze({
+    get: () => association.get(),
+    candidates: () => association.candidates(),
+    begin: (revision: unknown, candidateId: unknown, mode: unknown, deviceId?: unknown) => {
+      metadata.invalidateObservation();
+      return association.begin(revision, candidateId, mode, deviceId);
+    },
+    removal: (revision: unknown, ceremonyId: unknown) => {
+      metadata.invalidateObservation();
+      return association.removal(revision, ceremonyId);
+    },
+    return: (revision: unknown, ceremonyId: unknown) => {
+      metadata.invalidateObservation();
+      return association.return(revision, ceremonyId);
+    },
+    confirm: (revision: unknown, ceremonyId: unknown) => {
+      metadata.invalidateObservation();
+      return association.confirm(revision, ceremonyId);
+    },
+    cancel: (revision: unknown, operationId: unknown) => association.cancel(revision, operationId),
+  }),
+);
 contextBridge.exposeInMainWorld(
   'metadata',
   Object.freeze({
@@ -68,14 +99,17 @@ contextBridge.exposeInMainWorld(
     get: () => discovery.get(),
     start: (revision: unknown, installationRevision: unknown) => {
       metadata.invalidateObservation();
+      association.invalidateObservation();
       return discovery.start(revision, installationRevision);
     },
     refresh: (revision: unknown) => {
       metadata.invalidateObservation();
+      association.invalidateObservation();
       return discovery.refresh(revision);
     },
     stop: () => {
       metadata.invalidateObservation();
+      association.invalidateObservation();
       return discovery.stop();
     },
   }),
@@ -91,10 +125,12 @@ contextBridge.exposeInMainWorld(
       runtimeVersion.invalidateObservation();
       discovery.invalidateObservation();
       metadata.invalidateObservation();
+      association.invalidateObservation();
       return platformTools.requestSetup(revision).finally(() => {
         runtimeVersion.invalidateObservation();
         discovery.invalidateObservation();
         metadata.invalidateObservation();
+        association.invalidateObservation();
       });
     },
   }),
@@ -135,6 +171,7 @@ window.addEventListener(
     runtimeVersion.dispose();
     discovery.dispose();
     metadata.dispose();
+    association.dispose();
   },
   { once: true },
 );

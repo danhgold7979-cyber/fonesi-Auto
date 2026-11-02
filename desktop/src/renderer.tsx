@@ -1,3 +1,4 @@
+import { parseAssociationResponse, type AssociationSnapshot } from './association-contract.js';
 import {
   METADATA_FIELDS,
   parseMetadataResponse,
@@ -19,6 +20,20 @@ import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
   interface Window {
+    association: Readonly<{
+      get: () => Promise<string>;
+      candidates: () => Promise<string>;
+      begin: (
+        revision: unknown,
+        candidateId: unknown,
+        mode: unknown,
+        deviceId?: unknown,
+      ) => Promise<string>;
+      removal: (revision: unknown, ceremonyId: unknown) => Promise<string>;
+      return: (revision: unknown, ceremonyId: unknown) => Promise<string>;
+      confirm: (revision: unknown, ceremonyId: unknown) => Promise<string>;
+      cancel: (revision: unknown, operationId: unknown) => Promise<string>;
+    }>;
     metadata: Readonly<{
       get: () => Promise<string>;
       read: (
@@ -91,6 +106,36 @@ function Diagnostic() {
   const [metadataReconcile, setMetadataReconcile] = useState(true);
   const metadataInFlight = useRef(false),
     metadataHydrated = useRef(false);
+  const [association, setAssociation] = useState<AssociationSnapshot | null>(null);
+  const [associationCandidates, setAssociationCandidates] = useState<
+    AssociationSnapshot['candidates']
+  >([]);
+  const [associationHistorical, setAssociationHistorical] = useState<
+    AssociationSnapshot['historical']
+  >([]);
+  const [associationCandidate, setAssociationCandidate] = useState<string | null>(null);
+  const [associationDestination, setAssociationDestination] = useState<string | null>(null);
+  const [associationStatus, setAssociationStatus] = useState(
+    'Chưa đọc phiên liên kết; không tự quét hoặc xác nhận.',
+  );
+  const [associationReconcile, setAssociationReconcile] = useState(true);
+  const [associationPending, setAssociationPending] = useState(false);
+  const [associationGetPending, setAssociationGetPending] = useState(false);
+  const [associationCancelPending, setAssociationCancelPending] = useState(false);
+  const associationGeneration = useRef<object>(Object.freeze({}));
+  const associationEffectInFlight = useRef(false),
+    associationGetInFlight = useRef(false),
+    associationCancelInFlight = useRef(false);
+  const associationProjection = useRef<number | null>(null);
+  const invalidateAssociation = useCallback(() => {
+    associationGeneration.current = Object.freeze({});
+    setAssociationReconcile(true);
+    setAssociationCandidates([]);
+    setAssociationHistorical([]);
+    setAssociationCandidate(null);
+    setAssociationDestination(null);
+    setAssociationStatus('Quan sát liên kết đã cũ; đọc lại trạng thái. Không tự thử lại.');
+  }, []);
   const invalidateMetadata = useCallback(() => {
     metadataGeneration.current = Object.freeze({});
     setMetadata(null);
@@ -108,12 +153,13 @@ function Diagnostic() {
     );
   }, [invalidateMetadata]);
   const invalidateDiscovery = useCallback(() => {
+    invalidateAssociation();
     discoveryGeneration.current = Object.freeze({});
     setDiscovery(null);
     setDiscoveryReconcile(true);
     setDiscoveryStatus('Cần đọc lại trạng thái; quan sát trước không còn hiện hành.');
     invalidateFleet();
-  }, [invalidateFleet]);
+  }, [invalidateFleet, invalidateAssociation]);
   const observeRevocation = useCallback(
     (code: unknown) => {
       if (code === 'SESSION_REVOKED' || code === 'OWNER_REVOKED' || code === 'CLOSED')
@@ -138,6 +184,7 @@ function Diagnostic() {
       setDiscoveryPending(true);
     }
     if (method !== 'get') {
+      invalidateAssociation();
       discoveryGeneration.current = Object.freeze({});
       setDiscoveryReconcile(true);
       invalidateFleet();
@@ -460,6 +507,148 @@ function Diagnostic() {
     metadataHydrated.current = true;
     void metadataAction();
   }, [metadataAction]);
+  const chosenAssociationCandidate = associationCandidates.find(
+    (candidate) => candidate.candidateId === associationCandidate,
+  );
+  const associationIdle =
+    association !== null &&
+    ['IDLE', 'COMMITTED', 'CANCELLED', 'FAILED'].includes(association.state);
+  async function associationAction(
+    method: 'get' | 'candidates' | 'begin' | 'removal' | 'return' | 'confirm' | 'cancel',
+  ) {
+    const read = method === 'get' || method === 'candidates',
+      cancel = method === 'cancel';
+    if (
+      read
+        ? associationGetInFlight.current
+        : cancel
+          ? associationCancelInFlight.current
+          : associationEffectInFlight.current || associationCancelInFlight.current
+    )
+      return;
+    if (!read && !cancel && (!association || associationReconcile)) return;
+    if (
+      cancel &&
+      (!association?.operationId ||
+        ['IDLE', 'COMMITTED', 'CANCELLED', 'CLOSED'].includes(association.state))
+    )
+      return;
+    if (
+      method === 'begin' &&
+      (!associationIdle ||
+        !chosenAssociationCandidate ||
+        (chosenAssociationCandidate.mode === 'HISTORICAL' &&
+          !associationHistorical.some((d) => d.deviceId === associationDestination)))
+    )
+      return;
+    if (
+      (method === 'removal' && association?.state !== 'AWAIT_REMOVAL') ||
+      (method === 'return' && association?.state !== 'AWAIT_RETURN') ||
+      (method === 'confirm' && association?.state !== 'AWAIT_CONFIRMATION')
+    )
+      return;
+    if (read) {
+      associationGetInFlight.current = true;
+      setAssociationGetPending(true);
+    } else if (cancel) {
+      associationCancelInFlight.current = true;
+      setAssociationCancelPending(true);
+    } else {
+      associationEffectInFlight.current = true;
+      setAssociationPending(true);
+    }
+    associationGeneration.current = Object.freeze({});
+    const generation = associationGeneration.current;
+    if (!read) {
+      setAssociationReconcile(true);
+      setAssociationCandidates([]);
+      setAssociationHistorical([]);
+      discoveryGeneration.current = Object.freeze({});
+      setDiscoveryReconcile(true);
+      invalidateFleet();
+    }
+    try {
+      const raw =
+        method === 'get'
+          ? await window.association.get()
+          : method === 'candidates'
+            ? await window.association.candidates()
+            : method === 'begin'
+              ? await window.association.begin(
+                  association?.revision,
+                  chosenAssociationCandidate?.candidateId,
+                  chosenAssociationCandidate?.mode,
+                  chosenAssociationCandidate?.mode === 'HISTORICAL'
+                    ? associationDestination
+                    : undefined,
+                )
+              : method === 'cancel'
+                ? await window.association.cancel(association?.revision, association?.operationId)
+                : await window.association[method](association?.revision, association?.ceremonyId);
+      if (generation !== associationGeneration.current) return;
+      const response = parseAssociationResponse(raw);
+      if (!response) throw Error('INVALID_RESPONSE');
+      if (!response.ok) {
+        setAssociationReconcile(true);
+        observeRevocation(response.code);
+        setAssociationStatus(
+          `${response.code} / LOG ${response.loggingHealth}. Lịch sử đã biết được giữ lại; Get để đối chiếu, không tự thử lại.`,
+        );
+        return;
+      }
+      const next = response.snapshot;
+      setAssociation(next);
+      if (method === 'candidates') {
+        setAssociationCandidates(next.candidates);
+        setAssociationHistorical(next.historical);
+        if (!next.candidates.some((candidate) => candidate.candidateId === associationCandidate)) {
+          setAssociationCandidate(null);
+          setAssociationDestination(null);
+        }
+      }
+      setAssociationReconcile(
+        response.outcome !== 'OBSERVED' ||
+          [
+            'BASELINE_PENDING',
+            'REMOVAL_PENDING',
+            'RETURN_PENDING',
+            'CONFIRM_PENDING',
+            'OUTCOME_UNKNOWN',
+            'CLOSED',
+          ].includes(next.state) ||
+          (read && (associationEffectInFlight.current || associationCancelInFlight.current)),
+      );
+      if (
+        next.receipt?.outcome === 'COMMITTED' &&
+        associationProjection.current !== next.receipt.revision
+      ) {
+        associationProjection.current = next.receipt.revision;
+        invalidateFleet();
+        discoveryGeneration.current = Object.freeze({});
+        setDiscoveryReconcile(true);
+      }
+      setAssociationStatus(
+        `${response.outcome} / ${next.state} / ${next.code} / LOG ${response.loggingHealth}. ${next.receipt ? `Lịch sử ${next.receipt.stage}: ${next.receipt.outcome}, revision ${next.receipt.revision ?? 'không có'}; ${next.projectionCurrent ? 'hiện hành tại thời điểm chụp' : 'không phải quyền hiện hành'}.` : 'Chưa có biên nhận pha.'} Nhấn Get để đối chiếu; không tự thực hiện bước kế tiếp.`,
+      );
+    } catch {
+      if (generation !== associationGeneration.current) return;
+      setAssociationReconcile(true);
+      setAssociationStatus(
+        'INTERNAL_FAILURE / Lịch sử đã biết được giữ lại; Get để đối chiếu, không tự thử lại.',
+      );
+    } finally {
+      if (read) {
+        associationGetInFlight.current = false;
+        setAssociationGetPending(false);
+      } else if (cancel) {
+        associationCancelInFlight.current = false;
+        setAssociationCancelPending(false);
+      } else {
+        associationEffectInFlight.current = false;
+        setAssociationPending(false);
+      }
+    }
+  }
   const emptyRows = { devices: [], accounts: [], media: [], jobs: [] };
   const fleetUi: UiSnapshot = fleetFailed
     ? { status: 'ERROR', code: 'UNAVAILABLE', ...emptyRows }
@@ -823,6 +1012,176 @@ function Diagnostic() {
             <p id="fleet-status" aria-live="polite">
               {fleetStatus}
             </p>
+          </section>
+          <section aria-label="Device session association" id="association-panel">
+            <h3>Liên kết điện thoại đang cầm / Device association</h3>
+            <p>
+              Đây là xác nhận vật lý của người vận hành, không phải dấu vân tay mật mã hay USB được
+              máy chứng nhận. Không tự khởi động, quét, đọc metadata hoặc gửi input.
+            </p>
+            <button
+              type="button"
+              id="association-get"
+              disabled={associationGetPending}
+              onClick={() => {
+                void associationAction('get');
+              }}
+            >
+              Get / đối chiếu phiên
+            </button>
+            <button
+              type="button"
+              id="association-candidates"
+              disabled={associationGetPending}
+              onClick={() => {
+                void associationAction('candidates');
+              }}
+            >
+              Đọc danh sách ứng viên đã quan sát
+            </button>
+            <fieldset className="pills">
+              <legend>Chọn ứng viên rõ ràng</legend>
+              {associationCandidates.map((candidate, index) => (
+                <button
+                  type="button"
+                  className="btn small"
+                  key={candidate.candidateId}
+                  id={`association-candidate-${candidate.candidateId}`}
+                  aria-pressed={associationCandidate === candidate.candidateId}
+                  onClick={() => {
+                    associationGeneration.current = Object.freeze({});
+                    setAssociationCandidate(candidate.candidateId);
+                    setAssociationDestination(null);
+                    setAssociationReconcile(true);
+                    setAssociationStatus(
+                      'Đã chọn ngữ cảnh; Get trước Begin. Không có hành động tự động.',
+                    );
+                  }}
+                >
+                  {candidate.mode} / ứng viên {index + 1} / {candidate.deviceId ?? 'chưa liên kết'}
+                </button>
+              ))}
+              {associationCandidates.length === 0 ? (
+                <p>
+                  Chưa có danh sách ứng viên được chụp; không suy luận từ serial hoặc lựa chọn
+                  Fleet.
+                </p>
+              ) : null}
+            </fieldset>
+            {chosenAssociationCandidate?.mode === 'HISTORICAL' ? (
+              <fieldset className="pills">
+                <legend>Chọn chính xác hồ sơ lịch sử — không ghép tự động</legend>
+                {associationHistorical.map((device) => (
+                  <button
+                    type="button"
+                    className="btn small"
+                    key={device.deviceId}
+                    id={`association-history-${device.deviceId}`}
+                    aria-pressed={associationDestination === device.deviceId}
+                    onClick={() => {
+                      associationGeneration.current = Object.freeze({});
+                      setAssociationDestination(device.deviceId);
+                      setAssociationReconcile(true);
+                      setAssociationStatus(
+                        'Đã chọn hồ sơ lịch sử; Get trước Begin. Phải xác nhận đúng cùng điện thoại trong hộp thoại gốc.',
+                      );
+                    }}
+                  >
+                    {fleet?.devices.find((row) => row.deviceId === device.deviceId)?.label ??
+                      device.deviceId}{' '}
+                    / generation {device.generation}
+                  </button>
+                ))}
+              </fieldset>
+            ) : null}
+            <button
+              type="button"
+              id="association-begin"
+              disabled={
+                associationPending ||
+                associationCancelPending ||
+                associationReconcile ||
+                !associationIdle ||
+                !chosenAssociationCandidate ||
+                (chosenAssociationCandidate.mode === 'HISTORICAL' && !associationDestination)
+              }
+              onClick={() => {
+                void associationAction('begin');
+              }}
+            >
+              Begin / chụp mốc ban đầu
+            </button>
+            <button
+              type="button"
+              id="association-removal"
+              disabled={
+                associationPending ||
+                associationCancelPending ||
+                associationReconcile ||
+                association?.state !== 'AWAIT_REMOVAL'
+              }
+              onClick={() => {
+                void associationAction('removal');
+              }}
+            >
+              Tôi đã rút cáp — quan sát mất kết nối
+            </button>
+            <button
+              type="button"
+              id="association-return"
+              disabled={
+                associationPending ||
+                associationCancelPending ||
+                associationReconcile ||
+                association?.state !== 'AWAIT_RETURN'
+              }
+              onClick={() => {
+                void associationAction('return');
+              }}
+            >
+              Tôi đã cắm lại cùng điện thoại — quan sát trở lại
+            </button>
+            <button
+              type="button"
+              id="association-confirm"
+              disabled={
+                associationPending ||
+                associationCancelPending ||
+                associationReconcile ||
+                association?.state !== 'AWAIT_CONFIRMATION'
+              }
+              onClick={() => {
+                void associationAction('confirm');
+              }}
+            >
+              Xem và xác nhận trong hộp thoại gốc
+            </button>
+            <button
+              type="button"
+              id="association-cancel"
+              disabled={
+                associationCancelPending ||
+                !association?.operationId ||
+                ['IDLE', 'COMMITTED', 'CANCELLED', 'CLOSED'].includes(association.state)
+              }
+              onClick={() => {
+                void associationAction('cancel');
+              }}
+            >
+              Hủy phiên liên kết
+            </button>
+            <p id="association-status" aria-live="polite">
+              {associationStatus}
+            </p>
+            {association?.receipt ? (
+              <p id="association-receipt">
+                Biên nhận đã ghi: {association.receipt.stage} / {association.receipt.outcome} /{' '}
+                {association.receipt.code} / revision {association.receipt.revision ?? 'không có'}.{' '}
+                {associationReconcile || !association.projectionCurrent
+                  ? 'Lịch sử, không phải quyền hiện hành.'
+                  : 'Quan sát được chụp, không giám sát liên tục.'}
+              </p>
+            ) : null}
           </section>
           <section aria-label="Candidate metadata" id="metadata-panel">
             <h3>Thông tin thiết bị / Read candidate field</h3>

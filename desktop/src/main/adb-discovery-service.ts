@@ -1,3 +1,4 @@
+import { inspectAssociationConfirmation } from './association-confirmation.ts';
 import {
   associationRowsSha256,
   snapshotAssociationTranscript,
@@ -307,11 +308,6 @@ type ConfirmationRecord = Readonly<{
   attestation: Readonly<{ heldHandset: true; cableCycle: true; sameHistoricalHandset: boolean }>;
   finalCurrent(): boolean;
 }>;
-// Deliberately unavailable until a separately reviewed actual main UI/ViewSession issuer.
-// Tests transform this one private seam; no registration or boolean mint API exists.
-function inspectAssociationConfirmation(_intent: unknown): ConfirmationRecord | null {
-  return null; /* OPERATOR_CONFIRMATION_UNAVAILABLE */
-}
 type AssociationTransaction = {
   handle: OwnedAssociationHandle;
   id: string;
@@ -963,6 +959,11 @@ export function createAdbDiscoveryService(
     const tx = ceremony;
     if (tx && tx.handle === handle && tx.valid) invalidateAssociation(tx, 'CANCELLED');
   }
+  function cancelAssociationById(expectedCeremonyId: unknown) {
+    const tx = ceremony;
+    if (uuid(expectedCeremonyId) && tx?.id === expectedCeremonyId && tx.valid)
+      invalidateAssociation(tx, 'CANCELLED');
+  }
   function associationSnapshot() {
     const tx = ceremony;
     return Object.freeze({
@@ -1508,6 +1509,7 @@ export function createAdbDiscoveryService(
     observeAssociation,
     confirmAssociation,
     cancelAssociation,
+    cancelAssociationById,
     associationSnapshot,
     snapshot(): RegistrySnapshot | null {
       if (!projection) return null;

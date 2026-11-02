@@ -1,3 +1,4 @@
+import * as associationContract from '../src/association-contract.ts';
 import * as metadataContract from '../src/metadata-contract.ts';
 import * as discoveryContract from '../src/discovery-contract.ts';
 import * as runtimeVersionContract from '../src/runtime-version-contract.ts';
@@ -30,6 +31,7 @@ function mount(
   setupApi = null,
   discoveryApi = null,
   metadataApi = null,
+  associationApi = null,
 ) {
   let component,
     cursor = 0;
@@ -41,6 +43,7 @@ function mount(
     innerWidth: width,
     preferences: api,
     discovery: discoveryApi,
+    association: associationApi,
     metadata: metadataApi ?? {
       get: async () =>
         metadataContract.metadataError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
@@ -119,6 +122,7 @@ function mount(
             },
           }),
         };
+      if (name === './association-contract.js') return associationContract;
       if (name === './metadata-contract.js') return metadataContract;
       if (name === './discovery-contract.js') return discoveryContract;
       if (name === './settings-contract.js') return contract;
@@ -1339,4 +1343,252 @@ test('fresh metadata status never rearms CLOSED or uncertain history even when r
     assert.equal(reads, 0);
     m.dispose();
   }
+});
+
+const associationIds = {
+  candidate: '11111111-1111-4111-8111-111111111101',
+  other: '11111111-1111-4111-8111-111111111102',
+  device: '11111111-1111-4111-8111-111111111103',
+  history: '11111111-1111-4111-8111-111111111104',
+  operation: '11111111-1111-4111-8111-111111111105',
+  ceremony: '11111111-1111-4111-8111-111111111106',
+};
+const associationSnapshot = (extra = {}) => ({
+  revision: 0,
+  state: 'IDLE',
+  operationId: null,
+  code: 'OK',
+  ceremonyId: null,
+  mode: null,
+  deviceId: null,
+  stage: null,
+  deadlineUtc: null,
+  receipt: null,
+  projectionCurrent: false,
+  candidates: [],
+  historical: [],
+  ...extra,
+});
+const associationAnswer = (snapshot, outcome = 'OBSERVED') => {
+  const result = associationContract.associationSuccess('p1', outcome, snapshot, null, 'DEGRADED');
+  assert.ok(result);
+  return result;
+};
+const associationPhase = (stage = 'CONFIRMATION') => ({
+  version: 1,
+  outcome: 'COMMITTED',
+  code: 'OK',
+  stage,
+  ceremonyId: associationIds.ceremony,
+  revision: 8,
+  projectionCurrent: true,
+  auditHealth: 'AVAILABLE',
+});
+const associationContext = (extra = {}) =>
+  associationSnapshot({
+    revision: 2,
+    state: 'AWAIT_REMOVAL',
+    operationId: associationIds.operation,
+    mode: 'CURRENT',
+    deviceId: associationIds.device,
+    stage: 'BASELINE',
+    ceremonyId: associationIds.ceremony,
+    deadlineUtc: 2000000000000,
+    receipt: associationPhase('BASELINE'),
+    projectionCurrent: true,
+    ...extra,
+  });
+test('association UI performs no automatic enumeration or phase, and Begin/Cancel carry only exact captured IDs', async () => {
+  const calls = [];
+  let current = associationSnapshot();
+  const api = {
+    get: async () => {
+      calls.push(['get']);
+      return associationAnswer(current);
+    },
+    candidates: async () => {
+      calls.push(['candidates']);
+      return associationAnswer({
+        ...current,
+        candidates: [
+          {
+            candidateId: associationIds.candidate,
+            mode: 'CURRENT',
+            deviceId: associationIds.device,
+          },
+        ],
+      });
+    },
+    begin: async (...args) => {
+      calls.push(['begin', ...args]);
+      current = associationSnapshot({
+        revision: 1,
+        state: 'BASELINE_PENDING',
+        operationId: associationIds.operation,
+        mode: 'CURRENT',
+        deviceId: associationIds.device,
+        stage: 'BASELINE',
+      });
+      return associationAnswer(current, 'PENDING');
+    },
+    cancel: async (...args) => {
+      calls.push(['cancel', ...args]);
+      current = { ...current, revision: 2, state: 'CANCELLED', code: 'CANCELLED' };
+      return associationAnswer(current, 'SETTLED');
+    },
+  };
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    null,
+    null,
+    null,
+    null,
+    api,
+  );
+  m.effects();
+  await flush();
+  assert.deepEqual(calls, []);
+  m.find('association-candidates').props.onClick();
+  await flush();
+  m.find(`association-candidate-${associationIds.candidate}`).props.onClick();
+  assert.equal(m.find('association-begin').props.disabled, true);
+  m.find('association-get').props.onClick();
+  await flush();
+  assert.equal(m.find('association-begin').props.disabled, false);
+  m.find('association-begin').props.onClick();
+  m.find('association-begin').props.onClick();
+  await flush();
+  assert.deepEqual(
+    calls.filter((c) => c[0] === 'begin'),
+    [['begin', 0, associationIds.candidate, 'CURRENT', undefined]],
+  );
+  assert.equal(m.find('association-removal').props.disabled, true);
+  assert.equal(m.find('association-cancel').props.disabled, false);
+  m.find('association-cancel').props.onClick();
+  await flush();
+  assert.deepEqual(calls.at(-1), ['cancel', 1, associationIds.operation]);
+  assert.match(m.find('association-status').props.children, /CANCELLED/);
+  m.dispose();
+});
+test('historical association requires an explicit separate destination and rejects late candidate context replies', async () => {
+  const calls = [];
+  let resolveGet;
+  const api = {
+    candidates: async () =>
+      associationAnswer(
+        associationSnapshot({
+          candidates: [
+            { candidateId: associationIds.candidate, mode: 'HISTORICAL', deviceId: null },
+            { candidateId: associationIds.other, mode: 'CURRENT', deviceId: associationIds.device },
+          ],
+          historical: [{ deviceId: associationIds.history, generation: 4 }],
+        }),
+      ),
+    get: () =>
+      new Promise((r) => {
+        resolveGet = r;
+      }),
+    begin: async (...args) => {
+      calls.push(args);
+      return associationContract.associationError('p1', 'BUSY', null, 'DEGRADED');
+    },
+  };
+  const m = mount({}, 1600, null, null, null, null, api);
+  m.find('association-candidates').props.onClick();
+  await flush();
+  m.find(`association-candidate-${associationIds.candidate}`).props.onClick();
+  assert.equal(m.find('association-begin').props.disabled, true);
+  m.find('association-get').props.onClick();
+  resolveGet(associationAnswer(associationSnapshot()));
+  await flush();
+  assert.equal(m.find('association-begin').props.disabled, true);
+  m.find(`association-history-${associationIds.history}`).props.onClick();
+  m.find('association-get').props.onClick();
+  m.find(`association-candidate-${associationIds.other}`).props.onClick();
+  resolveGet(associationAnswer(associationSnapshot()));
+  await flush();
+  assert.equal(
+    m.find('association-begin').props.disabled,
+    true,
+    'late old-selection GET cannot rearm new choice',
+  );
+  m.find(`association-candidate-${associationIds.candidate}`).props.onClick();
+  m.find(`association-history-${associationIds.history}`).props.onClick();
+  m.find('association-get').props.onClick();
+  resolveGet(associationAnswer(associationSnapshot()));
+  await flush();
+  m.find('association-begin').props.onClick();
+  await flush();
+  assert.deepEqual(calls, [[0, associationIds.candidate, 'HISTORICAL', associationIds.history]]);
+  assert.equal(m.find('association-begin').props.disabled, true);
+  m.dispose();
+});
+test('association timeout preserves known COMMITTED history and Stop suppresses a late confirmation reply', async () => {
+  let current = associationContext({
+      state: 'COMMITTED',
+      stage: 'CONFIRMATION',
+      receipt: associationPhase(),
+    }),
+    rejectGet = false,
+    resolveConfirm;
+  const api = {
+    get: async () =>
+      rejectGet
+        ? associationContract.associationError('p1', 'TIMEOUT', null, 'DEGRADED')
+        : associationAnswer(current),
+    confirm: () =>
+      new Promise((r) => {
+        resolveConfirm = r;
+      }),
+  };
+  const m = mount(
+    {},
+    1600,
+    null,
+    null,
+    {
+      stop: async () =>
+        discoveryAnswer(
+          discoverySnapshot({ state: 'STOPPED', lastOutcome: 'CLEANUP_RETIRED' }),
+          'OBSERVED',
+        ),
+    },
+    null,
+    api,
+  );
+  m.find('association-get').props.onClick();
+  await flush();
+  assert.match(JSON.stringify(m.find('association-receipt').props.children), /COMMITTED/);
+  rejectGet = true;
+  m.find('association-get').props.onClick();
+  await flush();
+  assert.match(JSON.stringify(m.find('association-receipt').props.children), /COMMITTED/);
+  assert.match(m.find('association-status').props.children, /TIMEOUT/);
+  rejectGet = false;
+  current = associationContext({
+    state: 'AWAIT_CONFIRMATION',
+    stage: 'RETURN',
+    receipt: associationPhase('RETURN'),
+  });
+  m.find('association-get').props.onClick();
+  await flush();
+  m.find('association-confirm').props.onClick();
+  m.find('discovery-stop').props.onClick();
+  await flush();
+  resolveConfirm(
+    associationAnswer(
+      associationContext({
+        revision: 4,
+        state: 'COMMITTED',
+        stage: 'CONFIRMATION',
+        receipt: associationPhase(),
+      }),
+      'SETTLED',
+    ),
+  );
+  await flush();
+  assert.equal(m.find('association-confirm').props.disabled, true);
+  assert.doesNotMatch(m.find('association-status').props.children, /SETTLED \/ COMMITTED/);
+  m.dispose();
 });

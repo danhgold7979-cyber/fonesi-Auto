@@ -1363,10 +1363,14 @@ async function associationFixture(options = {}) {
     JSON.stringify(serverUrl),
   );
   if (options.operator !== false) {
-    assert.equal(src.split('return null; /* OPERATOR_CONFIRMATION_UNAVAILABLE */').length, 2);
+    assert.equal(
+      src.split("import { inspectAssociationConfirmation } from './association-confirmation.ts';")
+        .length,
+      2,
+    );
     src = src.replace(
-      'return null; /* OPERATOR_CONFIRMATION_UNAVAILABLE */',
-      'return globalThis.__associationOperatorFixtures?.get(_intent) ?? null; /* SYNTHETIC_OPERATOR_ONLY */',
+      "import { inspectAssociationConfirmation } from './association-confirmation.ts';",
+      'const inspectAssociationConfirmation = (_intent) => globalThis.__associationOperatorFixtures?.get(_intent) ?? null; /* SYNTHETIC_OPERATOR_ONLY */',
     );
   }
   const ingest = await import(moduleUrl(src, ingestPath));

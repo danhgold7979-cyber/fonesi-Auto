@@ -35,6 +35,20 @@ import {
 import type { MetadataAudit } from '../metadata-audit-contract.ts';
 import type { PlatformToolsRuntimeCustody } from './platform-tools-runtime-custody.ts';
 import type { RegistrySnapshot } from './transport-registry.ts';
+import {
+  ASSOCIATION_CODES,
+  snapshotAssociationRequest,
+  snapshotAssociationSnapshot,
+  snapshotAssociationPhaseReceipt,
+  associationSuccess,
+  associationError,
+  type AssociationRequest,
+  type AssociationSnapshot,
+  type AssociationPhaseReceipt,
+  type AssociationCode,
+} from '../association-contract.ts';
+import type { AssociationAudit } from '../association-audit-contract.ts';
+import { confirmAssociationInteraction } from './association-confirmation.ts';
 type Health = 'AVAILABLE' | 'DEGRADED';
 type Server = ReturnType<typeof createAdbServerService>;
 type Ingestion = ReturnType<typeof createAdbDiscoveryService>;
@@ -53,6 +67,7 @@ export type DiscoverySessionOptions = Readonly<{
   newId(): string;
   audit(record: DiscoveryAudit): Promise<Health>;
   metadataAudit?(record: MetadataAudit): Promise<Health>;
+  associationAudit?(record: AssociationAudit): Promise<Health>;
   policy(): Policy | null;
   readDurableRevision(): number;
   createServer(
@@ -92,6 +107,13 @@ function metadataCode(e: unknown): MetadataCode {
 function metadataActorCode(code: string): MetadataCode {
   if (code === 'INVALID_REQUEST') return 'INVALID_SHAPE';
   return METADATA_CODES.some((v) => v === code) ? (code as MetadataCode) : 'INTERNAL_FAILURE';
+}
+const associationFaults = new WeakMap<object, AssociationCode>();
+class AssociationFault extends Error {
+  constructor(code: AssociationCode) {
+    super(code);
+    associationFaults.set(this, code);
+  }
 }
 export function createDiscoverySessionService(options: DiscoverySessionOptions) {
   const custody = options.custody,
@@ -160,6 +182,833 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       Object.fromEntries(METADATA_FIELDS.map((f) => [f, null])),
     ) as MetadataSnapshot['observations'],
   });
+  type AssociationLower = ReturnType<Ingestion['associationSnapshot']>;
+  type AssociationCandidate = ReturnType<Ingestion['associationCandidates']>[number];
+  type AssociationOperation = {
+    request: Exclude<
+      AssociationRequest,
+      { method: 'association.get' | 'association.candidates' | 'association.cancel' }
+    >;
+    id: string;
+    base: number;
+    generation: number;
+    current: () => boolean;
+    admission: unknown;
+    mode: 'CURRENT' | 'HISTORICAL';
+    deviceId: string;
+    stage: AssociationSnapshot['stage'];
+    candidate: AssociationCandidate | null;
+    lower: AssociationLower | null;
+    cancelled: boolean;
+    stopped: boolean;
+    settled: boolean;
+    deadline: number;
+    signal: AbortController;
+    timer: ReturnType<typeof setTimeout> | null;
+    receipt: AssociationPhaseReceipt | null;
+    auditHealth: Health;
+    auditPending: boolean;
+    candidateState: AssociationSnapshot | null;
+  };
+  const associationAudit = options.associationAudit?.bind(options);
+  const associationRequests = new Set<string>();
+  const associationCandidates = new Map<string, AssociationCandidate>();
+  const associationCandidateIds = new Map<object, string>();
+  let associationProjection: RegistrySnapshot | null = null;
+  let associationHandle: Awaited<ReturnType<Ingestion['beginAssociation']>>['handle'] = null;
+  let associationOperation: AssociationOperation | null = null;
+  let associationWaitingTimer: ReturnType<typeof setTimeout> | null = null;
+  let associationState: AssociationSnapshot = Object.freeze({
+    revision: 0,
+    state: 'IDLE',
+    operationId: null,
+    code: 'OK',
+    ceremonyId: null,
+    mode: null,
+    deviceId: null,
+    stage: null,
+    deadlineUtc: null,
+    receipt: null,
+    projectionCurrent: false,
+    candidates: Object.freeze([]),
+    historical: Object.freeze([]),
+  });
+  function associationPut(value: AssociationSnapshot) {
+    const captured = snapshotAssociationSnapshot(value);
+    if (!captured) throw new AssociationFault('INTERNAL_FAILURE');
+    associationState = captured;
+  }
+  function associationErrorCode(error: unknown): AssociationCode {
+    if (error && typeof error === 'object') {
+      const code = associationFaults.get(error) ?? faults.get(error);
+      if (code && ASSOCIATION_CODES.some((c) => c === code)) return code as AssociationCode;
+    }
+    return 'INTERNAL_FAILURE';
+  }
+  function associationClearCandidates() {
+    associationCandidates.clear();
+    associationCandidateIds.clear();
+    associationProjection = null;
+  }
+  function associationCancel(closed = false) {
+    if (associationWaitingTimer !== null) {
+      clearTimeout(associationWaitingTimer);
+      associationWaitingTimer = null;
+    }
+    associationClearCandidates();
+    const op = associationOperation;
+    if (op && !op.cancelled && !op.stopped) {
+      op.cancelled = !closed;
+      op.stopped = closed;
+      if (associationState.operationId === op.id) {
+        associationPut({
+          ...associationState,
+          revision: op.settled ? associationState.revision + 1 : op.base + 2,
+          state: closed ? 'CLOSED' : 'CANCELLED',
+          code: closed ? 'CLOSED' : 'CANCELLED',
+          projectionCurrent: false,
+          candidates: [],
+          historical: [],
+        });
+      }
+      if (op.lower?.ceremonyId) ingestion?.cancelAssociationById(op.lower.ceremonyId);
+      else if (associationState.ceremonyId)
+        ingestion?.cancelAssociationById(associationState.ceremonyId);
+      op.signal.abort();
+    } else if (!op && closed && associationState.state === 'IDLE') {
+      associationPut({ ...associationState, state: 'CLOSED', code: 'CLOSED' });
+    }
+  }
+  function associationInternal(op: AssociationOperation) {
+    internal(op.generation);
+    if (associationOperation !== op || op.cancelled || op.stopped)
+      throw new AssociationFault('CANCELLED');
+    if (!provider || provider.revoked || !provider.finalCurrent())
+      throw new AssociationFault('EPOCH_REVOKED');
+  }
+  function associationFence(op: AssociationOperation) {
+    fence(op.generation, () => {
+      if (op.current() !== true) throw new AssociationFault('SESSION_REVOKED');
+    });
+    const time = clock();
+    if (!Number.isSafeInteger(time) || time < 0 || time >= op.deadline)
+      throw new AssociationFault('DEADLINE');
+    associationInternal(op);
+  }
+  async function associationLog(record: AssociationAudit): Promise<Health> {
+    try {
+      return (await associationAudit?.(Object.freeze(record))) === 'AVAILABLE'
+        ? 'AVAILABLE'
+        : 'DEGRADED';
+    } catch {
+      return 'DEGRADED';
+    }
+  }
+  async function associationOperationLog(
+    op: AssociationOperation,
+    record: AssociationAudit,
+  ): Promise<Health> {
+    const health = await associationLog(record);
+    if (health === 'DEGRADED') op.auditHealth = 'DEGRADED';
+    return health;
+  }
+  function associationWire(
+    request: AssociationRequest,
+    outcome: 'OBSERVED' | 'PENDING' | 'SETTLED' | 'UNCHANGED',
+    diagnostic: string | null,
+    health: Health,
+    value = associationState,
+  ) {
+    return (
+      associationSuccess(
+        request.requestId,
+        outcome,
+        value,
+        diagnostic,
+        associationOperation?.id === value.operationId &&
+          (associationOperation.auditHealth === 'DEGRADED' || associationOperation.auditPending)
+          ? 'DEGRADED'
+          : health,
+      ) ?? associationError(request.requestId, 'LIMIT_EXCEEDED', diagnostic, 'DEGRADED')
+    );
+  }
+  function associationArm(op: AssociationOperation) {
+    if (op.timer !== null) clearTimeout(op.timer);
+    const now = clock();
+    associationInternal(op);
+    op.timer = setTimeout(
+      () => {
+        if (associationOperation !== op || op.settled || op.cancelled || op.stopped) return;
+        op.cancelled = true;
+        associationClearCandidates();
+        const known = op.candidateState;
+        associationPut({
+          ...(known ?? associationState),
+          revision: op.base + 2,
+          state: known?.state === 'OUTCOME_UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'FAILED',
+          code: known?.state === 'OUTCOME_UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'DEADLINE',
+          projectionCurrent: false,
+          candidates: [],
+          historical: [],
+        });
+        if (op.lower?.ceremonyId) ingestion?.cancelAssociationById(op.lower.ceremonyId);
+        op.signal.abort();
+      },
+      Math.max(0, op.deadline - now),
+    );
+  }
+  async function associationRead(request: AssociationRequest, current: () => boolean) {
+    let diagnostic: string | null = null,
+      written = false;
+    try {
+      if (current() !== true) throw new AssociationFault('SESSION_REVOKED');
+      diagnostic = allocate();
+      let captured = associationState;
+      if (request.method === 'association.candidates') {
+        if (busy || revoked || cleanup || !ingestion || !currentProjection())
+          throw new AssociationFault('NOT_READY');
+        const expected = projection;
+        const entries = ingestion.associationCandidates();
+        if (!expected || projection !== expected || !currentProjection(expected))
+          throw new AssociationFault('STALE_CANDIDATE');
+        if (associationProjection !== expected) {
+          associationClearCandidates();
+          associationProjection = expected;
+        }
+        const candidates = entries.map((entry) => {
+          let id = associationCandidateIds.get(entry.candidate);
+          if (!id) {
+            id = allocate();
+            associationCandidateIds.set(entry.candidate, id);
+            associationCandidates.set(id, entry);
+          }
+          return Object.freeze({
+            candidateId: id,
+            mode: entry.eligibility,
+            deviceId: entry.deviceId,
+          });
+        });
+        const historical = expected.devices
+          .filter((d) => d.state === 'DISCONNECTED' && d.currentBindingId === null)
+          .map((d) => Object.freeze({ deviceId: d.deviceId, generation: d.generation }));
+        if (current() !== true || !currentProjection(expected))
+          throw new AssociationFault('STALE_CANDIDATE');
+        captured = Object.freeze({
+          ...associationState,
+          candidates: Object.freeze(candidates),
+          historical: Object.freeze(historical),
+        });
+      } else {
+        // GET observes captured state only; no custody/store/owner/clock callbacks.
+        captured = Object.freeze({
+          ...captured,
+          candidates: Object.freeze([]),
+          historical: Object.freeze([]),
+          projectionCurrent:
+            captured.projectionCurrent && !revoked && !cleanup && !!provider?.finalCurrent(),
+        });
+      }
+      if (!associationSuccess(request.requestId, 'OBSERVED', captured, diagnostic, 'AVAILABLE'))
+        throw new AssociationFault('LIMIT_EXCEEDED');
+      const capturedHealth =
+        associationOperation?.id === captured.operationId &&
+        (associationOperation.auditPending || associationOperation.auditHealth === 'DEGRADED')
+          ? 'DEGRADED'
+          : 'AVAILABLE';
+      written = true;
+      const health = await associationLog({
+        operation: request.method === 'association.get' ? 'GET' : 'CANDIDATES',
+        stage: 'READ',
+        phase: 'RESULT',
+        diagnosticId: diagnostic,
+        operationId: null,
+        ceremonyId: captured.ceremonyId,
+        mode: captured.mode,
+        expectedRevision: null,
+        resultingRevision: captured.revision,
+        outcome: 'OBSERVED',
+        code: 'OK',
+      });
+      if (current() !== true) throw new AssociationFault('SESSION_REVOKED');
+      return associationWire(
+        request,
+        'OBSERVED',
+        diagnostic,
+        capturedHealth === 'DEGRADED' ? 'DEGRADED' : health,
+        Object.freeze({
+          ...captured,
+          projectionCurrent:
+            captured.projectionCurrent && !revoked && !cleanup && !!provider?.finalCurrent(),
+        }),
+      );
+    } catch (error) {
+      const code = associationErrorCode(error);
+      if (diagnostic && !written)
+        await associationLog({
+          operation: request.method === 'association.get' ? 'GET' : 'CANDIDATES',
+          stage: 'READ',
+          phase: 'RESULT',
+          diagnosticId: diagnostic,
+          operationId: null,
+          ceremonyId: associationState.ceremonyId,
+          mode: associationState.mode,
+          expectedRevision: null,
+          resultingRevision: associationState.revision,
+          outcome: 'FAILED',
+          code,
+        });
+      return associationError(request.requestId, code, diagnostic, 'DEGRADED');
+    }
+  }
+  function associationTerminal(
+    op: AssociationOperation,
+    receipt: AssociationPhaseReceipt | null,
+    code: AssociationCode,
+  ): AssociationSnapshot {
+    const lower = op.lower;
+    const success = receipt?.outcome === 'COMMITTED';
+    const terminalState: AssociationSnapshot['state'] =
+      receipt?.outcome === 'OUTCOME_UNKNOWN'
+        ? 'OUTCOME_UNKNOWN'
+        : success
+          ? op.stage === 'BASELINE'
+            ? 'AWAIT_REMOVAL'
+            : op.stage === 'REMOVAL'
+              ? 'AWAIT_RETURN'
+              : op.stage === 'RETURN'
+                ? 'AWAIT_CONFIRMATION'
+                : 'COMMITTED'
+          : 'FAILED';
+    return Object.freeze({
+      revision: op.base + 2,
+      state: terminalState,
+      operationId: op.id,
+      code: success ? 'OK' : code,
+      ceremonyId: receipt ? receipt.ceremonyId : (lower?.ceremonyId ?? null),
+      mode: op.mode,
+      deviceId: op.deviceId,
+      stage: op.stage,
+      deadlineUtc: receipt?.ceremonyId === null ? null : (lower?.deadlineUtc ?? null),
+      receipt,
+      projectionCurrent: success && receipt.projectionCurrent,
+      candidates: Object.freeze([]),
+      historical: Object.freeze([]),
+    });
+  }
+  async function associationExecutePhase(op: AssociationOperation) {
+    let diagnostic: string | null = null,
+      written = false;
+    try {
+      diagnostic = allocate();
+      associationFence(op);
+      if (!ingestion) throw new AssociationFault('NOT_READY');
+      if (metadataOwner) {
+        if (!(await metadataOwner.close()) || !metadataOwner.retired)
+          throw new AssociationFault('UNRETIRED');
+        metadataOwner = null;
+        metadataProof = null;
+        metadataOwnerProjection = null;
+        associationFence(op);
+      }
+      const phaseProjection = projection;
+      projection = null;
+      metadataStale();
+      associationClearCandidates();
+      let receipt: AssociationPhaseReceipt;
+      if (op.request.method === 'association.begin') {
+        if (!op.candidate) throw new AssociationFault('STALE_CANDIDATE');
+        const revision = registryRevision();
+        associationFence(op);
+        const previousLower = ingestion.associationSnapshot();
+        associationFence(op);
+        const pending = track(
+          ingestion.beginAssociation({
+            mode: op.mode,
+            candidate: op.candidate.candidate,
+            expectedDurableRevision: revision,
+            ...(op.mode === 'HISTORICAL' ? { deviceId: op.deviceId } : {}),
+          }),
+        );
+        // Retain the returned lower obligation before snapshot/clock/arming callbacks.
+        try {
+          const created = ingestion.associationSnapshot();
+          op.lower =
+            created.ceremonyId !== null &&
+            created.ceremonyId !== previousLower.ceremonyId &&
+            created.mode === op.mode &&
+            created.deviceId === op.deviceId
+              ? created
+              : null;
+          if (op.lower?.deadlineUtc !== null && op.lower?.deadlineUtc !== undefined)
+            op.deadline = op.lower.deadlineUtc;
+          if (op.cancelled || op.stopped || cleanup || revoked) {
+            if (op.lower?.ceremonyId) ingestion.cancelAssociationById(op.lower.ceremonyId);
+          } else associationArm(op);
+        } catch (error) {
+          // Local bookkeeping failure cannot replace the actual lower settlement.
+          op.cancelled = true;
+          if (associationOperation === op && !op.stopped && !cleanup && !revoked) {
+            try {
+              associationPut({
+                ...associationState,
+                revision: op.base + 2,
+                state: 'FAILED',
+                code: associationErrorCode(error),
+                projectionCurrent: false,
+              });
+            } catch {
+              op.auditHealth = 'DEGRADED';
+            }
+          }
+          try {
+            if (op.lower?.ceremonyId) ingestion.cancelAssociationById(op.lower.ceremonyId);
+          } catch {
+            /* Still await the actual lower result; no rollback assertion. */
+          }
+          op.signal.abort();
+        }
+        const value = await pending;
+        associationHandle = value.handle;
+        receipt = value.receipt;
+        op.receipt = snapshotAssociationPhaseReceipt(receipt);
+        if ((op.cancelled || op.stopped) && value.handle) {
+          try {
+            ingestion.cancelAssociation(value.handle);
+          } catch {
+            /* Receipt remains actual. */
+          }
+        }
+      } else if (op.request.method === 'association.confirm') {
+        if (!associationHandle || !phaseProjection || !op.lower?.deadlineUtc)
+          throw new AssociationFault('INVALID_SEQUENCE');
+        const requestId = allocate();
+        const context = Object.freeze({
+          handle: associationHandle,
+          mode: op.mode,
+          deviceId: op.deviceId,
+          projection: phaseProjection,
+          expectedDurableRevision: registryRevision(),
+          requestId,
+          deadlineUtc: op.lower.deadlineUtc,
+          label: op.deviceId,
+        });
+        associationFence(op);
+        // This continuation is already in the retained work set before entering the genuine native leaf.
+        const intent = await confirmAssociationInteraction(op.admission, context, op.signal.signal);
+        associationFence(op);
+        if (!intent) throw new AssociationFault('CANCELLED');
+        receipt = await ingestion.confirmAssociation(associationHandle, intent);
+      } else {
+        if (!associationHandle) throw new AssociationFault('INVALID_SEQUENCE');
+        receipt = await ingestion.observeAssociation(
+          associationHandle,
+          op.request.method === 'association.removal' ? 'REMOVAL' : 'RETURN',
+        );
+      }
+      op.receipt = snapshotAssociationPhaseReceipt(receipt);
+      if (!op.receipt) throw new AssociationFault('INTERNAL_FAILURE');
+      if (op.receipt.ceremonyId === null) op.lower = null;
+      else {
+        const latest = ingestion.associationSnapshot();
+        if (
+          (!op.lower || op.lower.ceremonyId === op.receipt.ceremonyId) &&
+          latest.ceremonyId === op.receipt.ceremonyId &&
+          latest.mode === op.mode &&
+          latest.deviceId === op.deviceId
+        )
+          op.lower = latest;
+      }
+      if (op.receipt.auditHealth === 'DEGRADED') op.auditHealth = 'DEGRADED';
+      let live = false;
+      if (op.receipt.outcome === 'COMMITTED') {
+        try {
+          associationFence(op);
+          const candidate = ingestion.snapshot();
+          associationFence(op);
+          if (candidate && op.receipt.projectionCurrent) {
+            projection = candidate;
+            live = true;
+            put({ registryRevision: op.receipt.revision, observedAtUtc: candidate.observedAtUtc });
+          }
+        } catch {
+          /* Confirmed commit remains historical when authority has gone. */
+        }
+      }
+      metadataStale();
+      associationClearCandidates();
+      op.candidateState = Object.freeze({
+        ...associationTerminal(op, op.receipt, op.receipt.code),
+        projectionCurrent: live,
+      });
+      written = true;
+      op.auditPending = true;
+      await associationOperationLog(op, {
+        operation: associationOperationName(op.request),
+        stage: 'EXECUTION',
+        phase: 'RESULT',
+        diagnosticId: diagnostic,
+        operationId: op.id,
+        ceremonyId: op.receipt.ceremonyId,
+        mode: op.mode,
+        expectedRevision: op.base,
+        resultingRevision: op.cancelled || op.stopped ? op.base + 3 : op.base + 2,
+        outcome: op.receipt.outcome,
+        code: op.receipt.code,
+      });
+    } catch (error) {
+      const code = associationErrorCode(error);
+      if (!op.candidateState) op.candidateState = associationTerminal(op, op.receipt, code);
+      if (diagnostic && !written) {
+        written = true;
+        await associationOperationLog(op, {
+          operation: associationOperationName(op.request),
+          stage: 'EXECUTION',
+          phase: 'RESULT',
+          diagnosticId: diagnostic,
+          operationId: op.id,
+          ceremonyId: op.lower?.ceremonyId ?? null,
+          mode: op.mode,
+          expectedRevision: op.base,
+          resultingRevision: op.cancelled || op.stopped ? op.base + 3 : op.base + 2,
+          outcome: op.receipt?.outcome ?? 'NOT_COMMITTED',
+          code: op.receipt?.code ?? code,
+        });
+      }
+    } finally {
+      try {
+        if (op.timer !== null) clearTimeout(op.timer);
+        op.signal.abort();
+        if (associationOperation === op && op.candidateState) {
+          if (op.cancelled || op.stopped || cleanup || revoked)
+            associationPut({
+              ...op.candidateState,
+              revision: op.base + 3,
+              state:
+                associationState.state === 'CANCELLED'
+                  ? 'CANCELLED'
+                  : associationState.state === 'FAILED'
+                    ? 'FAILED'
+                    : 'CLOSED',
+              code: associationState.code,
+              projectionCurrent: false,
+            });
+          else {
+            let live = false;
+            try {
+              associationFence(op);
+              live = op.candidateState.projectionCurrent;
+            } catch {
+              /* Stale history only. */
+            }
+            associationPut({ ...op.candidateState, projectionCurrent: live });
+          }
+        }
+      } finally {
+        op.auditPending = false;
+        op.settled = true;
+        busy = false;
+      }
+      if (
+        associationOperation === op &&
+        !op.cancelled &&
+        !op.stopped &&
+        !cleanup &&
+        !revoked &&
+        ['AWAIT_REMOVAL', 'AWAIT_RETURN', 'AWAIT_CONFIRMATION'].includes(associationState.state)
+      ) {
+        const remaining = op.deadline - clock();
+        if (associationOperation === op && !op.cancelled && !op.stopped && !cleanup && !revoked) {
+          associationWaitingTimer = setTimeout(
+            () => {
+              associationWaitingTimer = null;
+              if (associationOperation !== op || !op.settled || op.cancelled || op.stopped) return;
+              op.cancelled = true;
+              associationClearCandidates();
+              associationPut({
+                ...associationState,
+                revision: op.base + 3,
+                state: 'FAILED',
+                code: 'DEADLINE',
+                projectionCurrent: false,
+              });
+              if (op.lower?.ceremonyId) ingestion?.cancelAssociationById(op.lower.ceremonyId);
+              op.signal.abort();
+            },
+            Math.max(0, remaining),
+          );
+        }
+      }
+    }
+  }
+  function associationOperationName(request: AssociationRequest): AssociationAudit['operation'] {
+    return request.method
+      .slice('association.'.length)
+      .toUpperCase() as AssociationAudit['operation'];
+  }
+  function associationStart(
+    request: AssociationOperation['request'],
+    current: () => boolean,
+    admission: unknown,
+  ): Promise<string> {
+    const admittedState = associationState,
+      admittedOperation = associationOperation;
+    const base = admittedState.revision;
+    let op: AssociationOperation | null = null;
+    let release!: () => void;
+    // Reserve actual lifecycle work before owner/clock/allocator callbacks or native construction.
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    track(barrier);
+    busy = true;
+    try {
+      if (request.expectedRevision !== base) throw new AssociationFault('STALE_REVISION');
+      if (base > Number.MAX_SAFE_INTEGER - 3) throw new AssociationFault('LIMIT_EXCEEDED');
+      fence(generation, () => {
+        if (!current()) throw new AssociationFault('SESSION_REVOKED');
+      });
+      if (!ingestion || !currentProjection()) throw new AssociationFault('NOT_READY');
+      let candidate: AssociationCandidate | null = null;
+      let mode = associationState.mode,
+        deviceId = associationState.deviceId;
+      if (request.method === 'association.begin') {
+        if (associationOperation && !associationOperation.settled)
+          throw new AssociationFault('BUSY');
+        if (
+          ['AWAIT_REMOVAL', 'AWAIT_RETURN', 'AWAIT_CONFIRMATION'].includes(associationState.state)
+        )
+          throw new AssociationFault('BUSY');
+        candidate = associationCandidates.get(request.candidateId) ?? null;
+        if (
+          !candidate ||
+          associationProjection !== projection ||
+          candidate.eligibility !== request.mode
+        )
+          throw new AssociationFault('STALE_CANDIDATE');
+        mode = request.mode;
+        deviceId = request.mode === 'HISTORICAL' ? request.deviceId : candidate.deviceId;
+        if (!deviceId) throw new AssociationFault('INVALID_REQUEST');
+        if (
+          mode === 'HISTORICAL' &&
+          !projection?.devices.some(
+            (d) =>
+              d.deviceId === deviceId && d.state === 'DISCONNECTED' && d.currentBindingId === null,
+          )
+        )
+          throw new AssociationFault('INVALID_REQUEST');
+      } else {
+        const expected =
+          request.method === 'association.removal'
+            ? 'AWAIT_REMOVAL'
+            : request.method === 'association.return'
+              ? 'AWAIT_RETURN'
+              : 'AWAIT_CONFIRMATION';
+        if (
+          associationState.state !== expected ||
+          associationState.ceremonyId !== request.ceremonyId ||
+          !associationHandle
+        )
+          throw new AssociationFault('INVALID_SEQUENCE');
+      }
+      if (!mode || !deviceId) throw new AssociationFault('INVALID_REQUEST');
+      const id = allocate(),
+        started = clock();
+      if (!Number.isSafeInteger(started) || started < 0 || started > 8640000000000000 - 120000)
+        throw new AssociationFault('INTERNAL_FAILURE');
+      const stage =
+        request.method === 'association.begin'
+          ? 'BASELINE'
+          : request.method === 'association.removal'
+            ? 'REMOVAL'
+            : request.method === 'association.return'
+              ? 'RETURN'
+              : 'CONFIRMATION';
+      op = {
+        request,
+        id,
+        base,
+        generation,
+        current,
+        admission,
+        mode,
+        deviceId,
+        stage,
+        candidate,
+        lower: request.method === 'association.begin' ? null : ingestion.associationSnapshot(),
+        cancelled: false,
+        stopped: false,
+        settled: false,
+        deadline:
+          request.method === 'association.begin'
+            ? started + 30000
+            : (associationState.deadlineUtc ?? started),
+        signal: new AbortController(),
+        timer: null,
+        receipt: null,
+        auditHealth: 'AVAILABLE',
+        auditPending: true,
+        candidateState: null,
+      };
+      internal(op.generation);
+      if (
+        associationState !== admittedState ||
+        associationState.revision !== base ||
+        associationOperation !== admittedOperation
+      )
+        throw new AssociationFault('STALE_REVISION');
+      if (associationWaitingTimer !== null) {
+        clearTimeout(associationWaitingTimer);
+        associationWaitingTimer = null;
+      }
+      associationOperation = op;
+      associationPut({
+        ...associationState,
+        revision: base + 1,
+        state:
+          `${stage === 'CONFIRMATION' ? 'CONFIRM' : stage}_PENDING` as AssociationSnapshot['state'],
+        operationId: id,
+        mode,
+        deviceId,
+        stage,
+        code: 'OK',
+        projectionCurrent: false,
+        ...(stage === 'BASELINE' ? { ceremonyId: null, deadlineUtc: null, receipt: null } : {}),
+        candidates: [],
+        historical: [],
+      });
+      associationArm(op);
+      const captured = associationState;
+      const pendingWire = associationSuccess(
+        request.requestId,
+        'PENDING',
+        captured,
+        null,
+        'DEGRADED',
+      );
+      if (!pendingWire) throw new AssociationFault('INTERNAL_FAILURE');
+      const operation = op;
+      const continuation = Promise.resolve().then(async () => {
+        let diagnostic: string | null = null,
+          written = false,
+          launched = false;
+        try {
+          diagnostic = allocate();
+          const fields = {
+            operation: associationOperationName(request),
+            diagnosticId: diagnostic,
+            operationId: operation.id,
+            ceremonyId: captured.ceremonyId,
+            mode: operation.mode,
+            expectedRevision: base,
+          };
+          const health = await associationOperationLog(operation, {
+            ...fields,
+            stage: 'REQUEST',
+            phase: 'INTENT',
+            resultingRevision: null,
+            outcome: 'INTENT',
+            code: 'OK',
+          });
+          if (health !== 'AVAILABLE') throw new AssociationFault('AUDIT_UNAVAILABLE');
+          associationFence(operation);
+          written = true;
+          const resultHealth = await associationOperationLog(operation, {
+            ...fields,
+            stage: 'REQUEST',
+            phase: 'RESULT',
+            resultingRevision: base + 1,
+            outcome: 'PENDING',
+            code: 'OK',
+          });
+          operation.auditPending = false;
+          associationFence(operation);
+          const wire = associationWire(request, 'PENDING', diagnostic, resultHealth, captured);
+          if (!associationSuccess(request.requestId, 'PENDING', captured, diagnostic, resultHealth))
+            throw new AssociationFault('INTERNAL_FAILURE');
+          launched = true;
+          track(Promise.resolve().then(() => associationExecutePhase(operation)));
+          return wire;
+        } catch (error) {
+          const code = associationErrorCode(error);
+          operation.auditHealth = 'DEGRADED';
+          if (diagnostic && !written) {
+            written = true;
+            await associationOperationLog(operation, {
+              operation: associationOperationName(request),
+              stage: 'REQUEST',
+              phase: 'RESULT',
+              diagnosticId: diagnostic,
+              operationId: operation.id,
+              ceremonyId: captured.ceremonyId,
+              mode: operation.mode,
+              expectedRevision: base,
+              resultingRevision: operation.cancelled || operation.stopped ? base + 3 : base + 2,
+              outcome: 'FAILED',
+              code,
+            });
+          }
+          if (operation.timer !== null) clearTimeout(operation.timer);
+          operation.signal.abort();
+          if (associationOperation === operation) {
+            const terminal = associationTerminal(operation, null, code);
+            if (operation.cancelled || operation.stopped || cleanup || revoked)
+              associationPut({
+                ...terminal,
+                revision: base + 3,
+                state:
+                  associationState.state === 'CANCELLED'
+                    ? 'CANCELLED'
+                    : associationState.state === 'FAILED'
+                      ? 'FAILED'
+                      : 'CLOSED',
+                code: associationState.code,
+                projectionCurrent: false,
+              });
+            else associationPut(terminal);
+          }
+          operation.settled = true;
+          busy = false;
+          return associationError(request.requestId, code, diagnostic, 'DEGRADED');
+        } finally {
+          if (!launched) {
+            operation.auditPending = false;
+            operation.settled = true;
+            busy = false;
+          }
+          release();
+        }
+      });
+      track(continuation);
+      return Promise.resolve(pendingWire);
+    } catch (error) {
+      try {
+        if (op) {
+          if (
+            associationOperation === op &&
+            !op.cancelled &&
+            !op.stopped &&
+            associationState.operationId === op.id
+          )
+            associationPut(associationTerminal(op, null, associationErrorCode(error)));
+          op.settled = true;
+          if (op.timer !== null) clearTimeout(op.timer);
+          op.signal.abort();
+        }
+        return Promise.resolve(
+          associationError(request.requestId, associationErrorCode(error), null, 'DEGRADED'),
+        );
+      } finally {
+        if (op) {
+          op.auditPending = false;
+          op.settled = true;
+          if (op.timer !== null) clearTimeout(op.timer);
+          op.signal.abort();
+        }
+        busy = false;
+        release();
+      }
+    }
+  }
   function metadataStale(closed = false) {
     const observations = Object.freeze(
       Object.fromEntries(
@@ -843,6 +1692,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       complete = resolve;
     });
     cleanup = retained;
+    associationCancel(true);
     // Latch before calling either external cleanup implementation.
     let metadataClose: Promise<boolean> | undefined;
     try {
@@ -1329,6 +2179,10 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     stopAck = new Promise((resolve) => {
       acknowledge = resolve;
     });
+    let reportComplete!: (status: 'RETIRED' | 'UNRETIRED') => void;
+    cleanupReport = new Promise((resolve) => {
+      reportComplete = resolve;
+    });
     const retiring = startCleanup();
     cleanupAuditPending = true;
     let diagnostic: string | null = null,
@@ -1418,7 +2272,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       return result;
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
-    cleanupReport = Promise.race([
+    void Promise.race([
       cleanup,
       new Promise<'UNRETIRED'>((resolve) => {
         timer = setTimeout(() => {
@@ -1435,9 +2289,11 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
           resolve('UNRETIRED');
         }, 120000);
       }),
-    ]).finally(() => {
-      if (timer !== undefined) clearTimeout(timer);
-    });
+    ])
+      .finally(() => {
+        if (timer !== undefined) clearTimeout(timer);
+      })
+      .then(reportComplete, () => reportComplete('UNRETIRED'));
     return ack;
   }
   return Object.freeze({
@@ -1494,8 +2350,68 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       if (busy) return Promise.resolve(error(request, 'BUSY'));
       if (request.method !== 'discovery.start' && request.method !== 'discovery.refresh')
         return Promise.resolve(error(request, 'INVALID_SHAPE'));
+      associationCancel();
       busy = true;
       return track(ordinary(request, admittedCurrent, generation));
+    },
+    executeAssociation(
+      input: unknown,
+      current: () => boolean,
+      admissionToken: unknown,
+    ): Promise<string> {
+      const request = snapshotAssociationRequest(input);
+      if (!request || typeof current !== 'function')
+        return Promise.resolve(associationError(null, 'INVALID_SHAPE', null, 'DEGRADED'));
+      if (request.method === 'association.cancel') {
+        try {
+          if (current() !== true) throw new AssociationFault('SESSION_REVOKED');
+          if (request.expectedRevision !== associationState.revision)
+            throw new AssociationFault('STALE_REVISION');
+          if (request.operationId !== associationOperation?.id)
+            throw new AssociationFault('INVALID_REQUEST');
+          if (associationState.state === 'CANCELLED' || associationState.state === 'CLOSED')
+            return Promise.resolve(associationWire(request, 'UNCHANGED', null, 'DEGRADED'));
+          associationCancel();
+          const captured = associationState;
+          let diagnostic: string;
+          try {
+            diagnostic = allocate();
+          } catch {
+            return Promise.resolve(associationWire(request, 'SETTLED', null, 'DEGRADED', captured));
+          }
+          return track(
+            associationLog({
+              operation: 'CANCEL',
+              stage: 'REQUEST',
+              phase: 'RESULT',
+              diagnosticId: diagnostic,
+              operationId: captured.operationId,
+              ceremonyId: captured.ceremonyId,
+              mode: captured.mode,
+              expectedRevision: request.expectedRevision,
+              resultingRevision: captured.revision,
+              outcome: 'CANCELLED',
+              code: 'CANCELLED',
+            }).then((health) => associationWire(request, 'SETTLED', diagnostic, health, captured)),
+          );
+        } catch (error) {
+          return Promise.resolve(
+            associationError(request.requestId, associationErrorCode(error), null, 'DEGRADED'),
+          );
+        }
+      }
+      if (associationRequests.has(request.requestId) || associationRequests.size >= 65536)
+        return Promise.resolve(
+          associationError(request.requestId, 'ID_EXHAUSTED', null, 'DEGRADED'),
+        );
+      associationRequests.add(request.requestId);
+      if (request.method === 'association.get' || request.method === 'association.candidates')
+        return track(associationRead(request, current));
+      if (revoked || cleanup)
+        return Promise.resolve(associationError(request.requestId, 'CLOSED', null, 'DEGRADED'));
+      if (busy)
+        return Promise.resolve(associationError(request.requestId, 'BUSY', null, 'DEGRADED'));
+      return associationStart(request as AssociationOperation['request'], current, admissionToken);
     },
     executeMetadata(input: unknown, operationCurrent: () => boolean): Promise<string> {
       const request = snapshotMetadataRequest(input);

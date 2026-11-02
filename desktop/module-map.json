@@ -4,6 +4,10 @@
   "renderer.tsx": {
    "role": "renderer",
    "imports": {
+    "./association-contract.js": {
+     "parseAssociationResponse": "value",
+     "AssociationSnapshot": "type"
+    },
     "./metadata-contract.js": {
      "METADATA_FIELDS": "value",
      "parseMetadataResponse": "value",
@@ -51,6 +55,9 @@
   "preload.ts": {
    "role": "preload",
    "imports": {
+    "./association-client.js": {
+     "createAssociationClient": "value"
+    },
     "./metadata-client.js": {
      "createMetadataClient": "value"
     },
@@ -131,25 +138,23 @@
      "LogCode": "type"
     },
     "./ipc-contract.ts": {
-     "ErrorCode": "type"
-    },
-    "electron": {
-     "IpcMain": "type",
-     "BrowserWindow": "type",
-     "IpcMainInvokeEvent": "type"
-    },
-    "./ipc-contract.js": {
+     "ErrorCode": "type",
      "CHANNEL": "value",
      "parseRequest": "value",
      "parseDiagnosticRequest": "value",
      "errorResponse": "value",
      "publicResponse": "value"
     },
-    "./view-session.js": {
+    "electron": {
+     "IpcMain": "type",
+     "BrowserWindow": "type",
+     "IpcMainInvokeEvent": "type"
+    },
+    "./view-session.ts": {
      "ViewSession": "value",
      "Caller": "type"
     },
-    "./main/asset-policy.js": {
+    "./main/asset-policy.ts": {
      "ENTRY_URL": "value"
     }
    }
@@ -157,6 +162,9 @@
   "main.ts": {
    "role": "main",
    "imports": {
+    "./association-bridge.ts": {
+     "installAssociationBridge": "value"
+    },
     "./runtime-version-bridge.js": {
      "installRuntimeVersionBridge": "value"
     },
@@ -362,6 +370,10 @@
   "log-contract.ts": {
    "role": "contract",
    "imports": {
+    "./association-audit-contract.ts": {
+     "snapshotAssociationAudit": "value",
+     "AssociationAudit": "type"
+    },
     "./input-audit-contract.ts": {
      "snapshotInputAudit": "value",
      "InputAudit": "type"
@@ -540,6 +552,10 @@
   "main/logging.ts": {
    "role": "main-adapter",
    "imports": {
+    "../association-audit-contract.ts": {
+     "snapshotAssociationAudit": "value",
+     "AssociationAuditFields": "type"
+    },
     "../input-audit-contract.ts": {
      "snapshotInputAudit": "value",
      "InputAuditFields": "type"
@@ -2070,6 +2086,9 @@
   "main/adb-discovery-service.ts": {
    "role": "main-adapter",
    "imports": {
+    "./association-confirmation.ts": {
+     "inspectAssociationConfirmation": "value"
+    },
     "./association-receipt-contract.ts": {
      "associationRowsSha256": "value",
      "snapshotAssociationTranscript": "value"
@@ -2217,6 +2236,24 @@
     },
     "./transport-registry.ts": {
      "RegistrySnapshot": "type"
+    },
+    "../association-contract.ts": {
+     "ASSOCIATION_CODES": "value",
+     "snapshotAssociationRequest": "value",
+     "snapshotAssociationSnapshot": "value",
+     "snapshotAssociationPhaseReceipt": "value",
+     "associationSuccess": "value",
+     "associationError": "value",
+     "AssociationRequest": "type",
+     "AssociationSnapshot": "type",
+     "AssociationPhaseReceipt": "type",
+     "AssociationCode": "type"
+    },
+    "../association-audit-contract.ts": {
+     "AssociationAudit": "type"
+    },
+    "./association-confirmation.ts": {
+     "confirmAssociationInteraction": "value"
     }
    }
   },
@@ -2355,6 +2392,80 @@
     "./adb-discovery.ts": {
      "validAdbSerial": "value",
      "validTransportId": "value"
+    }
+   }
+  },
+  "association-contract.ts": {
+   "role": "contract",
+   "imports": {}
+  },
+  "association-audit-contract.ts": {
+   "role": "contract",
+   "imports": {
+    "./association-contract.ts": {
+     "ASSOCIATION_CODES": "value",
+     "validAssociationUuid": "value",
+     "validAssociationRevision": "value",
+     "AssociationCode": "type"
+    }
+   }
+  },
+  "association-client.ts": {
+   "role": "client",
+   "imports": {
+    "./invocation-budget.ts": {
+     "createInvocationBudget": "value",
+     "InvocationBudget": "type"
+    },
+    "./association-contract.ts": {
+     "parseAssociationRequest": "value",
+     "snapshotAssociationRequest": "value",
+     "parseAssociationResponse": "value",
+     "associationError": "value",
+     "AssociationRequest": "type",
+     "AssociationCode": "type",
+     "AssociationResponse": "type"
+    }
+   }
+  },
+  "association-bridge.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "electron": {
+     "IpcMain": "type",
+     "IpcMainInvokeEvent": "type"
+    },
+    "./view-session.ts": {
+     "Admission": "type"
+    },
+    "./foundation-bridge.ts": {
+     "inspectAssociationAdmission": "value"
+    },
+    "./association-contract.ts": {
+     "ASSOCIATION_CODES": "value",
+     "parseAssociationRequest": "value",
+     "associationError": "value",
+     "AssociationRequest": "type",
+     "AssociationCode": "type"
+    }
+   }
+  },
+  "main/association-confirmation.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "node:module": {
+     "createRequire": "value"
+    },
+    "electron": {
+     "BrowserWindow": "type",
+     "MessageBoxOptions": "type",
+     "MessageBoxReturnValue": "type",
+     "IpcMain": "type",
+     "Dialog": "type",
+     "WebContents": "type"
+    },
+    "../foundation-bridge.ts": {
+     "inspectAssociationAdmission": "value"
     }
    }
   }

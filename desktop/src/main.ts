@@ -1,3 +1,4 @@
+import { installAssociationBridge } from './association-bridge.ts';
 import { installRuntimeVersionBridge } from './runtime-version-bridge.js';
 import { installDiscoveryBridge } from './discovery-bridge.ts';
 import {
@@ -91,6 +92,7 @@ let runtimeVersionService: RuntimeVersionService | undefined;
 let runtimeVersionBridge: ReturnType<typeof installRuntimeVersionBridge> | undefined;
 let discoverySessionService: DiscoverySessionService | undefined;
 let discoveryBridge: ReturnType<typeof installDiscoveryBridge> | undefined;
+let associationBridge: ReturnType<typeof installAssociationBridge> | undefined;
 let platformToolsService: PlatformToolsSetupService | undefined;
 let platformToolsBridge: ReturnType<typeof installPlatformToolsSetupBridge> | undefined;
 let platformToolsWindow: BrowserWindow | undefined;
@@ -126,6 +128,7 @@ function cleanup(): boolean {
   const disposed = disposeResources([
     () => discoverySessionService?.revoke(),
     () => discoveryBridge?.dispose(),
+    () => associationBridge?.dispose(),
     () => platformToolsBridge?.dispose(),
     () => runtimeVersionBridge?.dispose(),
     () => fleetBridge?.dispose(),
@@ -516,6 +519,8 @@ try {
           newId: () => randomUUID(),
           audit: (fields) => logger?.discoveryAudit(fields) ?? Promise.resolve('DEGRADED'),
           metadataAudit: (fields) => logger?.metadataAudit(fields) ?? Promise.resolve('DEGRADED'),
+          associationAudit: (fields) =>
+            logger?.associationAudit(fields) ?? Promise.resolve('DEGRADED'),
           policy: () => {
             ordinaryOwned();
             const result = context();
@@ -618,6 +623,11 @@ try {
           ipcMain,
           bridge.admitPreferences,
           bridge.admitCleanup,
+          () => discoverySessionService,
+        );
+        associationBridge = installAssociationBridge(
+          ipcMain,
+          bridge.admitAssociation,
           () => discoverySessionService,
         );
         platformToolsBridge = installPlatformToolsSetupBridge(
@@ -777,6 +787,7 @@ try {
       closing = true;
       discoverySessionService?.revoke();
       discoveryBridge?.dispose();
+      associationBridge?.dispose();
       if (backupTimer !== undefined) clearInterval(backupTimer);
       platformToolsBridge?.dispose();
       runtimeVersionBridge?.dispose();

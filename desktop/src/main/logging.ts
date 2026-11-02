@@ -1,3 +1,7 @@
+import {
+  snapshotAssociationAudit,
+  type AssociationAuditFields,
+} from '../association-audit-contract.ts';
 import { snapshotInputAudit, type InputAuditFields } from '../input-audit-contract.ts';
 import { randomUUID } from 'node:crypto';
 import { LogStore } from './log-store.ts';
@@ -541,6 +545,51 @@ export class ApplicationLogger {
         this.health !== 'AVAILABLE'
       )
         throw new Error('AUDIT_UNAVAILABLE');
+      return 'AVAILABLE';
+    } catch {
+      this.broken = true;
+      this.reportHealth();
+      return 'DEGRADED';
+    }
+  }
+  async associationAudit(input: AssociationAuditFields): Promise<LogHealth> {
+    try {
+      if (
+        this.closing ||
+        this.broken ||
+        this.health !== 'AVAILABLE' ||
+        !this.store ||
+        this.runId === null ||
+        !Number.isSafeInteger(this.sequence + 1)
+      )
+        return 'DEGRADED';
+      const fields = snapshotAssociationAudit(input);
+      if (!fields) throw Error('AUDIT_INVALID');
+      const utc = this.clock();
+      if (this.lastUtc !== null && utc < this.lastUtc) throw Error('AUDIT_CLOCK');
+      const encoded = encodeLogRecord({
+        schemaVersion: 12,
+        runId: this.runId,
+        sequence: this.sequence + 1,
+        utc,
+        severity: fields.code === 'OK' ? 'INFO' : 'WARN',
+        component: 'MAIN',
+        task: 'P2-03',
+        event: 'ASSOCIATION',
+        association: fields,
+      });
+      if (encoded === null || this.closing || this.broken || this.health !== 'AVAILABLE')
+        throw Error('AUDIT_INVALID');
+      ++this.sequence;
+      this.lastUtc = utc;
+      if (
+        this.store.enqueue(JSON.parse(encoded) as LogRecord) !== 'QUEUED' ||
+        (await this.store.flush()) !== 'FLUSHED' ||
+        this.closing ||
+        this.broken ||
+        this.health !== 'AVAILABLE'
+      )
+        throw Error('AUDIT_UNAVAILABLE');
       return 'AVAILABLE';
     } catch {
       this.broken = true;

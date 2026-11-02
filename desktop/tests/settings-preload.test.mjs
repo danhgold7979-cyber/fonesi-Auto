@@ -1,3 +1,4 @@
+import * as associationClient from '../src/association-client.ts';
 import * as metadataClient from '../src/metadata-client.ts';
 import * as discoveryClient from '../src/discovery-client.ts';
 import * as runtimeVersion from '../src/runtime-version-client.ts';
@@ -43,6 +44,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
         };
       if (name === './preload-client.js') return clients;
       if (name === './settings-client.js') return preferences;
+      if (name === './association-client.js') return associationClient;
       if (name === './metadata-client.js') return metadataClient;
       if (name === './discovery-client.js') return discoveryClient;
       if (name === './fleet-client.js') return fleet;
@@ -55,6 +57,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     window: { addEventListener: (...args) => listeners.push(args) },
   });
   assert.deepEqual(Object.keys(exposed).sort(), [
+    'association',
     'discovery',
     'fleet',
     'foundation',
@@ -70,6 +73,16 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'update',
   ]);
   assert.deepEqual(Object.keys(exposed.metadata).sort(), ['get', 'read']);
+  assert.deepEqual(Object.keys(exposed.association).sort(), [
+    'begin',
+    'cancel',
+    'candidates',
+    'confirm',
+    'get',
+    'removal',
+    'return',
+  ]);
+  assert.ok(Object.isFrozen(exposed.association));
   assert.ok(Object.isFrozen(exposed.metadata));
   assert.deepEqual(Object.keys(exposed.fleet).sort(), ['read', 'replaceSelection']);
   assert.deepEqual(Object.keys(exposed.platformTools).sort(), [
@@ -97,6 +110,11 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   assert.equal(JSON.parse(await exposed.preferences.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.fleet.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.metadata.get()).code, 'BUSY');
+  assert.equal(JSON.parse(await exposed.association.get()).code, 'BUSY');
+  assert.equal(
+    JSON.parse(await exposed.association.cancel(1, '11111111-1111-4111-8111-111111111111')).code,
+    'BUSY',
+  );
   assert.equal(JSON.parse(await exposed.platformTools.read()).code, 'BUSY');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(invocations.length, 7);
