@@ -172,7 +172,20 @@ The denominator and every cell definition remain unchanged. Independent exact co
 
 These cells name build/output identity behavior, so integration means their actual controlled build/validation pipeline—not unimplemented app runtime integration. Recorded outputs were deleted after inspection; no retained pair, byte-reproducibility, runtime compatibility, deployment or physical evidence is claimed. Independent audit reconstructs the recorded evidence; it does not reinspect deleted binaries.
 
-**Current fixed ledger: N90 / S4 / I6. Source-covered10/100 = 10.0% (+2.0 percentage points); integrated/software-tested6/100 = 6.0% (+2.0 percentage points), compared with the unchanged v1 baseline8.0%/4.0%.** The two percentages overlap and must not be added. This is genuine completion of two pre-existing cells, not recalibration or credit for retries/test counts. Technical task acceptance remains0/19. Every other cell retains its §3 status. P3-01.A applicable manifest/license closure remains open; the retained dependency evidence includes unresolved classifications. P3-01.E/F packaging/retention/rollback remain missing; runtime pair pins remain null. The old whole-deliverable1/19 = 5.3% metric remains distinct and unchanged.
+**At the 07:27 checkpoint: N90 / S4 / I6. Source-covered10/100 = 10.0% (+2.0 percentage points); integrated/software-tested6/100 = 6.0% (+2.0 percentage points), compared with the unchanged v1 baseline8.0%/4.0%.** The two percentages overlap and must not be added. This is genuine completion of two pre-existing cells, not recalibration or credit for retries/test counts. Technical task acceptance remains0/19. Every other cell retains its §3 status. P3-01.A applicable manifest/license closure remains open; the retained dependency evidence includes unresolved classifications. P3-01.E/F packaging/retention/rollback remain missing; runtime pair pins remain null. The old whole-deliverable1/19 = 5.3% metric remains distinct and unchanged.
+
+## 3.2. Comparable progress update — 2026-11-02 08:02 UTC
+
+The same 100 definitions remain fixed. Independent [P3-07 source and terminal evidence](../evidence/P3-07-fit-filter-focus-source-2026-11-02.md#actual-hosted-source-closure--0805-utc) binds public `2d765754f4981e071932d0d064322a0c938900ab`, local `8b099f4331505639bde0a7bd9ab6589b928d5369`, tree `eafd505df84ba59cbb0f8104d0cb7c861359f476`, and actual hosted 1611/109/339.
+
+| Cell | Prior | Current | Integrated software evidence |
+|---|---|---|---|
+| P3-07.A | N | I | App-wired fit/manual geometry and viewport/dock resize clamping |
+| P3-07.B | N | I | Current monitor-selected grid, snapshot ordering and honest empty selection |
+| P3-07.C | N | I | Independent double-click visual focus, preserving selected set and separately confirmed ACTIVE |
+| P3-07.D | N | I | Render-time exact tuple loss, repeated focus/stale-handler fences and prior display restoration |
+
+**Current fixed ledger: N86 / S4 / I10. Source-covered 14/100 = 14.0%; integrated/software-tested 10/100 = 10.0%; each +4.0 percentage points versus §3.1 (10%/6%).** This is completion of four existing functional cells, not a denominator change or test-count increment. These overlap and are not added. All other cells retain the baseline plus §3.1 status. Actual app integration and controlled software tests do not establish rendered visual parity, decoded frames, physical qualification or full task acceptance; technical acceptance remains **0/19**. The old 1/19 whole-deliverable measure is historical and not the current reporting unit.
 
 ## 4. First baseline and honest deltas
 
