@@ -35,6 +35,38 @@ class MetricsTests(unittest.TestCase):
         with self.assertRaisesRegex(metrics.MetricsError, "^" + code + "$"):
             metrics.evaluate(data)
 
+    def test_windows_memory_semantics_are_explicit_and_not_linux_rss(self):
+        data = corpus(); data['version'] = 2
+        data['memoryKind'] = 'WINDOWS_PEAK_WORKING_SET'
+        data['rows'][0]['peakWorkingSetBytes'] = data['rows'][0].pop('peakRssBytes')
+        result = metrics.evaluate(data)
+        self.assertEqual(result['memoryKind'], 'WINDOWS_PEAK_WORKING_SET')
+        self.assertNotIn('peakRssBytes', result['rows'][0])
+        self.assertEqual(result['summary']['measurements']['COLD']['peakWorkingSetBytes']['max'], 1024)
+        self.assertNotIn('peakRssBytes', result['summary']['measurements']['COLD'])
+        self.assertEqual(result['qualification'], 'UNQUALIFIED')
+        for kind in ('LINUX_RSS', '', None, True):
+            invalid = copy.deepcopy(data); invalid['memoryKind'] = kind
+            self.refuses(invalid, 'INVALID_MEMORY_KIND')
+        invalid = copy.deepcopy(data); invalid['rows'][0]['peakRssBytes'] = 1024
+        self.refuses(invalid, 'INVALID_SCHEMA')
+        invalid = copy.deepcopy(data); invalid['version'] = 1
+        self.refuses(invalid, 'INVALID_SCHEMA')
+        invalid = copy.deepcopy(data); del invalid['memoryKind']
+        self.refuses(invalid, 'INVALID_SCHEMA')
+
+    def test_windows_failed_and_missing_memory_remain_in_denominators(self):
+        data = corpus([row(label='', text=None, status='UNAVAILABLE')]); data['version'] = 2
+        data['memoryKind'] = 'WINDOWS_PEAK_WORKING_SET'
+        del data['rows'][0]['peakRssBytes']; data['rows'][0]['peakWorkingSetBytes'] = None
+        result = metrics.evaluate_json(json.dumps(data).encode())
+        self.assertEqual(result['summary']['attempts'], 1)
+        self.assertEqual(result['summary']['exactLines'], 0)
+        self.assertEqual(result['summary']['measurements']['COLD']['peakWorkingSetBytes']['missing'], 1)
+        for value in (-1, True, 1.5):
+            invalid = copy.deepcopy(data); invalid['rows'][0]['peakWorkingSetBytes'] = value
+            self.refuses(invalid, 'INVALID_MEASUREMENT')
+
     def test_exact_success_and_no_qualification(self):
         result = metrics.evaluate(corpus())
         self.assertEqual(result["qualification"], "UNQUALIFIED")

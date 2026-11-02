@@ -1,0 +1,73 @@
+name: Phase 04 portable source and Windows vision compile
+on:
+  push:
+    branches: [phase-04]
+    paths:
+      - 'desktop/**'
+      - 'foundation/**'
+      - 'biome.json'
+      - '.gitattributes'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - '.github/workflows/phase-04-vision.yml'
+  workflow_dispatch:
+    inputs:
+      run_native_ownership:
+        description: 'Reviewed owned synthetic Windows process/pipe/Job fixtures only; no Python runtime, model or device'
+        required: false
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  windows-source-and-compile:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select existing admitted source-test Python, not the candidate runtime
+        run: |
+          $candidate=Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory | Where-Object {$_.Name -match '^3\.12\.\d+$'} | Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+          if($null -eq $candidate){throw 'SOURCE_PYTHON_MISSING'}
+          $exe=Join-Path $candidate.FullName 'x64/python.exe';$item=Get-Item -LiteralPath $exe -Force
+          if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'SOURCE_PYTHON_REJECTED'}
+          "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Scripts-disabled restore and portable desktop source checks
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Unchanged foundation source checks
+        run: |
+          $version=(& npm --version).Trim()
+          node foundation/scripts/verify-bootstrap.mjs $version
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          node foundation/scripts/check.mjs $version
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Exact portable Python inventory with no skipped tests
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/run_vision_source_tests.py
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Compile vision owner and fixture without loading or executing them
+        run: |
+          & desktop/verification/Invoke-VisionQualification.ps1 -Mode Compile
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          Write-Output 'WINDOWS_NATIVE_OWNERSHIP_NOT_RUN'
+          Write-Output 'WINDOWS_OCR_RUNTIME_NOT_MATERIALIZED'
+          Write-Output 'WINDOWS_OCR_MODEL_NOT_RUN'
+          Write-Output 'VI_REQUIRED_UNAVAILABLE'
+          Write-Output 'DEVICE_HARDWARE_NOT_RUN'
+      - name: Explicit reviewed synthetic native ownership cases, never OCR runtime
+        if: github.ref == 'refs/heads/phase-04' && github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true
+        run: |
+          & desktop/verification/Invoke-VisionQualification.ps1 -Mode Managed
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}

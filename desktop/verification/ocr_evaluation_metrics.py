@@ -5,7 +5,9 @@ modelBytes, rows. Each row: id, imageSha256, language, split, label, status,
 text, temperature, modelLatencyMs, endToEndLatencyMs, peakRssBytes.
 TEXT has nonempty text; NO_TEXT has empty text; ERROR/UNAVAILABLE have null
 text. Missing measurements are null, not zero. Durations are milliseconds and
-RSS/package/model sizes are bytes. IDs must be unique across the whole corpus;
+RSS/package/model sizes are bytes. Version 2 Windows envelopes additionally require
+memoryKind=WINDOWS_PEAK_WORKING_SET and replace row peakRssBytes with
+peakWorkingSetBytes; these measurements are never merged or relabeled as Linux RSS. IDs must be unique across the whole corpus;
 image hashes cannot occur in both TUNING and HELD_OUT. All strings remain exact
 Unicode (no normalization, trimming, case-folding or ignored characters).
 """
@@ -81,9 +83,17 @@ def _duration(value):
 
 
 def _snapshot(payload):
-    _record(payload, ENVELOPE_KEYS)
-    if type(payload["version"]) is not int or payload["version"] != 1:
+    if type(payload) is not dict:
+        _refuse("INVALID_SCHEMA")
+    version = payload.get("version")
+    _record(payload, ENVELOPE_KEYS | {"memoryKind"}
+            if type(version) is int and version == 2 else ENVELOPE_KEYS)
+    if type(version) is not int or version not in (1, 2):
         _refuse("INVALID_VERSION")
+    if version == 2 and payload["memoryKind"] != "WINDOWS_PEAK_WORKING_SET":
+        _refuse("INVALID_MEMORY_KIND")
+    memory_key = "peakWorkingSetBytes" if version == 2 else "peakRssBytes"
+    row_keys = (ROW_KEYS - {"peakRssBytes"}) | {memory_key}
     if type(payload["scope"]) is not str or payload["scope"] != "EVALUATION_ONLY":
         _refuse("INVALID_SCOPE")
     for key in ("runtimeSha256", "modelSha256"):
@@ -99,7 +109,7 @@ def _snapshot(payload):
     snapshots = []
     cells = 0
     for row in rows:
-        _record(row, ROW_KEYS)
+        _record(row, row_keys)
         identifier = row["id"]
         if type(identifier) is not str or IDENTIFIER.fullmatch(identifier) is None:
             _refuse("INVALID_ID")
@@ -128,7 +138,7 @@ def _snapshot(payload):
                 _refuse("INVALID_STATUS_TEXT")
         for key in ("modelLatencyMs", "endToEndLatencyMs"):
             _duration(row[key])
-        _integer(row["peakRssBytes"], nullable=True)
+        _integer(row[memory_key], nullable=True)
         if (row["modelLatencyMs"] is not None
                 and row["endToEndLatencyMs"] is not None
                 and row["modelLatencyMs"] > row["endToEndLatencyMs"]):
@@ -177,7 +187,7 @@ def _distribution(values, attempts):
             "p95": ordered[math.ceil(len(values) * 0.95) - 1]}
 
 
-def _summary(rows):
+def _summary(rows, memory_key="peakRssBytes"):
     attempts = len(rows)
     chars = sum(len(row["label"]) for row in rows)
     edits = sum(row["edits"] for row in rows)
@@ -188,7 +198,7 @@ def _summary(rows):
         measurements[temperature] = {
             key: _distribution([row[key] for row in selected if row[key] is not None],
                                len(selected))
-            for key in ("modelLatencyMs", "endToEndLatencyMs", "peakRssBytes")
+            for key in ("modelLatencyMs", "endToEndLatencyMs", memory_key)
         }
     return {"attempts": attempts,
             "failures": sum(row["status"] in FAILURES for row in rows),
@@ -204,6 +214,7 @@ def _summary(rows):
 def evaluate(payload):
     """Validate fully before edit work; return fresh raw rows plus metrics."""
     snapshot = _snapshot(payload)
+    memory_key = "peakWorkingSetBytes" if snapshot["version"] == 2 else "peakRssBytes"
     rows = []
     for row in snapshot["rows"]:
         predicted = row["text"] if row["status"] not in FAILURES else ""
@@ -213,12 +224,12 @@ def evaluate(payload):
                      and row["label"] == predicted,
                      "cer": edits / len(row["label"]) if row["label"] else None})
     return {**snapshot, "qualification": "UNQUALIFIED", "rows": rows,
-            "summary": _summary(rows),
-            "byLanguage": {language: _summary(selected)
+            "summary": _summary(rows, memory_key),
+            "byLanguage": {language: _summary(selected, memory_key)
                            for language in ("EN", "VI")
                            if (selected := [row for row in rows
                                             if row["language"] == language])},
-            "bySplit": {split: _summary(selected)
+            "bySplit": {split: _summary(selected, memory_key)
                         for split in ("SMOKE", "TUNING", "HELD_OUT")
                         if (selected := [row for row in rows
                                          if row["split"] == split])}}

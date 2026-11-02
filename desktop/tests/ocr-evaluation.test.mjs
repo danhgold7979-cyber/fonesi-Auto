@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { isAbsolute } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { spawnSync } from 'node:child_process';
 import { transformSync } from 'esbuild';
@@ -540,6 +541,13 @@ test('synthetic stdout close without EOF cannot become successful output', async
 });
 
 test('actual Python JSON float endpoints and exponent forms are accepted by typed boundary', async () => {
+  const python =
+    process.platform === 'win32'
+      ? process.env.FOUNDATION_PYTHON_EXE
+      : '/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3';
+  assert.equal(typeof python, 'string', 'trusted Windows harness must supply admitted CPython');
+  assert(isAbsolute(python));
+  if (process.platform === 'win32') assert(python.toLowerCase().endsWith('\\python.exe'));
   for (const [score, latency] of [
     [0, 1],
     [1, 1],
@@ -552,7 +560,7 @@ test('actual Python JSON float endpoints and exponent forms are accepted by type
     await turn();
     h.respond({}, (r) => {
       const produced = spawnSync(
-        '/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3',
+        python,
         [
           '-I',
           '-B',

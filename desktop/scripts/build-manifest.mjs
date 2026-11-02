@@ -38,6 +38,17 @@ export const outputs = [
   'v9.css',
 ];
 export const inputs = [
+  'native/VisionProcess.cs',
+  'tests/fixtures/VisionProcessFixture.cs',
+  'scripts/vision-qualification.mjs',
+  'verification/Invoke-VisionQualification.ps1',
+  'verification/vision-qualification-fixture.mjs',
+  'verification/run_vision_source_tests.py',
+  'verification/ocr_evaluation_metrics.py',
+  'vision/ocr_windows_worker.py',
+  'vision/ocr-requirements-windows.lock',
+  'vision/preprocess-requirements-windows.lock',
+  'vision/windows_qualification_manifest.json',
   'launch/Invoke-Desktop.ps1',
   'launch/Invoke-RetainedHost.ps1',
   'launch/Invoke-Package.ps1',

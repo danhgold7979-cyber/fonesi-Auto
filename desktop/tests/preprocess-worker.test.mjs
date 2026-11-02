@@ -1,4 +1,5 @@
-// Real cv2 supplied-image positives; explicitly synthetic child faults below.
+// Portable source cases plus explicitly opted-in Linux cv2 positives.
+// Windows native equivalents run through the retained Windows qualification owner.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
@@ -10,8 +11,11 @@ import {
   rmSync,
   readSync,
   mkdirSync,
+  realpathSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { transformSync } from 'esbuild';
@@ -84,34 +88,37 @@ function begin(owner, r) {
   assert.equal(b.accepted, true);
   return b.operation;
 }
-test('actual PNG RGB → real isolated cv2 gain → verified RGBA with distinct hashes and retired child', async () => {
-  const d = display(),
-    owner = createSuppliedPreprocessor(ctx(d));
-  const input = request(d, { contrast: 'GAIN_125' }),
-    copy = Buffer.from(input.png);
-  const result = await begin(owner, input).result;
-  assert.equal(result.code, 'OK');
-  assert.equal(result.retired, true);
-  assert.deepEqual([...result.rgba.slice(0, 4)], [3, 255, 255, 255]);
-  assert.deepEqual(result.statistics, { minIntensity: 3, maxIntensity: 255, clippedChannels: 4 });
-  assert.notEqual(result.sourcePixelSha256, result.inputSha256);
-  assert.equal(result.sourcePixelSha256, validateCapturePng(input.png, d).pixelSha256);
-  assert.equal(result.mapping.contextRevision, 1);
-  assert.deepEqual(input.png, copy);
-  assert.equal(await owner.close(), true);
-});
-test('actual HALF/DOUBLE ROI mapping and opaque RGBA source equality', async () => {
-  for (const scale of ['HALF', 'DOUBLE']) {
+if (process.env.FONESI_P4_PREPROCESS_NATIVE === 'REVIEWED_LINUX_V1') {
+  assert.equal(process.platform, 'linux');
+  test('actual PNG RGB → real isolated cv2 gain → verified RGBA with distinct hashes and retired child', async () => {
     const d = display(),
-      o = createSuppliedPreprocessor(ctx(d));
-    const r = await begin(o, request(d, { scale, png: png(2, 2, false) })).result;
-    assert.equal(r.code, 'OK');
-    assert.equal(r.rgba.length, scale === 'HALF' ? 4 : 64);
-    assert.equal(r.sourcePixelSha256, r.inputSha256);
-    assert.equal(r.mapping.denominator, scale === 'HALF' ? 2 : 1);
-    assert.equal(await o.close(), true);
-  }
-});
+      owner = createSuppliedPreprocessor(ctx(d));
+    const input = request(d, { contrast: 'GAIN_125' }),
+      copy = Buffer.from(input.png);
+    const result = await begin(owner, input).result;
+    assert.equal(result.code, 'OK');
+    assert.equal(result.retired, true);
+    assert.deepEqual([...result.rgba.slice(0, 4)], [3, 255, 255, 255]);
+    assert.deepEqual(result.statistics, { minIntensity: 3, maxIntensity: 255, clippedChannels: 4 });
+    assert.notEqual(result.sourcePixelSha256, result.inputSha256);
+    assert.equal(result.sourcePixelSha256, validateCapturePng(input.png, d).pixelSha256);
+    assert.equal(result.mapping.contextRevision, 1);
+    assert.deepEqual(input.png, copy);
+    assert.equal(await owner.close(), true);
+  });
+  test('actual HALF/DOUBLE ROI mapping and opaque RGBA source equality', async () => {
+    for (const scale of ['HALF', 'DOUBLE']) {
+      const d = display(),
+        o = createSuppliedPreprocessor(ctx(d));
+      const r = await begin(o, request(d, { scale, png: png(2, 2, false) })).result;
+      assert.equal(r.code, 'OK');
+      assert.equal(r.rgba.length, scale === 'HALF' ? 4 : 64);
+      assert.equal(r.sourcePixelSha256, r.inputSha256);
+      assert.equal(r.mapping.denominator, scale === 'HALF' ? 2 : 1);
+      assert.equal(await o.close(), true);
+    }
+  });
+}
 test('synchronous reservation and cancel before request proxy traps', async () => {
   const d = display(),
     o = createSuppliedPreprocessor(ctx(d));
@@ -307,17 +314,19 @@ test('synthetic malformed reply with actual close is refused and retired', async
   assert.equal(await o.close(), true);
 });
 
-test('actual registered Python child cancel drains before owner close resolves', async () => {
-  const d = display(),
-    owner = createSuppliedPreprocessor(ctx(d));
-  const op = begin(owner, request(d));
-  setTimeout(() => op.cancel(), 1);
-  const r = await op.result;
-  assert.equal(r.code, 'CANCELLED');
-  assert.equal(r.retired, false);
-  assert.equal(await owner.close(), true);
-});
-
+if (process.env.FONESI_P4_PREPROCESS_NATIVE === 'REVIEWED_LINUX_V1') {
+  assert.equal(process.platform, 'linux');
+  test('actual registered Python child cancel drains before owner close resolves', async () => {
+    const d = display(),
+      owner = createSuppliedPreprocessor(ctx(d));
+    const op = begin(owner, request(d));
+    setTimeout(() => op.cancel(), 1);
+    const r = await op.result;
+    assert.equal(r.code, 'CANCELLED');
+    assert.equal(r.retired, false);
+    assert.equal(await owner.close(), true);
+  });
+}
 test('synthetic post-handoff context loss and late output cannot publish or release without writes', async () => {
   const f = syntheticFactory(),
     d = display(),
@@ -359,7 +368,7 @@ test('synthetic stderr and output cap are bounded failures with retained cleanup
 });
 
 test('bounded stable read refuses growth with at most captured length plus one byte read', () => {
-  const root = mkdtempSync('/tmp/p4-stable-read-'),
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'p4-stable-read-'))),
     path = `${root}/input`;
   writeFileSync(path, Buffer.from('abc'));
   let changed = false,
