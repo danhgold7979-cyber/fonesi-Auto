@@ -8,6 +8,8 @@ const {
   record,
   canonical,
   parseObservation,
+  parseCandidate,
+  HOST_ZONES,
   assertOverridesAbsent,
 } = require('./schedule-runtime-contract.cjs');
 const desktop = path.resolve(__dirname, '..');
@@ -26,6 +28,13 @@ const SOURCE_FILES = Object.freeze([
   'desktop/dependency-review.json',
   'desktop/package-lock.json',
   'tools/phase-00/HostProbeNative.cs',
+  'desktop/verification/build-schedule-corpus.mjs',
+  'desktop/verification/schedule-candidate-corpus.ts',
+  'desktop/src/schedule-civil-contract.ts',
+  'desktop/src/schedule-zone-contract.ts',
+  'desktop/src/schedule-gap-contract.ts',
+  'desktop/scripts/build.mjs',
+  'desktop/scripts/verify-dependencies.mjs',
 ]);
 let phase = 'HOST';
 let captureFacts = [];
@@ -123,7 +132,53 @@ function copyTree(source, target, expected) {
   )
     fail();
 }
-function stage(root, head, tree) {
+function corpusBuild(hostZone) {
+  if (!HOST_ZONES.includes(hostZone)) fail();
+  const base = path.join(desktop, '.schedule-corpus-build'),
+    file = path.join(base, 'manifest.json');
+  const manifest = read(file, 16384);
+  record(manifest, ['version', 'inputs', 'files']);
+  const inputs = [
+    'node_modules/@js-temporal/polyfill/dist/index.esm.js',
+    'node_modules/jsbi/dist/jsbi-cjs.js',
+    'src/schedule-civil-contract.ts',
+    'src/schedule-gap-contract.ts',
+    'src/schedule-zone-contract.ts',
+    'verification/schedule-candidate-corpus.ts',
+  ];
+  if (
+    manifest.version !== 1 ||
+    !Array.isArray(manifest.inputs) ||
+    !Array.isArray(manifest.files) ||
+    manifest.inputs.length !== inputs.length ||
+    manifest.files.length !== 2
+  )
+    fail();
+  manifest.inputs.forEach((input, i) => {
+    record(input, ['path', 'sha256']);
+    if (input.path !== inputs[i] || digest(path.join(desktop, input.path)).sha256 !== input.sha256)
+      fail();
+  });
+  manifest.files.forEach((item, i) => {
+    record(item, ['name', 'sha256', 'bytes']);
+    if (
+      item.name !== ['candidate.cjs', 'production.cjs'][i] ||
+      !Number.isSafeInteger(item.bytes) ||
+      item.bytes < 1 ||
+      item.bytes > 450000
+    )
+      fail();
+    const f = path.join(base, item.name);
+    if (plain(f, false).size !== item.bytes || digest(f).sha256 !== item.sha256) fail();
+  });
+  return {
+    hostZone,
+    candidateSha256: manifest.files[0].sha256,
+    productionSha256: manifest.files[1].sha256,
+    manifestSha256: digest(file).sha256,
+  };
+}
+function stage(root, head, tree, hostZone = null) {
   phase = 'OWNED';
   const token = owned(root);
   phase = 'SOURCE';
@@ -139,7 +194,12 @@ function stage(root, head, tree) {
   if (plain(path.join(dist, 'version'), false).size > 64) fail();
   if (fs.readFileSync(path.join(dist, 'version'), 'utf8').trim().replace(/^v/, '') !== '45.1.0')
     fail();
-  const runtime = boundedInventory(dist, 250, 512 * 1024 * 1024 - 65536);
+  const corpus = hostZone === null ? null : corpusBuild(hostZone);
+  const runtime = boundedInventory(
+    dist,
+    corpus ? 248 : 250,
+    512 * 1024 * 1024 - (corpus ? 1048576 : 65536),
+  );
   if (
     runtime.files.some((f) => /^resources\/app(?:\/|\.asar$)/i.test(f.path)) ||
     runtime.directories.some((d) => d.toLowerCase() === 'resources/app')
@@ -159,6 +219,13 @@ function stage(root, head, tree) {
     if (plain(path.join(__dirname, name), false).size > 16384) fail();
     fs.copyFileSync(path.join(__dirname, name), path.join(app, name), fs.constants.COPYFILE_EXCL);
   }
+  if (corpus)
+    for (const name of ['candidate.cjs', 'production.cjs'])
+      fs.copyFileSync(
+        path.join(desktop, '.schedule-corpus-build', name),
+        path.join(app, name),
+        fs.constants.COPYFILE_EXCL,
+      );
   write(
     path.join(app, 'package.json'),
     {
@@ -170,7 +237,15 @@ function stage(root, head, tree) {
   );
   write(
     path.join(app, 'control.json'),
-    { version: 1, token, head, tree, observerSha256, contractSha256 },
+    {
+      version: corpus ? 2 : 1,
+      token,
+      head,
+      tree,
+      observerSha256,
+      contractSha256,
+      ...(corpus ? { corpus } : {}),
+    },
     16384,
   );
   const packaged = boundedInventory(packageRoot);
@@ -183,6 +258,7 @@ function stage(root, head, tree) {
     packaged,
     observerSha256,
     contractSha256,
+    ...(corpus ? { corpus } : {}),
   });
   return 'SCHEDULE_RUNTIME_STAGED';
 }
@@ -236,7 +312,7 @@ function describeCaptureFraming(text) {
   facts.push('FIRST_' + category(body[0]), 'LAST_' + category(body.at(-1)));
   return facts;
 }
-function validateCapture(value) {
+function validateCapture(value, corpus = false) {
   phase = 'CAPTURE_PROCESS';
   record(value, [
     'status',
@@ -260,7 +336,7 @@ function validateCapture(value) {
     fail();
   phase = 'CAPTURE_FRAMING';
   captureFacts = describeCaptureFraming(value.stdout);
-  return parseObservation(value.stdout);
+  return corpus ? parseCandidate(value.stdout) : parseObservation(value.stdout);
 }
 // PowerShell capture is transport JSON, unlike canonical owned state and observer stdout.
 // Flat fixed-schema grammar rejects duplicate decoded keys before normalization.
@@ -371,6 +447,7 @@ function validate(root) {
     'packaged',
     'observerSha256',
     'contractSha256',
+    ...(state.corpus ? ['corpus'] : []),
   ]);
   if (state.version !== 1 || state.token !== token || !equal(state.source, facts())) fail();
   if (
@@ -378,25 +455,27 @@ function validate(root) {
       state.runtime,
       boundedInventory(
         path.join(desktop, 'node_modules/electron/dist'),
-        250,
-        512 * 1024 * 1024 - 65536,
+        state.corpus ? 248 : 250,
+        512 * 1024 * 1024 - (state.corpus ? 1048576 : 65536),
       ),
     ) ||
     !equal(state.packaged, boundedInventory(path.join(root, 'package')))
   )
     fail();
+  if (state.corpus && !equal(state.corpus, corpusBuild(state.corpus.hostZone))) fail();
   phase = 'CAPTURE_FILE';
   const captureFile = path.join(root, 'capture.json');
   if (plain(captureFile, false).size > 131072) fail();
   const encodedCapture = parseCaptureTransport(fs.readFileSync(captureFile, 'utf8'));
   phase = 'CAPTURE_ENCODING';
   const decodedCapture = decodeCapture(encodedCapture);
-  const observation = validateCapture(decodedCapture);
+  const observation = validateCapture(decodedCapture, Boolean(state.corpus));
+  if (state.corpus && observation.hostZone !== state.corpus.hostZone) fail();
   const exe = state.runtime.files.find((f) => f.path === 'electron.exe');
   if (!exe) fail();
   const report = {
     version: 1,
-    kind: 'SCHEDULE_RUNTIME_OBSERVATION_REPORT',
+    kind: state.corpus ? 'SCHEDULE_CANDIDATE_RUN_REPORT' : 'SCHEDULE_RUNTIME_OBSERVATION_REPORT',
     source: state.source,
     runtime: {
       electronPackage: '45.1.0',
@@ -407,14 +486,97 @@ function validate(root) {
       inventorySha256: sha(JSON.stringify(state.packaged)),
       observerSha256: state.observerSha256,
       contractSha256: state.contractSha256,
+      ...(state.corpus ? { corpus: state.corpus } : {}),
     },
     process: { exitCode: 0, retirement: 'CONFIRMED', captureComplete: true },
     observation,
-    disposition: 'OBSERVED_NOT_ADMITTED',
+    disposition: state.corpus ? 'CANDIDATE_NOT_ADMITTED' : 'OBSERVED_NOT_ADMITTED',
   };
   phase = 'REPORT';
   write(path.join(root, 'report.json'), report, 32768);
   return 'SCHEDULE_RUNTIME_VALIDATED';
+}
+function campaign(root) {
+  owned(root);
+  const values = read(path.join(root, 'campaign.json'), 98304),
+    source = facts();
+  if (!Array.isArray(values) || values.length !== 3) fail();
+  let runtime = null,
+    semantic = null,
+    bundles = null;
+  for (let index = 0; index < 3; index++) {
+    const value = values[index];
+    record(value, [
+      'version',
+      'kind',
+      'source',
+      'runtime',
+      'verificationPackage',
+      'process',
+      'observation',
+      'disposition',
+    ]);
+    if (
+      value.version !== 1 ||
+      value.kind !== 'SCHEDULE_CANDIDATE_RUN_REPORT' ||
+      !equal(value.source, source) ||
+      value.disposition !== 'CANDIDATE_NOT_ADMITTED' ||
+      !equal(value.process, { exitCode: 0, retirement: 'CONFIRMED', captureComplete: true })
+    )
+      fail();
+    record(value.runtime, ['electronPackage', 'exeSha256', 'inventorySha256']);
+    if (
+      value.runtime.electronPackage !== '45.1.0' ||
+      !/^[0-9a-f]{64}$/.test(value.runtime.exeSha256) ||
+      !/^[0-9a-f]{64}$/.test(value.runtime.inventorySha256)
+    )
+      fail();
+    record(value.verificationPackage, [
+      'inventorySha256',
+      'observerSha256',
+      'contractSha256',
+      'corpus',
+    ]);
+    if (
+      !/^[0-9a-f]{64}$/.test(value.verificationPackage.inventorySha256) ||
+      value.verificationPackage.observerSha256 !==
+        digest(path.join(__dirname, 'schedule-runtime-observer.cjs')).sha256 ||
+      value.verificationPackage.contractSha256 !==
+        digest(path.join(__dirname, 'schedule-runtime-contract.cjs')).sha256
+    )
+      fail();
+    const expected = corpusBuild(HOST_ZONES[index]);
+    if (!equal(value.verificationPackage.corpus, expected)) fail();
+    const result = require('./schedule-runtime-contract.cjs').validateCandidate(value.observation);
+    if (result.hostZone !== HOST_ZONES[index]) fail();
+    if (index && (!equal(runtime, value.runtime) || semantic !== result.corpus.semanticSha256))
+      fail();
+    runtime = value.runtime;
+    semantic = result.corpus.semanticSha256;
+    bundles = {
+      candidateSha256: expected.candidateSha256,
+      productionSha256: expected.productionSha256,
+      manifestSha256: expected.manifestSha256,
+    };
+  }
+  write(
+    path.join(root, 'report.json'),
+    {
+      version: 1,
+      kind: 'SCHEDULE_CANDIDATE_CAMPAIGN_REPORT',
+      source,
+      runtime,
+      bundles,
+      runs: values.map((v) => ({
+        verificationPackage: v.verificationPackage,
+        process: v.process,
+        result: v.observation,
+      })),
+      disposition: 'CANDIDATE_NOT_ADMITTED',
+    },
+    32768,
+  );
+  return 'SCHEDULE_CORPUS_CAMPAIGN_VALIDATED';
 }
 if (require.main === module) {
   try {
@@ -423,11 +585,20 @@ if (require.main === module) {
     assertOverridesAbsent(process.env, process.execArgv);
     const [verb, root, head, tree] = process.argv.slice(2);
     const out =
-      verb === 'stage' && process.argv.length === 6
-        ? stage(root, head, tree)
-        : verb === 'validate' && process.argv.length === 4
-          ? validate(root)
-          : fail();
+      ['stage-utc', 'stage-la', 'stage-tokyo'].includes(verb) && process.argv.length === 6
+        ? stage(
+            root,
+            head,
+            tree,
+            HOST_ZONES[['stage-utc', 'stage-la', 'stage-tokyo'].indexOf(verb)],
+          )
+        : verb === 'stage' && process.argv.length === 6
+          ? stage(root, head, tree)
+          : verb === 'campaign' && process.argv.length === 4
+            ? campaign(root)
+            : verb === 'validate' && process.argv.length === 4
+              ? validate(root)
+              : fail();
     console.log(out);
   } catch (error) {
     console.log('SCHEDULE_CONTROL_STAGE_' + phase);
@@ -454,6 +625,8 @@ if (require.main === module) {
 }
 module.exports = {
   SOURCE_FILES,
+  corpusBuild,
+  campaign,
   boundedInventory,
   copyTree,
   validateCapture,

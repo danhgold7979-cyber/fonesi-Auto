@@ -82,7 +82,7 @@ function validateObservation(value) {
   }
   return value;
 }
-function parseObservation(stdout) {
+function parseFramed(stdout, validator) {
   if (typeof stdout !== 'string' || !stdout.endsWith('\n') || stdout.endsWith('\n\n'))
     throw new Error('SCHEDULE_CAPTURE_FRAMING');
   // Electron may emit empty preamble lines. Admit only this finite framing,
@@ -104,10 +104,75 @@ function parseObservation(stdout) {
   }
   if (JSON.stringify(value) !== raw) throw new Error('SCHEDULE_CAPTURE_REPRESENTATION');
   try {
-    return validateObservation(value);
+    return validator(value);
   } catch {
     throw new Error('SCHEDULE_CAPTURE_SCHEMA');
   }
+}
+function parseObservation(stdout) {
+  return parseFramed(stdout, validateObservation);
+}
+const HOST_ZONES = Object.freeze(['UTC', 'America/Los_Angeles', 'Asia/Tokyo']);
+const CORPUS_CASES = Object.freeze([
+  'HCM_ALIAS',
+  'NY_GAP',
+  'NY_FOLD',
+  'LORD_HOWE',
+  'THRESHOLD',
+  'MIDNIGHT',
+  'BOUNDS_NEXT',
+  'DENSE_PREFIX',
+  'CALENDAR',
+  'FAIL_CLOSED',
+]);
+function validateCandidate(value) {
+  record(value, [
+    'version',
+    'kind',
+    'hostZone',
+    'hostOffsetMinutes',
+    'hostResolvedZone',
+    'observation',
+    'productionRefusal',
+    'corpus',
+  ]);
+  const index = HOST_ZONES.indexOf(value.hostZone);
+  if (
+    value.version !== 1 ||
+    value.kind !== 'SCHEDULE_CANDIDATE_RESULT' ||
+    index < 0 ||
+    value.hostOffsetMinutes !== [0, 480, -540][index] ||
+    value.hostResolvedZone !== value.hostZone ||
+    value.productionRefusal !== 'DATA_VERSION_MISMATCH'
+  )
+    fail();
+  const observation = validateObservation(value.observation);
+  if (
+    JSON.stringify(observation.versions) !==
+    JSON.stringify({
+      electron: '45.1.0',
+      node: '24.22.1',
+      v8: '15.6.75.19-electron.0',
+      icu: '78.2',
+      cldr: '48.0',
+      tz: '2026e',
+      unicode: '17.0',
+    })
+  )
+    fail();
+  record(value.corpus, ['version', 'kind', 'cases', 'checks', 'semanticSha256']);
+  if (
+    value.corpus.version !== 1 ||
+    value.corpus.kind !== 'SCHEDULE_CANDIDATE_CORPUS' ||
+    JSON.stringify(value.corpus.cases) !== JSON.stringify(CORPUS_CASES) ||
+    value.corpus.checks !== 4284 ||
+    !/^[0-9a-f]{64}$/.test(value.corpus.semanticSha256)
+  )
+    fail();
+  return value;
+}
+function parseCandidate(stdout) {
+  return parseFramed(stdout, validateCandidate);
 }
 function assertOverridesAbsent(env, execArgv) {
   if (!Array.isArray(execArgv) || execArgv.length) fail();
@@ -157,6 +222,10 @@ function capture(versions, env, execArgv, platform, arch) {
 }
 module.exports = {
   CASES,
+  HOST_ZONES,
+  CORPUS_CASES,
+  validateCandidate,
+  parseCandidate,
   VERSION_KEYS,
   record,
   canonical,

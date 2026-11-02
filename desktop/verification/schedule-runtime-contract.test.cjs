@@ -251,7 +251,15 @@ test('observation entry has no production imports window navigation network data
   const imports = [...source.matchAll(/require\('([^']+)'\)/g)].map((m) => m[1]).sort();
   assert.deepEqual(
     imports,
-    ['./schedule-runtime-contract.cjs', 'electron', 'node:crypto', 'node:fs', 'node:path'].sort(),
+    [
+      './candidate.cjs',
+      './production.cjs',
+      './schedule-runtime-contract.cjs',
+      'electron',
+      'node:crypto',
+      'node:fs',
+      'node:path',
+    ].sort(),
   );
   assert.match(source, /app\.setPath/);
   assert.match(source, /process\.argv\.length !== 1/);
@@ -271,7 +279,7 @@ test('manual or explicit-marker exact-branch workflow retains only closed report
   );
   assert.match(
     workflow,
-    /path: desktop\/\.schedule-runtime-public\/schedule-runtime-observation\.json/,
+    /path: desktop\/\.schedule-runtime-public\/schedule-candidate-campaign\.json/,
   );
   assert.match(workflow, /retention-days: 14/);
   assert.match(workflow, /if-no-files-found: error/);
@@ -283,7 +291,7 @@ test('wrapper preserves owned job bounds and cannot publish until validated clea
   assert.match(source, /Invoke-OwnedChild \$exe \(\[string\[\]\]@\(\)\) 30000 @\{\}/);
   assert.ok(
     source.indexOf('Remove-VerifiedOwnedRun $owner $allRetired') <
-      source.indexOf("Write-New (Join-Path $public 'schedule-runtime-observation.json')"),
+      source.indexOf("Write-New (Join-Path $public 'schedule-candidate-campaign.json')"),
   );
   assert.match(source, /New-OwnedProfile \$owner 'source'/);
   assert.doesNotMatch(source, /--no-sandbox|ELECTRON_RUN_AS_NODE|Remove-Item|Invoke-Expression/);
@@ -356,24 +364,30 @@ function observerFixture(root, mutate = () => {}) {
     output = [];
   const app = { setPath: (...args) => paths.push(args), exit: (code) => exits.push(code) };
   const req = createRequire(path.join(appRoot, 'schedule-runtime-observer.cjs'));
-  mutate({ run, appRoot, profile, control, proc, app });
+  const imports = {},
+    clock = { now: () => performance.now() };
+  mutate({ run, appRoot, profile, control, proc, app, imports, clock });
   const source = fs.readFileSync(path.join(__dirname, 'schedule-runtime-observer.cjs'), 'utf8');
-  vm.runInNewContext(
-    source,
-    {
-      require: (name) =>
-        name === 'electron'
+  // Same realm as the real CommonJS contract: cross-realm prototypes are correctly refused.
+  vm.runInThisContext(
+    '(function(require,__dirname,process,Buffer,setTimeout,clearTimeout,performance){' +
+      source +
+      '\n})',
+  )(
+    (name) =>
+      Object.hasOwn(imports, name)
+        ? imports[name]
+        : name === 'electron'
           ? { app }
           : name === 'node:fs'
             ? { ...fs, writeSync: (fd, raw) => output.push({ fd, raw }) }
             : req(name),
-      __dirname: appRoot,
-      process: proc,
-      Buffer,
-      setTimeout,
-      clearTimeout,
-    },
-    { timeout: 1000 },
+    appRoot,
+    proc,
+    Buffer,
+    setTimeout,
+    clearTimeout,
+    clock,
   );
   return { paths, exits, output, run };
 }
@@ -419,7 +433,7 @@ test('actual observer refuses wrong owner source tamper profile marker arguments
     });
 });
 
-function controllerFixture(root) {
+function controllerFixture(root, corpus = null) {
   const vm = require('node:vm'),
     { createRequire } = require('node:module');
   const repo = path.join(root, 'repo'),
@@ -471,8 +485,35 @@ function controllerFixture(root) {
     verification,
   );
   const api = mod.exports;
-  assert.equal(api.testStage(run, 'a'.repeat(40), 'b'.repeat(40)), 'SCHEDULE_RUNTIME_STAGED');
+  if (corpus) {
+    const buildRoot = path.join(desktop, '.schedule-corpus-build');
+    fs.mkdirSync(buildRoot);
+    for (const input of corpus.built.inputs) {
+      const dest = path.join(desktop, input.path);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(path.join(__dirname, '..', input.path), dest);
+    }
+    for (const file of corpus.built.files)
+      fs.writeFileSync(path.join(buildRoot, file.name), file.bytes);
+    fs.writeFileSync(
+      path.join(buildRoot, 'manifest.json'),
+      JSON.stringify({
+        version: 1,
+        inputs: corpus.built.inputs,
+        files: corpus.built.files.map(({ name, sha256, bytes }) => ({
+          name,
+          sha256,
+          bytes: bytes.length,
+        })),
+      }),
+    );
+  }
+  assert.equal(
+    api.testStage(run, 'a'.repeat(40), 'b'.repeat(40), corpus?.zone ?? null),
+    'SCHEDULE_RUNTIME_STAGED',
+  );
   const raw = receipt();
+  if (corpus) raw.stdout = JSON.stringify(candidateResult(corpus.zone)) + '\n';
   const { stdout, stderr, ...rest } = raw;
   fs.writeFileSync(
     path.join(run, 'capture.json'),
@@ -721,3 +762,254 @@ test('finite observed empty preamble admits only zero to two LF or CRLF lines', 
     assert.throws(() => parseObservation('\n' + raw + suffix));
   assert.throws(() => parseObservation('\n' + raw.replace(':1,', ': 1,') + '\n'));
 });
+
+let compiledCorpus;
+async function compileTestCorpus() {
+  if (!compiledCorpus)
+    compiledCorpus = import('./build-schedule-corpus.mjs').then((m) => m.compileCorpus());
+  return compiledCorpus;
+}
+function loadCorpusBytes(bytes, processFacts = null) {
+  const vm = require('node:vm'),
+    { createRequire } = require('node:module');
+  const req = createRequire(__filename),
+    mod = { exports: {} };
+  vm.runInThisContext(
+    '(function(require,module,exports){' + Buffer.from(bytes).toString('utf8') + '\n})',
+  )(
+    (name) => (name === 'node:process' && processFacts ? processFacts : req(name)),
+    mod,
+    mod.exports,
+  );
+  return mod.exports;
+}
+const candidateVersions = () => ({
+  electron: '45.1.0',
+  node: '24.22.1',
+  v8: '15.6.75.19-electron.0',
+  icu: '78.2',
+  cldr: '48.0',
+  tz: '2026e',
+  unicode: '17.0',
+});
+function candidateResult(zone = 'UTC') {
+  const { HOST_ZONES, CORPUS_CASES } = require('./schedule-runtime-contract.cjs');
+  return {
+    version: 1,
+    kind: 'SCHEDULE_CANDIDATE_RESULT',
+    hostZone: zone,
+    hostOffsetMinutes: [0, 480, -540][HOST_ZONES.indexOf(zone)],
+    hostResolvedZone: zone,
+    observation: capture(candidateVersions(), {}, [], 'win32', 'x64'),
+    productionRefusal: 'DATA_VERSION_MISMATCH',
+    corpus: {
+      version: 1,
+      kind: 'SCHEDULE_CANDIDATE_CORPUS',
+      cases: CORPUS_CASES,
+      checks: 4284,
+      semanticSha256: 'a'.repeat(64),
+    },
+  };
+}
+test('actual pinned dual-bundle closure exercises fixed corpus on Node without claiming Electron evidence', async () => {
+  const built = await compileTestCorpus();
+  assert.equal(built.files.length, 2);
+  assert.ok(built.files.every((f) => f.bytes.length < 450000));
+  const out = loadCorpusBytes(built.files[1].bytes).runCorpus();
+  assert.equal(out.checks, 4284);
+  assert.deepEqual(out.cases, require('./schedule-runtime-contract.cjs').CORPUS_CASES);
+  assert.match(out.semanticSha256, /^[0-9a-f]{64}$/);
+  const build = fs.readFileSync(path.join(__dirname, '../scripts/build.mjs'), 'utf8');
+  assert.match(build, /__SCHEDULE_ELECTRON_CANDIDATE__: 'false'/);
+  assert.doesNotMatch(build, /__SCHEDULE_ELECTRON_CANDIDATE__: 'true'/);
+});
+test('synthetic tuple matrix proves bundle isolation and rejects every unreviewed field, not native proof', async () => {
+  const built = await compileTestCorpus(),
+    base = { versions: candidateVersions(), env: {}, execArgv: [], platform: 'win32', arch: 'x64' };
+  assert.deepEqual(loadCorpusBytes(built.files[1].bytes, base).captureTimezoneRuntime(), {
+    ok: false,
+    code: 'DATA_VERSION_MISMATCH',
+  });
+  const exact = loadCorpusBytes(built.files[0].bytes, base).captureTimezoneRuntime();
+  assert.equal(exact.ok, true);
+  assert.equal(exact.runtime.runtimeKind, 'ELECTRON_CANDIDATE');
+  for (const field of Object.keys(base.versions)) {
+    const changed = { ...base, versions: { ...base.versions, [field]: 'unreviewed' } };
+    assert.deepEqual(loadCorpusBytes(built.files[0].bytes, changed).captureTimezoneRuntime(), {
+      ok: false,
+      code: 'DATA_VERSION_MISMATCH',
+    });
+  }
+  for (const field of Object.keys(base.versions)) {
+    const missing = { ...base, versions: { ...base.versions } };
+    delete missing.versions[field];
+    assert.equal(loadCorpusBytes(built.files[0].bytes, missing).captureTimezoneRuntime().ok, false);
+  }
+  for (const patch of [
+    { platform: 'linux' },
+    { arch: 'arm64' },
+    { env: { NODE_ICU_DATA: 'override' } },
+  ])
+    assert.equal(
+      loadCorpusBytes(built.files[0].bytes, { ...base, ...patch }).captureTimezoneRuntime().ok,
+      false,
+    );
+});
+test('closed candidate schema requires exact tuple, all host witnesses, cases and production refusal', () => {
+  const {
+    validateCandidate,
+    parseCandidate,
+    HOST_ZONES,
+  } = require('./schedule-runtime-contract.cjs');
+  for (const zone of HOST_ZONES) {
+    const value = candidateResult(zone);
+    assert.deepEqual(parseCandidate('\n' + JSON.stringify(value) + '\n'), value);
+  }
+  for (const mutate of [
+    (v) => v.hostOffsetMinutes++,
+    (v) => (v.hostResolvedZone = 'UTCx'),
+    (v) => (v.hostZone = 'Europe/London'),
+    (v) => (v.productionRefusal = 'PASS'),
+    (v) => (v.observation.versions.icu = '78.3'),
+    (v) => v.corpus.checks--,
+    (v) => (v.corpus.cases = []),
+    (v) => (v.extra = true),
+  ]) {
+    const v = candidateResult();
+    mutate(v);
+    assert.throws(() => validateCandidate(v));
+  }
+  const raw = JSON.stringify(candidateResult());
+  for (const text of [
+    ' ' + raw + '\n',
+    raw + '\n' + raw + '\n',
+    raw + '\n\n',
+    '\n\n\n' + raw + '\n',
+  ])
+    assert.throws(() => parseCandidate(text));
+});
+test('sequential owned campaign wrapper cannot publish partial unretired or uncleaned run reports', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'Invoke-ScheduleRuntime.ps1'), 'utf8');
+  assert.match(source, /foreach\(\$verb in @\('stage-utc','stage-la','stage-tokyo'\)\)/);
+  assert.match(source, /if\(\$verb -cne 'stage-utc'\)\{\$owner=New-OwnedRun \$base\}/);
+  assert.ok(
+    source.indexOf('Remove-VerifiedOwnedRun $owner $allRetired') <
+      source.indexOf("'campaign.json') ('['"),
+  );
+  assert.ok(
+    source.indexOf("Require-Result $campaign 'SCHEDULE_CORPUS_CAMPAIGN_VALIDATED'") <
+      source.indexOf('Remove-VerifiedOwnedRun $owner $allChildrenRetired'),
+  );
+  assert.ok(
+    source.indexOf('Remove-VerifiedOwnedRun $owner $allChildrenRetired') <
+      source.indexOf("Write-New (Join-Path $public 'schedule-candidate-campaign.json')"),
+  );
+  assert.doesNotMatch(source, /Start-Job|Start-Process|Task\.Run|--no-sandbox/);
+});
+test('actual candidate stage validate and three-report campaign compose filesystem custody with synthetic Git/runtime only', async () => {
+  const built = await compileTestCorpus();
+  temporary((root) => {
+    const contexts = require('./schedule-runtime-contract.cjs').HOST_ZONES.map((zone, i) =>
+      controllerFixture(path.join(root, String(i)), { built, zone }),
+    );
+    const reports = contexts.map((context) => {
+      assert.equal(context.api.testValidate(context.run), 'SCHEDULE_RUNTIME_VALIDATED');
+      return JSON.parse(fs.readFileSync(path.join(context.run, 'report.json'), 'utf8'));
+    });
+    const context = contexts[0],
+      run = path.join(path.dirname(context.run), 'run-00000000-0000-4000-8000-000000000099');
+    fs.mkdirSync(run);
+    fs.writeFileSync(path.join(run, '.owner'), '00000000-0000-4000-8000-000000000098');
+    fs.writeFileSync(path.join(run, 'campaign.json'), JSON.stringify(reports));
+    assert.equal(context.api.campaign(run), 'SCHEDULE_CORPUS_CAMPAIGN_VALIDATED');
+    const report = JSON.parse(fs.readFileSync(path.join(run, 'report.json'), 'utf8'));
+    assert.equal(report.runs.length, 3);
+    assert.equal(report.disposition, 'CANDIDATE_NOT_ADMITTED');
+    fs.unlinkSync(path.join(run, 'report.json'));
+    for (const change of [
+      (r) => r.pop(),
+      (r) => r.reverse(),
+      (r) => (r[1].observation.corpus.semanticSha256 = 'b'.repeat(64)),
+      (r) => (r[0].process.retirement = 'UNKNOWN'),
+      (r) => (r[2].source.head = 'c'.repeat(40)),
+      (r) => (r[2].verificationPackage.corpus.candidateSha256 = 'd'.repeat(64)),
+      (r) => (r[0].observation.productionRefusal = 'PASS'),
+    ]) {
+      const altered = clone(reports);
+      change(altered);
+      fs.writeFileSync(path.join(run, 'campaign.json'), JSON.stringify(altered));
+      assert.throws(() => context.api.campaign(run));
+      assert.equal(fs.existsSync(path.join(run, 'report.json')), false);
+    }
+  });
+});
+test('candidate stage and validation reject changed bundle manifest source and incomplete process capture', async () => {
+  const built = await compileTestCorpus();
+  for (const mutate of [
+    (c) =>
+      fs.appendFileSync(path.join(c.repo, 'desktop/.schedule-corpus-build/candidate.cjs'), 'x'),
+    (c) =>
+      fs.appendFileSync(path.join(c.repo, 'desktop/.schedule-corpus-build/manifest.json'), ' '),
+    (c) => fs.appendFileSync(path.join(c.run, 'package/resources/app/production.cjs'), 'x'),
+    (c) => {
+      const file = path.join(c.run, 'capture.json'),
+        v = JSON.parse(fs.readFileSync(file, 'utf8'));
+      v.cleanupComplete = false;
+      fs.writeFileSync(file, JSON.stringify(v));
+    },
+  ])
+    temporary((root) => {
+      const c = controllerFixture(root, { built, zone: 'UTC' });
+      mutate(c);
+      assert.throws(() => c.api.testValidate(c.run));
+      assert.equal(fs.existsSync(path.join(c.run, 'report.json')), false);
+    });
+});
+test('actual observer candidate composition runs real bundles with synthetic Electron app/process facts, not native evidence', async () => {
+  const built = await compileTestCorpus(),
+    { createHash } = require('node:crypto');
+  const prior = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    temporary((root) => {
+      const result = observerFixture(root, ({ appRoot, control, proc, imports }) => {
+        proc.versions = candidateVersions();
+        control.version = 2;
+        const hash = (b) => createHash('sha256').update(b).digest('hex');
+        for (const file of built.files) {
+          fs.writeFileSync(path.join(appRoot, file.name), file.bytes);
+          imports['./' + file.name] = loadCorpusBytes(file.bytes, proc);
+        }
+        control.corpus = {
+          hostZone: 'UTC',
+          candidateSha256: hash(built.files[0].bytes),
+          productionSha256: hash(built.files[1].bytes),
+          manifestSha256: 'a'.repeat(64),
+        };
+        fs.writeFileSync(path.join(appRoot, 'control.json'), JSON.stringify(control));
+      });
+      assert.deepEqual(result.exits, [0]);
+      const out = require('./schedule-runtime-contract.cjs').parseCandidate(
+        result.output.find((x) => x.fd === 1).raw,
+      );
+      assert.equal(out.corpus.checks, 4284);
+      assert.equal(out.productionRefusal, 'DATA_VERSION_MISMATCH');
+    });
+  } finally {
+    if (prior === undefined) delete process.env.TZ;
+    else process.env.TZ = prior;
+  }
+});
+
+test('observer refuses success after local elapsed deadline even if synchronous work delayed the timer', () =>
+  temporary((root) => {
+    let calls = 0;
+    const result = observerFixture(root, ({ clock }) => {
+      clock.now = () => (calls++ === 0 ? 0 : 20000);
+    });
+    assert.deepEqual(result.exits, [1]);
+    assert.equal(
+      result.output.some((x) => x.fd === 1),
+      false,
+    );
+  }));

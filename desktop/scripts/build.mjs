@@ -49,6 +49,7 @@ try {
   if (!policy.includes(`STYLE_SHA256 = '${styleHash}'`)) throw new Error('STYLE_CHANGED');
   const options = {
     bundle: true,
+    define: { __SCHEDULE_ELECTRON_CANDIDATE__: 'false' },
     platform: 'node',
     target: 'node24',
     format: 'cjs',

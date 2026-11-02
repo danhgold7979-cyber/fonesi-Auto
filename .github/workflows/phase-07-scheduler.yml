@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       observe_runtime:
-        description: 'Observe exact disposable packaged Electron tuple and fixed Intl cases; no product admission or device use'
+        description: 'Verify exact disposable Electron candidate civil/zone/gap corpus; no product admission or device use'
         required: false
         type: boolean
         default: false
@@ -60,8 +60,8 @@ jobs:
         if: success() && ((github.event_name == 'workflow_dispatch' && inputs.observe_runtime == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[schedule-runtime-observe]')))
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: schedule-runtime-observation
-          path: desktop/.schedule-runtime-public/schedule-runtime-observation.json
+          name: schedule-candidate-campaign
+          path: desktop/.schedule-runtime-public/schedule-candidate-campaign.json
           if-no-files-found: error
           retention-days: 14
           include-hidden-files: true

@@ -27,3 +27,6 @@ build/
 # Owned scheduler verification package/profile/captures; only validated report may be published.
 /.schedule-runtime/
 /.schedule-runtime-public/
+
+# Dedicated verification bundles; no production admission.
+/.schedule-corpus-build/

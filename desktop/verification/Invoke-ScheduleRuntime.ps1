@@ -14,11 +14,15 @@ $observerRequested=$false
 function Show-FixedProbe($Probe){
  foreach($value in @('SUCCESS','NONZERO_EXIT','TIMEOUT','CAPTURE_FAILED','LAUNCH_FAILED','ACCESS_DENIED','CLEANUP_FAILED','EMPTY_OUTPUT')){if($Probe.Status -ceq $value){Write-Output ('SCHEDULE_CHILD_'+$value)}}
  if($Probe.CleanupComplete){Write-Output 'SCHEDULE_CHILD_RETIRED'}else{Write-Output 'SCHEDULE_CHILD_RETIREMENT_UNCONFIRMED'}
- foreach($phase in @('OWNED','SOURCE','INSTALL','RUNTIME','COPY','APP','STATE','CAPTURE','CAPTURE_FILE','CAPTURE_ENCODING','CAPTURE_PROCESS','CAPTURE_FRAMING','REPORT','HOST','CONTROL','PROFILE','PATHS','OBSERVATION')){
+ foreach($phase in @('OWNED','SOURCE','INSTALL','RUNTIME','COPY','APP','STATE','CAPTURE','CAPTURE_FILE','CAPTURE_ENCODING','CAPTURE_PROCESS','CAPTURE_FRAMING','REPORT','HOST','CONTROL','PROFILE','PATHS','OBSERVATION','CORPUS')){
   foreach($prefix in @('SCHEDULE_CONTROL_STAGE_','SCHEDULE_OBSERVER_STAGE_')){
    $marker=$prefix+$phase
    if(@(($Probe.Stdout+"`n"+$Probe.Stderr) -split '\r?\n'|Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
   }
+ }
+ foreach($case in @('HCM_ALIAS','NY_GAP','NY_FOLD','LORD_HOWE','THRESHOLD','MIDNIGHT','BOUNDS_NEXT','DENSE_PREFIX','CALENDAR','FAIL_CLOSED')){
+  $marker='SCHEDULE_CORPUS_CASE_'+$case
+  if(@(($Probe.Stdout+"`n"+$Probe.Stderr) -split '\r?\n'|Where-Object {$_ -ceq $marker}).Count -gt 0){Write-Output $marker}
  }
  foreach($fact in @('TYPE_INVALID','OVER_OBSERVATION_LIMIT','LEADING_BOM','LEADING_WHITESPACE','NO_NONEMPTY_LINES','ONE_NONEMPTY_LINE','MULTIPLE_NONEMPTY_LINES','NO_CANONICAL_OBSERVATION_LINE','ONE_CANONICAL_OBSERVATION_LINE','MULTIPLE_CANONICAL_OBSERVATION_LINES','LINE_SCAN_BOUND','TRIM_ONLY_CANONICAL','FIRST_OPEN_BRACE','FIRST_CLOSE_BRACE','FIRST_WHITESPACE','FIRST_OTHER','LAST_OPEN_BRACE','LAST_CLOSE_BRACE','LAST_WHITESPACE','LAST_OTHER')){
   $marker='SCHEDULE_CAPTURE_FACT_'+$fact
@@ -73,13 +77,21 @@ try {
  $allChildrenRetired=$install.CleanupComplete
  $allRetired=$install.CleanupComplete -and -not $install.StdoutTruncated -and -not $install.StderrTruncated
  if(-not $allRetired -or $install.Status -cne 'SUCCESS' -or $install.ExitCode -ne 0 -or -not (Test-ExactlyOneLine $install.Stdout 'FOUNDATION_BUILD_VERIFIED') -or -not (Test-ExactlyOneLine $install.Stdout 'FOUNDATION_OFFICIAL_INSTALL_VERIFIED')){Show-FixedProbe $install;throw 'SCHEDULE_INSTALL_FAILED'}
+ $stage='BUILD'
+ $allChildrenRetired=$false
+ $built=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'build-schedule-corpus.mjs'))) 30000 @{}
+ $allChildrenRetired=$built.CleanupComplete
+ Require-Result $built 'SCHEDULE_CORPUS_BUILD_PASS'
+ $reports=@()
+ foreach($verb in @('stage-utc','stage-la','stage-tokyo')){
+  if($verb -cne 'stage-utc'){$owner=New-OwnedRun $base}
  Write-New (Join-Path $owner.Path 'install.json') '{"version":1,"installedThisRun":true}' 1024
  $stage='PROFILE'
  $profile=New-OwnedProfile $owner 'source'
  $allRetired=$false
  $allChildrenRetired=$false
  $stage='STAGE'
- $staged=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'schedule-runtime-control.cjs'),'stage',$owner.Path,$head,$tree)) 30000 @{}
+ $staged=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'schedule-runtime-control.cjs'),$verb,$owner.Path,$head,$tree)) 30000 @{}
  $allChildrenRetired=$staged.CleanupComplete
  $allRetired=$staged.CleanupComplete -and -not $staged.StdoutTruncated -and -not $staged.StderrTruncated
  Require-Result $staged 'SCHEDULE_RUNTIME_STAGED'
@@ -105,7 +117,7 @@ try {
  Require-Result $validated 'SCHEDULE_RUNTIME_VALIDATED'
  $stage='REPORT'
  $reportFile=Fixed-File 'report.json' 32768
- $report=[IO.File]::ReadAllText($reportFile)
+ $reports+=,[IO.File]::ReadAllText($reportFile)
  $private=@(@('install.json',1024),@('capture.json',131072),@('state.json',262144),@('report.json',32768))
  $files=@()
  foreach($pair in $private){$files+=,(Fixed-File $pair[0] $pair[1])}
@@ -118,15 +130,30 @@ try {
  Remove-VerifiedOwnedPart $owner 'fonesi-auto-foundation-source' $allRetired
  foreach($file in $files){[IO.File]::Delete($file)}
  Remove-VerifiedOwnedRun $owner $allRetired
+ }
+ # Only reports from three retired and removed owned runs enter the campaign root.
+ $owner=New-OwnedRun $base
+ Write-New (Join-Path $owner.Path 'campaign.json') ('['+($reports -join ',')+']') 98304
+ $stage='CAMPAIGN'
+ $allChildrenRetired=$false
+ $campaign=Invoke-OwnedChild $node ([string[]]@((Join-Path $PSScriptRoot 'schedule-runtime-control.cjs'),'campaign',$owner.Path)) 30000 @{}
+ $allChildrenRetired=$campaign.CleanupComplete
+ Require-Result $campaign 'SCHEDULE_CORPUS_CAMPAIGN_VALIDATED'
+ $reportFile=Fixed-File 'report.json' 32768
+ $report=[IO.File]::ReadAllText($reportFile)
+ $campaignFile=Fixed-File 'campaign.json' 98304
+ [IO.File]::Delete($reportFile)
+ [IO.File]::Delete($campaignFile)
+ Remove-VerifiedOwnedRun $owner $allChildrenRetired
  [IO.Directory]::Delete($base,$false)
  $stage='PUBLIC'
  if(Test-Path -LiteralPath $public){throw 'SCHEDULE_PUBLIC_EXISTS'}
  [void][IO.Directory]::CreateDirectory($public)
- Write-New (Join-Path $public 'schedule-runtime-observation.json') $report 32768
- Write-Output 'SCHEDULE_RUNTIME_OBSERVED_NOT_ADMITTED'
+ Write-New (Join-Path $public 'schedule-candidate-campaign.json') $report 32768
+ Write-Output 'SCHEDULE_CANDIDATE_CORPUS_NOT_ADMITTED'
 } catch {
  # Preserve any uncertain or partially staged run; never print private exception data.
- if($stage -cin @('HOST','OWNER','SOURCE','HELPER','NODE','INSTALL','PROFILE','STAGE','OBSERVER','VALIDATE','REPORT','CLEANUP','PUBLIC')){Write-Output ('SCHEDULE_FAILURE_STAGE_'+$stage)}
+ if($stage -cin @('HOST','OWNER','SOURCE','HELPER','NODE','INSTALL','PROFILE','STAGE','OBSERVER','VALIDATE','REPORT','CLEANUP','PUBLIC','BUILD','CAMPAIGN')){Write-Output ('SCHEDULE_FAILURE_STAGE_'+$stage)}
  if($observerRequested){Write-Output 'SCHEDULE_OBSERVER_REQUESTED'}else{Write-Output 'SCHEDULE_OBSERVER_NOT_REQUESTED'}
  if($allChildrenRetired){Write-Output 'SCHEDULE_OWNED_PROCESSES_RETIRED'}else{Write-Output 'SCHEDULE_OWNED_RETIREMENT_UNCONFIRMED'}
  $reason=$_.Exception.Message

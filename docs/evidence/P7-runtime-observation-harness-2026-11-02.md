@@ -251,3 +251,32 @@ through actual capture validation plus rejected boundaries; native recovery pend
 
 Final finite-prefix source aggregate: TESTS_PASS1744/1744 and
 DESKTOP_SOURCE_CHECK_PASS; independent26/26 targeted CLEAR, diff-check PASS.
+
+### Actual hosted observation PASS — not runtime admission
+
+[Run 41483625595](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41483625595),
+job125408102989, completed SUCCESS on public629c0636f426f9511a89a403ac43a3cd33760254
+(localf52d6e5f7b7613b4733fa0070fe66e52bb6211e0), exact tree
+6c692c58fc80d8cf7a145cd9231aeb893f200ee3. Windows source1744/1744 PASS at16:42:40 UTC;
+SCHEDULE_RUNTIME_OBSERVED_NOT_ADMITTED at16:42:53 UTC. Observation and upload PASS.
+This establishes recovery with finite prefix grammar, not the precise earlier emitter.
+All five preceding failed runs above remain historical evidence.
+
+Artifact13161690904 contains only `schedule-runtime-observation.json` (5044 bytes),
+retained here as `P7-runtime-observation-41483625595.json`. ZIP1812 bytes SHA256
+`8b33e5077821dee61aab93a881afacd5d111432f59c817e08f964cd0b02c5f31`
+matches GitHub's artifact digest. Canonical JSON SHA256
+`734b456c61287dc3a965d834503bbc5069e7a325baa02620b9b06fa5d9f79066`.
+Closed process facts: exit0, retirement CONFIRMED, captureComplete true. Public report
+was emitted only after owned cleanup. No private captures/profiles/binaries retained.
+Twelve source digests match authoring bytes exactly; workflow YAML digest matches
+exact LF-to-CRLF Windows Git checkout conversion, allowed by existing attributes.
+These are checkout-byte inventories, not claims all digests equal Git blob bytes.
+
+Observed win32/x64: Electron45.1.0, Node24.22.1, V8 15.6.75.19-electron.0,
+ICU78.2, CLDR48.0, tz2026e, Unicode17.0. Eight fixed Intl facts include HCM/Saigon,
+New York gap/fold and Lord Howe half-hour transition; observation schema validated.
+This is not civil-resolution/ordinal/next/gap corpus proof. Production resolver
+continues refusing Electron; candidate profile and actual bundled corpus require
+separate reviewed source entry and hosted results before any production admission.
+No new ledger or acceptance credit; no V9/bridge/persistence/dispatch proof.

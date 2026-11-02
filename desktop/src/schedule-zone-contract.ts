@@ -1,8 +1,14 @@
 import { Temporal } from '@js-temporal/polyfill';
-import { versions, env, execArgv } from 'node:process';
+import { versions, env, execArgv, platform, arch } from 'node:process';
+
 import { createHash } from 'node:crypto';
 import { previewCivilOccurrences } from './schedule-civil-contract.js';
 import type { CivilOccurrence, PreviewCode } from './schedule-civil-contract.js';
+
+declare const __SCHEDULE_ELECTRON_CANDIDATE__: boolean;
+const CANDIDATE_BUILD =
+  typeof __SCHEDULE_ELECTRON_CANDIDATE__ !== 'undefined' &&
+  __SCHEDULE_ELECTRON_CANDIDATE__ === true;
 
 export const DEFAULT_SCHEDULE_ZONE = 'Asia/Ho_Chi_Minh';
 const POLICY = 'GAP_SKIP_OVERLAP_EARLIER_V1';
@@ -15,14 +21,25 @@ const EXPECTED = Object.freeze({
   tz: '2026e',
   unicode: '17.0',
 });
+const CANDIDATE_PROFILE = 'ELECTRON_4510_ICU782_2026E_CANDIDATE_V1';
+const CANDIDATE_EXPECTED = Object.freeze({
+  node: '24.22.1',
+  v8: '15.6.75.19-electron.0',
+  icu: '78.2',
+  cldr: '48.0',
+  tz: '2026e',
+  unicode: '17.0',
+});
+const candidate = CANDIDATE_BUILD && versions.electron !== undefined;
+const EXPECTED_RUNTIME = candidate ? CANDIDATE_EXPECTED : EXPECTED;
 const PROFILE_SHA = createHash('sha256')
   .update(
     JSON.stringify({
       version: 1,
-      profile: PROFILE,
+      profile: candidate ? CANDIDATE_PROFILE : PROFILE,
       policy: POLICY,
-      runtime: EXPECTED,
-      electron: null,
+      runtime: EXPECTED_RUNTIME,
+      electron: candidate ? '45.1.0' : null,
       temporal: '0.5.1',
       jsbi: '4.3.2',
       alias: [DEFAULT_SCHEDULE_ZONE, 'Asia/Saigon'],
@@ -50,9 +67,9 @@ export type ZoneCode =
 export type TimezoneRuntimeV1 = Readonly<{
   version: 1;
   source: 'TEMPORAL_POLYFILL_INTL';
-  runtimeKind: 'NODE';
+  runtimeKind: 'NODE' | 'ELECTRON_CANDIDATE';
   nodeVersion: string;
-  electronVersion: null;
+  electronVersion: string | null;
   v8Version: string;
   icuVersion: string;
   cldrVersion: string;
@@ -142,22 +159,24 @@ function runtimeFields() {
     execArgv.some((a) => a === '--icu-data-dir' || a.startsWith('--icu-data-dir='))
   )
     refuse('RUNTIME_UNAVAILABLE');
-  for (const key of Object.keys(EXPECTED))
+  for (const key of Object.keys(EXPECTED_RUNTIME))
     if (typeof versions[key] !== 'string' || versions[key]?.length === 0)
       refuse('RUNTIME_UNAVAILABLE');
   if (typeof Format !== 'function' || typeof supported !== 'function')
     refuse('RUNTIME_UNAVAILABLE');
   if (
-    versions.electron !== undefined ||
-    Object.entries(EXPECTED).some(([k, v]) => versions[k] !== v)
+    (candidate
+      ? versions.electron !== '45.1.0' || platform !== 'win32' || arch !== 'x64'
+      : versions.electron !== undefined) ||
+    Object.entries(EXPECTED_RUNTIME).some(([k, v]) => versions[k] !== v)
   )
     refuse('DATA_VERSION_MISMATCH');
   return Object.freeze({
     version: 1,
     source: 'TEMPORAL_POLYFILL_INTL',
-    runtimeKind: 'NODE',
+    runtimeKind: candidate ? 'ELECTRON_CANDIDATE' : 'NODE',
     nodeVersion: versions.node,
-    electronVersion: null,
+    electronVersion: candidate ? (versions.electron as string) : null,
     v8Version: versions.v8,
     icuVersion: versions.icu as string,
     cldrVersion: versions.cldr as string,
@@ -165,7 +184,7 @@ function runtimeFields() {
     unicodeVersion: versions.unicode as string,
     polyfillVersion: '0.5.1',
     jsbiVersion: '4.3.2',
-    profileId: PROFILE,
+    profileId: candidate ? CANDIDATE_PROFILE : PROFILE,
     profileSha256: PROFILE_SHA,
     policy: POLICY,
   } as const);

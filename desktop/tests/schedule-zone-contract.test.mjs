@@ -251,7 +251,7 @@ test('all override forms and unobserved Electron tuple refuse without host-defau
     const changed = await load((s) => s.replace(`env.${variable} !== undefined`, 'true'));
     assert.equal(changed.captureTimezoneRuntime().code, 'RUNTIME_UNAVAILABLE');
   }
-  const electron = await load((s) => s.replace('versions.electron !== undefined', 'true'));
+  const electron = await load((s) => s.replaceAll('versions.electron !== undefined', 'true'));
   assert.equal(electron.captureTimezoneRuntime().code, 'DATA_VERSION_MISMATCH');
 });
 test('4096 row bound composes with civil truncation and exact within-window next', () => {
