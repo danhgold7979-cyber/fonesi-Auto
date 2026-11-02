@@ -102,3 +102,36 @@ Independent actual delta CLEAR; targeted19/19 PASS, quality434files PASS and
 diff-check PASS. Production observer/contract/controller/launcher are byte-unchanged
 from the1736 aggregate. Trigger suite adds one case; this is targeted continuation,
 not a claim of a new1737 full aggregate or successful Windows observation.
+
+## First actual Windows source gate — terminal failure, observation not launched
+
+Published branch phase-07 at9514b308e6b25f8202708c75e5d3d466a99c546d,
+exact tree28a737ed0520378a7c121f9828af634911e1b082 equals localdba237c.
+Preserved mapped publication chain from existing public1bf3086/treea4e4f867:
+localf283bec→public4c706df7;05a8156→4abb5109;0cdf8cf→d5719247;
+985e012→f7bbd725;dba237c→9514b308. No main merge or history rewrite.
+Publication guard initially refused twice; explicit user authorization2026-11-02
+15:32:23 UTC then permitted this reviewed batch/canonical branch and repeatable
+hosted Electron/timezone verification. No credential changes or alternate bypass.
+
+Actual run [41472947038](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41472947038),
+job125371012244, Windows2022 image20261025.346.1, Node24.22.1/npm11.19.1,
+completed FAILURE at15:37:44 UTC. Full source gate batch22:89/93 PASS, failures
+82/89/91/92; remaining source batches did not run. Dedicated observation and
+artifact upload both SKIPPED. No Electron observation child was launched; no tuple
+or success report exists. Native execution cannot be inferred from setup success.
+
+Exact ordinal mapping from unchanged fixed batch inventory:
+82 runtime-copy positive fixture;89 actual observer positive fixture;
+91 stage/validate positive composition;92 validation-tamper fixture setup.
+Local exact batch22 PASS93/93. All affected cases enter strict canonical-path
+checks using raw os.tmpdir/mkdtemp paths. Windows short/case TEMP alias is a
+plausible hypothesis, not proven by ordinal-only first-run diagnostics.
+
+Repair canonicalizes only synthetic fixture temp base and created root through
+fs.realpathSync.native and explicitly tests that production still rejects an alias
+root. Product guard/observer/controller/wrapper unchanged. Workflow now prints a
+fixed canonical/alias witness without path, and failure-only named synthetic
+suite diagnostics with30s/64KiB bounds, fixed code allowlist/case ordinals, no raw
+stdout/stderr, and unconditional failed exit. No full-source bypass or relaxed
+runtime admission. Targeted20/20 PASS; actual repeated Windows result pending.

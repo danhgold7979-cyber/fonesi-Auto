@@ -31,7 +31,10 @@ const receipt = () => ({
   stderr: '',
 });
 function temporary(run) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fonesi-schedule-synthetic-'));
+  const base = fs.realpathSync.native(os.tmpdir());
+  const root = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(base, 'fonesi-schedule-synthetic-')),
+  );
   try {
     run(root);
   } finally {
@@ -552,3 +555,13 @@ test('only exact reviewed push paths and identical explicit opt-in predicates pe
   ])
     assert.equal(permit(event, input, message, branch, changed), want);
 });
+
+test('synthetic fixture inputs use canonical temporary paths without relaxing production alias refusal', () =>
+  temporary((root) => {
+    assert.equal(fs.realpathSync.native(root), root);
+    const source = path.join(root, 'source');
+    fs.mkdirSync(source);
+    const alias = path.join(root, 'alias');
+    fs.symlinkSync(source, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    assert.throws(() => boundedInventory(alias));
+  }));
