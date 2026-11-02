@@ -1,5 +1,7 @@
 # PHASE-07 — Scheduler and queue
 
+**Narrow software-entry exception — 2026-11-02 12:13 UTC:** [Reviewed civil recurrence + N-slot contract](P7-CIVIL-RECURRENCE-SOURCE-ENTRY.md) admits only the authority-free P7-01/03 pure model under the software-first/parallel amendment. Sole local `phase-07` starts at local6cfe03f/public1bf3086c/treea4e4f867 development source, not accepted main. No timezone/UTC/DB/queue/actor/UI or device activation. Full phase and task acceptance remain open; historical draft requirements below are preserved.
+
 **Revision:** 0.2-draft · **Date:** 2026-10-30
 **Plan status:** DRAFT — NOT AUTHORIZED FOR IMPLEMENTATION
 **Task status:** All tasks NOT_STARTED; no scheduler/runtime/Windows/device tests executed by this revision.

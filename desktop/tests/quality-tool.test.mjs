@@ -163,7 +163,7 @@ test('production launch CJS is an active linted corpus, not an ignored directory
   }
 });
 
-test('measured 536-entry corpus permits one owned fixture pair but refuses entry 539', () => {
+test('measured 538-entry corpus permits one owned fixture pair but refuses entry 541', () => {
   const parent = fileURLToPath(new URL('.', import.meta.url));
   const directory = mkdtempSync(`${parent}quality-bound-`);
   const first = `${directory}/first.ts`,

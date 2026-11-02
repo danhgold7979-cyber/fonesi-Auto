@@ -118,6 +118,7 @@ export const TEST_FILES = Object.freeze([
   'tests/runtime-version-contract.test.mjs',
   'tests/runtime-version-integration.test.mjs',
   'tests/runtime-version-service.test.mjs',
+  'tests/schedule-civil-contract.test.mjs',
   'tests/secret-contract.test.mjs',
   'tests/secret-entry.test.mjs',
   'tests/secret-files.test.mjs',
