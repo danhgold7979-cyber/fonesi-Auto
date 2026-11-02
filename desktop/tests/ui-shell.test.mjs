@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as model from '../src/ui/ui-model.ts';
+import * as tileZoom from '../src/ui/tile-zoom.ts';
 const code = transformSync(
   readFileSync(new URL('../src/ui/ui-shell.tsx', import.meta.url), 'utf8'),
   { loader: 'tsx', format: 'cjs', jsx: 'automatic' },
@@ -47,6 +48,11 @@ function mount(extra = {}) {
     slots = new Map(),
     pending = [];
   const document = {
+    focused: true,
+    hidden: false,
+    hasFocus() {
+      return this.focused;
+    },
     activeElement: null,
     activeDialog: null,
     documentElement: { dataset: {} },
@@ -56,6 +62,9 @@ function mount(extra = {}) {
     },
   };
   class Element {
+    closest() {
+      return null;
+    }
     focus() {
       document.activeElement = this;
     }
@@ -131,10 +140,24 @@ function mount(extra = {}) {
       if (name === 'react') return hooks;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (name === './ui-model.js') return model;
+      if (name === './tile-zoom.js') return tileZoom;
       if (name === './ui-shared.tsx') return shared.exports;
       throw Error('UNKNOWN_WORK_MODULE');
     },
   });
+  const observers = [];
+  class ResizeObserverMock {
+    constructor(callback) {
+      this.callback = callback;
+      observers.push(this);
+    }
+    observe(target) {
+      this.target = target;
+    }
+    disconnect() {
+      this.disconnected = true;
+    }
+  }
   const module = { exports: {} };
   runInNewContext(code, {
     module,
@@ -143,6 +166,7 @@ function mount(extra = {}) {
       if (name === 'react') return hooks;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
       if (name === './ui-model.js') return model;
+      if (name === './tile-zoom.js') return tileZoom;
       if (name === './ui-shared.tsx') return shared.exports;
       if (name === './primary-pages.tsx' || name === './work-pages.tsx')
         return {
@@ -162,6 +186,7 @@ function mount(extra = {}) {
     },
     window,
     document,
+    ResizeObserver: ResizeObserverMock,
     Node: Element,
     HTMLElement: Element,
     HTMLInputElement: class extends Element {},
@@ -186,13 +211,35 @@ function mount(extra = {}) {
     cursor = 0;
     return component(properties);
   };
-  const render = () => renderComponent(module.exports.UiShell, props);
+  const wheelListeners = new Set();
+  const surface = new Element();
+  surface.clientWidth = 510;
+  surface.addEventListener = (name, listener, options) => {
+    assert.equal(name, 'wheel');
+    assert.equal(options.passive, false);
+    wheelListeners.add(listener);
+  };
+  surface.removeEventListener = (name, listener) => {
+    assert.equal(name, 'wheel');
+    wheelListeners.delete(listener);
+  };
+  const render = () => {
+    const tree = renderComponent(module.exports.UiShell, props);
+    walk(tree, (n) => n.props?.id === 'wall-surface')[0].props.ref.current = surface;
+    return tree;
+  };
   const find = (id, tree = render()) => walk(tree, (n) => n.props?.id === id)[0];
   return {
     render,
     find,
     props,
     dimensions,
+    surface,
+    wheelListeners,
+    observers,
+    wheel(event) {
+      for (const listener of [...wheelListeners]) listener(event);
+    },
     document,
     Element,
     window,
@@ -320,7 +367,7 @@ test('device dropdown filters synthetic rows, closes with Escape, and restores p
   assert.equal(m.document.activeElement, el);
   m.dispose();
 });
-test('dock drag and zoom commit once on completion; drafts, cancellation and viewport changes never write', () => {
+test('dock commits once; local zoom, cancellation and viewport changes never persist', () => {
   const m = mount();
   const target = { setPointerCapture() {}, releasePointerCapture() {} };
   const drag = m.find('wall-resizer').props;
@@ -335,7 +382,8 @@ test('dock drag and zoom commit once on completion; drafts, cancellation and vie
   range.onChange({ currentTarget: { value: '210' } });
   assert.equal(m.dimensions.length, 1);
   range.onPointerUp({ currentTarget: { value: '210' } });
-  assert.deepEqual(m.dimensions[1], [null, 210]);
+  assert.equal(m.dimensions.length, 1);
+  assert.equal(m.find('wall-size').props.value, 210);
   const before = m.dimensions.length;
   m.window.innerWidth = 1000;
   m.emit('resize', {});
@@ -360,22 +408,106 @@ test('unavailable domain actions open truthful information, while unready settin
   assert.match(JSON.stringify(modal), /UNAVAILABLE/);
 });
 
-test('zoom preserves requested responsive default or user width rather than derived viewport clamp', () => {
-  for (const requestedDockWidth of [null, 800]) {
-    const m = mount({ requestedDockWidth, dockWidth: 490 });
-    m.find('wall-size').props.onPointerUp({ currentTarget: { value: '180' } });
-    assert.deepEqual(m.dimensions, [[requestedDockWidth, 180]]);
-    m.find('wall-surface').props.onWheel({
-      ctrlKey: false,
-      deltaY: 1,
-      preventDefault() {
-        throw Error('NORMAL_WHEEL_CAPTURED');
-      },
-    });
-    assert.equal(m.dimensions.length, 1);
-    m.find('wall-surface').props.onWheel({ ctrlKey: true, deltaY: -1, preventDefault() {} });
-    assert.deepEqual(m.dimensions[1], [requestedDockWidth, 190]);
-  }
+test('native Ctrl wheel accumulates locally without settings IPC; ordinary scroll untouched', () => {
+  const m = mount({ pending: true, reconcile: true });
+  m.render();
+  m.effects();
+  assert.equal(m.find('wall-size').props.disabled, false);
+  assert.equal(m.wheelListeners.size, 1);
+  assert.equal(m.find('wall-surface').props.onWheel, undefined);
+  let prevented = 0,
+    stopped = 0;
+  const event = {
+    ctrlKey: true,
+    deltaY: -1,
+    target: m.surface,
+    preventDefault() {
+      prevented++;
+    },
+    stopPropagation() {
+      stopped++;
+    },
+  };
+  m.wheel({ ...event, ctrlKey: false });
+  assert.equal(prevented, 0);
+  for (let i = 0; i < 5; i++) m.wheel(event);
+  assert.equal(m.find('wall-size').props.value, 210);
+  m.wheel({ ...event, deltaY: 0 });
+  assert.equal(m.find('wall-size').props.value, 210);
+  assert.equal(prevented, 6);
+  assert.equal(stopped, 6);
+  assert.deepEqual(m.dimensions, []);
+  m.dispose();
+  assert.equal(m.wheelListeners.size, 0);
+  m.wheel(event);
+  assert.equal(prevented, 6);
+});
+
+test('local zoom focus, overlay, editable, and viewport fences preserve unavailable tiles', () => {
+  const m = mount({ snapshot: fixture });
+  m.find('workspace').props.children.props.onFocusDevice('test-1');
+  m.render();
+  m.effects();
+  const event = {
+    ctrlKey: true,
+    deltaY: -1,
+    target: m.surface,
+    preventDefault() {},
+    stopPropagation() {},
+  };
+  m.document.focused = false;
+  m.wheel(event);
+  m.document.focused = true;
+  m.document.hidden = true;
+  m.wheel(event);
+  m.document.hidden = false;
+  m.document.activeDialog = {};
+  m.wheel(event);
+  m.document.activeDialog = null;
+  const editable = new m.Element();
+  editable.closest = () => ({});
+  m.wheel({ ...event, target: editable });
+  assert.equal(m.find('wall-size').props.value, 150);
+  // Owned phone button/descendants are eligible, not generic excluded controls.
+  m.wheel({ ...event, target: new m.Element() });
+  assert.equal(m.find('wall-size').props.value, 162);
+  m.surface.clientWidth = 120;
+  m.emit('resize', {});
+  assert.equal(m.find('wall-size').props.value, 96);
+  m.find('wall-size').props.onChange({ currentTarget: { value: '520' } });
+  assert.equal(m.find('wall-size').props.value, 96);
+  m.props.tileWidth = 400;
+  m.render();
+  m.effects();
+  assert.equal(m.find('wall-size').props.value, 96);
+  const shell = m.find('shell');
+  assert.equal(shell.props.style['--screenW'], '150px');
+  assert.equal(shell.props.style['--tileW'], '96px');
+  assert.equal(shell.props.style['--tileH'], '208px');
+  assert.match(JSON.stringify(m.find('screens-grid')), /UNAVAILABLE · không có stream/);
+  assert.equal(m.all((n) => n.props?.className === 'tile-footprint').length, 1);
+  assert.deepEqual(m.dimensions, []);
+});
+
+test('local width survives unrelated preferences/theme, but stored baseline resets it and dock saves only stored width', () => {
+  const m = mount();
+  m.render();
+  m.effects();
+  m.find('wall-size').props.onChange({ currentTarget: { value: '210' } });
+  m.props.pending = true;
+  m.props.theme = 'DARK';
+  m.render();
+  m.effects();
+  m.props.pending = false;
+  m.render();
+  m.effects();
+  assert.equal(m.find('wall-size').props.value, 210);
+  m.find('wall-reset').props.onClick();
+  assert.deepEqual(m.dimensions, [[null, 150]]);
+  m.props.tileWidth = 180;
+  m.render();
+  m.effects();
+  assert.equal(m.find('wall-size').props.value, 180);
 });
 
 test('workflow catalogue selection enters setup with shared context and rejects unknown identifiers', () => {
@@ -563,4 +695,31 @@ test('Help describes bounded verified retained-launch recovery without obsolete 
   assert.match(text, /khóa không rõ nguồn gốc bị từ chối/);
   assert.match(text, /Không tự xóa khóa hay đặt lại khóa mã hóa/);
   assert.doesNotMatch(text, /chưa có lệnh|Handoff P1-10/);
+});
+
+test('observer reclamps actual dock footprint and single/all grids use the fixed scaled canvas', () => {
+  const m = mount();
+  m.render();
+  m.effects();
+  assert.equal(m.observers.length, 1);
+  const observer = m.observers[0];
+  assert.equal(observer.target, m.surface);
+  m.find('wall-size').props.onChange({ currentTarget: { value: '400' } });
+  m.surface.clientWidth = 200;
+  observer.callback();
+  assert.equal(m.find('wall-size').props.value, 176);
+  m.surface.clientWidth = 80;
+  observer.callback();
+  assert.equal(m.find('wall-size').props.value, 70);
+  m.dispose();
+  assert.equal(observer.disconnected, true);
+  m.surface.clientWidth = 600;
+  observer.callback();
+  assert.equal(m.find('wall-size').props.value, 70);
+  assert.deepEqual(m.dimensions, []);
+  const css = readFileSync(new URL('../assets/v9.css', import.meta.url), 'utf8');
+  assert.match(css, /\.screens-grid\.single\{grid-template-columns:var\(--tileW,150px\)\}/);
+  assert.match(css, /\.tile-footprint\{width:var\(--tileW,150px\);height:var\(--tileH,325px\)/);
+  assert.match(css, /--screenW:150px;width:150px;height:325px;padding:0;border:0/);
+  assert.match(css, /transform:scale\(var\(--tileScale,1\)\);transform-origin:top left/);
 });

@@ -1234,6 +1234,11 @@
      "CalendarPage": "value",
      "WorkflowsPage": "value",
      "WORKFLOW_LABELS": "value"
+    },
+    "./tile-zoom.js": {
+     "clampTileZoom": "value",
+     "wheelTileZoom": "value",
+     "tileZoomLimit": "value"
     }
    }
   },
@@ -2559,6 +2564,10 @@
      "InputInteractionCode": "type"
     }
    }
+  },
+  "ui/tile-zoom.ts": {
+   "role": "contract",
+   "imports": {}
   }
  }
 }

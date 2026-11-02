@@ -18,6 +18,7 @@ export const sources = Object.freeze([
   'src/ui/icon-data.ts',
   'src/ui/primary-pages.tsx',
   'src/ui/social-data.ts',
+  'src/ui/tile-zoom.ts',
   'src/ui/ui-model.ts',
   'src/ui/ui-shared.tsx',
   'src/ui/ui-shell.tsx',

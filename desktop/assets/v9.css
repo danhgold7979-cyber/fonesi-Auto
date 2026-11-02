@@ -250,3 +250,10 @@ hr.wall-resizer{margin:0;border:0}
 :root[data-theme="dark"] .calendar-grid{background:#172337}
 :root[data-theme="dark"] .calendar-grid .lane-track{background-color:#172337;background-image:linear-gradient(to right,#2b3a50 1px,transparent 1px)}
 :root[data-theme="dark"] .calendar-grid .calendar-label{background:#172337;color:#e4ebf6;border-color:#2b3a50}
+
+/* Display-only whole-tile zoom: layout footprint matches the transformed fixed canvas. */
+.screens-grid{grid-template-columns:repeat(auto-fill,var(--tileW,150px))}
+.tile-footprint{width:var(--tileW,150px);height:var(--tileH,325px);position:relative;min-width:0}
+.tile-footprint>.wall-screen{--screenW:150px;width:150px;height:325px;padding:0;border:0;position:absolute;left:0;top:0;transform:scale(var(--tileScale,1));transform-origin:top left}
+.tile-footprint>.wall-screen>.android-view{height:100%;width:100%}
+.screens-grid.single{grid-template-columns:var(--tileW,150px)}

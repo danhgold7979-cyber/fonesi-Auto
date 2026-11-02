@@ -18,4 +18,4 @@ export type LifecyclePhase = 'IDLE' | 'OPEN' | 'CLOSING' | 'DISPOSED';
 
 export const ASSET_SHA256 = '8a47911fc621e9aa4df7ea9480eb414da4072fa9ee49a64266e4386d56d5037b';
 
-export const STYLE_SHA256 = '1ab2d2d9d1e035dc2353df0c9db12fcce6943f1d59aaa1ea5d9a246fe474822f';
+export const STYLE_SHA256 = '3d8938864c15aba78e331dba70f6d4747fce3111812a453a3297014ee0a0b709';

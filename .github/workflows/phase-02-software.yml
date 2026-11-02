@@ -1,4 +1,4 @@
-name: Phase 02 software and pinned development ADB boundaries
+name: Phase 02–03 software and gated development boundaries
 on:
   workflow_dispatch:
     inputs:
@@ -58,7 +58,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [phase-02]
+    branches: [phase-02, phase-03]
     paths:
       - '.gitattributes'
       - 'desktop/**'
@@ -128,13 +128,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Explicit unavailable runtime and deferred hardware boundary
         run: |
-          Write-Output 'PHASE02_SOFTWARE_ONLY'
+          if ($env:GITHUB_REF -eq 'refs/heads/phase-03') {
+            Write-Output 'PHASE03_SOFTWARE_ONLY'
+          } else {
+            Write-Output 'PHASE02_SOFTWARE_ONLY'
+          }
           Write-Output 'PRODUCTION_ADB_BINARY_UNAVAILABLE'
           Write-Output 'SOURCE_JOB_NO_ADB_EXECUTION'
           Write-Output 'DEVICE_HARDWARE_NOT_RUN'
           Write-Output 'P106_CROSS_USER_UNMET_NOT_RERUN'
   owned-adb-version-development:
-    if: github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)
+    if: github.ref == 'refs/heads/phase-02' && github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)
     needs: windows-software-only
     runs-on: windows-2022
     timeout-minutes: 10

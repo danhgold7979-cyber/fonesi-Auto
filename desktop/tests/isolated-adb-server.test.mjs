@@ -165,7 +165,7 @@ function assertManualGates(raw) {
   }
   assert.ok(
     workflow.includes(
-      "if: github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
+      "if: github.ref == 'refs/heads/phase-02' && github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
     ),
   );
   for (const [flag, name] of [
@@ -213,7 +213,7 @@ test('ordinary source pushes cannot invoke development binaries; version and ser
   assert.throws(() =>
     assertManualGates(
       workflow.replace(
-        "if: github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
+        "if: github.ref == 'refs/heads/phase-02' && github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
         'if: (inputs.run_adb_version || inputs.run_adb_server)',
       ),
     ),

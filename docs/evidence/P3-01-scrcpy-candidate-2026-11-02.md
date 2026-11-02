@@ -122,3 +122,62 @@ Complete the component/notice mapping and exact runtime closure first.
 Android 9 device**. A new release and host-side decoder changes do not establish
 that the device encoding failure is cured. No 5.0.1 hardware, stream, performance,
 resource or video-only acceptance is claimed.
+
+## Server-only payload follow-up — 2026-11-02 02:25 UTC
+
+A narrower **direct server consumer is under review**, not implemented/admitted by
+this evidence. If the stock Windows client and its DLLs are not admitted, their
+remaining dependency mapping is not a prerequisite for that separate server-only
+choice. The historical stock-client analysis above remains unchanged. Exact Windows
+consumer proof is absent; device push/execution, stream custody and cleanup still
+require their own reviewed boundary. No payload has been run or pushed.
+
+The already hash-matched `scrcpy-server` member was opened as a nested ZIP **in
+memory only**. Its exact 13-member inventory is retained in
+`/tmp/auto-p301-research/server-members.json`:
+
+- `META-INF/com/android/build/gradle/app-metadata.properties` (56 bytes), recording
+  Android Gradle plugin **9.1.0**;
+- `META-INF/version-control-info.textproto` (120 bytes), recording revision
+  `dc8a55a24c27ae78ae202b5a3288da681d0f141a`;
+- `classes.dex` (2,302,128 bytes), SHA-256
+  `a7e811763dc6352cfcc2e9d6f9e20724219b68af8e8a7a11271d8e00fe72ff8d`;
+- eight builtins resources under `kotlin/`: `annotation/annotation`,
+  `collections/collections`, `concurrent/atomics/atomics`, `coroutines/coroutines`,
+  `internal/internal`, `kotlin`, `ranges/ranges`, `reflect/reflect`, each with
+  `.kotlin_builtins` suffix;
+- `AndroidManifest.xml` (1,184 bytes) and `resources.arsc` (40 bytes).
+
+The inventory therefore totals 2 metadata files + 1 DEX + 8 builtins + 2 Android
+resources = **13**. The coordinator's [exact revision comparison](https://github.com/Genymobile/scrcpy/compare/dc8a55a24c27ae78ae202b5a3288da681d0f141a...a60891aea193d92e7e5c3942700eca63f9d19a5f)
+found the release tag one later documentation/install-links-only commit, with no
+server/build-source changes. Embedded revision metadata is corroborating evidence,
+not a source-reproducible binary attestation.
+
+Static DEX parsing, without loading its code, counted **1,051 `kotlin` classes,
+153 `com/genymobile` classes, 32 JetBrains/IntelliJ annotation classes and 10
+`android` stub/AIDL classes**. `kotlin.KotlinVersionCurrentValue.get()` at code-item
+`0x5b1ec` constructs `KotlinVersion(2,2,10)`: code units
+`0022 0233 2112 0213 000a 4070 09eb 2110 0011` load constant 2 into v1,
+10 into v2 and call the constructor with v0/v1/v1/v2. Thus the embedded runtime
+identifies itself as **Kotlin 2.2.10**, rather than merely inferring it from AGP.
+
+Primary dependency corroboration (POMs read as bounded text, no JAR download):
+
+- [AGP 9.1.0 POM](https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/9.1.0/gradle-9.1.0.pom)
+  declares Kotlin Gradle plugin and Kotlin stdlib 2.2.10. Built-in Kotlin is
+  [enabled by default since AGP 9.0](https://developer.android.com/build/migrate-to-built-in-kotlin).
+- [Kotlin stdlib 2.2.10 POM](https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.2.10/kotlin-stdlib-2.2.10.pom)
+  declares Apache-2.0 and compile dependency `org.jetbrains:annotations:13.0`.
+- [Annotations 13.0 POM](https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0.pom)
+  declares Apache-2.0; the actual annotation classes corroborate this dependency,
+  but their exact version is not independently encoded by the class count.
+- [Kotlin 2.2.10 license](https://github.com/JetBrains/kotlin/blob/v2.2.10/license/LICENSE.txt)
+  is Apache-2.0. The nearby `NOTICE.txt` expressly concerns the **compiler
+  distribution**; it is not automatically adopted as the stdlib notice inventory.
+
+These facts establish a concrete Kotlin/dependency attribution, not a byte-for-byte
+rebuild or exhaustive applicable-notice determination. No claim that scrcpy's own
+Apache license alone covers every embedded component is made. The remaining
+server-only mapping is bounded to its actual embedded components and applicable
+notices, separately from the unused stock client/toolchain dependencies.

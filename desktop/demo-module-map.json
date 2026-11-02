@@ -148,6 +148,11 @@
           "CalendarPage": "value",
           "WorkflowsPage": "value",
           "WORKFLOW_LABELS": "value"
+        },
+        "./tile-zoom.js": {
+          "clampTileZoom": "value",
+          "wheelTileZoom": "value",
+          "tileZoomLimit": "value"
         }
       }
     },
@@ -192,6 +197,10 @@
           "createHash": "value"
         }
       }
+    },
+    "src/ui/tile-zoom.ts": {
+      "role": "contract",
+      "imports": {}
     }
   }
 }

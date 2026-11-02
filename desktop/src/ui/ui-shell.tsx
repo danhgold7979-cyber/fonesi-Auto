@@ -9,6 +9,7 @@ import {
   type UiSnapshot,
   type UiSelection,
 } from './ui-model.js';
+import { clampTileZoom, wheelTileZoom, tileZoomLimit } from './tile-zoom.js';
 import { Icon, SocialIcon, UnavailableButton, EmptyPanel, UiModal } from './ui-shared.tsx';
 import { OverviewPage, AccountsPage, TrackingPage } from './primary-pages.tsx';
 import { SetupPage, CalendarPage, WorkflowsPage, WORKFLOW_LABELS } from './work-pages.tsx';
@@ -172,7 +173,10 @@ export function UiShell(p: ShellProps) {
   const dragging = useRef(false),
     currentDock = useRef(p.dockWidth);
   const blocked = p.pending || !p.ready || p.reconcile;
-  const tile = draftTile ?? p.tileWidth,
+  const surfaceRef = useRef<HTMLElement>(null);
+  const tileRef = useRef(clampTileZoom(p.tileWidth, p.dockWidth));
+  const localBlocked = !p.ready || modal !== null || picker || performance;
+  const tile = draftTile ?? clampTileZoom(p.tileWidth, p.dockWidth),
     dock = draftDock ?? p.dockWidth;
   useEffect(() => {
     document.documentElement.dataset.theme = p.theme === 'DARK' ? 'dark' : 'light';
@@ -212,7 +216,6 @@ export function UiShell(p: ShellProps) {
   }, []);
   useEffect(() => {
     if (!p.pending) {
-      setDraftTile(null);
       if (!dragging.current) setDraftDock(null);
     }
   }, [p.pending]);
@@ -266,12 +269,61 @@ export function UiShell(p: ShellProps) {
     ) : (
       <WorkflowsPage {...pageProps} />
     );
+  const viewport = () => surfaceRef.current?.clientWidth || dock;
   const zoom = (value: number) => {
-    if (blocked) return;
-    const next = Math.max(70, Math.min(520, Math.round(value)));
+    if (localBlocked) return;
+    const next = clampTileZoom(value, viewport());
+    tileRef.current = next;
     setDraftTile(next);
-    p.onDimensions(p.requestedDockWidth ?? null, next);
   };
+  useEffect(() => {
+    const next = clampTileZoom(p.tileWidth, surfaceRef.current?.clientWidth || 0);
+    tileRef.current = next;
+    setDraftTile(next);
+  }, [p.tileWidth]);
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    let live = true;
+    const resize = () => {
+      if (!live) return;
+      const next = clampTileZoom(tileRef.current, surface.clientWidth || dock);
+      tileRef.current = next;
+      setDraftTile(next);
+    };
+    const wheel = (event: WheelEvent) => {
+      if (
+        !live ||
+        localBlocked ||
+        !event.ctrlKey ||
+        !document.hasFocus() ||
+        document.hidden ||
+        document.querySelector('[role="dialog"]') !== null
+      )
+        return;
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest('input,textarea,select,[contenteditable="true"]')
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      const next = wheelTileZoom(tileRef.current, event.deltaY, surface.clientWidth || dock);
+      tileRef.current = next;
+      setDraftTile(next);
+    };
+    surface.addEventListener('wheel', wheel, { passive: false });
+    window.addEventListener('resize', resize);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
+    observer?.observe(surface);
+    resize();
+    return () => {
+      live = false;
+      surface.removeEventListener('wheel', wheel);
+      window.removeEventListener('resize', resize);
+      observer?.disconnect();
+    };
+  }, [localBlocked, dock]);
   const devices = snapshot.devices.filter((d) =>
     `${d.id} ${d.name} ${d.serial}`
       .toLocaleLowerCase('vi-VN')
@@ -283,7 +335,15 @@ export function UiShell(p: ShellProps) {
         className="shell"
         id="shell"
         inert={modal !== null}
-        style={{ '--wallW': `${dock}px`, '--screenW': `${tile}px` } as CSSProperties}
+        style={
+          {
+            '--wallW': `${dock}px`,
+            '--screenW': '150px',
+            '--tileW': `${tile}px`,
+            '--tileH': `${(tile * 19.5) / 9}px`,
+            '--tileScale': tile / 150,
+          } as CSSProperties
+        }
       >
         <aside className="side" aria-label="Điều hướng">
           <div className="brand">
@@ -378,7 +438,7 @@ export function UiShell(p: ShellProps) {
                 e.preventDefault();
                 p.onDimensions(
                   Math.max(300, Math.min(16384, dock + (e.key === 'ArrowLeft' ? 10 : -10))),
-                  tile,
+                  p.tileWidth,
                 );
               }
             }}
@@ -401,7 +461,7 @@ export function UiShell(p: ShellProps) {
               if (!dragging.current) return;
               dragging.current = false;
               e.currentTarget.releasePointerCapture(e.pointerId);
-              p.onDimensions(currentDock.current, tile);
+              p.onDimensions(currentDock.current, p.tileWidth);
             }}
             onPointerCancel={() => {
               dragging.current = false;
@@ -450,7 +510,7 @@ export function UiShell(p: ShellProps) {
                 title="Khôi phục độ rộng panel"
                 type="button"
                 disabled={blocked}
-                onClick={() => p.onDimensions(null, tile)}
+                onClick={() => p.onDimensions(null, p.tileWidth)}
               >
                 <Icon name="panel-right" />
               </button>
@@ -564,8 +624,8 @@ export function UiShell(p: ShellProps) {
                 id="wall-fit"
                 type="button"
                 title="Khớp kích thước với panel"
-                disabled={blocked}
-                onClick={() => zoom(Math.max(70, Math.min(520, dock - 30)))}
+                disabled={localBlocked}
+                onClick={() => zoom(tileZoomLimit(viewport()))}
               >
                 <Icon name="maximize" />
               </button>
@@ -578,8 +638,8 @@ export function UiShell(p: ShellProps) {
                 className="tinybtn"
                 type="button"
                 title="Thu nhỏ"
-                disabled={blocked}
-                onClick={() => zoom(tile - 10)}
+                disabled={localBlocked}
+                onClick={() => zoom(tileRef.current - 10)}
               >
                 <Icon name="minus" />
               </button>
@@ -587,12 +647,12 @@ export function UiShell(p: ShellProps) {
                 id="wall-size"
                 type="range"
                 min="70"
-                max="520"
+                max={tileZoomLimit(viewport())}
                 step="1"
                 value={tile}
                 aria-label="Kích thước toàn bộ màn hình điện thoại"
-                disabled={blocked}
-                onChange={(e) => setDraftTile(Number(e.currentTarget.value))}
+                disabled={localBlocked}
+                onChange={(e) => zoom(Number(e.currentTarget.value))}
                 onPointerUp={(e) => zoom(Number(e.currentTarget.value))}
                 onKeyUp={(e) => {
                   if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key))
@@ -603,8 +663,8 @@ export function UiShell(p: ShellProps) {
                 className="tinybtn"
                 type="button"
                 title="Phóng to"
-                disabled={blocked}
-                onClick={() => zoom(tile + 10)}
+                disabled={localBlocked}
+                onClick={() => zoom(tileRef.current + 10)}
               >
                 <Icon name="plus" />
               </button>
@@ -615,34 +675,30 @@ export function UiShell(p: ShellProps) {
             className="wall-surface"
             id="wall-surface"
             aria-label="Vùng giám sát; Ctrl và con lăn đổi cỡ ô, điều khiển Android chưa khả dụng"
-            onWheel={(e) => {
-              if (e.ctrlKey) {
-                e.preventDefault();
-                zoom(tile + (e.deltaY < 0 ? 10 : -10));
-              }
-            }}
+            ref={surfaceRef}
           >
             <div className="dot-grid">
               <div className={`screens-grid ${view === 'one' ? 'single' : ''}`} id="screens-grid">
                 {snapshot.devices
                   .filter((d) => selected.includes(d.id) && (view === 'all' || d.id === active))
                   .map((d, index) => (
-                    <button
-                      type="button"
-                      className={`wall-screen ${d.id === active ? 'active' : ''}`}
-                      key={d.id}
-                      onClick={() => setActive(d.id)}
-                      onDoubleClick={() => {
-                        setActive(d.id);
-                        setView('one');
-                      }}
-                    >
-                      <div className="android-view">
-                        <span className="screen-order">{index + 1}</span>
-                        <p>{d.name}</p>
-                        <small>UNAVAILABLE · không có stream</small>
-                      </div>
-                    </button>
+                    <div className="tile-footprint" key={d.id}>
+                      <button
+                        type="button"
+                        className={`wall-screen ${d.id === active ? 'active' : ''}`}
+                        onClick={() => setActive(d.id)}
+                        onDoubleClick={() => {
+                          setActive(d.id);
+                          setView('one');
+                        }}
+                      >
+                        <div className="android-view">
+                          <span className="screen-order">{index + 1}</span>
+                          <p>{d.name}</p>
+                          <small>UNAVAILABLE · không có stream</small>
+                        </div>
+                      </button>
+                    </div>
                   ))}
               </div>
               {selected.length === 0 ? (
