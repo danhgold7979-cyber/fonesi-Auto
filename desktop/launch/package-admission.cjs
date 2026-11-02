@@ -177,11 +177,362 @@ function inventory(root) {
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { files, directories, total };
 }
+// Packaging approval is distinct from the runtime pin and cannot be supplied by callers.
+// Only a separately reviewed retained-byte/notice campaign may replace this null.
+const RETAINED_PAIR_APPROVAL = null;
+const PAIR_SOURCES = Object.freeze(
+  NATIVE.filter((name) => name !== 'PersistenceProcess.cs').map((name) => `app/native/${name}`),
+);
+const PAIR_EVIDENCE = Object.freeze({
+  'commands.json': 262144,
+  'consumer-build.json': 8192,
+  'dependencies.json': 524288,
+  'generated.json': 2097152,
+  'outputs.json': 1048576,
+  'report.json': 65536,
+  'server-build.json': 8192,
+  'source.json': 262144,
+  'tools.json': 8388608,
+});
+const PAIR_NOTICES = Object.freeze(['APACHE-2.0.txt', 'ATTRIBUTIONS.txt']);
+const RETAINED_PAIR_ADDITIONS = Object.freeze(
+  [
+    'app/native/RetainedVideoConsumer.dll',
+    'app/video/server.jar',
+    'app/video/pair.json',
+    'app/video/server-build.json',
+    'app/video/consumer-build.json',
+    'app/video/notice-manifest.json',
+    'app/video/evidence-manifest.json',
+    ...PAIR_NOTICES.map((name) => `app/video/notices/${name}`),
+    ...Object.keys(PAIR_EVIDENCE).map((name) => `app/video/evidence/${name}`),
+  ].sort(),
+);
+const RETAINED_PAIR_FILES = Object.freeze([...PAIR_SOURCES, ...RETAINED_PAIR_ADDITIONS].sort());
+const pairHash = (value) =>
+  typeof value === 'string' && value.length === 64 && /^[0-9a-f]{64}$/.test(value);
+const pairSha = (raw) => crypto.createHash('sha256').update(raw).digest('hex');
+function pairRead(root, name, cap) {
+  safeName(name);
+  const file = path.join(root, name);
+  plainDirectory(path.dirname(file));
+  const before = fs.lstatSync(file);
+  const same = (a, b) =>
+    a.dev === b.dev &&
+    a.ino === b.ino &&
+    a.size === b.size &&
+    a.mtimeMs === b.mtimeMs &&
+    a.ctimeMs === b.ctimeMs &&
+    a.nlink === b.nlink;
+  if (
+    !before.isFile() ||
+    before.isSymbolicLink() ||
+    before.nlink !== 1 ||
+    before.size < 1 ||
+    before.size > cap
+  )
+    fail();
+  const fd = fs.openSync(file, 'r');
+  try {
+    if (!same(before, fs.fstatSync(fd))) fail();
+    const raw = Buffer.alloc(before.size);
+    let at = 0;
+    while (at < raw.length) {
+      const n = fs.readSync(fd, raw, at, raw.length - at, at);
+      if (!n) fail();
+      at += n;
+    }
+    if (!same(before, fs.fstatSync(fd)) || !same(before, fs.lstatSync(file))) fail();
+    plainDirectory(path.dirname(file));
+    return raw;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+function pairJson(raw, names) {
+  const value = JSON.parse(raw.toString('utf8'));
+  if (!Buffer.from(JSON.stringify(value)).equals(raw)) fail();
+  if (names) keys(value, names);
+  return value;
+}
+function pairRows(rows, expected, getRaw) {
+  if (!Array.isArray(rows) || rows.length !== expected.length) fail();
+  for (let i = 0; i < expected.length; i++) {
+    const row = rows[i];
+    keys(row, ['path', 'bytes', 'sha256']);
+    const raw = getRaw(expected[i]);
+    if (row.path !== expected[i] || row.bytes !== raw.length || row.sha256 !== pairSha(raw)) fail();
+  }
+}
+function pairContents(root) {
+  if (RETAINED_PAIR_APPROVAL === null) fail();
+  plainDirectory(root);
+  const names = ['pairManifestSha256', 'noticeManifestSha256', 'evidenceManifestSha256'];
+  keys(RETAINED_PAIR_APPROVAL, names);
+  if (names.some((name) => !pairHash(RETAINED_PAIR_APPROVAL[name]))) fail();
+  const raws = new Map();
+  const read = (name, cap) => {
+    const raw = pairRead(root, name, cap);
+    raws.set(name, raw);
+    return raw;
+  };
+  const pairRaw = read('app/video/pair.json', 8192);
+  const noticeRaw = read('app/video/notice-manifest.json', 262144);
+  const evidenceRaw = read('app/video/evidence-manifest.json', 8192);
+  const result = {
+    pairManifestSha256: pairSha(pairRaw),
+    noticeManifestSha256: pairSha(noticeRaw),
+    evidenceManifestSha256: pairSha(evidenceRaw),
+  };
+  if (names.some((name) => result[name] !== RETAINED_PAIR_APPROVAL[name])) fail();
+  const p = pairJson(pairRaw, [
+    'version',
+    'serverVersion',
+    'serverBytes',
+    'serverSha256',
+    'protocolId',
+    'consumerBytes',
+    'consumerWindowsArtifactSha256',
+    'consumerBuildManifestSha256',
+    'serverBuildManifestSha256',
+    'architecture',
+  ]);
+  if (
+    p.version !== 1 ||
+    p.serverVersion !== '5.0.1' ||
+    p.architecture !== 'AMD64' ||
+    p.protocolId !== 'AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1'
+  )
+    fail();
+  for (const name of ['serverBytes', 'consumerBytes'])
+    if (!Number.isSafeInteger(p[name]) || p[name] < 1 || p[name] > 8388608) fail();
+  for (const name of [
+    'serverSha256',
+    'consumerWindowsArtifactSha256',
+    'consumerBuildManifestSha256',
+    'serverBuildManifestSha256',
+  ])
+    if (!pairHash(p[name])) fail();
+  const server = read('app/video/server.jar', 8388608),
+    dll = read('app/native/RetainedVideoConsumer.dll', 8388608);
+  if (
+    server.length !== p.serverBytes ||
+    pairSha(server) !== p.serverSha256 ||
+    dll.length !== p.consumerBytes ||
+    pairSha(dll) !== p.consumerWindowsArtifactSha256
+  )
+    fail();
+  // Same finite Windows header check as retained host admission, not a new PE/DEX parser.
+  if (dll.length < 64 || dll.readUInt16LE(0) !== 0x5a4d) fail();
+  const pe = dll.readUInt32LE(60);
+  if (
+    pe > dll.length - 26 ||
+    dll.readUInt32LE(pe) !== 0x4550 ||
+    dll.readUInt16LE(pe + 4) !== 0x8664 ||
+    dll.readUInt16LE(pe + 24) !== 0x20b
+  )
+    fail();
+  const evidence = pairJson(evidenceRaw, ['version', 'files']);
+  if (evidence.version !== 1) fail();
+  const ev = new Map();
+  for (const [name, cap] of Object.entries(PAIR_EVIDENCE))
+    ev.set(name, read(`app/video/evidence/${name}`, cap));
+  pairRows(evidence.files, Object.keys(PAIR_EVIDENCE), (name) => ev.get(name));
+  // Full evidence semantics were checked offline before approval; these are exact byte bindings.
+  const sbRaw = read('app/video/server-build.json', 8192),
+    cbRaw = read('app/video/consumer-build.json', 8192);
+  if (
+    !sbRaw.equals(ev.get('server-build.json')) ||
+    !cbRaw.equals(ev.get('consumer-build.json')) ||
+    pairSha(sbRaw) !== p.serverBuildManifestSha256 ||
+    pairSha(cbRaw) !== p.consumerBuildManifestSha256
+  )
+    fail();
+  const sb = pairJson(sbRaw, [
+    'version',
+    'upstreamCommit',
+    'sourcePatchSha256',
+    'toolchainManifestSha256',
+    'dependenciesManifestSha256',
+    'buildCommandSha256',
+    'serverBytes',
+    'serverSha256',
+    'protocolId',
+  ]);
+  if (
+    sb.version !== 1 ||
+    sb.upstreamCommit !== 'a60891aea193d92e7e5c3942700eca63f9d19a5f' ||
+    sb.serverBytes !== p.serverBytes ||
+    sb.serverSha256 !== p.serverSha256 ||
+    sb.protocolId !== p.protocolId ||
+    !pairHash(sb.sourcePatchSha256)
+  )
+    fail();
+  for (const [field, name] of [
+    ['toolchainManifestSha256', 'tools.json'],
+    ['dependenciesManifestSha256', 'dependencies.json'],
+    ['buildCommandSha256', 'commands.json'],
+  ])
+    if (sb[field] !== pairSha(ev.get(name))) fail();
+  const cb = pairJson(cbRaw, [
+    'version',
+    'sourceCommit',
+    'compilerSha256',
+    'compilerVersion',
+    'arguments',
+    'frameworkReferences',
+    'sources',
+    'consumerSha256',
+  ]);
+  if (
+    cb.version !== 1 ||
+    typeof cb.sourceCommit !== 'string' ||
+    cb.sourceCommit.length !== 40 ||
+    !/^[0-9a-f]{40}$/.test(cb.sourceCommit) ||
+    !pairHash(cb.compilerSha256) ||
+    typeof cb.compilerVersion !== 'string' ||
+    cb.compilerVersion.length > 64 ||
+    !/^[0-9]+(?:\.[0-9]+){1,3}$/.test(cb.compilerVersion) ||
+    /[^0-9.]/.test(cb.compilerVersion) ||
+    JSON.stringify(cb.arguments) !==
+      JSON.stringify(['/nologo', '/target:library', '/platform:x64', '/optimize+']) ||
+    cb.consumerSha256 !== p.consumerWindowsArtifactSha256
+  )
+    fail();
+  keys(cb.frameworkReferences, ['System.dll', 'System.Core.dll']);
+  if (Object.values(cb.frameworkReferences).some((hash) => !pairHash(hash))) fail();
+  keys(
+    cb.sources,
+    PAIR_SOURCES.map((name) => name.slice(4)),
+  );
+  let sourceBytes = 0;
+  for (const name of PAIR_SOURCES) {
+    const raw = read(name, 1048576);
+    sourceBytes += raw.length;
+    if (sourceBytes > 4194304 || pairSha(raw) !== cb.sources[name.slice(4)]) fail();
+  }
+  const notice = pairJson(noticeRaw, [
+    'version',
+    'pairManifestSha256',
+    'sourceEvidenceSha256',
+    'dependenciesManifestSha256',
+    'components',
+    'files',
+  ]);
+  if (
+    notice.version !== 1 ||
+    notice.pairManifestSha256 !== result.pairManifestSha256 ||
+    notice.sourceEvidenceSha256 !== pairSha(ev.get('source.json')) ||
+    notice.dependenciesManifestSha256 !== pairSha(ev.get('dependencies.json'))
+  )
+    fail();
+  let noticeBytes = 0;
+  const texts = new Map();
+  for (const name of PAIR_NOTICES) {
+    const raw = read(`app/video/notices/${name}`, 2097152);
+    noticeBytes += raw.length;
+    if (noticeBytes > 2097152 || raw.includes(0) || !Buffer.from(raw.toString('utf8')).equals(raw))
+      fail();
+    texts.set(name, raw);
+  }
+  pairRows(notice.files, PAIR_NOTICES, (name) => texts.get(name));
+  const sourceEvidence = pairJson(ev.get('source.json'));
+  const toolEvidence = pairJson(ev.get('tools.json'));
+  if (!Array.isArray(sourceEvidence.effective) || !Array.isArray(toolEvidence.files)) fail();
+  const originSources = new Map(
+    sourceEvidence.effective.map((row) => [`${row.namespace}/${row.path}`, row.sha256]),
+  );
+  const originTools = new Map(
+    toolEvidence.files.map((row) => [`${row.namespace}/${row.path}`, row.sha256]),
+  );
+  const roles = [
+    ['SERVER_UPSTREAM', 'COMPILED_CODE'],
+    ['SERVER_AIDL', 'GENERATED_CODE'],
+    ['SERVER_GENERATED', 'GENERATED_CODE'],
+    ['AUTO_PATCH', 'FIRST_PARTY_MODIFICATION'],
+    ['AUTO_CONSUMER', 'FIRST_PARTY_COMPILED_CODE'],
+  ];
+  if (!Array.isArray(notice.components) || notice.components.length !== roles.length) fail();
+  for (let i = 0; i < roles.length; i++) {
+    const component = notice.components[i];
+    keys(component, ['id', 'role', 'origin', 'license', 'noticeFiles']);
+    if (
+      component.id !== roles[i][0] ||
+      component.role !== roles[i][1] ||
+      typeof component.license !== 'string' ||
+      component.license.length < 1 ||
+      component.license.length > 64 ||
+      !/^[A-Za-z0-9.-]+$/.test(component.license) ||
+      component.license === 'UNRESOLVED'
+    )
+      fail();
+    keys(component.origin, ['sourceCommit', 'sourceHashes', 'toolHashes']);
+    const commit = component.origin.sourceCommit;
+    if (
+      component.id === 'SERVER_GENERATED'
+        ? commit !== null
+        : commit !== (component.id.startsWith('AUTO_') ? cb.sourceCommit : sb.upstreamCommit)
+    )
+      fail();
+    for (const field of ['sourceHashes', 'toolHashes']) {
+      const rows = component.origin[field];
+      if (!Array.isArray(rows) || rows.length > 256) fail();
+      let prior = '';
+      for (const row of rows) {
+        keys(row, ['path', 'sha256']);
+        safeName(row.path);
+        if (
+          row.path <= prior ||
+          !pairHash(row.sha256) ||
+          (field === 'sourceHashes' ? originSources : originTools).get(row.path) !== row.sha256
+        )
+          fail();
+        prior = row.path;
+      }
+    }
+    if (
+      !Array.isArray(component.noticeFiles) ||
+      component.noticeFiles.length < 1 ||
+      component.noticeFiles.length > 2 ||
+      component.noticeFiles.some(
+        (name, index) =>
+          !PAIR_NOTICES.includes(name) || (index > 0 && name <= component.noticeFiles[index - 1]),
+      )
+    )
+      fail();
+  }
+  // Recheck all captured files after the last read; no callback/caller authority enters here.
+  for (const [name, raw] of raws) if (!pairRead(root, name, raw.length).equals(raw)) fail();
+  return Object.freeze(result);
+}
+function verifyRetainedPair(root) {
+  try {
+    const result = pairContents(root),
+      actual = inventory(root);
+    if (JSON.stringify(actual.files.map((row) => row.path)) !== JSON.stringify(RETAINED_PAIR_FILES))
+      fail();
+    const dirs = new Set();
+    for (const name of RETAINED_PAIR_FILES) {
+      for (let dir = path.posix.dirname(name); dir !== '.'; dir = path.posix.dirname(dir))
+        dirs.add(dir);
+    }
+    if (JSON.stringify([...actual.directories].sort()) !== JSON.stringify([...dirs].sort())) fail();
+    return result;
+  } catch {
+    fail();
+  }
+}
+
 function verifyPackage(root) {
   const actual = inventory(root),
     manifest = json(path.join(root, 'package-manifest.json'));
   if (fs.lstatSync(path.join(root, 'package-manifest.json')).size > 65536) fail();
-  keys(manifest, ['version', 'mode', 'sourceHead', 'sourceTree', 'runtime', 'entry', 'files']);
+  keys(
+    manifest,
+    manifest.version === 2
+      ? ['version', 'mode', 'sourceHead', 'sourceTree', 'runtime', 'entry', 'video', 'files']
+      : ['version', 'mode', 'sourceHead', 'sourceTree', 'runtime', 'entry', 'files'],
+  );
   keys(manifest.runtime, [
     'platform',
     'arch',
@@ -191,7 +542,7 @@ function verifyPackage(root) {
     'electronExeSha256',
   ]);
   if (
-    manifest.version !== 1 ||
+    (manifest.version !== 1 && manifest.version !== 2) ||
     manifest.mode !== 'INTERNAL_PRODUCTION' ||
     !/^[0-9a-f]{40}$/.test(manifest.sourceHead) ||
     !/^[0-9a-f]{40}$/.test(manifest.sourceTree) ||
@@ -254,6 +605,7 @@ function verifyPackage(root) {
     ...PROVENANCE.map((n) => 'provenance/' + n),
     ...['react', 'react-dom', 'scheduler'].map((n) => 'licenses/' + n + '-LICENSE'),
     ...runtimeFiles,
+    ...(manifest.version === 2 ? RETAINED_PAIR_ADDITIONS : []),
   ].sort();
   if (
     expected.length !== new Set(expected).size ||
@@ -348,6 +700,10 @@ function verifyPackage(root) {
     ])
       if (b.includes(Buffer.from(token))) fail();
   }
+  if (manifest.version === 2) {
+    keys(manifest.video, ['pairManifestSha256', 'noticeManifestSha256', 'evidenceManifestSha256']);
+    if (JSON.stringify(manifest.video) !== JSON.stringify(pairContents(root))) fail();
+  }
   return Object.freeze(manifest);
 }
 function assertDataOutsidePackage(root, data) {
@@ -368,6 +724,9 @@ function assertDataOutsidePackage(root, data) {
   return true;
 }
 module.exports = {
+  verifyRetainedPair,
+  RETAINED_PAIR_FILES,
+  RETAINED_PAIR_ADDITIONS,
   verifyPackage,
   assertDataOutsidePackage,
   inventory,

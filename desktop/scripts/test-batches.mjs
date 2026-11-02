@@ -106,6 +106,7 @@ export const TEST_FILES = Object.freeze([
   'tests/retained-helper-compile.test.mjs',
   'tests/retained-host-admission.test.mjs',
   'tests/retained-managed-fixture.test.mjs',
+  'tests/retained-pair-package.test.mjs',
   'tests/retained-pipe-startup.test.mjs',
   'tests/runtime-version-audit-contract.test.mjs',
   'tests/runtime-version-bridge.test.mjs',

@@ -10,6 +10,7 @@ import {
   copyFileSync,
   renameSync,
   lstatSync,
+  fstatSync,
   realpathSync,
   constants,
 } from 'node:fs';
@@ -22,6 +23,9 @@ import { scanProductionSource, scanProductionPayload } from './demo-build-manife
 import {
   createPackageManifest,
   verifyPackage,
+  verifyRetainedPair,
+  RETAINED_PAIR_FILES,
+  RETAINED_PAIR_ADDITIONS,
   packageInventory,
   packageDigest,
   packageName,
@@ -52,6 +56,116 @@ function copy(source, destination) {
   if (JSON.stringify(before) !== JSON.stringify(after)) fail();
   return after;
 }
+export function copyRetainedPair(candidate, stage) {
+  plain(candidate);
+  plain(stage);
+  const video = verifyRetainedPair(candidate);
+  // Existing native sources come from this build, never from the candidate.
+  for (const name of RETAINED_PAIR_FILES) {
+    if (RETAINED_PAIR_ADDITIONS.includes(name)) continue;
+    if (
+      JSON.stringify(packageDigest(join(candidate, name))) !==
+      JSON.stringify(packageDigest(join(stage, name)))
+    )
+      fail();
+  }
+  for (const name of RETAINED_PAIR_ADDITIONS) copy(join(candidate, name), join(stage, name));
+  if (JSON.stringify(verifyRetainedPair(candidate)) !== JSON.stringify(video)) fail();
+  for (const name of RETAINED_PAIR_FILES) {
+    if (
+      JSON.stringify(packageDigest(join(candidate, name))) !==
+      JSON.stringify(packageDigest(join(stage, name)))
+    )
+      fail();
+  }
+  return video;
+}
+const archiveCaptures = new WeakMap();
+const archiveWrites = new WeakMap();
+export function capturePackageArchive(root) {
+  const before = packageDigest(join(root, 'package-manifest.json'));
+  const manifest = verifyPackage(root);
+  if (manifest.version !== 2) fail();
+  const inventory = packageInventory(root);
+  const expected = [...manifest.files, { path: 'package-manifest.json', ...before }].sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
+  );
+  if (JSON.stringify(expected) !== JSON.stringify(inventory.files)) fail();
+  verifyPackage(root);
+  if (
+    JSON.stringify(packageInventory(root)) !== JSON.stringify(inventory) ||
+    JSON.stringify(packageDigest(join(root, 'package-manifest.json'))) !== JSON.stringify(before)
+  )
+    fail();
+  const capture = Object.freeze({});
+  inventory.files.forEach(Object.freeze);
+  Object.freeze(inventory.files);
+  Object.freeze(inventory.directories);
+  Object.freeze(inventory);
+  archiveCaptures.set(capture, Object.freeze({ root, inventory, manifestSha256: before.sha256 }));
+  return capture;
+}
+function readArchiveSidecar(file) {
+  plain(dirname(file));
+  const identity = (s) =>
+    [s.dev, s.ino, s.mode, s.size, s.nlink, s.mtimeMs, s.ctimeMs, s.birthtimeMs].join('|');
+  const before = lstatSync(file);
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size !== 65)
+    fail();
+  const fd = openSync(file, 'r');
+  const bytes = Buffer.alloc(66);
+  let count = 0;
+  try {
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || opened.nlink !== 1 || identity(opened) !== identity(before)) fail();
+    while (count < bytes.length) {
+      const n = readSync(fd, bytes, count, bytes.length - count, null);
+      if (!n) break;
+      count += n;
+    }
+    if (
+      count !== 65 ||
+      identity(fstatSync(fd)) !== identity(opened) ||
+      identity(lstatSync(file)) !== identity(before)
+    )
+      fail();
+  } finally {
+    closeSync(fd);
+  }
+  if (identity(lstatSync(file)) !== identity(before)) fail();
+  return bytes.subarray(0, count).toString('utf8');
+}
+export function writePackageReceipt(final, zip, zipDigest, capture) {
+  const captured = archiveCaptures.get(capture);
+  if (!captured || archiveWrites.get(zipDigest) !== capture) fail();
+  const { manifestSha256 } = captured;
+  const manifest = verifyPackage(final);
+  if (
+    manifest.version !== 2 ||
+    JSON.stringify(packageInventory(final)) !== JSON.stringify(captured.inventory) ||
+    packageDigest(join(final, 'package-manifest.json')).sha256 !== manifestSha256 ||
+    JSON.stringify(packageDigest(zip)) !== JSON.stringify(zipDigest) ||
+    readArchiveSidecar(`${zip}.sha256`) !== `${zipDigest.sha256}\n`
+  )
+    fail();
+  const receipt = `${zip}.receipt.json`;
+  writeFileSync(
+    receipt,
+    JSON.stringify({
+      version: 1,
+      archiveBytes: zipDigest.bytes,
+      archiveSha256: zipDigest.sha256,
+      packageManifestSha256: manifestSha256,
+      pairManifestSha256: manifest.video.pairManifestSha256,
+      noticeManifestSha256: manifest.video.noticeManifestSha256,
+      evidenceManifestSha256: manifest.video.evidenceManifestSha256,
+      sourceHead: manifest.sourceHead,
+      sourceTree: manifest.sourceTree,
+    }),
+    { flag: 'wx' },
+  );
+  return receipt;
+}
 const CRC_TABLE = Array.from({ length: 256 }, (_, value) => {
   let crc = value;
   for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
@@ -61,8 +175,10 @@ function crcUpdate(crc, b) {
   for (const byte of b) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ byte) & 255];
   return crc >>> 0;
 }
-export function writeStoredZip(root, destination) {
-  const inventory = packageInventory(root);
+export function writeStoredZip(root, destination, capture = null) {
+  const captured = capture === null ? null : archiveCaptures.get(capture);
+  if (capture !== null && (!captured || captured.root !== root)) fail();
+  const inventory = captured === null ? packageInventory(root) : captured.inventory;
   const emptyHash = createHash('sha256').digest('hex');
   const entries = [
     ...inventory.files,
@@ -75,12 +191,18 @@ export function writeStoredZip(root, destination) {
   ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const fd = openSync(destination, 'wx', 0o600);
   const central = [];
+  const streamHash = capture === null ? null : createHash('sha256');
+  let streamBytes = 0;
   let offset = 0;
   function emit(b) {
     let at = 0;
     while (at < b.length) {
       const n = writeSync(fd, b, at, b.length - at);
       if (n <= 0) fail();
+      if (streamHash !== null) {
+        streamHash.update(b.subarray(at, at + n));
+        streamBytes += n;
+      }
       at += n;
     }
     offset += b.length;
@@ -166,10 +288,16 @@ export function writeStoredZip(root, destination) {
   } finally {
     closeSync(fd);
   }
-  return packageDigest(destination);
+  const result = packageDigest(destination);
+  if (capture !== null) {
+    if (result.bytes !== streamBytes || result.sha256 !== streamHash.digest('hex')) fail();
+    Object.freeze(result);
+    archiveWrites.set(result, capture);
+  }
+  return result;
 }
-export function promotePackage(stage, final, zipStage, zip, zipDigest) {
-  for (const name of [final, zip, `${zip}.sha256`]) {
+export function promotePackage(stage, final, zipStage, zip, zipDigest, receipt = null) {
+  for (const name of [final, zip, `${zip}.sha256`, ...(receipt === null ? [] : [receipt])]) {
     try {
       lstatSync(name);
       fail();
@@ -188,6 +316,7 @@ export async function buildPackage({
   nodeExe,
   nodeLicense,
   outputParent,
+  retainedPairRoot = null,
 }) {
   if (
     process.platform !== 'win32' ||
@@ -287,14 +416,33 @@ export async function buildPackage({
   }
   const build = JSON.parse(readFileSync(join(desktop, 'build/.verified-build.json'), 'utf8'));
   if (Object.keys(build.inputs).length !== inputs.length) fail();
-  const raw = JSON.stringify(createPackageManifest(stage, sourceHead, sourceTree, runtime));
+  const video = retainedPairRoot === null ? null : copyRetainedPair(retainedPairRoot, stage);
+  const raw = JSON.stringify(createPackageManifest(stage, sourceHead, sourceTree, runtime, video));
   if (Buffer.byteLength(raw) > 65536) fail();
   writeFileSync(join(stage, 'package-manifest.json'), raw, { flag: 'wx' });
   verifyPackage(stage);
-  const zipDigest = writeStoredZip(stage, zipStage);
+  const archiveCapture = video === null ? null : capturePackageArchive(stage);
+  const zipDigest = writeStoredZip(stage, zipStage, archiveCapture);
   verifyPackage(stage);
-  promotePackage(stage, final, zipStage, zip, zipDigest);
-  return { directory: final, zip, sha256: zipDigest.sha256, bytes: zipDigest.bytes };
+  promotePackage(
+    stage,
+    final,
+    zipStage,
+    zip,
+    zipDigest,
+    video === null ? null : `${zip}.receipt.json`,
+  );
+  // Promotion is multiple exclusive operations, not an atomic transaction.
+  // Any later refusal retains partial output and never returns success.
+  const receipt =
+    video === null ? null : writePackageReceipt(final, zip, zipDigest, archiveCapture);
+  return {
+    directory: final,
+    zip,
+    sha256: zipDigest.sha256,
+    bytes: zipDigest.bytes,
+    ...(receipt === null ? {} : { receipt }),
+  };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {

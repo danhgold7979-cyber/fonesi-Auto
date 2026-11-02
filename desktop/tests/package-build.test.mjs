@@ -1,4 +1,6 @@
 import test from 'node:test';
+import { transformSync } from 'esbuild';
+import { materializeRetainedPair } from './fixtures/retained-pair-package.mjs';
 import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
@@ -228,10 +230,13 @@ test('ZIP CRC pre-pass rejects an injected changed read while preserving source 
 
 // Policy composition only: synthetic fixtures substitute three exact known-byte hashes.
 // This does not attest a real Node executable or license; native Windows does that separately.
-function syntheticPolicyPackage(packageRoot) {
+function syntheticPolicyPackage(packageRoot, approval = null) {
   const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const root = packageRoot;
-  const source = readFileSync(resolve(sourceRoot, 'launch/package-admission.cjs'), 'utf8');
+  const source = readFileSync(resolve(sourceRoot, 'launch/package-admission.cjs'), 'utf8').replace(
+    'const RETAINED_PAIR_APPROVAL = null;',
+    `const RETAINED_PAIR_APPROVAL = ${JSON.stringify(approval)};`,
+  );
   const pinFor = new Map([
     ['SYNTHETIC-NODE', admission.NODE_SHA],
     ['SYNTHETIC-NODE-LICENSE', admission.NODE_LICENSE_SHA],
@@ -332,9 +337,9 @@ function syntheticPolicyPackage(packageRoot) {
     ],
   };
   json('provenance/runtime-manifest.json', runtime);
-  const refresh = () => {
+  const refresh = (video = null) => {
     const manifest = {
-      version: 1,
+      version: video === null ? 1 : 2,
       mode: 'INTERNAL_PRODUCTION',
       sourceHead: head,
       sourceTree: tree,
@@ -347,12 +352,13 @@ function syntheticPolicyPackage(packageRoot) {
         electronExeSha256: runtime.exeSha256,
       },
       entry: 'Launch.ps1',
+      ...(video === null ? {} : { video }),
       files: verifier.inventory(root).files.filter((item) => item.path !== 'package-manifest.json'),
     };
     json('package-manifest.json', manifest);
   };
   refresh();
-  return { verifier, refresh, write, json, build };
+  return { verifier, refresh, write, json, build, fakeCrypto };
 }
 test('synthetic-hash policy composition admits closed package then rejects missing binary/license, extra file and missing empty directory', () =>
   owned((p) => {
@@ -579,3 +585,287 @@ test('physical filesystem selection fails closed in Electron and uses node fs on
   assert.equal(source.includes('process.noAsar ='), false);
   assert.equal(source.includes('ELECTRON_NO_ASAR'), false);
 });
+
+// Actual builder functions; only fixed synthetic approval/three existing fixture hashes differ.
+function retainedBuilderFixture(f, fileSystem = fs) {
+  const filename = resolve(root, 'scripts/build-package.mjs');
+  const source = readFileSync(filename, 'utf8').replaceAll(
+    'import.meta.url',
+    JSON.stringify(new URL('../scripts/build-package.mjs', import.meta.url).href),
+  );
+  const code = transformSync(source.slice(0, source.indexOf('if (process.argv[1]')), {
+    loader: 'js',
+    format: 'cjs',
+    target: 'es2022',
+  }).code;
+  const module = { exports: {} };
+  runInNewContext(code, {
+    module,
+    exports: module.exports,
+    Buffer,
+    process,
+    require(name) {
+      if (name === 'node:fs') return fileSystem;
+      if (name === 'node:crypto') return { ...require(name), ...f.fakeCrypto };
+      if (name === './package-manifest.mjs')
+        return {
+          ...f.verifier,
+          packageInventory: f.verifier.inventory,
+          packageDigest: f.verifier.digest,
+          packageName: f.verifier.safeName,
+        };
+      if (name.startsWith('./')) return {};
+      return require(name);
+    },
+  });
+  return module.exports;
+}
+function pairedBuildFixture(p, fileSystem = fs) {
+  const candidate = resolve(p, 'candidate'),
+    stage = resolve(p, 'stage');
+  mkdirSync(candidate);
+  mkdirSync(stage);
+  const pair = materializeRetainedPair(candidate);
+  const f = syntheticPolicyPackage(stage, pair.approval);
+  for (const name of f.verifier.RETAINED_PAIR_FILES.filter(
+    (name) => !f.verifier.RETAINED_PAIR_ADDITIONS.includes(name),
+  )) {
+    f.write(name, readFileSync(resolve(candidate, name)));
+    f.build.inputs[name.slice(4)] = f.verifier.digest(resolve(stage, name)).sha256;
+  }
+  f.json('provenance/build-manifest.json', f.build);
+  f.json('app/build/.verified-build.json', f.build);
+  const builder = retainedBuilderFixture(f, fileSystem);
+  return { candidate, stage, f, builder };
+}
+test('retained pair builder copies exact approved files then fully verifies v2 and external actual-byte receipt', () =>
+  owned((p) => {
+    const { candidate, stage, f, builder } = pairedBuildFixture(p);
+    const video = builder.copyRetainedPair(candidate, stage);
+    f.refresh(video);
+    assert.equal(f.verifier.verifyPackage(stage).version, 2);
+    const archiveCapture = builder.capturePackageArchive(stage);
+    const zipStage = resolve(p, 'stage.zip'),
+      zip = resolve(p, 'pair.zip'),
+      final = resolve(p, 'final');
+    const zipDigest = builder.writeStoredZip(stage, zipStage, archiveCapture);
+    builder.promotePackage(stage, final, zipStage, zip, zipDigest, `${zip}.receipt.json`);
+    const receiptPath = builder.writePackageReceipt(final, zip, zipDigest, archiveCapture);
+    const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+    assert.equal(
+      receipt.archiveSha256,
+      createHash('sha256').update(readFileSync(zip)).digest('hex'),
+    );
+    assert.equal(receipt.archiveBytes, readFileSync(zip).length);
+    assert.equal(
+      receipt.packageManifestSha256,
+      f.verifier.digest(resolve(final, 'package-manifest.json')).sha256,
+    );
+    assert.equal(receipt.pairManifestSha256, video.pairManifestSha256);
+    assert.equal(
+      f.verifier.inventory(final).files.some((row) => row.path.includes('receipt')),
+      false,
+    );
+    assert.throws(
+      () => builder.writePackageReceipt(final, zip, zipDigest, archiveCapture),
+      /EEXIST/,
+    );
+  }));
+test('retained pair copy refuses source mismatch and changed copied binary after actual exclusive copy', () =>
+  owned((p) => {
+    const { candidate, stage, f, builder } = pairedBuildFixture(p);
+    const native = f.verifier.RETAINED_PAIR_FILES.find((name) => name.endsWith('.cs'));
+    f.write(native, 'different current source');
+    assert.throws(() => builder.copyRetainedPair(candidate, stage), /PACKAGE_BUILD_FAILED/);
+    assert.equal(fs.existsSync(resolve(stage, 'app/video/server.jar')), false);
+    f.write(native, readFileSync(resolve(candidate, native)));
+    const modified = retainedBuilderFixture(f, {
+      ...fs,
+      copyFileSync(source, destination, flags) {
+        fs.copyFileSync(source, destination, flags);
+        if (destination.endsWith('server.jar')) writeFileSync(destination, 'changed during copy');
+      },
+    });
+    assert.throws(() => modified.copyRetainedPair(candidate, stage), /PACKAGE_BUILD_FAILED/);
+    assert.equal(
+      readFileSync(resolve(stage, 'app/video/server.jar'), 'utf8'),
+      'changed during copy',
+    );
+    assert.equal(fs.existsSync(resolve(p, 'pair.zip.receipt.json')), false);
+  }));
+test('retained pair promotion collision or post-promotion tamper cannot produce successful receipt', () =>
+  owned((p) => {
+    const { candidate, stage, f, builder } = pairedBuildFixture(p);
+    f.refresh(builder.copyRetainedPair(candidate, stage));
+    const archiveCapture = builder.capturePackageArchive(stage);
+    const zipStage = resolve(p, 'stage.zip'),
+      zip = resolve(p, 'pair.zip'),
+      final = resolve(p, 'final');
+    const zipDigest = builder.writeStoredZip(stage, zipStage, archiveCapture);
+    writeFileSync(`${zip}.receipt.json`, 'existing');
+    assert.throws(
+      () => builder.promotePackage(stage, final, zipStage, zip, zipDigest, `${zip}.receipt.json`),
+      /PACKAGE_BUILD_FAILED/,
+    );
+    assert.equal(fs.existsSync(stage), true);
+    assert.equal(fs.existsSync(final), false);
+    fs.unlinkSync(`${zip}.receipt.json`);
+    builder.promotePackage(stage, final, zipStage, zip, zipDigest, `${zip}.receipt.json`);
+    writeFileSync(zip, 'tampered promoted archive');
+    assert.throws(
+      () => builder.writePackageReceipt(final, zip, zipDigest, archiveCapture),
+      /PACKAGE_BUILD_FAILED/,
+    );
+    assert.equal(fs.existsSync(final), true);
+    assert.equal(fs.existsSync(`${zip}.receipt.json`), false);
+  }));
+test('retained additions never fit refreshed v1 and promoted source tampering cannot gain a receipt', () =>
+  owned((p) => {
+    const { candidate, stage, f, builder } = pairedBuildFixture(p);
+    const video = builder.copyRetainedPair(candidate, stage);
+    f.refresh();
+    assert.throws(() => f.verifier.verifyPackage(stage), /PACKAGE_REJECTED/);
+    f.refresh(video);
+    const archiveCapture = builder.capturePackageArchive(stage);
+    const zipStage = resolve(p, 'stage.zip'),
+      zip = resolve(p, 'pair.zip'),
+      final = resolve(p, 'final');
+    const zipDigest = builder.writeStoredZip(stage, zipStage, archiveCapture);
+    builder.promotePackage(stage, final, zipStage, zip, zipDigest, `${zip}.receipt.json`);
+    const native = f.verifier.RETAINED_PAIR_FILES.find((name) => name.endsWith('.cs'));
+    writeFileSync(resolve(final, native), 'post-promotion source tamper');
+    assert.throws(
+      () => builder.writePackageReceipt(final, zip, zipDigest, archiveCapture),
+      /PACKAGE_REJECTED/,
+    );
+    assert.equal(fs.existsSync(`${zip}.receipt.json`), false);
+  }));
+test('partial promotion preserves directory and archive evidence without receipt or atomic-success claim', () =>
+  owned((p) => {
+    const { candidate, stage, f, builder } = pairedBuildFixture(p);
+    f.refresh(builder.copyRetainedPair(candidate, stage));
+    const archiveCapture = builder.capturePackageArchive(stage);
+    const zipStage = resolve(p, 'stage.zip'),
+      zip = resolve(p, 'pair.zip'),
+      final = resolve(p, 'final');
+    const zipDigest = builder.writeStoredZip(stage, zipStage, archiveCapture);
+    const failed = retainedBuilderFixture(f, {
+      ...fs,
+      renameSync(from, to) {
+        if (from === zipStage)
+          throw Object.assign(Error('SYNTHETIC_PROMOTION_FAILURE'), { code: 'EACCES' });
+        return fs.renameSync(from, to);
+      },
+    });
+    assert.throws(
+      () => failed.promotePackage(stage, final, zipStage, zip, zipDigest, `${zip}.receipt.json`),
+      /SYNTHETIC_PROMOTION_FAILURE/,
+    );
+    assert.equal(fs.existsSync(final), true);
+    assert.equal(fs.existsSync(zipStage), true);
+    assert.equal(fs.existsSync(zip), false);
+    assert.equal(fs.existsSync(`${zip}.sha256`), false);
+    assert.equal(fs.existsSync(`${zip}.receipt.json`), false);
+  }));
+test('frozen archive capture rejects an internally valid stage switch before ZIP or after ZIP before receipt', () => {
+  for (const afterZip of [false, true])
+    owned((p) => {
+      const { candidate, stage, f, builder } = pairedBuildFixture(p);
+      const video = builder.copyRetainedPair(candidate, stage);
+      f.refresh(video);
+      const capture = builder.capturePackageArchive(stage);
+      const zipStage = resolve(p, 'stage.zip'),
+        zip = resolve(p, 'pair.zip'),
+        final = resolve(p, 'final');
+      const digest = afterZip ? builder.writeStoredZip(stage, zipStage, capture) : null;
+      f.write('README.txt', 'a second internally valid package');
+      f.refresh(video);
+      assert.equal(f.verifier.verifyPackage(stage).version, 2);
+      if (!afterZip)
+        assert.throws(
+          () => builder.writeStoredZip(stage, zipStage, capture),
+          /PACKAGE_BUILD_FAILED/,
+        );
+      else {
+        const successor = builder.capturePackageArchive(stage);
+        builder.promotePackage(stage, final, zipStage, zip, digest, `${zip}.receipt.json`);
+        assert.throws(
+          () => builder.writePackageReceipt(final, zip, digest, capture),
+          /PACKAGE_BUILD_FAILED/,
+        );
+        assert.throws(
+          () => builder.writePackageReceipt(final, zip, digest, successor),
+          /PACKAGE_BUILD_FAILED/,
+        );
+        assert.equal(fs.existsSync(final), true);
+      }
+      assert.equal(fs.existsSync(`${zip}.receipt.json`), false);
+    });
+});
+test('receipt sidecar refuses oversize hardlink and replacement during bounded actual read', () => {
+  for (const mode of ['oversize', 'hardlink', 'replacement'])
+    owned((p) => {
+      let armed = false;
+      const fileSystem = {
+        ...fs,
+        openSync(file, flags, ...rest) {
+          const fd = fs.openSync(file, flags, ...rest);
+          if (armed && file === resolve(p, 'pair.zip.sha256')) {
+            armed = false;
+            const bytes = readFileSync(file);
+            fs.renameSync(file, `${file}.old`);
+            writeFileSync(file, bytes);
+          }
+          return fd;
+        },
+      };
+      const { candidate, stage, f, builder } = pairedBuildFixture(p, fileSystem);
+      f.refresh(builder.copyRetainedPair(candidate, stage));
+      const capture = builder.capturePackageArchive(stage);
+      const zipStage = resolve(p, 'stage.zip'),
+        zip = resolve(p, 'pair.zip'),
+        final = resolve(p, 'final');
+      const digest = builder.writeStoredZip(stage, zipStage, capture);
+      builder.promotePackage(stage, final, zipStage, zip, digest, `${zip}.receipt.json`);
+      if (mode === 'oversize') writeFileSync(`${zip}.sha256`, 'x'.repeat(66));
+      if (mode === 'hardlink') fs.linkSync(`${zip}.sha256`, resolve(p, 'linked-sidecar'));
+      if (mode === 'replacement') armed = true;
+      assert.throws(
+        () => builder.writePackageReceipt(final, zip, digest, capture),
+        /PACKAGE_BUILD_FAILED/,
+      );
+      assert.equal(fs.existsSync(`${zip}.receipt.json`), false);
+      assert.equal(fs.existsSync(final), true);
+    });
+});
+
+test('v2 archive digest cannot adopt replacement bytes after the actual ZIP writer closes', () =>
+  owned((p) => {
+    const zipStage = resolve(p, 'stage.zip');
+    let zipFd = null,
+      replaced = false;
+    const fileSystem = {
+      ...fs,
+      openSync(file, flags, ...rest) {
+        const fd = fs.openSync(file, flags, ...rest);
+        if (file === zipStage && flags === 'wx') zipFd = fd;
+        return fd;
+      },
+      closeSync(fd) {
+        fs.closeSync(fd);
+        if (fd === zipFd) {
+          zipFd = null;
+          writeFileSync(zipStage, 'replacement after real archive close');
+          replaced = true;
+        }
+      },
+    };
+    const { candidate, stage, f, builder } = pairedBuildFixture(p, fileSystem);
+    f.refresh(builder.copyRetainedPair(candidate, stage));
+    const capture = builder.capturePackageArchive(stage);
+    assert.throws(() => builder.writeStoredZip(stage, zipStage, capture), /PACKAGE_BUILD_FAILED/);
+    assert.equal(replaced, true);
+    assert.equal(readFileSync(zipStage, 'utf8'), 'replacement after real archive close');
+    assert.equal(fs.existsSync(`${zipStage}.receipt.json`), false);
+    assert.equal(f.verifier.verifyPackage(stage).version, 2);
+  }));
