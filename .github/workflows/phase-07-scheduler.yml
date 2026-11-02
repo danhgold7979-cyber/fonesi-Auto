@@ -7,6 +7,15 @@ on:
         required: false
         type: boolean
         default: false
+  push:
+    branches: [phase-07]
+    paths:
+      - '.github/workflows/phase-07-scheduler.yml'
+      - 'desktop/verification/Invoke-ScheduleRuntime.ps1'
+      - 'desktop/verification/schedule-runtime-observer.cjs'
+      - 'desktop/verification/schedule-runtime-contract.cjs'
+      - 'desktop/verification/schedule-runtime-control.cjs'
+      - 'desktop/verification/schedule-runtime-contract.test.cjs'
 permissions:
   contents: read
 jobs:
@@ -30,12 +39,12 @@ jobs:
           node desktop/scripts/check.mjs --restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Dedicated observation-only package
-        if: inputs.observe_runtime == true
+        if: (github.event_name == 'workflow_dispatch' && inputs.observe_runtime == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[schedule-runtime-observe]'))
         run: |
           & ./desktop/verification/Invoke-ScheduleRuntime.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retain only closed public observation report
-        if: success() && inputs.observe_runtime == true
+        if: success() && ((github.event_name == 'workflow_dispatch' && inputs.observe_runtime == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[schedule-runtime-observe]')))
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: schedule-runtime-observation

@@ -250,7 +250,7 @@ test('observation entry has no production imports window navigation network data
   assert.match(source, /app\.setPath/);
   assert.match(source, /process\.argv\.length !== 1/);
 });
-test('manual exact-branch workflow retains only closed report and no automatic or privileged jobs', () => {
+test('manual or explicit-marker exact-branch workflow retains only closed report and no privileged jobs', () => {
   const workflow = fs.readFileSync(
     path.join(__dirname, '../../.github/workflows/phase-07-scheduler.yml'),
     'utf8',
@@ -261,7 +261,7 @@ test('manual exact-branch workflow retains only closed report and no automatic o
   assert.match(workflow, /contents: read/);
   assert.doesNotMatch(
     workflow,
-    /pull_request:|push:|secrets\.|id-token:|write-all|Invoke-Package|Invoke-Foundation/,
+    /pull_request:|secrets\.|id-token:|write-all|Invoke-Package|Invoke-Foundation/,
   );
   assert.match(
     workflow,
@@ -513,4 +513,42 @@ test('actual validate refuses changed source package runtime owner and nonretire
       assert.throws(() => context.api.testValidate(context.run));
       assert.equal(fs.existsSync(path.join(context.run, 'report.json')), false);
     });
+});
+
+test('only exact reviewed push paths and identical explicit opt-in predicates permit observation and upload', () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, '../../.github/workflows/phase-07-scheduler.yml'),
+    'utf8',
+  );
+  const paths = [...workflow.matchAll(/^ {6}- '([^']+)'$/gm)].map((m) => m[1]);
+  assert.deepEqual(paths, [
+    '.github/workflows/phase-07-scheduler.yml',
+    'desktop/verification/Invoke-ScheduleRuntime.ps1',
+    'desktop/verification/schedule-runtime-observer.cjs',
+    'desktop/verification/schedule-runtime-contract.cjs',
+    'desktop/verification/schedule-runtime-control.cjs',
+    'desktop/verification/schedule-runtime-contract.test.cjs',
+  ]);
+  assert.match(workflow, /branches: \[phase-07\]/);
+  const gate =
+    "(github.event_name == 'workflow_dispatch' && inputs.observe_runtime == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[schedule-runtime-observe]'))";
+  const conditions = [...workflow.matchAll(/^ {8}if: (.+)$/gm)].map((m) => m[1]);
+  assert.deepEqual(conditions, [gate, `success() && (${gate})`]);
+  const permit = (event, input, message, branch, changed) =>
+    branch === 'phase-07' &&
+    (event === 'workflow_dispatch'
+      ? input === true
+      : event === 'push' &&
+        paths.includes(changed) &&
+        message.includes('[schedule-runtime-observe]'));
+  for (const [event, input, message, branch, changed, want] of [
+    ['push', false, 'ordinary', 'phase-07', paths[0], false],
+    ['push', false, '[schedule-runtime-observe]', 'phase-03', paths[0], false],
+    ['push', false, '[schedule-runtime-observe]', 'phase-07', 'docs/PHASE_STATUS.md', false],
+    ['push', false, '[schedule-runtime-observe]', 'phase-07', paths[0], true],
+    ['workflow_dispatch', false, '', 'phase-07', paths[0], false],
+    ['workflow_dispatch', true, '', 'phase-07', paths[0], true],
+    ['pull_request', true, '[schedule-runtime-observe]', 'phase-07', paths[0], false],
+  ])
+    assert.equal(permit(event, input, message, branch, changed), want);
 });

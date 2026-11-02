@@ -88,3 +88,17 @@ Frozen SHA256 identities:
 Local source milestone ends15:19 UTC, about19minutes from15:00 session start.
 No source blocker remains; actual hosted observation is the next required result,
 not yet PASS. No new acceptance or functional-cell credit.
+
+## Reviewed dispatch-path continuation — 2026-11-02 15:23 UTC
+
+After local source commit985e012, coordinator adopted the narrow explicit marker
+trigger amendment recorded in the source entry. Manual input remains defaultfalse;
+only exact phase07 and six workflow/harness paths are eligible. Ordinary eligible
+pushes run source checks only; observation requires intentional publication marker
+`[schedule-runtime-observe]`. Same predicate gates observation and success-only
+artifact upload. No credential changes or broadened runtime capability.
+
+Independent actual delta CLEAR; targeted19/19 PASS, quality434files PASS and
+diff-check PASS. Production observer/contract/controller/launcher are byte-unchanged
+from the1736 aggregate. Trigger suite adds one case; this is targeted continuation,
+not a claim of a new1737 full aggregate or successful Windows observation.

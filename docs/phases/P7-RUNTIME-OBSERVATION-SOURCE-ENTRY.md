@@ -301,3 +301,25 @@ shared deletion/inventory limits. Exact ignore edits belong in existing
 `desktop/.gitignore`, not a new root ignore file. Delete only fixed private files
 whose regular-file/hash/size admission succeeded, remove package and profile via
 existing `Remove-VerifiedOwnedPart`, then marker-only `Remove-VerifiedOwnedRun`.
+
+## Adopted explicit publication-trigger amendment — 2026-11-02 15:22 UTC
+
+Coordinator adopted independently reviewed draft
+`0be1854871056ffb8ed42e368593a8aa9e2ceb8687bb11649fc8ecb6a23d3338`.
+The connected GitHub tools have no workflow_dispatch operation; gh auth-status
+exit1 established no verified authenticated CLI dispatch route. No credentials
+were retrieved/changed. The manual defaultfalse option remains; exact phase-07
+pushes affecting only the six named workflow/harness paths now run source checks.
+Observation requires the deliberate `[schedule-runtime-observe]` marker in the
+published head commit. Observation and success-only report upload share the same
+manualtrue-or-explicit-marker predicate. No other branch, PR, broad path, new
+permission, production tuple admission or native runtime scope is added. This
+supersedes only A.1's manual-only/no-push trigger restriction.
+
+Coordinator deliberately selects the marker only for reviewed publication of this
+coherent verification milestone. Before any retry/corrective marked publication,
+resolve prior run/process outcome to terminal; never overlap uncertain execution.
+Actual trigger delta independently CLEAR; affected harness/trigger19/19 PASS and
+quality434files PASS, diff-check PASS. Prior uninterrupted1736 source aggregate
+remains attributable to unchanged runtime source plus the preceding18-test suite;
+no new full aggregate or native observation is claimed by this trigger edit.
