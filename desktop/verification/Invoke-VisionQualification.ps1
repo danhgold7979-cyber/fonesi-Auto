@@ -47,6 +47,9 @@ function HashTree([string]$tree,[string]$relative,$map){
  }
 }
 function Compiler([string[]]$arguments){
+ # Reject incomplete option tokens before launching the fixed compiler.
+ foreach($argument in $arguments){if([string]::IsNullOrWhiteSpace($argument) -or $argument -cin @('/out:','/reference:')){throw 'COMPILER_ARGUMENT_REJECTED'}}
+ if(@($arguments|Where-Object{$_.StartsWith('/out:',[StringComparison]::Ordinal)}).Count -ne 1){throw 'COMPILER_ARGUMENT_REJECTED'}
  $script:report.retired=$false
  $r=[Fonesi.Phase00.NativeProbe]::Run($script:compiler,$arguments,30000,10000,16384)
  $script:report.retired=$r.CleanupComplete
@@ -103,8 +106,8 @@ try {
 
  $dll=Join-Path $root 'fixture/VisionProcess.dll';$exe=Join-Path $root 'fixture/VisionProcessFixture.exe'
  $common=@('/nologo','/noconfig','/nostdlib+','/platform:x64','/optimize+')+@($refs|ForEach-Object{'/reference:'+$_})
- Compiler ($common+@('/target:library','/out:'+$dll,$native))
- Compiler ($common+@('/target:exe','/out:'+$exe,'/reference:'+$dll,$fixture))
+ Compiler ($common+@('/target:library',('/out:'+$dll),$native))
+ Compiler ($common+@('/target:exe',('/out:'+$exe),('/reference:'+$dll),$fixture))
  GuardSource $dll 1048576;GuardSource $exe 1048576
  $report.generatedAssemblies=@([ordered]@{name='VisionProcess.dll';sha256=$before[$dll]},[ordered]@{name='VisionProcessFixture.exe';sha256=$before[$exe]})
  $report.compiled=$true

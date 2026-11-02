@@ -1,6 +1,7 @@
 // Portable real PNG decoding and synthetic Windows wire replies; no native/model execution.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   fixture,
   ocrHeader,
@@ -265,4 +266,22 @@ test('Windows workflow compiles by default and keeps actual native ownership exp
     raw.replace('-Mode Compile', '-Mode Runtime'),
   ])
     assert.throws(() => closed(changed));
+});
+
+test('Windows compiler array entries retain complete output/reference tokens before launch', () => {
+  const source = readFileSync(
+    new URL('../verification/Invoke-VisionQualification.ps1', import.meta.url),
+    'utf8',
+  );
+  assert.ok(source.includes("Compiler ($common+@('/target:library',('/out:'+$dll),$native))"));
+  assert.ok(
+    source.includes(
+      "Compiler ($common+@('/target:exe',('/out:'+$exe),('/reference:'+$dll),$fixture))",
+    ),
+  );
+  assert.ok(source.includes("$argument -cin @('/out:','/reference:')"));
+  assert.ok(
+    source.indexOf("throw 'COMPILER_ARGUMENT_REJECTED'") <
+      source.indexOf('[Fonesi.Phase00.NativeProbe]::Run($script:compiler'),
+  );
 });
