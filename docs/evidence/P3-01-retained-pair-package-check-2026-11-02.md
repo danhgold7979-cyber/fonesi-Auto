@@ -94,3 +94,16 @@ docs/phases/PARALLEL-SOFTWARE-EXECUTION-AMENDMENT-03.md
 ## Acceptance boundary
 
 P3-01.E actual app-local integration remains pending until the fixed Windows package-only check and independent report audit succeed. This source snapshot does not grant P3-01.A legal/notice closure, P3-01.F retained-prior recovery, runtime admission, preview/rendering, device acceptance or public full-application distribution. Runtime pins remain null. No new device, profile, security-setting, Release or pair-compilation action is included.
+
+
+## Actual Windows package-only PASS — 2026-11-02 12:11 UTC
+
+The source-freeze pending result above is superseded by actual CI41440899796/public `1bf3086c71117d9a4809eae8be48f4eab7758848`, corresponding local `6cfe03f25722dcb77fc34c548a79eed43382a765`, tree `a4e4f8671da3c81f062102cfb32a92a6842cdb02`. Source job125262202101 emits actual1674/1674 and DESKTOP_SOURCE_CHECK_PASS, foundation109 with fail/cancel/skip/todo all0, Python375/OK and phase03/no-ADB markers. Package job125264195108 emits RETAINED_PAIR_PACKAGE_PASS. API metadata separately reports both jobs SUCCESS and fourteen other optional jobs SKIPPED; skips are not inferred from one retained log.
+
+- Source log100479bytes SHA256 `bd30747e0569c8b512d1b3f8ef0e0c8b572580a066bba7e8c3bb7c49ed39aa1a`.
+- Package log34708bytes SHA256 `cca5648be23a0b4e92eb166e232acda68ddd91accb3e8bb0f8213b2254bb0b02`.
+- Artifact13140876273 is JSON-only,942-byte ZIP SHA256 `8c215514d6622e0a78ccc267f19f23907e71e6fd7a3a8de9a619ac0bb2ce482d`; API expiry2026-11-16T12:03:29Z. Its sole member is the exact [1819-byte canonical report](P3-01-retained-pair-package-report-2026-11-02.json), SHA256 `627dd792b214697229599e1c5068e746787ebf36f40d8dd200b685d5ba5890d8`.
+
+Independent retained-byte audit at12:11 reconstructs the exact committed wrapper's23-key canonical schema and all fixed pins. PREPARE/ELECTRON/ATTEST/BUILD/CLEANUP are each actual SUCCESS/exit0/retired/untruncated. The report records152 package files/473593531bytes, actual stored ZIP473615793bytes/SHA256 `7280af5bc2f03c85ea06b9f493c97fce1fdfb00409ee275c688475c8103f7415`, exact external receipt hash, packageVerified/archiveBound/packageRootCleanup/passed true. This validates recorded evidence against the committed pipeline; it is not independent reinspection of the deleted application ZIP or reproduction of its bytes.
+
+Only JSON evidence is retained here; the full application package/ZIP was cleaned after verification, never uploaded or executed. Existing server/consumer retained artifact remains its separately approved14-day object. P3-01.E S→I is now justified by actual intended Windows packaging integration. Legal/applicability P3-01.A, recovery P3-01.F, runtime pins, application launch and device acceptance remain open. This package predates the separate host-resource telemetry source batch and does not establish a telemetry-inclusive Windows package.

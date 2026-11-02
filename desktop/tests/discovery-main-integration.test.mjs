@@ -208,7 +208,32 @@ test('actual renderer-loss failure uses coordinated quit before cleanup owner in
   runInNewContext(transformSync(code + '\nfail();', { loader: 'ts', format: 'cjs' }).code, context);
   assert.deepEqual(calls, ['quit']);
   assert.equal(context.cleanupComplete, false);
-  assert.match(source, /bridge\.attach\(window, \(\) => discoverySessionService\?\.revoke\(\)\)/);
+  const detached = section(
+    'const view = bridge.attach(window, () => {',
+    '\n        window.webContents.on',
+  );
+  const revoked = [];
+  runInNewContext(detached, {
+    window: {},
+    bridge: {
+      attach(_window, onLoss) {
+        onLoss();
+        return {};
+      },
+    },
+    discoverySessionService: {
+      revoke() {
+        revoked.push('discovery');
+      },
+    },
+    hostResourceSampler: {
+      close() {
+        revoked.push('host');
+        return Promise.resolve();
+      },
+    },
+  });
+  assert.deepEqual(revoked, ['discovery', 'host']);
 });
 
 test('main metadata audit forwards actual logger result and absent logger degrades without native builders', async () => {

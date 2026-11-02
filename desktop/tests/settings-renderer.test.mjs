@@ -1,3 +1,4 @@
+import * as hostContract from '../src/host-resource-contract.ts';
 import * as inputContract from '../src/input-interaction-contract.ts';
 import * as associationContract from '../src/association-contract.ts';
 import * as metadataContract from '../src/metadata-contract.ts';
@@ -34,6 +35,7 @@ function mount(
   metadataApi = null,
   associationApi = null,
   inputApi = null,
+  hostApi = null,
 ) {
   let component,
     cursor = 0;
@@ -47,6 +49,7 @@ function mount(
     discovery: discoveryApi,
     association: associationApi,
     input: inputApi,
+    hostResources: hostApi,
     metadata: metadataApi ?? {
       get: async () =>
         metadataContract.metadataError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED'),
@@ -81,6 +84,8 @@ function mount(
       if (events.get(name) === fn) events.delete(name);
     },
   };
+  let hostClock = 0;
+  const hostTimers = new Map();
   const jsx = (type, props) => ({ type, props });
   const react = {
     useCallback(fn) {
@@ -125,6 +130,7 @@ function mount(
             },
           }),
         };
+      if (name === './host-resource-contract.ts') return hostContract;
       if (name === './input-interaction-contract.js') return inputContract;
       if (name === './association-contract.js') return associationContract;
       if (name === './metadata-contract.js') return metadataContract;
@@ -136,6 +142,13 @@ function mount(
       if (name === './ui/ui-shell.tsx') return { UiShell: 'UiShell' };
       throw Error('UNKNOWN_MODULE');
     },
+    performance: { now: () => hostClock },
+    setTimeout: (fn, ms) => {
+      const id = {};
+      hostTimers.set(id, { fn, ms });
+      return id;
+    },
+    clearTimeout: (id) => hostTimers.delete(id),
     window: hostWindow,
     document: { getElementById: () => ({}) },
   });
@@ -146,7 +159,11 @@ function mount(
   const find = (id, node = render()) => {
     if (!node || typeof node !== 'object') return null;
     if (node.props?.id === id) return node;
-    for (const child of [node.props?.children, node.props?.settings].flat(Infinity)) {
+    for (const child of [
+      node.props?.children,
+      node.props?.settings,
+      node.props?.hostResources,
+    ].flat(Infinity)) {
       const found = find(id, child ?? null);
       if (found) return found;
     }
@@ -155,6 +172,10 @@ function mount(
   return {
     render,
     find,
+    hostTimers,
+    hostTime: (value) => {
+      hostClock = value;
+    },
     effects: () => {
       render();
       for (const effect of effects.splice(0)) cleanups.push(effect());
@@ -1828,4 +1849,68 @@ test('late input STATUS cannot rearm after ACTIVE selection or Stop invalidation
     assert.equal(m.find('input-home').props.disabled, true);
     m.dispose();
   }
+});
+
+test('host CPU RAM explicit read renders immutable scope then expires without polling or fake unsupported data', async () => {
+  let calls = 0;
+  const sample = {
+    version: 1,
+    sequence: 1,
+    startedUtc: 1000,
+    endedUtc: 2000,
+    intervalMs: 1000,
+    metrics: Object.fromEntries(
+      hostContract.HOST_METRICS.map((key) => [
+        key,
+        {
+          ...hostContract.HOST_METRIC_INFO[key],
+          value: key.endsWith('Cpu') ? 20 : 100,
+          code: 'OK',
+        },
+      ]),
+    ),
+  };
+  const m = mount({}, 1600, null, null, null, null, null, null, {
+    sample: async () => {
+      calls++;
+      return hostContract.hostResourceResponse('h1', 'OK', sample, 4000);
+    },
+    cancel: async () => hostContract.hostResourceResponse(null, 'CANCELLED'),
+  });
+  m.effects();
+  assert.equal(calls, 0);
+  m.render().props.onHostResourcesRead();
+  await flush();
+  assert.equal(calls, 1);
+  assert.ok(JSON.stringify(m.render().props.hostResources).includes('MAIN_PROCESS'));
+  assert.ok(JSON.stringify(m.render().props.hostResources).includes('FRESH'));
+  assert.equal(m.hostTimers.size, 1);
+  m.hostTime(5000);
+  assert.ok(JSON.stringify(m.render().props.hostResources).includes('STALE'));
+  for (const { fn } of m.hostTimers.values()) fn();
+  assert.equal(calls, 1);
+});
+
+test('host panel close cancels only owned pending read and suppresses late completion without resetting history', async () => {
+  let settle,
+    cancelled = 0;
+  const m = mount({}, 1600, null, null, null, null, null, null, {
+    sample: () =>
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    cancel: async () => {
+      cancelled++;
+      return hostContract.hostResourceResponse(null, 'CANCELLED');
+    },
+  });
+  m.effects();
+  m.render().props.onHostResourcesRead();
+  m.render().props.onHostResourcesClose();
+  assert.equal(cancelled, 1);
+  settle(hostContract.hostResourceResponse('h1', 'UNAVAILABLE'));
+  await flush();
+  assert.ok(JSON.stringify(m.render().props.hostResources).includes('STALE'));
+  assert.equal(m.hostTimers.size, 0);
+  m.dispose();
 });

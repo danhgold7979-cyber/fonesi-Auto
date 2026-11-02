@@ -1,3 +1,5 @@
+import * as hostClient from '../src/host-resource-client.ts';
+import * as hostContract from '../src/host-resource-contract.ts';
 import * as inputClient from '../src/input-interaction-client.ts';
 import * as associationClient from '../src/association-client.ts';
 import * as metadataClient from '../src/metadata-client.ts';
@@ -43,6 +45,8 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
             },
           },
         };
+      if (name === './host-resource-client.ts') return hostClient;
+      if (name === './host-resource-contract.ts') return hostContract;
       if (name === './preload-client.js') return clients;
       if (name === './settings-client.js') return preferences;
       if (name === './association-client.js') return associationClient;
@@ -63,11 +67,14 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'discovery',
     'fleet',
     'foundation',
+    'hostResources',
     'input',
     'metadata',
     'platformTools',
     'preferences',
   ]);
+  assert.deepEqual(Object.keys(exposed.hostResources).sort(), ['cancel', 'sample']);
+  assert.equal(Object.isFrozen(exposed.hostResources), true);
   assert.deepEqual(Object.keys(exposed.foundation).sort(), ['health', 'settings']);
   assert.deepEqual(Object.keys(exposed.preferences).sort(), [
     'read',

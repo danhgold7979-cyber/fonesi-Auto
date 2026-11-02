@@ -206,6 +206,18 @@ Independent criterion audit confirms **P3-01.E N→S**, not I. Its complete name
 
 **Current ledger: N81 / S5 / I14. Source coverage19/100=19.0% (+1.0 percentage point versus §3.3); integrated14/100=14.0% (unchanged); task acceptance0/19.** This is a disclosed correction of previously under-credited source work, not newly written code or a changed denominator. A remains N for its own applicable notice closure, F remains N for prior recovery; C/D already I, B/G already S. No other status changes.
 
+## 3.5. Host-resource software integration — 2026-11-02 12:04 UTC
+
+Independent source/tooling/criterion review confirms exactly **P3-11.A and P3-11.G N→I**. The [host-resource checkpoint](../evidence/P3-11-host-resource-source-2026-11-02.md) implements real Windows-only total-host CPU/RAM and explicitly MAIN_PROCESS CPU/RSS adapters; exact units/source/time/UNKNOWN; explicit panel Read/Cancel; one nonblocking bounded worker; monotonic freshness/deadline; sequence/late/malformed refusal; actual exit drain and fixed bundled-worker/package closure. Attributable local software checks are stitched and preserved, not claimed as actual Windows readings or measured monitoring overhead.
+
+**Current ledger: N79 / S5 / I16. Source21/100=21.0% (+2.0pp versus §3.4); integrated16/100=16.0% (+2.0pp); technical acceptance0/19.** No P3-11.B–F, P3-10 or whole-task credit. Actual Windows measurement/support-envelope and physical qualification remain NOT_RUN. Unrelated GPU/video dependencies do not withhold these complete named software cells. Denominator and definitions unchanged.
+
+## 3.6. Actual package integration — 2026-11-02 12:11 UTC
+
+Independent [actual Windows package-only audit](../evidence/P3-01-retained-pair-package-check-2026-11-02.md#actual-windows-package-only-pass--2026-11-02-1211-utc) confirms **P3-01.E S→I** on public1bf3086c/local6cfe03f. Actual retained input→existing builder/verifier→152-file app-local package→bound stored ZIP/external receipt→owned cleanup completed with five retired SUCCESS children. JSON-only evidence was retained; the application package was not executed or retained for distribution.
+
+**Current ledger N79/S4/I17: source21/100=21.0% (unchanged versus §3.5); integrated17/100=17.0% (+1.0pp); acceptance0/19.** No A/F/legal/runtime credit. This actual Windows package predates telemetry, whose separate A/G credit is local integrated software evidence; no telemetry-inclusive Windows package is claimed.
+
 ## 4. First baseline and honest deltas
 
 The independently reviewed complete mapping and evidence overlay establish:

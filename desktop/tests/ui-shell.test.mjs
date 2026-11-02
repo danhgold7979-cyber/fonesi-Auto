@@ -1288,3 +1288,73 @@ test('picker Escape retained before passive cleanup cannot steal performance ses
   assert.match(css, /\.performance-panel \.performance-head\{position:sticky;top:0;/);
   assert.doesNotMatch(css, /\.performance-panel \.performance-head\{[^}]*top:-/);
 });
+
+test('host read content stays in explicit performance session and close requests cancellation once', () => {
+  let cancels = 0;
+  const child = { type: 'section', props: { id: 'synthetic-host-read' } };
+  const m = mount({
+    hostResources: child,
+    onHostResourcesClose: () => {
+      cancels++;
+    },
+  });
+  m.render();
+  m.effects();
+  assert.equal(cancels, 0);
+  openPerformance(m);
+  const node = m.all((n) => typeof n.type === 'function' && n.type.name === 'Performance')[0];
+  assert.equal(node.props.hostResources, child);
+  const content = node.type(node.props);
+  assert.equal(walk(content, (n) => n.props?.id === 'synthetic-host-read').length, 1);
+  const text = JSON.stringify(content);
+  assert.ok(text.includes('UNKNOWN · không có mẫu quan sát'));
+  assert.ok(text.includes('GPU'));
+  const close = m.all((n) => n.props?.['aria-label'] === 'Đóng bảng hiệu năng')[0];
+  close.props.onClick();
+  close.props.onClick();
+  assert.equal(cancels, 1);
+});
+
+test('host Read belongs to the live measured panel session and stale close reopen handlers cannot sample', () => {
+  let reads = 0;
+  const m = mount({
+    hostResources: { type: 'section', props: { id: 'host-history' } },
+    onHostResourcesRead() {
+      reads++;
+    },
+  });
+  openPerformance(m);
+  const oldRead = m.find('host-resources-read').props.onClick;
+  oldRead();
+  assert.equal(reads, 1);
+  m.all((n) => n.props?.['aria-label'] === 'Đóng bảng hiệu năng')[0].props.onClick();
+  oldRead();
+  assert.equal(reads, 1);
+  openPerformance(m);
+  oldRead();
+  assert.equal(reads, 1);
+  const currentRead = m.find('host-resources-read').props.onClick;
+  currentRead();
+  assert.equal(reads, 2);
+  m.document.hidden = true;
+  currentRead();
+  assert.equal(reads, 2);
+  m.document.hidden = false;
+  const query = m.document.querySelector;
+  m.document.querySelector = () => ({ role: 'dialog' });
+  currentRead();
+  assert.equal(reads, 2);
+  m.document.querySelector = query;
+  m.props.hostResourcesReadDisabled = true;
+  m.render();
+  currentRead();
+  assert.equal(reads, 2);
+  m.props.hostResourcesReadDisabled = false;
+  m.props.ready = false;
+  m.render();
+  currentRead();
+  assert.equal(reads, 2);
+  m.dispose();
+  currentRead();
+  assert.equal(reads, 2);
+});

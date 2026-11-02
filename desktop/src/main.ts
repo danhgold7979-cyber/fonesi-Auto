@@ -1,3 +1,8 @@
+import { installHostResourceBridge } from './host-resource-bridge.ts';
+import {
+  createHostResourceSampler,
+  type HostResourceSampler,
+} from './main/host-resource-sampler.ts';
 import { installInputInteractionBridge } from './input-interaction-bridge.ts';
 import { installAssociationBridge } from './association-bridge.ts';
 import { installRuntimeVersionBridge } from './runtime-version-bridge.js';
@@ -85,6 +90,8 @@ import {
 } from './main/window-policy.js';
 
 // Legacy public reads plus the separately bounded nonsecret preference capability.
+let hostResourceSampler: HostResourceSampler | undefined;
+let hostResourceBridge: ReturnType<typeof installHostResourceBridge> | undefined;
 let bridge: ReturnType<typeof installFoundationBridge> | undefined;
 let preferencesBridge: ReturnType<typeof installPreferencesBridge> | undefined;
 let settingsStore: SettingsStore | undefined;
@@ -128,6 +135,7 @@ function cleanup(): boolean {
   closing = true;
   if (backupTimer !== undefined) clearInterval(backupTimer);
   const disposed = disposeResources([
+    () => hostResourceBridge?.dispose(),
     () => discoverySessionService?.revoke(),
     () => discoveryBridge?.dispose(),
     () => inputBridge?.dispose(),
@@ -227,6 +235,7 @@ try {
       const required = [
         'main.cjs',
         'adb-host-factory.cjs',
+        'host-resource-worker.cjs',
         'asset-policy.cjs',
         'lifecycle.cjs',
         'profile-owner.cjs',
@@ -363,6 +372,12 @@ try {
         stylesheet.toString('utf8'),
       );
       bridge = installFoundationBridge(ipcMain, logger);
+      hostResourceSampler = createHostResourceSampler();
+      hostResourceBridge = installHostResourceBridge(
+        ipcMain,
+        bridge.admitPreferences,
+        hostResourceSampler,
+      );
       const empty = emptyRegistry();
       let durableRegistry: ReturnType<typeof createRegistryStore> | undefined;
       if (persistence && persistenceEntry) {
@@ -760,7 +775,10 @@ try {
             () => undefined,
           );
         }
-        const view = bridge.attach(window, () => discoverySessionService?.revoke());
+        const view = bridge.attach(window, () => {
+          discoverySessionService?.revoke();
+          void hostResourceSampler?.close();
+        });
         window.webContents.on('render-process-gone', () => {
           if (!closing) logger?.emit('RENDERER_LOST', 'RENDERER_LOSS');
           fail();
@@ -796,6 +814,7 @@ try {
     stop: () => {
       closing = true;
       discoverySessionService?.revoke();
+      hostResourceBridge?.dispose();
       discoveryBridge?.dispose();
       inputBridge?.dispose();
       associationBridge?.dispose();
@@ -812,6 +831,7 @@ try {
     },
     flush: async () => {
       try {
+        await hostResourceSampler?.close();
         await platformToolsLifecycle.stop();
         await fleetLifecycle.stop();
         await settingsLifecycle.stop();

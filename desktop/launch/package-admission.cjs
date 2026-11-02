@@ -13,6 +13,7 @@ const MAX_BYTES = 640 * 1024 * 1024;
 const BUILD_OUTPUTS = [
   'main.cjs',
   'adb-host-factory.cjs',
+  'host-resource-worker.cjs',
   'asset-policy.cjs',
   'lifecycle.cjs',
   'profile-owner.cjs',

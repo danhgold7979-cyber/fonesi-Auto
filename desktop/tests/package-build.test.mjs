@@ -374,6 +374,7 @@ test('synthetic-hash policy composition admits closed package then rejects missi
       'runtime/node/LICENSE',
       'runtime/electron/LICENSE',
       'licenses/react-LICENSE',
+      'app/build/host-resource-worker.cjs',
     ]) {
       const file = resolve(p, name),
         original = readFileSync(file);
@@ -384,6 +385,12 @@ test('synthetic-hash policy composition admits closed package then rejects missi
       f.refresh();
       assert.equal(f.verifier.verifyPackage(p).mode, 'INTERNAL_PRODUCTION');
     }
+    writeFileSync(resolve(p, 'app/build/extra-host-resource-worker.cjs'), 'extra worker');
+    f.refresh();
+    assert.throws(() => f.verifier.verifyPackage(p));
+    rmSync(resolve(p, 'app/build/extra-host-resource-worker.cjs'));
+    f.refresh();
+    assert.equal(f.verifier.verifyPackage(p).mode, 'INTERNAL_PRODUCTION');
     writeFileSync(resolve(p, 'unknown.txt'), 'extra');
     f.refresh();
     assert.throws(() => f.verifier.verifyPackage(p));

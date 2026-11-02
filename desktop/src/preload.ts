@@ -1,3 +1,5 @@
+import { createHostResourceClient } from './host-resource-client.ts';
+import { HOST_RESOURCE_CHANNEL } from './host-resource-contract.ts';
 import { createInputInteractionClient } from './input-interaction-client.js';
 import { createAssociationClient } from './association-client.js';
 import { createMetadataClient } from './metadata-client.js';
@@ -12,6 +14,14 @@ import { createInvocationBudget } from './invocation-budget.js';
 import { createSettingsClient, createSettingsReadiness } from './settings-client.js';
 
 const budget = createInvocationBudget();
+const hostResources = createHostResourceClient(
+  (wire) => ipcRenderer.invoke(HOST_RESOURCE_CHANNEL, wire),
+  budget,
+);
+contextBridge.exposeInMainWorld(
+  'hostResources',
+  Object.freeze({ sample: () => hostResources.sample(), cancel: () => hostResources.cancel() }),
+);
 const readiness = createSettingsReadiness();
 const ready = () => readiness.signal();
 ipcRenderer.once('foundation:preferences:ready', ready);
@@ -195,6 +205,7 @@ window.addEventListener(
   () => {
     ipcRenderer.removeListener('foundation:preferences:ready', ready);
     readiness.dispose();
+    hostResources.dispose();
     client.dispose();
     preferences.dispose();
     fleet.dispose();

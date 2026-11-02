@@ -14,6 +14,10 @@ import { Icon, SocialIcon, UnavailableButton, EmptyPanel, UiModal } from './ui-s
 import { OverviewPage, AccountsPage, TrackingPage } from './primary-pages.tsx';
 import { SetupPage, CalendarPage, WorkflowsPage, WORKFLOW_LABELS } from './work-pages.tsx';
 export type ShellProps = Readonly<{
+  hostResources?: ReactNode;
+  onHostResourcesClose?: () => void;
+  onHostResourcesRead?: () => void;
+  hostResourcesReadDisabled?: boolean;
   theme: 'LIGHT' | 'DARK';
   ready: boolean;
   pending: boolean;
@@ -33,11 +37,13 @@ export type ShellProps = Readonly<{
 }>;
 function Performance({
   onUnavailable,
-}: Readonly<{ onUnavailable: (action: DomainAction) => void }>) {
+  hostResources,
+}: Readonly<{ onUnavailable: (action: DomainAction) => void; hostResources?: ReactNode }>) {
   return (
     <>
       <div className="notice">
-        Stream và cảm biến chưa khả dụng. Giá trị yêu cầu không phải cấu hình đã áp dụng.
+        Stream và cảm biến không được cung cấp vẫn UNKNOWN. Giá trị yêu cầu không phải cấu hình đã
+        áp dụng.
       </div>
       <div className="formgrid">
         <label className="field">
@@ -77,6 +83,7 @@ function Performance({
           </span>
         </label>
       </div>
+      {hostResources}
       <div className="stat-grid">
         {[
           'CPU',
@@ -87,13 +94,15 @@ function Performance({
           'Stream / backlog',
           'Hàng đợi Vision',
           'Mức tài nguyên',
-        ].map((label) => (
-          <div className="stat" key={label}>
-            <span>{label}</span>
-            <strong>—</strong>
-            <small>UNKNOWN · không có mẫu quan sát</small>
-          </div>
-        ))}
+        ]
+          .filter((label) => !hostResources || (label !== 'CPU' && label !== 'RAM'))
+          .map((label) => (
+            <div className="stat" key={label}>
+              <span>{label}</span>
+              <strong>—</strong>
+              <small>UNKNOWN · không có mẫu quan sát</small>
+            </div>
+          ))}
       </div>
       <div className="notice">
         Yêu cầu / hiệu lực / đề xuất: UNAVAILABLE. Thay đổi kích thước ô không thay đổi độ phân giải
@@ -153,6 +162,13 @@ export function UiShell(p: ShellProps) {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const [modal, setModal] = useState<'help' | 'unavailable' | null>(null);
   const [performance, setPerformance] = useState<PerformanceSession | null>(null);
+  const hostClose = useRef(p.onHostResourcesClose);
+  hostClose.current = p.onHostResourcesClose;
+  const hostRead = useRef({
+    callback: p.onHostResourcesRead,
+    disabled: p.hostResourcesReadDisabled,
+  });
+  hostRead.current = { callback: p.onHostResourcesRead, disabled: p.hostResourcesReadDisabled };
   const performanceSession = useRef<PerformanceSession | null>(null);
   const performanceFocusDone = useRef<object | null>(null);
   const performanceTrigger = useRef<HTMLButtonElement>(null);
@@ -265,6 +281,9 @@ export function UiShell(p: ShellProps) {
         performancePanel.current?.contains(document.activeElement));
     performanceSession.current = null;
     setPerformance(null);
+    try {
+      hostClose.current?.();
+    } catch {}
     if (
       restore &&
       inside &&
@@ -438,6 +457,9 @@ export function UiShell(p: ShellProps) {
       lifetime.current = false;
       performanceSession.current = null;
       pickerSession.current = null;
+      try {
+        hostClose.current?.();
+      } catch {}
     };
   }, []);
   useEffect(() => {
@@ -907,7 +929,36 @@ export function UiShell(p: ShellProps) {
                   <Icon name="x" />
                 </button>
               </div>
+              {p.hostResources ? (
+                <button
+                  type="button"
+                  id="host-resources-read"
+                  disabled={
+                    p.hostResourcesReadDisabled ||
+                    !p.onHostResourcesRead ||
+                    performance.cap === null
+                  }
+                  onClick={() => {
+                    if (
+                      !lifetime.current ||
+                      performanceSession.current?.token !== performance.token ||
+                      performanceSession.current.cap === null ||
+                      !performanceGate.current.ready ||
+                      performanceGate.current.modal !== null ||
+                      document.querySelector('[role="dialog"]') !== null ||
+                      !document.hasFocus() ||
+                      document.hidden ||
+                      hostRead.current.disabled
+                    )
+                      return;
+                    hostRead.current.callback?.();
+                  }}
+                >
+                  Đọc CPU/RAM máy chủ
+                </button>
+              ) : null}
               <Performance
+                hostResources={p.hostResources}
                 onUnavailable={(next) => {
                   if (
                     lifetime.current &&

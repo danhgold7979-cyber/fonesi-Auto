@@ -1,4 +1,10 @@
 import {
+  parseHostResourceResponse,
+  HOST_METRICS,
+  HOST_METRIC_INFO,
+  type HostResourceSample,
+} from './host-resource-contract.ts';
+import {
   INPUT_ACTIONS,
   parseInputInteractionResponse,
   type InputInteractionSnapshot,
@@ -26,6 +32,7 @@ import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
   interface Window {
+    hostResources?: Readonly<{ sample: () => Promise<string>; cancel: () => Promise<string> }>;
     input: Readonly<{
       get: () => Promise<string>;
       press: (
@@ -87,6 +94,67 @@ declare global {
 function Diagnostic() {
   const [status, setStatus] = useState('NOT_READY / UNAVAILABLE');
   const [preferences, setPreferences] = useState<PublicSettings | null>(null);
+  const [hostSample, setHostSample] = useState<HostResourceSample | null>(null);
+  const [hostStatus, setHostStatus] = useState('UNKNOWN');
+  const [hostPending, setHostPending] = useState(false);
+  const hostGeneration = useRef<object>({});
+  const hostInFlight = useRef(false);
+  const hostFresh = useRef({ from: 0, until: 0 });
+  const hostAlive = useRef(true);
+  const hostExpiry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelHost = () => {
+    hostGeneration.current = {};
+    if (hostExpiry.current !== undefined) clearTimeout(hostExpiry.current);
+    hostExpiry.current = undefined;
+    hostFresh.current = { from: 0, until: 0 };
+    if (hostAlive.current) setHostStatus('STALE');
+    if (hostInFlight.current) void window.hostResources?.cancel().catch(() => {});
+  };
+  useEffect(() => {
+    hostAlive.current = true;
+    return () => {
+      hostAlive.current = false;
+      hostGeneration.current = {};
+      if (hostExpiry.current !== undefined) clearTimeout(hostExpiry.current);
+      void window.hostResources?.cancel().catch(() => {});
+    };
+  }, []);
+  async function readHost() {
+    if (hostInFlight.current || !window.hostResources) return;
+    hostInFlight.current = true;
+    setHostPending(true);
+    setHostStatus('SAMPLING');
+    const generation = {};
+    hostGeneration.current = generation;
+    const started = performance.now();
+    if (hostExpiry.current !== undefined) clearTimeout(hostExpiry.current);
+    try {
+      const result = parseHostResourceResponse(await window.hostResources.sample());
+      if (!hostAlive.current || hostGeneration.current !== generation) return;
+      if (result?.code !== 'OK' || !result.sample) {
+        setHostStatus(result?.code ?? 'UNAVAILABLE');
+        return;
+      }
+      setHostSample(result.sample);
+      const elapsed = performance.now() - started;
+      const remaining =
+        Number.isFinite(elapsed) && elapsed >= 0
+          ? Math.max(0, result.remainingFreshMs - elapsed)
+          : 0;
+      const observedAt = performance.now();
+      hostFresh.current = { from: observedAt, until: observedAt + remaining };
+      setHostStatus(remaining > 0 ? 'FRESH' : 'STALE');
+      if (remaining > 0)
+        hostExpiry.current = setTimeout(() => {
+          if (hostAlive.current && hostGeneration.current === generation) setHostStatus('STALE');
+        }, remaining);
+    } catch {
+      if (hostAlive.current && hostGeneration.current === generation) setHostStatus('UNAVAILABLE');
+    } finally {
+      hostInFlight.current = false;
+      if (hostAlive.current) setHostPending(false);
+    }
+  }
   const [preferenceStatus, setPreferenceStatus] = useState(
     'NOT_READY / READ PERSISTED PREFERENCES',
   );
@@ -913,8 +981,47 @@ function Diagnostic() {
       setStatus('REQUEST UNAVAILABLE');
     }
   }
+  const hostViewStatus =
+    hostStatus === 'FRESH' &&
+    (!Number.isFinite(performance.now()) ||
+      performance.now() < hostFresh.current.from ||
+      performance.now() >= hostFresh.current.until)
+      ? 'STALE'
+      : hostStatus;
   return (
     <UiShell
+      onHostResourcesClose={cancelHost}
+      onHostResourcesRead={() => {
+        void readHost();
+      }}
+      hostResourcesReadDisabled={hostPending || !window.hostResources}
+      hostResources={
+        <section aria-label="Host CPU and RAM" id="host-resources">
+          <span role="status">{hostViewStatus} · MAIN_PROCESS không phải toàn bộ Auto</span>
+          {hostSample ? (
+            <small>
+              Mẫu {hostSample.sequence} · {hostSample.startedUtc}–{hostSample.endedUtc} UTC ms ·{' '}
+              {hostSample.intervalMs} ms
+            </small>
+          ) : null}
+          <div className="stat-grid">
+            {HOST_METRICS.map((key) => (
+              <div className="stat" key={key}>
+                <span>
+                  {key} · {HOST_METRIC_INFO[key].scope}
+                </span>
+                <strong>
+                  {hostSample?.metrics[key].value ?? '—'} {HOST_METRIC_INFO[key].unit}
+                </strong>
+                <small>
+                  {hostSample?.metrics[key].code ?? 'UNKNOWN'} · {HOST_METRIC_INFO[key].source} ·{' '}
+                  {hostViewStatus === 'FRESH' ? 'captured sample' : 'NOT CURRENT'}
+                </small>
+              </div>
+            ))}
+          </div>
+        </section>
+      }
       snapshot={fleetUi}
       selection={
         fleetFailed || !fleet

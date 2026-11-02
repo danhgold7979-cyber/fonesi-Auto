@@ -50,6 +50,7 @@ export const TEST_FILES = Object.freeze([
   'tests/fleet-ui-workflow.test.mjs',
   'tests/foundation-database.test.mjs',
   'tests/foundation-persistence.test.mjs',
+  'tests/host-resource.test.mjs',
   'tests/input-audit.test.mjs',
   'tests/input-contract.test.mjs',
   'tests/input-interaction-bridge.test.mjs',
