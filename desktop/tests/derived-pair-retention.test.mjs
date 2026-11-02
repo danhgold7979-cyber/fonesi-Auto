@@ -149,7 +149,7 @@ test('original staged rows and retired final report defeat coherent replacement 
   assert.match(source, /foreach\(\$row in \$retentionBinding.files\)/);
   assert.match(
     source,
-    /\$expectedRows\['build\/report.json'\]=\[ordered\]@\{path='build\/report.json';bytes=\$reportBytes.Length;sha256=\$reportDigest\}/,
+    /\$expectedRows\['build\/report.json'\]=\[pscustomobject\]\[ordered\]@\{path='build\/report.json';bytes=\$reportBytes.Length;sha256=\$reportDigest\}/,
   );
   assert.match(source, /\$row=\$receipt.files\[\$i\]/);
   const saved = Object.freeze({
@@ -208,4 +208,45 @@ test('opened length and each bounded chunk remain under the original deadline (s
     /DEADLINE/,
   );
   assert.equal(reads, 1);
+});
+
+test('reconstructed receipt rows preserve note-property shape and checkpoints stay finite (source only)', () => {
+  for (const target of ['$expectedRows[$row.path]', "$expectedRows['build/report.json']"]) {
+    assert.ok(source.includes(`${target}=[pscustomobject][ordered]@{`));
+    assert.ok(!source.includes(`${target}=[ordered]@{`));
+  }
+  const boundary = readFileSync(
+    new URL('../verification/WindowsBoundary.psm1', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    boundary,
+    /return \[pscustomobject\]@\{ Entries=\$entries.ToArray\(\); Bytes=\$bytes \}/,
+  );
+  const job = gate(workflow);
+  const pattern = job
+    .match(/-cmatch '([^']+)'/g)
+    .find((text) => text.includes('RETENTION_WRAPPER_'))
+    .slice(9, -1);
+  const diagnostic = new RegExp(pattern);
+  for (const step of [
+    'CAPTURE_REPORT',
+    'EXPECTED_RECEIPT',
+    'PUBLISH',
+    'ADMISSION',
+    'INVENTORY',
+    'RECEIPT',
+    'FILE_HASH',
+    'FINAL_BINDING',
+  ]) {
+    assert.ok(diagnostic.test(`DERIVED_PAIR_RETENTION_WRAPPER_${step}`));
+    assert.ok(source.includes(`retentionWrapperStep='${step}'`));
+  }
+  for (const value of ['UNKNOWN', 'C:\\private', 'FILE_HASH\nraw'])
+    assert.ok(!diagnostic.test(`DERIVED_PAIR_RETENTION_WRAPPER_${value}`));
+  assert.match(
+    source,
+    /Write-Output \('DERIVED_PAIR_RETENTION_WRAPPER_'\+\$retentionWrapperStep\)/,
+  );
+  assert.doesNotMatch(source, /Write-Output.*Exception|Write-Output \$_/);
 });

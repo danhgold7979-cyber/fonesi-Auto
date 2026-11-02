@@ -54,17 +54,17 @@ Exact combined publication delta from local baseline `70cd898e8fd18c616d382ed66c
 
 | Source/test/runner path | SHA256 |
 |---|---|
-| `.github/workflows/phase-02-software.yml` | `c8d93fae78d05d04da60a228a4177718c2d7637198dcd1219af095eccbf2ee21` |
+| `.github/workflows/phase-02-software.yml` | `fdcb446e90d3017f6fe652097c79c610ee10130be8f450143b4a050d45882789` |
 | `desktop/assets/v9.css` | `e7e50668bf4ee7c596c27c568cd24ab55a83c711ca2c6134c4f4b9dee7301f42` |
 | `desktop/scripts/quality-tool.mjs` | `09fb2f9fc609d5f7fc8eb1d1fce4c569ed15e0b17a769308c91c7020f5cb0c87` |
 | `desktop/scripts/test-batches.mjs` | `557321126cc096f45c5ff150bab5842b66e6f1e935b925eae19a4633043526cd` |
 | `desktop/src/main/asset-policy.ts` | `3175c7bd00923bb069588b3f46892078355d6fce1ad37d0e002bad9c93c427b4` |
 | `desktop/src/ui/ui-shell.tsx` | `5d07812bfe5a1462bcfcf4705366d0ebdc4407abca8d3b0a77462b0d9e0b51cd` |
-| `desktop/tests/derived-pair-retention.test.mjs` | `76df7ed370a17989f93806f6918f65399dee13a9dce9731200b225a12fd7d769` |
+| `desktop/tests/derived-pair-retention.test.mjs` | `225c3190d0920d302a75168ec880b797d13048c89d28852bf8fd98f7ae2208c6` |
 | `desktop/tests/phase-source-workflow.test.mjs` | `82f61f44787345ed57ca11a57dce9464377636437c9ca28d7bc5a0f3fb74e381` |
 | `desktop/tests/quality-tool.test.mjs` | `3c2fec1bb6c427a02d60cab60a0aa678f5b956956adc505a063a252efd642f99` |
 | `desktop/tests/ui-shell.test.mjs` | `79eeb83d45678dd363b703e05c4e348af9b0a539b5399eb16cf4c8b817a26788` |
-| `desktop/verification/Invoke-DerivedPairBuild.ps1` | `3c57d5067b8f772f3ecfa6743369e455a8e80c798eb7f70008f23855fdd399e3` |
+| `desktop/verification/Invoke-DerivedPairBuild.ps1` | `e4702c1f9710939ff37ba7b5d76f90a9e9e4c386d8c05d55848a067cb6b8b789` |
 | `desktop/verification/derived_pair_retention.py` | `08034ac004495b5122f1af16b20bcec684a434b6c0a2458437d8c96baa89500e` |
 | `desktop/verification/retained-rollback-workflow.test.cjs` | `8fe15a261bf974bf989d63f2d693a6d78b5a117712e8825dad1dd3b659c176f0` |
 | `desktop/verification/test_derived_pair_retention.py` | `a4f76f590a69df017d9e34b93752f902baeb4ab4c62be5fea5836e1358e3820d` |
@@ -73,3 +73,18 @@ Exact combined publication delta from local baseline `70cd898e8fd18c616d382ed66c
 
 
 Final author log identities: desktop aggregate `bfd99fa0d75299b9ffee7eaacf725990ebcb9125bdecfa6144fa66ca81be2200`; Python375 `62ccb82a6a4b48578e949d504e31f3d6c38048d7676f48f7c9bcfdf80c2372be`. Independent final source/runner review is CLEAR on the exact corrected hashes at10:02 UTC. This approved combined milestone requires the actual Windows retained-build campaign; no standalone docs/status publication or repeated unchanged compile-only run is planned.
+
+
+## First hosted campaign — source PASS, retained publication failure
+
+CI41426237366 binds public `bcec3d4d37672a4a614a2822f453bcbfb23518f2`, local `13e67f808f15a803c3640d75798c6302b56a872c`, tree `86a837a607495bc7cbef9d451ed0ceb7b8ffb183`. Source job125213410045 emitted actual1653/1653 + DESKTOP_SOURCE_CHECK_PASS, foundation109 with zero failure/cancel/skip/todo, Python375/OK, phase03/no-ADB markers. Retained source log100481B SHA256 `cf4d0434cecca9a11ccd750b89d7d81d6f6ae018288c8707c386105d738b6f56`. Independent retained-byte audit confirms these facts.
+
+Retained job125215214828 failed. Its22522B log SHA256 `4253271481756c65a88c63a063b9503e1a8e80cb551ed9c548acec2ef4797fb3` emits VALIDATION_WRITTEN, then STAGE_RETAIN and RETENTION_FAIL, without a child diagnostic or retention PASS. The exact failing predicate is unobserved; no retained artifact or reconstructed successful final report is claimed. Thirteen other optional jobs were SKIPPED according to separate API metadata, not inference from the logs.
+
+Source inspection identifies a concrete final-readback mismatch: reconstructed expected rows are ordered dictionaries, while the property-name check expects PSCustomObject note properties as provided by parsed JSON. The correction must preserve the exact canonical receipt and frozen rows, not relax equality. This source finding is not asserted to be the unseen hosted exception. Bounded source-assigned wrapper checkpoints are being added in the same repair to expose any remaining final-boundary refusal without paths, exception messages or payload bytes. The existing user-approved campaign scope remains unchanged; no new checklist credit or acceptance follows.
+
+### Narrow correction and bounded retry — 10:18 UTC
+
+Both reconstructed row constructors now use `[pscustomobject][ordered]`, preserving canonical field order and JSON while satisfying the unchanged strict note-property check. Eight closed wrapper checkpoints identify the last-entered final-publication substep; they expose no exception text, paths or payload values. Independent narrow review is CLEAR on wrapper `e4702c1f9710939ff37ba7b5d76f90a9e9e4c386d8c05d55848a067cb6b8b789`, workflow `fdcb446e90d3017f6fe652097c79c610ee10130be8f450143b4a050d45882789` and test `225c3190d0920d302a75168ec880b797d13048c89d28852bf8fd98f7ae2208c6`.
+
+Author impact validation passed25/25 new/historical wrapper source tests and quality; coordinator separately passed4/4 workflow/rollback policy tests. These are source/model checks, not PowerShell execution. The previous full hosted1653/109/375 remains the actual aggregate; the one added source test makes1654/109/375 prospective for the next gate. No duplicate full local aggregate was run. The next publication is the functional repair needed for the authorized retained Windows milestone, not a standalone documentation push; retained success remains unestablished until actual readback.

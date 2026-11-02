@@ -8,7 +8,7 @@ $controller=Join-Path $PSScriptRoot 'derived_pair_build.py'
 $validator=Join-Path $PSScriptRoot 'validate_derived_pair_build.py'
 $retentionProducer=Join-Path $PSScriptRoot 'derived_pair_retention.py'
 $retentionValidator=Join-Path $PSScriptRoot 'validate_retained_pair_evidence.py'
-$retentionStaged=$false;$retentionPublished=$false
+$retentionStaged=$false;$retentionPublished=$false;$retentionWrapperStep=$null
 $original=[Environment]::GetEnvironmentVariables('Process')
 $clock=[Diagnostics.Stopwatch]::StartNew()
 $owner=$null;$baseOwner=$null;$allRetired=$true;$prepared=$false;$staged=$false;$published=$false;$failure=$null;$phase='ADMISSION';$toolsStep=$null
@@ -127,6 +127,7 @@ function Assert-ScratchAbsent {
  try{$null=Get-Item -LiteralPath $script:owner.Path -Force -ErrorAction Stop;throw 'SCRATCH_RETAINED'}catch [System.Management.Automation.ItemNotFoundException]{}
 }
 function RetentionReadback {
+ $script:retentionWrapperStep='ADMISSION'
  if(-not $script:allRetired -or $script:clock.ElapsedMilliseconds -ge 300000){throw 'RETENTION_DEADLINE'}
  Assert-OwnedRun $script:baseOwner;Assert-ScratchAbsent
  if((ReadText (Join-Path $script:base 'retention-staging.json') 65536) -cne $script:retentionBindingText -or (ReadText (Join-Path $script:base 'retention-context.json') 4096) -cne ($script:retentionContext|ConvertTo-Json -Compress)){throw 'RETENTION_BINDING'}
@@ -139,6 +140,7 @@ function RetentionReadback {
  'source/auto/native/IsolatedAdbServer.cs'=1048576;'source/auto/native/RetainedAdbSession.cs'=1048576;'source/auto/native/RetainedAdbProtocol.cs'=1048576;'source/auto/native/RetainedHostAdmission.cs'=1048576;'source/auto/native/RetainedVideoSession.cs'=1048576
  'source/upstream-LICENSE'=11387;'source/upstream-README.md'=8141;'notice/NOTICE.txt'=1063288;'notice/source.properties'=62;'notice/capture-receipt.json'=1167
  }
+ $script:retentionWrapperStep='INVENTORY'
  $inventory=Get-BoundedOwnedEntries $folder 67108864
  $files=@($inventory.Entries|Where-Object {-not $_.PSIsContainer})
  if($files.Count -ne 31){throw 'RETENTION_LAYOUT'}
@@ -146,10 +148,12 @@ function RetentionReadback {
  $allowedDirs=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
  foreach($name in $names){$part=$name;while($part.Contains('/')){$part=$part.Substring(0,$part.LastIndexOf('/'));[void]$allowedDirs.Add($part)}}
  foreach($entry in $inventory.Entries){$rel=$entry.FullName.Substring($folder.Length+1).Replace('\','/');if($entry.PSIsContainer){if(-not $allowedDirs.Contains($rel)){throw 'RETENTION_LAYOUT'}}elseif($rel -cne 'retention-receipt.json' -and -not $caps.Contains($rel)){throw 'RETENTION_LAYOUT'}}
+ $script:retentionWrapperStep='RECEIPT'
  $receiptText=ReadText (Join-Path $folder 'retention-receipt.json') 65536
  if($receiptText -cne $script:expectedRetentionReceiptText){throw 'RETENTION_RECEIPT'}
  # All expected rows came from the already retired independent stage, not the new receipt.
  $receipt=$script:expectedRetentionReceipt
+ $script:retentionWrapperStep='FILE_HASH'
  $total=0L;$hashes=@{}
  for($i=0;$i -lt $names.Length;$i++){
   if($script:clock.ElapsedMilliseconds -ge 300000){throw 'RETENTION_DEADLINE'}
@@ -177,6 +181,7 @@ function RetentionReadback {
   }finally{$sha.Dispose();$stream.Dispose()}
  }
  if($receipt.totalBytes -ne $total -or $receipt.reportSha256 -cne $hashes['build/report.json'] -or $receipt.retentionSourceSha256 -cne $hashes['build/retention-source.json'] -or $receipt.noticeReceiptSha256 -cne $hashes['notice/capture-receipt.json']){throw 'RETENTION_RECEIPT'}
+ $script:retentionWrapperStep='FINAL_BINDING'
  $finalInventory=Get-BoundedOwnedEntries $folder 67108864
  if($finalInventory.Entries.Count -ne $inventory.Entries.Count -or $finalInventory.Bytes -ne $inventory.Bytes){throw 'RETENTION_LAYOUT'}
  foreach($entry in $finalInventory.Entries){
@@ -308,24 +313,30 @@ try{
   Write-Output 'DERIVED_PAIR_VALIDATION_WRITTEN'
   if($RetainEvidence -and $published -and $retentionStaged){
    # Capture the actual retired legacy publisher's final report BEFORE retained publication.
+   $phase='RETAIN';$retentionWrapperStep='CAPTURE_REPORT'
    $retentionFinalReportText=ReadText (Join-Path $base 'upload/report.json') 65536
    $reportBytes=[Text.Encoding]::UTF8.GetBytes($retentionFinalReportText);$reportHasher=[Security.Cryptography.SHA256]::Create()
    try{$reportDigest=([BitConverter]::ToString($reportHasher.ComputeHash($reportBytes))).Replace('-','').ToLowerInvariant()}finally{$reportHasher.Dispose()}
+   $retentionWrapperStep='EXPECTED_RECEIPT'
    $expectedRows=@{};$expectedTotal=0L
    foreach($row in $retentionBinding.files){
     if((@($row.PSObject.Properties.Name)-join ',') -cne 'path,bytes,sha256' -or $expectedRows.ContainsKey($row.path) -or $row.path -ceq 'build/report.json'){throw 'RETENTION_BINDING'}
-    $expectedRows[$row.path]=[ordered]@{path=$row.path;bytes=$row.bytes;sha256=$row.sha256}
+    $expectedRows[$row.path]=[pscustomobject][ordered]@{path=$row.path;bytes=$row.bytes;sha256=$row.sha256}
    }
-   $expectedRows['build/report.json']=[ordered]@{path='build/report.json';bytes=$reportBytes.Length;sha256=$reportDigest}
+   $expectedRows['build/report.json']=[pscustomobject][ordered]@{path='build/report.json';bytes=$reportBytes.Length;sha256=$reportDigest}
    $expectedNames=[string[]]@($expectedRows.Keys);[Array]::Sort($expectedNames,[StringComparer]::Ordinal)
    $expectedFiles=@(foreach($name in $expectedNames){$expectedTotal+=$expectedRows[$name].bytes;$expectedRows[$name]})
    $expectedRetentionReceipt=[ordered]@{version=1;scope='DERIVED_SCRCPY_PAIR_RETAINED_EVIDENCE';githubRunId=$retentionContext.githubRunId;githubRunAttempt=$retentionContext.githubRunAttempt;autoSourceCommit=$context.autoCommit;autoSourceTree=$context.autoTree;protocolId='AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1';reportSha256=$reportDigest;retentionSourceSha256=$expectedRows['build/retention-source.json'].sha256;noticeReceiptSha256=$expectedRows['notice/capture-receipt.json'].sha256;files=$expectedFiles;totalBytes=$expectedTotal;buildProcessesRetired=$true;copyVerified=$true;sourceUnchanged=$true;noticeBytesVerified=$true;directoryCleanup=$true;passed=$true}
    $expectedRetentionReceiptText=$expectedRetentionReceipt|ConvertTo-Json -Depth 12 -Compress
+   $retentionWrapperStep='PUBLISH'
    $phase='RETAIN';RetentionPython $retentionValidator 'publish'  $base 'PUBLISH' 'DERIVED_PAIR_RETENTION_PUBLISHED' $true
    RetentionReadback;$retentionPublished=$true
   }
  }
-}catch{Write-Output ('DERIVED_PAIR_STAGE_'+$phase)}finally{
+}catch{
+ if($RetainEvidence -and $retentionWrapperStep -cin @('CAPTURE_REPORT','EXPECTED_RECEIPT','PUBLISH','ADMISSION','INVENTORY','RECEIPT','FILE_HASH','FINAL_BINDING')){Write-Output ('DERIVED_PAIR_RETENTION_WRAPPER_'+$retentionWrapperStep)}
+ Write-Output ('DERIVED_PAIR_STAGE_'+$phase)
+}finally{
  foreach($key in @([Environment]::GetEnvironmentVariables('Process').Keys)){[Environment]::SetEnvironmentVariable([string]$key,$null,'Process')}
  foreach($key in $original.Keys){[Environment]::SetEnvironmentVariable([string]$key,[string]$original[$key],'Process')}
 }
