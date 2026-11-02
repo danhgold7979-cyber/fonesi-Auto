@@ -337,6 +337,9 @@ def validate_manifest_set(raws, report):
         if not re.match(r'17(?:[.+_-]|$)', tools['jdkVersion']) or tools['jdkVendor'] not in ('MICROSOFT', 'TEMURIN', 'ORACLE', 'OTHER') or type(tools['platformApi']) is not int or tools['platformApi'] != 36 or tools['buildToolsVersion'] != '36.0.0':
             reject()
         inventory.update(records(tools['files'], ('JDK17', 'ANDROID36', 'BUILD_TOOLS36', 'FRAMEWORK64'), 10000, 2147483648, 268435456))
+        if {row['path'] for row in tools['files'] if row['namespace'] == 'ANDROID36'} != {
+                'android.jar', 'framework.aidl', 'source.properties'}:
+            reject()
         required = (('JDK17', 'bin/java.exe'), ('JDK17', 'bin/javac.exe'),
                     ('ANDROID36', 'android.jar'), ('ANDROID36', 'framework.aidl'),
                     ('BUILD_TOOLS36', 'aidl.exe'), ('BUILD_TOOLS36', 'lib/d8.jar'),

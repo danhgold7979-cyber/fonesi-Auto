@@ -80,19 +80,19 @@ The 23-file packet includes only the paths below. Caches, archive/source origina
 
 | Source / gate | SHA256 |
 |---|---|
-| `.github/workflows/phase-02-software.yml` | `d0e962f871e921b9b7e4fec7747ae890b8fe355c42dffa892013cec5c12119fa` |
+| `.github/workflows/phase-02-software.yml` | `48883fe9d6c03508298595b51610fe61e7ceee47b006af23d46a257044e87842` |
 | `desktop/scripts/quality-tool.mjs` | `ccff8a43620c7cea61d81b5c3ae0ea5e963431ae2e7b7fdd73975b5c500f663d` |
 | `desktop/scripts/test-batches.mjs` | `0489ff8d0afaa86a83bad671bc4a762a0343c4bf3b53c600804f985e8f511f63` |
-| `desktop/tests/phase-source-workflow.test.mjs` | `a79f3e98d457a236226fbf37400384dd9f484e1688cdbdda17bf1f1bfaed74cd` |
+| `desktop/tests/phase-source-workflow.test.mjs` | `8629db40be82c129b373c46816435da24b3ff44e0b3dd33ac720a26c10ccf197` |
 | `desktop/tests/quality-tool.test.mjs` | `05110e6803d583a3574a3cc93d30c5e6c71f91f485dfb64e5029794296767bf5` |
 | `desktop/tests/retained-managed-fixture.test.mjs` | `a05176ed8fe84fc460d508fb01af5ded49814adb5e2e942124451d04298e09b8` |
-| `desktop/verification/retained-rollback-workflow.test.cjs` | `43f1adcf1cf924159264d49eee5581b0bbef861e29af2fa4a36c6d97dc354be9` |
+| `desktop/verification/retained-rollback-workflow.test.cjs` | `7a120176b56b11cb14b6e119d855266e2ac521a060f4efaeb1a3bdae09e0735f` |
 | `desktop/verification/Invoke-DerivedPairBuild.ps1` | `1f92dd122c48d5a8a978e5db34183274d7a6456f9072138c21c5740cf5ae81c0` |
 | `desktop/verification/derived-pair-wrapper.test.cjs` | `2c50844f0f9f42ca8b295a9b659eb8ae5ddab7fee192f9adb61f8679e5b1d541` |
-| `desktop/verification/derived_pair_build.py` | `44963fca862532237291e6019a8f5818ea56d724ef73bb857b5c9e0d65cf7877` |
-| `desktop/verification/test_derived_pair_build.py` | `f7fb49f17743a140db9ca3f8bd0a0e25cf8c3a93ab34c7aedb935f6a70a959ea` |
-| `desktop/verification/test_validate_derived_pair_build.py` | `0eeebd9f8fe3ce4a5d97999f7c107f9805e0d4406ea32adef71533426708492e` |
-| `desktop/verification/validate_derived_pair_build.py` | `7d2c7fda2c24cecb487ff03fcb86231804936fc6e14bcff903aeb4f1241d99ce` |
+| `desktop/verification/derived_pair_build.py` | `2a188a0ed4c58e5ed41883a0bc27872f05baa7c4e1cbf4abe43a30e6797503c8` |
+| `desktop/verification/test_derived_pair_build.py` | `12c061f09719b6d9bd90a6c176ddda85e79ce31ad9f27e304fb8b818131ebfc0` |
+| `desktop/verification/test_validate_derived_pair_build.py` | `5551193ccf801a4d785e370d624ea819b02b66a071c7e52e10f055961d1d0687` |
+| `desktop/verification/validate_derived_pair_build.py` | `d289eb7406ba07009507ce65e16a0e1650859dca0dd4c4af4c66ba6e08f41330` |
 | `desktop/video-source/README.md` | `71886a1b4a7a210757da499cebe7bbf55e860bd25cf28b51ceaef1fd0f535d42` |
 | `desktop/video-source/auto-video-nonce-v1.patch` | `caaadaecd4b559ef8f980e5eae84c47c9f7174a8d916f8fda05612fed7ff6f8c` |
 | `desktop/video-source/source-provenance.json` | `5903269dca4416213e4acb8be7cdf1c637147ed07a00dc9527684b4a8de574a6` |
@@ -186,3 +186,14 @@ Public `fe99b9b22baea2c12858146b6cc871bd3cb4fbd7` / local `7bc0be17f838c4c3d186d
 The independent reviewer approved one comprehensive diagnostic correction rather than further opaque one-predicate probes. Controller actions retain success output unchanged. A caught refusal may emit one bounded ASCII frame with only source-assigned action, last-entered fixed checkpoint and fixed predicate category, followed by the existing failure marker. No raw exception text, path, tool value, identifier or count is emitted. The wrapper admits that diagnostic only for the requested action and exact complete output from an actually retired exit1 process, with both streams untruncated and empty stderr. Duplicate, malformed or extra output never becomes a trusted diagnostic. Otherwise only DIAGNOSTIC_UNAVAILABLE and actual closed supervisor facts may be shown; no failure predicate is inferred. All refusal codes, admission, byte/count caps, original deadlines, cleanup and no-install scope remain unchanged. This supplies diagnosis, not successful build or artifact admission.
 
 Author diagnostic validation: four affected controller cases PASS plus one overlapping strengthened hostile-value rerun; wrapper15/15 source-static cases and shared quality PASS; exact workflow/count4/4 PASS. Three new Python methods yield measured discovery328; exact328/no-skip gate is retained. Two new wrapper cases yield expected1602 desktop, while actual latest source remains1600/109/325. Synthetic tests cover predicate categories, bounded all-action frames, isolated CLI composition, hostile values, complete-frame/requested-action/supervisor admission and actual workflow forwarding/refusal. They do not claim Windows PowerShell execution or compiler evidence. Independent exact ten-file coherent diagnostic review is CLEAR at06:18 UTC: all18 fingerprints, index/disk identity, exact grammar and unchanged bounds verified. The same bounded compile-only retry is supported.
+
+
+## Seventh hosted source PASS; actual shared inventory bound — 06:25 UTC
+
+Public `95b63bc01fe13d2d478f98464e7d00082e35c94d` / local `b64d00ff0e4b61f0238a738e30df23d4821f3aa9`, exact tree `06a6f3fe4676df70724e2d3398af6d1ba1cf955d`, CI41399211033/source job125127130767 establishes actual **1602/1602 desktop plus sourcePASS, foundation109 with zero exclusions, Python328/OK**. Retained90,905-byte log SHA256 `c93d717af481b79d472c9db7c67e2ac8b05b05fbf1916a59c734d187e1a2416a` is independently audited. Paired job125128275730 now emits actual NONZERO_EXIT with present exit, retiredtrue, both streams untruncated, followed by `PREPARE|TOOLS_ANDROID36|ENTRY_LIMIT`. Retained22,327-byte build log SHA256 `aa197a065cefe6b6e4034a0556725bdb83ae39a071e1b6590cd9e6244f63cd6b` is independently audited. This proves the shared10,000-entry counter crossed its bound while scanning Android36, not an Android-alone count. No compiler ran and no report/output was uploaded.
+
+### Consumed Android input closure, not a larger cap
+
+The reviewed finite correction measures exactly `android.jar`, `framework.aidl`, `source.properties` in ANDROID36. Fixed AIDL/javac/D8 plans consume only the first two; the third is the actual metadata reader. Unused platform resources/docs are neither traversed nor admitted or claimed unchanged. All three still receive root/ancestor no-reparse and stable byte/identity/hash checks, count toward unchanged shared entry/byte limits, and are revalidated every time. JDK17, build-tools36 and Framework64 retain their full closures. Strict publication requires exactly those three Android records, rejecting missing/extras. No deadlines, filesystem/cleanup bounds, command inputs or runtime scope change. This is compiler-input evidence, not whole SDK/package/license closure: platform NOTICE/package.xml was not inspected and redistribution remains unresolved.
+
+Author affected validation: controller3/3 PASS covers unrelated platform-tree nontraversal, selected-file mutation/link/identity refusal, unchanged combined caps, and actual synthetic producer→publisher→cleanup composition. Publisher3/3 PASS includes missing/extra Android records with recomputed manifest digests. Two added methods give measured Python discovery330; the exact330/no-skip gate replaces328, without claiming a full330 local rerun. Desktop expected count remains1602. Exact workflow/count4/4 also passes. An initial author edit-script syntax typo left source unchanged and led to a missing test selector; the corrected source then produced the stated3/3, not a hidden product failure. Independent exact ten-file correction review is CLEAR at06:28 UTC, including all18 fingerprints, index/disk identity, exact input and unresolved licensing scope. The same bounded compile-only retry is supported.

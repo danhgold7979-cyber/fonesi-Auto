@@ -331,7 +331,17 @@ def tools_snapshot(c):
     rows=[];count=0;total=0;entries=[0]
     for ns,key in TOOL_KEYS.items():
         checkpoint('TOOLS_'+ns)
-        root=Path(c[key]);part=inventory(root,ns,combined_entries=entries);rows.extend(part);count+=len(part);total+=sum(r['bytes'] for r in part)
+        root=Path(c[key])
+        if ns=='ANDROID36':
+            # Fixed platform inputs, not unused resources/docs. Other roots stay full.
+            part=[]
+            for name in TOOL_FILES[ns]:
+                entries[0]+=1
+                if entries[0]>10000:fail('TOOLS_REJECTED','ENTRY_LIMIT')
+                part.append({'namespace':ns,'path':name,**digest_file(root/name,256*1024**2)})
+        else:
+            part=inventory(root,ns,combined_entries=entries)
+        rows.extend(part);count+=len(part);total+=sum(r['bytes'] for r in part)
         if count>10000:fail('TOOLS_REJECTED','ENTRY_LIMIT')
         if total>2*1024**3:fail('TOOLS_REJECTED','TOTAL_BYTES')
         names={r['path'] for r in part}

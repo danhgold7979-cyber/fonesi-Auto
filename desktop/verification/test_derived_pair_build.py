@@ -333,5 +333,31 @@ class DerivedPairBuildTests(unittest.TestCase):
         self.assertEqual(result.returncode,1);self.assertEqual(result.stderr,b'')
         self.assertEqual(result.stdout.replace(b'\r\n',b'\n'),b'DERIVED_PAIR_CONTROL_DIAG|CLI|ENTRY|PREDICATE\nDERIVED_PAIR_CONTROL_FAILED\n')
 
+    def test_platform_exact_three_inputs_unrelated_tree_not_traversed(self):
+        base,root,c,state=self.prepared();platform=Path(c['platformRoot'])
+        unrelated=platform/'data';unrelated.mkdir();(unrelated/'not-a-tool').write_bytes(b'UNUSED')
+        original_walk=os.walk
+        def bounded_walk(top,*args,**kwargs):
+            self.assertNotEqual(Path(top),platform)
+            self.assertFalse(Path(top).is_relative_to(unrelated))
+            return original_walk(top,*args,**kwargs)
+        with patch.object(d.os,'walk',side_effect=bounded_walk):
+            tools=d.tools_snapshot(c)
+            self.assertEqual({r['path'] for r in tools['files'] if r['namespace']=='ANDROID36'},set(d.TOOL_FILES['ANDROID36']))
+            self.assertEqual(d.revalidate(root)['tools'],tools)
+        selected=platform/'android.jar';original=selected.read_bytes();selected.write_bytes(b'CHANGED')
+        with self.assertRaises(ValueError):d.revalidate(root)
+        selected.write_bytes(original)
+        target=platform/'framework.aidl';target.unlink();target.symlink_to(selected)
+        with self.assertRaises(ValueError):d.tools_snapshot(c)
+        target.unlink();target.write_bytes(b'SYNTHETIC_TOOL_NEVER_EXECUTED')
+        from types import SimpleNamespace
+        original_stat=os.fstat
+        def changed(fd):
+            value=original_stat(fd)
+            return SimpleNamespace(st_dev=value.st_dev,st_ino=value.st_ino+1,st_size=value.st_size,st_mtime_ns=value.st_mtime_ns,st_ctime_ns=value.st_ctime_ns,st_birthtime_ns=getattr(value,'st_birthtime_ns',value.st_ctime_ns),st_nlink=value.st_nlink)
+        with patch.object(d.os,'fstat',side_effect=changed):
+            with self.assertRaises(ValueError):d.digest_file(selected,256*1024**2)
+
 
 if __name__=='__main__':unittest.main()

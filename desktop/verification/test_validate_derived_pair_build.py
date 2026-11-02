@@ -123,6 +123,24 @@ class ValidatorTests(unittest.TestCase):
         m['tools.json']['files'].append(row); m['tools.json']['files'].sort(key=lambda x:(x['namespace'], x['path']))
         with self.assertRaises(ValueError): v.validate_report(r, bind(r, m))
 
+    def test_android_tools_exact_consumed_input_set_rejects_rebound_missing_or_extra(self):
+        for missing in ('android.jar', 'framework.aidl', 'source.properties'):
+            with self.subTest(missing=missing):
+                r, m = fixture()
+                m['tools.json']['files'] = [row for row in m['tools.json']['files']
+                                           if (row['namespace'], row['path']) != ('ANDROID36', missing)]
+                with self.assertRaises(ValueError):
+                    v.validate_report(r, bind(r, m))
+        for extra in ('data/res/values/attrs.xml', 'optional/optional.json'):
+            with self.subTest(extra=extra):
+                r, m = fixture()
+                m['tools.json']['files'].append(entry('ANDROID36', extra))
+                m['tools.json']['files'].sort(key=lambda row: (row['namespace'], row['path']))
+                with self.assertRaises(ValueError):
+                    v.validate_report(r, bind(r, m))
+        r, m = fixture()
+        self.assertTrue(v.validate_report(r, bind(r, m))['passed'])
+
     def test_command_extra_processor_and_host_path_refuse(self):
         for extra in ('-processor', 'C:/private/extra.jar', '@private.args'):
             r, m = fixture(); m['commands.json']['stages'][2]['arguments'].append(extra)
