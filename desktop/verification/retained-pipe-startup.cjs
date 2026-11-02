@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawn } = require('node:child_process');
-const SOURCE_SHA256 = '223978f87b6323607f1926c828482d62a9e5d0dba80fd09fe879c8cece196895';
+const SOURCE_SHA256 = '98fc3cfb52929be57289e5b530ab5c8bb0dbae7a4e883f66ccea6dfa3f21cce4';
 const BODY_SHA256 = '29999102f3c35887d92fe77531b24973ac689d4dba81162215e075c33669b6cf';
 const BOOTSTRAP = '{"version":1,"purpose":"RETAINED_PIPE_STARTUP"}';
 const CASES = Object.freeze([
@@ -89,14 +89,20 @@ function write(file, bytes) {
 }
 function materializeScript(parameters) {
   if (typeof parameters !== 'boolean') fail();
-  const source = read(path.join(__dirname, '../launch/Invoke-RetainedHost.ps1'), 16384);
+  const source = read(path.join(__dirname, '../launch/Invoke-RetainedHost.ps1'), 32768);
   const body = read(path.join(__dirname, 'RetainedPipeEntry.ps1'), 8192);
   if (sha(source) !== SOURCE_SHA256 || sha(body) !== BODY_SHA256) fail();
   const boundary = "try {\n    Progress 'ENVIRONMENT'";
   const text = source.toString('utf8'),
     index = text.indexOf(boundary);
   if (index < 0 || text.indexOf(boundary, index + 1) !== -1) fail();
-  let prefix = text.slice(0, index);
+  // Preserve the historical diagnostic prelude exactly; video admission is not a fixture effect.
+  const videoBoundary =
+    '# Source-owned reviewed output pin. Null is intentionally unavailable, never caller authority.\n';
+  const videoIndex = text.indexOf(videoBoundary);
+  if (videoIndex < 0 || videoIndex >= index || text.indexOf(videoBoundary, videoIndex + 1) !== -1)
+    fail();
+  let prefix = text.slice(0, videoIndex);
   const diagnosticStart = 'function Compile-Type',
     diagnosticEnd = 'function Reject';
   const start = prefix.indexOf(diagnosticStart),
@@ -113,7 +119,13 @@ function materializeScript(parameters) {
     'param([Parameter(Mandatory=$true)][string]$BootstrapFile,[Parameter(Mandatory=$true)][string]$BootstrapSha256)\n';
   if (prefix.split(parameter).length !== 2) fail();
   if (!parameters) prefix = prefix.replace(parameter, '');
-  return Buffer.concat([Buffer.from(prefix), body]);
+  const script = Buffer.concat([Buffer.from(prefix), body]);
+  // Exact original materializations, not a claim that old native evidence covers the new bootstrap.
+  const expected = parameters
+    ? 'ce092c9606548923cec4254602bafc2fff8a1f2000944ebf6f94bb42e465740d'
+    : '2bbe32ee4de81e6d2197320fa272eaea20aeb1ebe61c081b769526482c51d026';
+  if (sha(script) !== expected) fail();
+  return script;
 }
 function validateExecutable(file) {
   if (

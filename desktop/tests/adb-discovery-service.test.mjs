@@ -1,3 +1,5 @@
+import { createHostAdapter } from '../src/main/adb-host-adapter.ts';
+import { preparingVideo } from '../src/main/video-contract.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, realpathSync, lstatSync, rmSync } from 'node:fs';
@@ -6,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { FoundationDatabase } from '../src/main/foundation-database.ts';
 import { createDurableCoordinator } from '../src/main/durable-coordinator.ts';
-import { createRegistryStore } from '../src/main/registry-store.ts';
+import {
+  createRegistryStore,
+  inspectRegistryVideoBinding,
+  captureRegistryVideoBinding,
+} from '../src/main/registry-store.ts';
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const deferred = () => {
   let resolve, reject;
@@ -766,7 +772,7 @@ test('nonordinary genuine promises cannot release an unretired acquisition', asy
     }
   }
 });
-async function exerciseNativeIssuer(verified = false) {
+async function exerciseNativeIssuer(verified = false, video = false) {
   const { readFileSync } = await import('node:fs'),
     { transformSync } = await import('esbuild');
   const moduleUrl = (source, path) =>
@@ -796,12 +802,128 @@ async function exerciseNativeIssuer(verified = false) {
       'proofs: Object.freeze([]),',
       'proofs: Object.freeze(globalThis.__inputIssuerFixtureProofs ?? []),',
     );
-  const ingestModule = await import(moduleUrl(ingestSource, ingestPath));
+  const ingestUrl = moduleUrl(ingestSource, ingestPath);
+  const ingestModule = await import(ingestUrl);
   const f = await fixture();
   await f.store.startup();
   let state = 'STOPPED',
     closed = false,
     n = 40000;
+  let videoFacts = null,
+    videoStarts = 0,
+    videoStops = 0;
+  const videoRead = Object.freeze({}),
+    videoRuntime = {
+      release: '37.0.1',
+      archiveSha256: 'a'.repeat(64),
+      manifestSha256: 'b'.repeat(64),
+      installationRevision: 1,
+      adbPath: '/synthetic/adb.exe',
+    };
+  let videoOwnerArmed = false,
+    videoOwnerClose = null,
+    videoOwnerAfterValidation = false;
+  const videoHold = deferred();
+  let videoInspect = false,
+    videoHeld = false,
+    videoInspectEntered = false;
+  const hostFacts = (observation) => ({
+    version: 2,
+    kind: 'SESSION',
+    dispatched: true,
+    jobState: observation === 'STOPPED' ? 'RETIRED' : 'LIVE',
+    endpointState: observation === 'STOPPED' ? 'ABSENT' : 'OWNED',
+    exitCode: observation === 'STOPPED' ? 0 : null,
+    observation,
+  });
+  const videoAdapter = video
+    ? createHostAdapter({
+        operationSet: 'SERVER_ONLY',
+        runtimeCustody: {
+          acquireRead: async () => {
+            videoHeld = true;
+            return { ok: true, token: videoRead, observation: videoRuntime };
+          },
+          revalidateRead: async () => {
+            if (videoOwnerArmed) videoOwnerAfterValidation = true;
+            if (videoInspect) {
+              videoInspectEntered = true;
+              await videoHold.promise;
+            }
+            return { ok: true, token: videoRead, observation: videoRuntime };
+          },
+          assertRead() {
+            assert.equal(videoHeld, true);
+          },
+          assertReadInternal() {
+            assert.equal(videoHeld, true);
+          },
+          releaseRead: async () => {
+            videoHeld = false;
+            return { ok: true, status: 'RETIRED' };
+          },
+        },
+        nativeProvider: {
+          reserveAttempt: () => Object.freeze({}),
+          version: async () => {
+            throw Error('NO_VERSION');
+          },
+          startForeground: async () => hostFacts('STARTED'),
+          health: async () => hostFacts('HEALTHY'),
+          retire: async () => hostFacts('STOPPED'),
+          videoStart: async (_attempt, request) => {
+            videoStarts++;
+            videoFacts = Object.freeze({
+              ...preparingVideo(request.videoId),
+              snapshotRevision: 1,
+              state: 'RECEIVING',
+              streamObserved: true,
+              sessionPackets: 1,
+              mediaPackets: 1,
+              encodedBytes: 8,
+              lastWidth: 100,
+              lastHeight: 200,
+              directory: 'CREATED',
+              upload: 'VERIFIED',
+              launch: 'STARTED',
+              cleanup: 'PENDING',
+            });
+            return videoFacts;
+          },
+          videoStop: async (_attempt, videoId) => {
+            videoStops++;
+            videoFacts = videoFacts
+              ? Object.freeze({
+                  ...videoFacts,
+                  snapshotRevision: 2,
+                  state: 'CLOSED',
+                  code: 'CLOSED',
+                  localRetired: true,
+                  launch: 'EXITED',
+                  cleanup: 'CLEANED',
+                })
+              : Object.freeze({
+                  ...preparingVideo(videoId),
+                  snapshotRevision: 1,
+                  state: 'CLOSED',
+                  code: 'CLOSED',
+                  localRetired: true,
+                });
+            return videoFacts;
+          },
+          videoStatus: async () => videoFacts,
+        },
+        assertOwnedSync() {
+          if (videoOwnerAfterValidation) {
+            videoOwnerAfterValidation = false;
+            videoOwnerArmed = false;
+            videoOwnerClose = ingestion.close();
+          }
+        },
+        now: () => 1000,
+        diagnosticId: () => id(n++),
+      })
+    : null;
   const server = serverModule.createAdbServerService({
     ownerId: id(1),
     expectedInstallationRevision: 1,
@@ -812,10 +934,11 @@ async function exerciseNativeIssuer(verified = false) {
     audit: async () => 'AVAILABLE',
     createFactory() {
       return {
-        grant: () => Object.freeze({}),
+        grant: videoAdapter?.grant ?? (() => Object.freeze({})),
         snapshot: () => Object.freeze({ state, busy: false, closed }),
         execute: async (_cap, request) => {
           state = request.operation === 'SERVER_STOP' ? 'STOPPED' : 'READY';
+          if (videoAdapter) return videoAdapter.execute(_cap, request);
           return Object.freeze({ outcome: 'OBSERVED', code: 'OK', diagnosticId: null });
         },
         assertCurrentSession() {
@@ -841,10 +964,29 @@ async function exerciseNativeIssuer(verified = false) {
           return closed;
         },
         close: async () => {
+          if (videoAdapter) await videoAdapter.close();
           closed = true;
           state = 'STOPPED';
           return 'RETIRED';
         },
+        videoArtifactAvailable: () => video,
+        startVideo: (_cap, request, ticket) => {
+          const binding = inspectRegistryVideoBinding(ticket);
+          assert.equal(binding.finalCurrent(), true);
+          assert.equal(binding.binding.transportId, '1');
+          return videoAdapter.startVideo(
+            _cap,
+            {
+              ...request,
+              transportId: binding.binding.transportId,
+              hostEpoch: binding.binding.hostEpoch,
+              artifactId: 'a'.repeat(64),
+            },
+            ticket,
+          );
+        },
+        statusVideo: (cap, videoId, ticket) => videoAdapter.statusVideo(cap, videoId, ticket),
+        stopVideo: (cap, videoId) => videoAdapter.stopVideo(cap, videoId),
         acquireInput: (_cap, request) => {
           assert.deepEqual([request.transportId, request.action], ['1', 'HOME']);
           return Object.freeze({
@@ -988,6 +1130,84 @@ async function exerciseNativeIssuer(verified = false) {
       assert.equal((await h.retirement).status, 'RETIRED');
     } else assert.equal(inputTicket, null);
 
+    if (video) {
+      const videoTicket = ingestion.videoTarget(deviceId);
+      assert.ok(videoTicket);
+      assert.equal(ingestModule.inspectOwnedVideoTarget(ticket), null);
+      const ownerPath = new URL('../src/main/owned-video-consumer.ts', import.meta.url);
+      const ownerSource = readFileSync(ownerPath, 'utf8')
+        .replace("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
+        .replace(
+          'const clock = Date.now.bind(Date);',
+          'const clock = ()=>1000; /* SYNTHETIC_CLOCK_ONLY */',
+        );
+      const ownerModule = await import(moduleUrl(ownerSource, ownerPath));
+      if (video === 'CANCEL') videoInspect = true;
+      if (video === 'OWNER_CLOSE') videoOwnerArmed = true;
+      const consumer = ownerModule.createOwnedVideoConsumer(videoTicket);
+      if (video === 'CANCEL') {
+        for (let i = 0; i < 30 && !videoInspectEntered; i++) await Promise.resolve();
+        assert.equal(videoInspectEntered, true);
+        const close = ingestion.close();
+        assert.equal(
+          inspectRegistryVideoBinding(
+            captureRegistryVideoBinding(f.store, f.store.snapshot(), deviceId),
+          ).finalCurrent(),
+          true,
+        );
+        videoHold.resolve();
+        await close;
+        await consumer.started;
+        assert.equal(videoStarts, 0);
+        await consumer.stop();
+        return;
+      }
+      if (video === 'OWNER_CLOSE') {
+        await consumer.started;
+        assert.ok(videoOwnerClose);
+        await videoOwnerClose;
+        await consumer.stop();
+        assert.equal(
+          videoStarts,
+          0,
+          'last owner callback revocation reaches adapter before native handoff',
+        );
+        assert.equal(
+          inspectRegistryVideoBinding(
+            captureRegistryVideoBinding(f.store, f.store.snapshot(), deviceId),
+          ).finalCurrent(),
+          true,
+        );
+        return;
+      }
+      assert.equal((await consumer.started).state, 'RECEIVING');
+      assert.equal(videoStarts, 1);
+      if (video === 'STATUS_DRAIN') {
+        videoInspect = true;
+        const status = consumer.status();
+        for (let i = 0; i < 30 && !videoInspectEntered; i++) await Promise.resolve();
+        assert.equal(videoInspectEntered, true);
+        let stopSettled = false,
+          closeSettled = false;
+        const stop = consumer.stop().then(() => {
+          stopSettled = true;
+        });
+        const close = ingestion.close().then(() => {
+          closeSettled = true;
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(videoStops, 1, 'cleanup starts without waiting for STATUS custody');
+        assert.equal(stopSettled, false, 'Stop retains actual STATUS admission drain');
+        assert.equal(closeSettled, false, 'ingestion cannot retire while STATUS is pending');
+        videoHold.resolve();
+        await Promise.all([status, stop, close]);
+        return;
+      }
+      await consumer.stop();
+      assert.equal(videoStops, 1);
+      assert.equal(consumer.retired, true);
+      assert.throws(() => ownerModule.createOwnedVideoConsumer(videoTicket));
+    } else assert.equal(ingestion.videoTarget(deviceId), null);
     const metadata = target.begin('MODEL', 1100);
     assert.equal(metadata.handoff, 'QUERY');
     assert.equal((await metadata.result).remoteExitCode, 0);
@@ -1029,6 +1249,7 @@ async function exerciseNativeIssuer(verified = false) {
       'FLEET_UNAVAILABLE',
     );
   } finally {
+    videoHold.resolve();
     await fleet?.close();
     await ingestion?.close();
     await server.close();
@@ -1039,6 +1260,10 @@ test('explicit test-transformed native admission composes actual SQLite and flee
   exerciseNativeIssuer());
 test('sealed input ticket requires VERIFIED and shares exact opaque projection anchor, not metadata authority', () =>
   exerciseNativeIssuer(true));
+test('ingestion-only close cancels registered video during held actual custody without store replacement', () =>
+  exerciseNativeIssuer(true, 'CANCEL'));
+test('sealed video target composes actual verified SQLite projection with owned consumer over labeled synthetic native facts', () =>
+  exerciseNativeIssuer(true, true));
 test('full transformed ingestion respects pending actual HEALTH lane and callback-free final custody revocation', async () => {
   const { readFileSync } = await import('node:fs'),
     { transformSync } = await import('esbuild');
@@ -1920,3 +2145,9 @@ test('association original deadline during actual final RESULT drain preserves c
     t.mock.timers.reset();
   }
 });
+
+test('held video STATUS custody keeps Stop and ingestion close pending until actual admission settles', () =>
+  exerciseNativeIssuer(true, 'STATUS_DRAIN'));
+
+test('last adapter owner callback synchronously closes ingestion before video handoff', () =>
+  exerciseNativeIssuer(true, 'OWNER_CLOSE'));

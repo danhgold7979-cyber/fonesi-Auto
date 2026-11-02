@@ -16,7 +16,7 @@ namespace Fonesi.Development.Server
 {
     public static partial class IsolatedAdbServer
     {
-        public sealed class RetainedProvider
+        public sealed partial class RetainedProvider
         {
             readonly bool diagnostics;
             int diagnosticSlots;
@@ -47,6 +47,7 @@ namespace Fonesi.Development.Server
                 internal bool stopping, entered, terminal, started, assigned, profileReserved;
                 internal int workers, port, discoveryCalls;
                 internal long lastDiscovery; internal Acquisition acquisition;
+                internal VideoState video; internal string videoId;
                 internal bool stdoutJoinAttempted, stdoutJoined, stderrJoinAttempted, stderrJoined;
                 internal IntPtr job;
                 internal PROCESS_INFORMATION process;
@@ -512,6 +513,7 @@ namespace Fonesi.Development.Server
                 try { if (!Exact(a)) return Failure("ADMISSION_REJECTED"); a.stopping = true; }
                 finally { Monitor.Exit(gate); }
                 if(!CloseAcquisition(a,deadline,10000))return Failure("UNRETIRED"); // Retained close work starts before worker waits.
+                if(!RetireVideo(a,deadline))return Failure("UNRETIRED");
                 if (!RetirementLock(cleanupGate, deadline)) return Failure("UNRETIRED");
                 try {
                     bool workersSettled = false;
@@ -567,6 +569,7 @@ namespace Fonesi.Development.Server
                         if (deadline.ElapsedMilliseconds >= 10000 || !RetirementLock(gate, deadline)) return Failure("UNRETIRED");
                         try {
                             Close(ref a.process.hThread); Close(ref a.process.hProcess); Close(ref a.job);
+                            if(videoAdmission!=null)videoAdmission.guard.Dispose();
                             a.terminal = true; return Facts(a, a.kind == "FOREGROUND" && a.started ? "STOPPED" : null);
                         } finally { Monitor.Exit(gate); }
                     } catch { return Failure("UNRETIRED"); }

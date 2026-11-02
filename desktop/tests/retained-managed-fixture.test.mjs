@@ -27,7 +27,7 @@ const success = () => ({
   stderr: '',
 });
 const before = (text, a, b) => assert.ok(text.indexOf(a) >= 0 && text.indexOf(a) < text.indexOf(b));
-test('managed evidence requires exact fifty-one-group marker, actual zero exit and retirement', () => {
+test('managed evidence requires exact seventy-four-group marker, actual zero exit and retirement', () => {
   assert.equal(managedProcessPassed(success(), true), true);
   assert.equal(managedProcessPassed({ ...success(), stdout: MANAGED_MARKER + '\n' }, true), true);
   for (const patch of [
@@ -42,6 +42,7 @@ test('managed evidence requires exact fifty-one-group marker, actual zero exit a
     { stdout: 'RETAINED_MANAGED_GROUPS_19\n' },
     { stdout: 'RETAINED_MANAGED_GROUPS_27\n' },
     { stdout: 'RETAINED_MANAGED_GROUPS_39\n' },
+    { stdout: 'RETAINED_MANAGED_GROUPS_51\n' },
     { stdout: MANAGED_MARKER },
     { stdout: MANAGED_MARKER + '\n\n' },
     { stdout: 'private-canary\n' + MANAGED_MARKER + '\n' },
@@ -76,7 +77,8 @@ test('generated fixed entry calls only the managed fixture and demands eight pro
   assert.match(entry, /RunDiscovery\(\) != 8/);
   assert.match(entry, /RunMetadata\(\) != 12/);
   assert.match(entry, /RunInput\(\) != 12/);
-  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_51"\)/);
+  assert.match(entry, /RunVideo\(\) != 23/);
+  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_74"\)/);
   assert.match(
     entry,
     /catch \{ Console\.Error\.WriteLine\("RETAINED_MANAGED_FIXTURE_FAILED"\); return 1;/,
@@ -85,7 +87,11 @@ test('generated fixed entry calls only the managed fixture and demands eight pro
     entry,
     /NativeProvider|RetainedProvider|OpenParentAdmission|Process\.Start|StartForeground|\.dll|Assembly\.Load/,
   );
-  assert.equal((fixture.match(/passed\+\+;/g) || []).length, 8);
+  const originalGroups = fixture.slice(
+    fixture.indexOf('public static int RunAll()'),
+    fixture.indexOf('return passed;', fixture.indexOf('public static int RunAll()')),
+  );
+  assert.equal((originalGroups.match(/passed\+\+;/g) || []).length, 8);
   assert.doesNotMatch(
     fixture,
     /new\s+(?:IsolatedAdbServer\.)?RetainedProvider\s*\(|new\s+IsolatedAdbServer\s*\(|NativeProvider\(|new\s+Socket\s*\(|Process\.Start/,
@@ -94,12 +100,13 @@ test('generated fixed entry calls only the managed fixture and demands eight pro
   assert.match(fixture, /new IsolatedAdbServer\.RetainedProvider\.DiscoveryBudget\(/);
   assert.match(fixture, /sealed class Provider : RetainedAdbProtocol\.IProvider/);
 });
-test('fixed four-source compilation and managed execution use unchanged suspended Job supervisor', () => {
+test('fixed five-source compilation and managed execution use unchanged suspended Job supervisor', () => {
   const names = [
     'IsolatedAdbServer.cs',
     'RetainedAdbSession.cs',
     'RetainedAdbProtocol.cs',
     'RetainedHostAdmission.cs',
+    'RetainedVideoSession.cs',
   ];
   for (const name of names) assert.ok(runner.includes("'native/" + name + "'"));
   assert.match(runner, /tests\/fixtures\/RetainedAdbProtocolFixture\.cs/);
@@ -151,15 +158,15 @@ const workflow = readFileSync(
   'utf8',
 ).replaceAll('\r\n', '\n');
 const serverGate =
-  "    if: github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_input_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[input-managed]')))";
+  "    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_video_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[video-managed]')))";
 function managedOnlyJob(raw) {
   const text = raw.replaceAll('\r\n', '\n');
   assert.match(
     text,
-    / {6}run_input_managed:\n {8}description: '[^\n]+'\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
+    / {6}run_video_managed:\n {8}description: '[^\n]+'\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
   );
   const job = text
-    .split('  owned-input-managed-development:\n')[1]
+    .split('  owned-video-managed-development:\n')[1]
     ?.split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
   assert.ok(job);
   assert.ok(job.includes('\n' + serverGate + '\n'));
@@ -175,9 +182,9 @@ test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects 
     for (const replacement of [
       '    if: true',
       '',
-      serverGate.replace('refs/heads/phase-02', 'refs/heads/main'),
-      serverGate.replace('[input-managed]', '[retained-rollback]'),
-      serverGate.replace('inputs.run_input_managed == true', 'inputs.run_adb_server == true'),
+      serverGate.replace('refs/heads/phase-03', 'refs/heads/main'),
+      serverGate.replace("github.event_name == 'workflow_dispatch'", "github.event_name == 'push'"),
+      serverGate.replace('inputs.run_video_managed == true', 'inputs.run_adb_server == true'),
     ]) {
       const changed = text.replaceAll('\r\n', '\n').replace(serverGate, replacement);
       assert.notEqual(changed, text.replaceAll('\r\n', '\n'));
@@ -188,10 +195,10 @@ test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects 
     assert.throws(() => managedOnlyJob(changedDefault));
   }
 });
-test('managed-only job has no native campaign or archive actions and publishes only strict version6 JSON', () => {
+test('managed-only job has no native campaign or archive actions and publishes only strict version7 JSON', () => {
   const job = managedOnlyJob(workflow);
   assert.match(job, /Invoke-RetainedManagedFixture\.ps1\)/);
-  assert.match(job, /validate_retained_host\.py managed-input 2>&1/);
+  assert.match(job, /validate_retained_host\.py managed-video 2>&1/);
   assert.match(job, /steps\.retained_managed_validation\.outputs\.written == 'true'/);
   assert.equal((job.match(/uses: actions\/upload-artifact@/g) || []).length, 1);
   assert.match(job, /path: desktop\/retained-managed-validated\.json\n/);
@@ -204,6 +211,10 @@ test('managed-only job has no native campaign or archive actions and publishes o
     .split('  owned-retained-rollback-development:\n')[1]
     .split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
   assert.match(old, /\n {4}if: false && /);
+  const input = workflow
+    .split('  owned-input-managed-development:\n')[1]
+    ?.split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
+  assert.match(input, /\n {4}if: false && /);
   const discovery = workflow
     .split('  owned-discovery-managed-development:\n')[1]
     ?.split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];

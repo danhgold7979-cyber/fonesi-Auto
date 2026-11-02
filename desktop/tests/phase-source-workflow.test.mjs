@@ -18,6 +18,7 @@ const nativeNames = [
   'owned-discovery-managed-development',
   'owned-metadata-managed-development',
   'owned-input-managed-development',
+  'owned-video-managed-development',
 ];
 const marker = `          if ($env:GITHUB_REF -eq 'refs/heads/phase-03') {
             Write-Output 'PHASE03_SOFTWARE_ONLY'
@@ -48,7 +49,7 @@ function validate(rawSource) {
     'node foundation/scripts/verify-bootstrap.mjs $npmVersion',
     'npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache',
     'node foundation/scripts/check.mjs $npmVersion',
-    "discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==286;",
+    "discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==289;",
     'r.wasSuccessful() and not r.skipped',
     marker,
     "Write-Output 'SOURCE_JOB_NO_ADB_EXECUTION'",
@@ -67,15 +68,16 @@ function validate(rawSource) {
         condition,
         "github.ref == 'refs/heads/phase-02' && github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
       );
-    } else if (jobs[i][1] === 'owned-input-managed-development') {
+    } else if (jobs[i][1] === 'owned-video-managed-development') {
       assert.equal(
         condition,
-        "github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_input_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[input-managed]')))",
+        "github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_video_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[video-managed]')))",
       );
+      assert.match(body, / {4}needs: windows-software-only\n/);
     } else assert.ok(condition.startsWith('false && '));
   }
 }
-test('phase03 reuses pinned source gates while every native job remains unavailable on that branch', () => {
+test('phase03 reuses pinned source gates with only explicit managed-video opt-in on that branch', () => {
   for (const source of workflowEncodings(raw)) validate(source);
 });
 test('phase source workflow rejects branch, native authority, marker and gate drift under LF and CRLF', () => {
@@ -93,7 +95,7 @@ test('phase source workflow rejects branch, native authority, marker and gate dr
         "if: true || ((github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui)",
       ),
       normalized.replace('PHASE03_SOFTWARE_ONLY', 'PHASE02_SOFTWARE_ONLY'),
-      normalized.replace('s.countTestCases()==286', 's.countTestCases()==285'),
+      normalized.replace('s.countTestCases()==289', 's.countTestCases()==285'),
       normalized.replace('r.wasSuccessful() and not r.skipped', 'r.wasSuccessful()'),
       normalized.replace('node desktop/scripts/check.mjs --restore', 'echo bypass'),
       normalized.replace("node-version: '24.22.1'", "node-version: 'latest'"),

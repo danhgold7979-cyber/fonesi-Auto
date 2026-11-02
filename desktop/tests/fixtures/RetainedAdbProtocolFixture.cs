@@ -312,5 +312,117 @@ namespace Fonesi.Tests
             }
             return passed;
         }
+        sealed class VideoChannel : IsolatedAdbServer.RetainedProvider.IVideoChannel
+        {
+            readonly object gate=new object();readonly Queue<byte> bytes=new Queue<byte>();internal readonly MemoryStream written=new MemoryStream();
+            internal bool eof,closed,holdRetirement;internal Action onClose;internal int maximumRead=3;
+            internal VideoChannel(byte[] data,bool eof){Feed(data);this.eof=eof;}
+            internal void Feed(byte[] data){lock(gate){foreach(byte b in data)bytes.Enqueue(b);Monitor.PulseAll(gate);}}
+            internal void End(){lock(gate){eof=true;Monitor.PulseAll(gate);}}
+            public int Read(byte[] b,int o,int n,int timeout){lock(gate){while(bytes.Count==0&&!eof&&!closed){if(!Monitor.Wait(gate,timeout))throw new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.TimedOut);}if(closed)return 0;int size=Math.Min(Math.Min(n,maximumRead),bytes.Count);for(int j=0;j<size;j++)b[o+j]=bytes.Dequeue();return size;}}
+            public void Write(byte[] b,int o,int n,Func<int> remaining){remaining();lock(gate){if(closed)throw new IOException("CLOSED");written.Write(b,o,n);}}
+            public void Close(){Action call=null;lock(gate){if(!closed){closed=true;call=onClose;Monitor.PulseAll(gate);}}if(call!=null)call();}
+            public bool Retired {get{lock(gate)return closed&&!holdRetirement;}}
+        }
+        static byte[] VideoJoin(params byte[][] parts){using(MemoryStream m=new MemoryStream()){foreach(byte[] p in parts)m.Write(p,0,p.Length);return m.ToArray();}}
+        static byte[] VideoShell(byte kind,byte[] payload){byte[] h={kind,(byte)payload.Length,(byte)(payload.Length>>8),(byte)(payload.Length>>16),(byte)(payload.Length>>24)};return VideoJoin(h,payload);}
+        static byte[] VideoSync(string kind,byte[] payload){byte[] k=Encoding.ASCII.GetBytes(kind),h={k[0],k[1],k[2],k[3],(byte)payload.Length,(byte)(payload.Length>>8),0,0};return VideoJoin(h,payload);}
+        static string VideoHash(byte[] bytes){using(System.Security.Cryptography.SHA256 h=System.Security.Cryptography.SHA256.Create()){StringBuilder b=new StringBuilder();foreach(byte v in h.ComputeHash(bytes))b.Append(v.ToString("x2"));return b.ToString();}}
+        sealed class VideoIo : IsolatedAdbServer.RetainedProvider.IVideoIo
+        {
+            readonly object videoGate=new object();
+            internal readonly byte[] artifact={1,2,3,4};internal readonly List<string> services=new List<string>();internal readonly List<VideoChannel> channels=new List<VideoChannel>();
+            internal readonly ManualResetEvent intentEntered=new ManualResetEvent(false),intentRelease=new ManualResetEvent(true),settlementEntered=new ManualResetEvent(false),settlementRelease=new ManualResetEvent(true),completeEntered=new ManualResetEvent(false),completeRelease=new ManualResetEvent(true);
+            internal bool intent,completed,failUpload,badReadback,badNonce,hugePacket,creationUnknown,creationCollision,loseFence,holdCleanup;
+            internal int cleanups,cancels,holdCloseStage;internal IDictionary<string,object> settlement;VideoChannel shell;int syncs;
+            public void Fence(bool cleanup){if(loseFence)throw new IOException("ADMISSION_REJECTED");}
+            public Stream Artifact(){return new MemoryStream(artifact,false);}
+            public void Intent(){intentEntered.Set();intentRelease.WaitOne();intent=true;}
+            public void Settlement(IDictionary<string,object> f){settlement=f;settlementEntered.Set();settlementRelease.WaitOne();}
+            public void Complete(){completeEntered.Set();completeRelease.WaitOne();completed=true;}
+            public IsolatedAdbServer.RetainedProvider.IVideoChannel Open(string service,bool cleanup,Func<int> remaining)
+            {
+                remaining();lock(videoGate){services.Add(service);}VideoChannel c;
+                if(service.StartsWith("shell,v2,raw:umask",StringComparison.Ordinal))c=new VideoChannel(creationUnknown?new byte[0]:VideoShell(3,new byte[]{(byte)(creationCollision?1:0)}),true);
+                else if(service=="sync:"){
+                    syncs++;if(syncs==1)c=new VideoChannel(Encoding.ASCII.GetBytes(failUpload?"FAIL\0\0\0\0":"OKAY\0\0\0\0"),true);
+                    else c=new VideoChannel(VideoJoin(VideoSync("DATA",badReadback?new byte[]{4,3,2,1}:artifact),Encoding.ASCII.GetBytes("DONE\0\0\0\0")),true);
+                }else if(service.StartsWith("shell,v2,raw:CLASSPATH=",StringComparison.Ordinal)){
+                    shell=new VideoChannel(VideoShell(1,Encoding.ASCII.GetBytes("AUTOVID1_READY\n")),false);c=shell;
+                }else if(service.StartsWith("localabstract:",StringComparison.Ordinal)){
+                    byte[] prefix=new byte[41];Encoding.ASCII.GetBytes("AUTOVID1",0,8,prefix,1);if(badNonce)prefix[9]=1;
+                    byte[] codec={0x68,0x32,0x36,0x34},session={0x80,0,0,0,0,0,0,100,0,0,0,200};
+                    byte[] packet={0,0,0,0,0,0,0,1,0,0,0,1,7};if(hugePacket){packet[8]=1;packet[12]=0;}
+                    c=new VideoChannel(VideoJoin(prefix,codec,session,packet),false);c.onClose=delegate(){shell.Feed(VideoShell(3,new byte[]{0}));shell.End();};
+                }else if(service.StartsWith("shell,v2,raw:rm -f",StringComparison.Ordinal)){cleanups++;c=new VideoChannel(holdCleanup?new byte[0]:VideoShell(3,new byte[]{0}),!holdCleanup);}
+                else throw new IOException("UNEXPECTED_VIDEO_SERVICE");
+                lock(videoGate){channels.Add(c);if(holdCloseStage==channels.Count)c.holdRetirement=true;}return c;
+            }
+            public void Cancel(){Interlocked.Increment(ref cancels);lock(videoGate){foreach(VideoChannel c in channels)if(!Object.ReferenceEquals(c,shell))c.Close();}}
+            public void CloseAll(){lock(videoGate){foreach(VideoChannel c in channels)c.Close();}}
+            public bool Retired {get{lock(videoGate){foreach(VideoChannel c in channels)if(!c.Retired)return false;return true;}}}
+        }
+        sealed class VideoProvider : ServerProvider, RetainedAdbProtocol.IVideoProvider
+        {
+            internal readonly ManualResetEvent VideoEntered=new ManualResetEvent(false),VideoRelease=new ManualResetEvent(true);
+            internal int videoStarts,videoStops;internal string videoId;
+            IDictionary<string,object> VideoFacts(bool closed){return new Dictionary<string,object>{{"sessionId",videoId},{"snapshotRevision",closed?2L:1L},{"state",closed?"CLOSED":"RECEIVING"},{"code",closed?"CLOSED":"OK"},{"streamObserved",true},{"sessionPackets",1L},{"mediaPackets",1L},{"encodedBytes",1L},{"lastWidth",100},{"lastHeight",200},{"directory","CREATED"},{"upload","VERIFIED"},{"launch",closed?"EXITED":"STARTED"},{"localRetired",closed},{"cleanup",closed?"CLEANED":"PENDING"}};}
+            public IDictionary<string,object> VideoStart(object attempt,string attemptId,string id,string transport,long epoch,long deadline,string artifact,int scid,string nonce){Check(Object.ReferenceEquals(attempt,token));videoId=id;Interlocked.Increment(ref videoStarts);VideoEntered.Set();VideoRelease.WaitOne();return VideoFacts(videoStops>0);}
+            public IDictionary<string,object> VideoStatus(object attempt,string id){Check(id==videoId);return VideoFacts(videoStops>0);}
+            public IDictionary<string,object> VideoStop(object attempt,string id){Check(id==videoId);Interlocked.Increment(ref videoStops);VideoRelease.Set();return VideoFacts(true);}
+        }
+        static byte[] VideoFrame(long request,string operation)
+        {string id="33333333-3333-4333-8333-333333333333";string raw="{\"version\":5,\"requestId\":"+request+",\"sessionId\":\""+Session+"\",\"attemptId\":\""+Attempt+"\",\"kind\":\""+operation+"\",\"videoId\":\""+id+"\"";
+            if(operation=="VIDEO_START")raw+=",\"transportId\":\"7\",\"hostEpoch\":1,\"deadlineUtc\":"+(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()+30000)+",\"artifactId\":\""+new string('a',64)+"\",\"scid\":1,\"nonceHex\":\""+new string('0',64)+"\"";
+            return Encoding.ASCII.GetBytes(raw+"}\n");}
+        static IsolatedAdbServer.RetainedProvider.VideoState VideoSession(VideoIo io)
+        {return new IsolatedAdbServer.RetainedProvider.VideoState(io,"33333333-3333-4333-8333-333333333333",new string('0',64),1,io.artifact.Length,VideoHash(io.artifact),DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()+30000);}
+        // Additional pure/fake path groups. Authored only: no compile, network, ADB, Java or phone execution.
+        public static int RunVideo()
+        {
+            int passed=0;string id="33333333-3333-4333-8333-333333333333";
+            Check(IsolatedAdbServer.RetainedProvider.VideoCreateCommand(id)=="umask 077 && mkdir /data/local/tmp/fonesi-video-"+id);
+            Check(IsolatedAdbServer.RetainedProvider.VideoCleanupCommand(id)=="rm -f /data/local/tmp/fonesi-video-"+id+"/server.jar && rmdir /data/local/tmp/fonesi-video-"+id);
+            Check(!IsolatedAdbServer.RetainedProvider.VideoLaunchCommand(id,1,new string('0',64)).Contains(" &"));passed++;
+            bool rejected=false;try{IsolatedAdbServer.RetainedProvider.VideoCreateCommand(id+"\n");}catch{rejected=true;}Check(rejected);passed++;
+            {VideoIo io=new VideoIo();var v=VideoSession(io);v.Start();var r=v.AwaitStarted();Check((bool)r["streamObserved"]&&(string)r["state"]=="RECEIVING");v.Stop();Check(v.Clean&&io.cleanups==1&&io.intent&&io.completed&&(string)io.settlement["launch"]=="EXITED");passed++;}
+            foreach(string variant in new[]{"nonce","size","readback","upload","collision","creationUnknown"}){
+                VideoIo io=new VideoIo();io.badNonce=variant=="nonce";io.hugePacket=variant=="size";io.badReadback=variant=="readback";io.failUpload=variant=="upload";io.creationCollision=variant=="collision";io.creationUnknown=variant=="creationUnknown";
+                var v=VideoSession(io);v.Start();v.AwaitStarted();v.Stop();Wait(delegate{return v.Done;});var r=v.Snapshot();Check(!(bool)r["streamObserved"]);
+                if(variant=="creationUnknown")Check(!v.Clean&&(string)r["directory"]=="UNKNOWN"&&io.cleanups==0);
+                else Check(v.Clean&&io.cleanups==(variant=="collision"?0:1));passed++;
+            }
+            {VideoIo io=new VideoIo();io.intentRelease.Reset();var v=VideoSession(io);v.Start();Check(io.intentEntered.WaitOne(5000));v.RequestStop();Check(io.services.Count==0);io.intentRelease.Set();Wait(delegate{return v.Done;});Check(v.Clean&&io.services.Count==0&&(string)v.Snapshot()["launch"]=="NONE");passed++;}
+            {VideoIo io=new VideoIo();io.loseFence=true;var v=VideoSession(io);v.Start();v.AwaitStarted();Wait(delegate{return v.Done;});Check(!io.intent&&io.services.Count==0&&v.Clean);passed++;}
+            {long now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();string frame="{\"version\":5,\"requestId\":1,\"sessionId\":\""+Session+"\",\"attemptId\":\""+Attempt+"\",\"kind\":\"VIDEO_START\",\"videoId\":\""+id+"\",\"transportId\":\"7\",\"hostEpoch\":1,\"deadlineUtc\":"+(now+30000)+",\"artifactId\":\""+new string('a',64)+"\",\"scid\":1,\"nonceHex\":\""+new string('0',64)+"\"}\n";Check(RetainedAdbProtocol.Parse(Encoding.ASCII.GetBytes(frame),Session,0)!=null);Check(RetainedAdbProtocol.Parse(Encoding.ASCII.GetBytes(frame.Replace("\"hostEpoch\":1","\"hostEpoch\":0")),Session,0)==null);passed++;}
+            // v5 cleanup preempts an actual held START provider call and retains both writer/worker obligations.
+            {VideoProvider p=new VideoProvider();p.VideoRelease.Reset();Input input=new Input();Output output=new Output();RetainedAdbProtocol.RunResult result=null;
+                Thread thread=new Thread(delegate(){result=RetainedAdbProtocol.Run(input,output,Session,p,delegate{return true;},false,"SERVER_ONLY");});thread.IsBackground=true;thread.Start();input.Feed(Frame(1,"START"));Wait(delegate{return output.count==1&&input.waiting;});input.Feed(VideoFrame(2,"VIDEO_START"));Check(p.VideoEntered.WaitOne(5000));input.Feed(VideoFrame(3,"VIDEO_STOP"));Wait(delegate{return output.count==3&&input.waiting;});Check(p.videoStops==1&&p.videoStarts==1);input.End();Check(thread.Join(5000)&&result.Clean);passed++;}
+            // VERSION_ONLY refuses v5 before reserve/provider effects.
+            {VideoProvider p=new VideoProvider();Input input=new Input();Output output=new Output();input.Feed(VideoFrame(1,"VIDEO_START"));input.End();var result=RetainedAdbProtocol.Run(input,output,Session,p,delegate{return true;});Check(!result.Clean&&p.reserves==0&&p.videoStarts==0);passed++;}
+            // Actual final journal publication/root-handle completion is retained, not public retirement.
+            foreach(bool holdSettlement in new[]{true,false}){
+                VideoIo io=new VideoIo();if(holdSettlement)io.settlementRelease.Reset();else io.completeRelease.Reset();var v=VideoSession(io);v.Start();Check((bool)v.AwaitStarted()["streamObserved"]);v.RequestStop();
+                Check((holdSettlement?io.settlementEntered:io.completeEntered).WaitOne(5000));var held=v.Snapshot();Check(!(bool)held["localRetired"]&&(string)held["state"]=="STOPPING"&&(string)held["cleanup"]=="PENDING"&&!v.Clean&&!v.Done);
+                Check((bool)io.settlement["localRetired"]);v.RequestStop();Check(io.cancels==1);
+                (holdSettlement?io.settlementRelease:io.completeRelease).Set();Wait(delegate{return v.Done;});var terminal=v.Snapshot();Check(v.Clean&&(bool)terminal["localRetired"]&&(string)terminal["state"]=="CLOSED"&&Convert.ToInt64(terminal["snapshotRevision"])>Convert.ToInt64(held["snapshotRevision"]));passed++;
+            }
+            // Each exact channel close must settle before the next remote stage, including upload->readback.
+            foreach(int stage in new[]{1,2}){
+                VideoIo io=new VideoIo();io.holdCloseStage=stage;var v=VideoSession(io);v.Start();Wait(delegate{return io.channels.Count>=stage&&io.channels[stage-1].closed;});Check(io.services.Count==stage);io.channels[stage-1].holdRetirement=false;Check((bool)v.AwaitStarted()["streamObserved"]);v.Stop();Check(v.Clean);passed++;
+            }
+            // Held state locks cannot consume an unbounded cleanup admission/status wait.
+            {VideoIo io=new VideoIo();var v=VideoSession(io);object sync=typeof(IsolatedAdbServer.RetainedProvider.VideoState).GetField("sync",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(v);ManualResetEvent entered=new ManualResetEvent(false),release=new ManualResetEvent(false);Thread holder=new Thread(delegate(){lock(sync){entered.Set();release.WaitOne();}});holder.IsBackground=true;holder.Start();Check(entered.WaitOne(5000));var timer=System.Diagnostics.Stopwatch.StartNew();Check(!v.TryRequestStop(timer,25));Check(timer.ElapsedMilliseconds<1000&&!v.Done&&!v.Clean&&!(bool)v.Snapshot()["localRetired"]);release.Set();Check(holder.Join(5000));v.Start();Wait(delegate{return v.Done;});Check(v.Clean&&io.services.Count==0);passed++;}
+            // Shared production partial-send helper consumes one original remaining clock across every send.
+            {ByteChannel c=new ByteChannel(new byte[0]);c.advance=60;bool expired=false;try{IsolatedAdbServer.RetainedProvider.VideoWriteAll(c,new byte[4],0,4,delegate(){long left=1100-c.now;if(left<=0)throw new IOException("DEADLINE_EXCEEDED");return (int)left;});}catch(IOException){expired=true;}Check(expired&&c.sent.Length==2);passed++;}
+            // Shared production connect wait cannot renew a deadline after actual connect completion.
+            {var pending=new System.Threading.Tasks.TaskCompletionSource<bool>();long now=1000;Thread complete=new Thread(delegate(){now=1101;pending.SetResult(true);});complete.IsBackground=true;complete.Start();Check(complete.Join(5000));bool expired=false;try{IsolatedAdbServer.RetainedProvider.WaitVideoConnect(pending.Task,delegate(){if(now>=1100)throw new IOException("DEADLINE_EXCEEDED");return (int)(1100-now);});}catch(IOException){expired=true;}Check(expired);passed++;}
+            // Repeated STOP shares the first cancellation; it cannot close a later cleanup channel.
+            {VideoIo io=new VideoIo();io.holdCleanup=true;var v=VideoSession(io);v.Start();Check((bool)v.AwaitStarted()["streamObserved"]);v.RequestStop();Wait(delegate{return io.cleanups==1&&io.channels.Count==6;});VideoChannel cleanup=io.channels[5];Check(!cleanup.closed);v.RequestStop();v.RequestStop();Check(io.cancels==1&&!cleanup.closed);cleanup.Feed(VideoShell(3,new byte[]{0}));cleanup.End();Wait(delegate{return v.Done;});Check(v.Clean);passed++;}
+            // Invalid admission is rejected before any I/O resource/fence/journal entry can occur.
+            {VideoIo io=new VideoIo();bool refused=false;try{new IsolatedAdbServer.RetainedProvider.VideoState(io,id,new string('0',64),1,4,VideoHash(io.artifact),DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()-1);}catch(IOException){refused=true;}Check(refused&&io.services.Count==0&&!io.intent&&!io.completed&&io.channels.Count==0);passed++;}
+            return passed;
+        }
+
     }
 }

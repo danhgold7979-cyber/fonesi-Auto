@@ -1,3 +1,4 @@
+import type { VideoTransportSession } from './video-contract.ts';
 import { inspectFleetActiveInputIntent, type OwnedFleetActiveIntent } from './fleet-service.ts';
 import { inspectAssociationConfirmation } from './association-confirmation.ts';
 import {
@@ -17,7 +18,11 @@ import {
 } from './adb-discovery.ts';
 import { isRegistrySnapshot, type RegistrySnapshot } from './transport-registry.ts';
 import { DurableFault, type DurableMutationResult } from './durable-coordinator.ts';
-import { inspectRegistryProjection, type RegistryStore } from './registry-store.ts';
+import {
+  captureRegistryVideoBinding,
+  inspectRegistryProjection,
+  type RegistryStore,
+} from './registry-store.ts';
 import {
   validMetadataField,
   validMetadataDeadline,
@@ -202,6 +207,20 @@ function classify(error: unknown): LocalCode | Exclude<DurableCode, 'OUTCOME_UNK
     /* Hostile thrown values never become public diagnostics. */
   }
   return 'PROVIDER_FAILED';
+}
+export type OwnedVideoTarget = Readonly<{ ownedVideoTarget: true }>;
+export type VideoTargetRecord = Readonly<{
+  target: MetadataTargetRecord['target'];
+  installationRevision: number;
+  current(): void;
+  finalCurrent(): boolean;
+  begin(
+    request: Readonly<{ videoId: string; deadlineUtc: number; scid: number; nonceHex: string }>,
+  ): VideoTransportSession;
+}>;
+const videoTargets = new WeakMap<object, VideoTargetRecord>();
+export function inspectOwnedVideoTarget(value: unknown): VideoTargetRecord | null {
+  return value !== null && typeof value === 'object' ? (videoTargets.get(value) ?? null) : null;
 }
 export type OwnedMetadataTarget = Readonly<{ ownedMetadataTarget: true }>;
 export type MetadataTargetRecord = Readonly<{
@@ -402,6 +421,9 @@ export function createAdbDiscoveryService(
     metadataSequence = 0;
   const tickets = new Map<string, OwnedMetadataTarget>();
   const inputTickets = new Map<string, OwnedInputTarget>();
+  const videoTickets = new Map<string, OwnedVideoTarget>();
+  const videoSessions = new Set<VideoTransportSession>();
+  const videoWorks = new Set<Promise<unknown>>();
   const ownerAnchors = new Map<string, object>();
 
   let ceremony: AssociationTransaction | null = null,
@@ -443,6 +465,7 @@ export function createAdbDiscoveryService(
     }
     if (clear) {
       projection = null;
+      stopVideos();
       nativeRows = null;
       tickets.clear();
       inputTickets.clear();
@@ -1027,6 +1050,7 @@ export function createAdbDiscoveryService(
     uncertainRetirement = true;
     closed = true;
     projection = null;
+    stopVideos();
   }
   function refreshInternal(
     expectedRevision: number,
@@ -1046,6 +1070,7 @@ export function createAdbDiscoveryService(
     const token = Object.freeze({});
     currentRequest = token;
     projection = null;
+    stopVideos();
     nativeRows = null;
     tickets.clear();
     inputTickets.clear();
@@ -1108,6 +1133,7 @@ export function createAdbDiscoveryService(
             () => {
               expired = true;
               projection = null;
+              stopVideos();
               if (!entered) deliver(refusal('DEADLINE', requestId, seq));
             },
             Math.max(0, deadline - started),
@@ -1259,6 +1285,7 @@ export function createAdbDiscoveryService(
               valid = true;
             } catch {
               projection = null;
+              stopVideos();
             }
             respond(
               Object.freeze({
@@ -1285,6 +1312,7 @@ export function createAdbDiscoveryService(
           } else respond(refusal(committed.code, requestId, seq));
         } catch (error) {
           projection = null;
+          stopVideos();
           respond(refusal(classify(error), requestId, seq));
         } finally {
           if (timer !== null) clearTimeout(timer);
@@ -1296,6 +1324,7 @@ export function createAdbDiscoveryService(
         if (pendingReceipt) {
           if (pendingReceipt.outcome === 'COMMITTED' && !publicationCurrent()) {
             projection = null;
+            stopVideos();
             pendingReceipt = Object.freeze({ ...pendingReceipt, projectionCurrent: false });
           }
           deliver(pendingReceipt);
@@ -1524,7 +1553,76 @@ export function createAdbDiscoveryService(
       return null;
     }
   }
+  function stopVideos() {
+    videoTickets.clear();
+    for (const session of videoSessions) {
+      if (videoWorks.size >= 256) {
+        uncertainRetirement = true;
+        continue;
+      }
+      try {
+        const work = session.stop();
+        videoWorks.add(work);
+        void work
+          .then(
+            (facts) => {
+              if (!facts.localRetired || !['CLEANED', 'NOT_REQUIRED'].includes(facts.cleanup))
+                uncertainRetirement = true;
+            },
+            () => {
+              uncertainRetirement = true;
+            },
+          )
+          .finally(() => videoWorks.delete(work));
+      } catch {
+        uncertainRetirement = true;
+      }
+    }
+  }
+  function videoTarget(deviceId: string): OwnedVideoTarget | null {
+    if (!native?.videoAvailable()) return null;
+    const proofTicket = issueTarget(deviceId, 'INPUT') as OwnedInputTarget | null;
+    const proof = inspectOwnedInputTarget(proofTicket);
+    if (!proof?.finalCurrent()) return null;
+    const prior = videoTickets.get(deviceId);
+    if (prior) return videoTargets.get(prior)?.finalCurrent() ? prior : null;
+    if (videoTickets.size >= 256 || issuedTickets >= 65536) return null;
+    const bindingWitness = captureRegistryVideoBinding(actualRegistry, proof.projection, deviceId);
+    if (!bindingWitness) return null;
+    const ticket = Object.freeze({ ownedVideoTarget: true as const });
+    let used = false;
+    const record: VideoTargetRecord = Object.freeze({
+      target: proof.target,
+      installationRevision: native.installationRevision,
+      current: proof.current,
+      finalCurrent: proof.finalCurrent,
+      begin(request) {
+        if (used) throw Error('VIDEO_REJECTED');
+        used = true;
+        proof.current();
+        if (!proof.finalCurrent() || !native) throw Error('VIDEO_REJECTED');
+        const session = native.beginVideo(bindingWitness, request);
+        videoSessions.add(session);
+        videoWorks.add(session.started);
+        void session.started
+          .then(
+            () => {},
+            () => {
+              uncertainRetirement = true;
+            },
+          )
+          .finally(() => videoWorks.delete(session.started));
+        return session;
+      },
+    });
+    if (!proof.finalCurrent()) return null;
+    issuedTickets++;
+    videoTickets.set(deviceId, ticket);
+    videoTargets.set(ticket, record);
+    return ticket;
+  }
   return Object.freeze({
+    videoTarget,
     metadataTarget: (deviceId: string) =>
       issueTarget(deviceId, 'METADATA') as OwnedMetadataTarget | null,
     inputTarget: (deviceId: string) => issueTarget(deviceId, 'INPUT') as OwnedInputTarget | null,
@@ -1546,6 +1644,7 @@ export function createAdbDiscoveryService(
         return projection;
       } catch {
         projection = null;
+        stopVideos();
         return null;
       }
     },
@@ -1558,6 +1657,7 @@ export function createAdbDiscoveryService(
           : 'LIVE_DISCOVERY_UNAVAILABLE';
       } catch {
         projection = null;
+        stopVideos();
         return 'LIVE_DISCOVERY_UNAVAILABLE';
       }
     },
@@ -1570,9 +1670,14 @@ export function createAdbDiscoveryService(
         if (ceremony.timer !== null) clearTimeout(ceremony.timer);
       }
       projection = null;
+      stopVideos();
       closing = new Promise((resolve) => {
         const timer = setTimeout(() => resolve(Object.freeze({ status: 'UNRETIRED' })), 120000);
-        void Promise.allSettled([active ?? Promise.resolve(), ...associationWorks]).then(() => {
+        void Promise.allSettled([
+          active ?? Promise.resolve(),
+          ...associationWorks,
+          ...videoWorks,
+        ]).then(() => {
           clearTimeout(timer);
           resolve(Object.freeze({ status: uncertainRetirement ? 'UNRETIRED' : 'RETIRED' }));
         });
@@ -1580,7 +1685,13 @@ export function createAdbDiscoveryService(
       return closing;
     },
     get retired(): boolean {
-      return closed && !active && associationWorks.size === 0 && !uncertainRetirement;
+      return (
+        closed &&
+        !active &&
+        associationWorks.size === 0 &&
+        videoWorks.size === 0 &&
+        !uncertainRetirement
+      );
     },
   });
 }

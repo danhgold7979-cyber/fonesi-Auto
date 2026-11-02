@@ -1,3 +1,10 @@
+import { inspectRegistryVideoBinding } from './registry-store.ts';
+import {
+  snapshotVideo,
+  snapshotVideoStart,
+  type VideoSnapshot,
+  type VideoStart,
+} from './video-contract.ts';
 import { inspectFleetActiveInputIntent } from './fleet-service.ts';
 import {
   snapshotInputQueryFacts,
@@ -123,6 +130,9 @@ export function snapshotHostAcquisitionFacts(raw: unknown): HostAcquisitionFacts
   }
 }
 export interface HostNativeProvider {
+  videoStart?(attempt: object, request: VideoStart): Promise<VideoSnapshot>;
+  videoStatus?(attempt: object, videoId: string): Promise<VideoSnapshot>;
+  videoStop?(attempt: object, videoId: string): Promise<VideoSnapshot>;
   reserveAttempt(kind: 'VERSION' | 'FOREGROUND'): object;
   version(attempt: object, runtime: RuntimeReadObservation): Promise<HostTransportFacts>;
   startForeground(attempt: object, runtime: RuntimeReadObservation): Promise<HostTransportFacts>;
@@ -182,7 +192,10 @@ export function createHostAdapter(
     retire = provider.retire.bind(provider),
     discover = provider.discover?.bind(provider),
     metadata = provider.metadata?.bind(provider),
-    input = provider.input?.bind(provider);
+    input = provider.input?.bind(provider),
+    videoStart = provider.videoStart?.bind(provider),
+    videoStatus = provider.videoStatus?.bind(provider),
+    videoStop = provider.videoStop?.bind(provider);
   const capabilities = new WeakMap<object, { ownerId: string; admit(): void }>();
   const attempts = new WeakSet<object>();
   const works = new Set<Promise<unknown>>();
@@ -529,8 +542,116 @@ export function createHostAdapter(
         : (Object.freeze({ result, retirement }) as HostAcquisitionHandle);
   }
 
+  let videoId: string | null = null;
+  let videoStopped = false;
+  let videoBinding: unknown = null;
+  let videoStopWork: Promise<VideoSnapshot> | null = null;
+  function videoControl(
+    cap: HostCapability,
+    kind: 'START' | 'STATUS' | 'STOP',
+    raw: unknown,
+    bindingTicket?: unknown,
+  ): Promise<VideoSnapshot> {
+    const request = kind === 'START' ? snapshotVideoStart(raw) : null;
+    const id = request?.videoId ?? raw;
+    if (
+      typeof id !== 'string' ||
+      !uuid(id) ||
+      operationSet !== 'SERVER_ONLY' ||
+      !attempt ||
+      attempt.kind !== 'FOREGROUND' ||
+      attempt.capability !== cap ||
+      attempt.terminal
+    )
+      return Promise.reject(Error('VIDEO_REJECTED'));
+    if (kind === 'START' ? !request || videoId !== null : videoId !== id)
+      return Promise.reject(Error('VIDEO_REJECTED'));
+    if (kind === 'STOP' && videoStopWork) return videoStopWork;
+    if (kind === 'STOP') videoStopped = true;
+    if (kind !== 'STOP' && (busy || works.size || closed || uncertain || releasing || videoStopped))
+      return Promise.reject(Error('VIDEO_REJECTED'));
+    const a = attempt;
+    if (kind === 'STATUS' && bindingTicket !== videoBinding)
+      return Promise.reject(Error('VIDEO_REJECTED'));
+    if (kind === 'START') {
+      videoId = id;
+      videoBinding = bindingTicket;
+    } // Reserve before all callbacks, never rearm.
+    if (kind !== 'STOP') {
+      busy = true;
+      executionDone = new Promise<void>((r) => {
+        finishExecution = r;
+      });
+    }
+    const work = Promise.resolve().then(async () => {
+      if (kind !== 'STOP') {
+        const entry = capabilities.get(cap),
+          token = read;
+        if (!entry || !token || !observation) throw Error('VIDEO_REJECTED');
+        current(cap, entry.ownerId);
+        const validation = await custody.revalidateRead(token);
+        if (!validation.ok || validation.token !== token) throw Error('VIDEO_REJECTED');
+        observation = validation.observation;
+        current(cap, entry.ownerId);
+        const now = clock();
+        if (
+          request &&
+          (!Number.isSafeInteger(now) ||
+            now < 0 ||
+            now >= request.deadlineUtc ||
+            request.deadlineUtc - now > 30000)
+        )
+          throw Error('VIDEO_REJECTED');
+        custody.assertReadInternal(token);
+        if (
+          attempt !== a ||
+          read !== token ||
+          closed ||
+          uncertain ||
+          videoStopped ||
+          !inspectRegistryVideoBinding(bindingTicket)?.finalCurrent() ||
+          (request !== null &&
+            (inspectRegistryVideoBinding(bindingTicket)?.binding.transportId !==
+              request.transportId ||
+              inspectRegistryVideoBinding(bindingTicket)?.binding.hostEpoch !== request.hostEpoch))
+        )
+          throw Error('VIDEO_REJECTED');
+      }
+      const rawFacts =
+        kind === 'START'
+          ? await videoStart?.(a.token, request as VideoStart)
+          : kind === 'STATUS'
+            ? await videoStatus?.(a.token, id)
+            : await videoStop?.(a.token, id);
+      const facts = snapshotVideo(rawFacts);
+      if (!facts || facts.sessionId !== id) throw Error('VIDEO_REJECTED');
+      if (!facts.localRetired) a.terminal = false;
+      return facts;
+    });
+    works.add(work);
+    const settled = work
+      .catch((error) => {
+        a.terminal = false;
+        throw error;
+      })
+      .finally(() => {
+        works.delete(work);
+        if (kind !== 'STOP') {
+          busy = false;
+          finishExecution?.();
+          finishExecution = null;
+        }
+      });
+    if (kind === 'STOP') videoStopWork = settled;
+    return settled;
+  }
   return Object.freeze({
     snapshot: engine.snapshot,
+    startVideo: (cap: HostCapability, request: unknown, bindingTicket: unknown) =>
+      videoControl(cap, 'START', request, bindingTicket),
+    statusVideo: (cap: HostCapability, id: string, bindingTicket: unknown) =>
+      videoControl(cap, 'STATUS', id, bindingTicket),
+    stopVideo: (cap: HostCapability, id: string) => videoControl(cap, 'STOP', id),
     grant(ownerId: string, admit: () => void): HostCapability {
       if (closed || uncertain || !uuid(ownerId) || typeof admit !== 'function')
         throw Error('HOST_AUTHORITY');

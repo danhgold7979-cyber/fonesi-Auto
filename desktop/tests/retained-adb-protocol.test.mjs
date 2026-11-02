@@ -39,10 +39,10 @@ function before(text, left, right) {
     `${left} before ${right}`,
   );
 }
-test('reviewed native custody helpers and fixed provider adapter have no new interop and dispatch only existing native methods', () => {
+test('current native custody source pins and fixed provider adapter add no reader interop; not native execution proof', () => {
   for (const [name, hash] of [
     ['IsolatedAdbServer.cs', '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7'],
-    ['RetainedAdbSession.cs', '24dd1324671214de7f0a2dcd41a9725c5823d5ca641ca8a9398a5d83dcd07a50'],
+    ['RetainedAdbSession.cs', '959354d2fcabc08d1ad3bfd4326b4049fa33814c1e942d2a06598145161f94c7'],
   ])
     assert.equal(
       createHash('sha256')
@@ -160,7 +160,7 @@ test('VERSION_ONLY gate and synchronous exact reservation precede ordinary worke
   assert.match(source, /AttemptLimit = 128, OutputLimit = 2/);
   assert.match(
     source,
-    /attempt\.terminal && Done\(attempt\.ordinary\) && Done\(attempt\.cleanup\) && attempt\.frames == 0/,
+    /attempt\.terminal && Done\(attempt\.ordinary\) && Done\(attempt\.cleanup\) && Done\(attempt\.videoCleanup\) && attempt\.frames == 0/,
   );
   assert.match(
     source,
@@ -205,11 +205,19 @@ test('future managed fixture exercises real reader with only memory streams and 
   assert.match(fixture, /o\.Release\.Reset\(\)/);
   assert.match(fixture, /Check\(t\.IsAlive&&r==null\)/);
   assert.match(fixture, /Interlocked\.Exchange\(ref live,0\)/);
+  const historical = fixture.slice(0, fixture.indexOf('sealed class VideoChannel :'));
+  assert.ok(historical.includes('public static int RunAll()'));
   assert.doesNotMatch(
-    fixture,
+    historical,
     /new RetainedAdbProtocol\.NativeProvider|Process\.Start|File\.|Directory\.|Tcp|Socket|Add-Type/,
   );
-  assert.equal((fixture.match(/passed\+\+/g) ?? []).length, 8);
+  // Video fakes may throw SocketException, but never construct a real socket/provider.
+  assert.doesNotMatch(
+    fixture,
+    /new RetainedAdbProtocol\.NativeProvider|Process\.Start|File\.|Directory\.|new (?:System\.Net\.Sockets\.)?(?:Socket|TcpClient|TcpListener)\s*\(|Add-Type/,
+  );
+  const runAll = historical.slice(historical.indexOf('public static int RunAll()'));
+  assert.equal((runAll.match(/passed\+\+/g) ?? []).length, 8);
 });
 
 test('one deferred next ordinary request waits for native and output retirement while read task remains tracked', () => {

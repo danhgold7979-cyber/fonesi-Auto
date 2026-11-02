@@ -1,3 +1,5 @@
+import { inspectRegistryVideoBinding } from './registry-store.ts';
+import { snapshotVideoAdmission, preparingVideo } from './video-contract.ts';
 import { inspectFleetActiveInputIntent } from './fleet-service.ts';
 /** Default VERSION_ONLY; SERVER_ONLY remains private and unwired from main. */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -15,6 +17,9 @@ import type { PersistenceEntry } from './persistence-entry.ts';
 import { resolvePlatformToolsCandidate } from './platform-tools-catalog.ts';
 import {
   HOST_ASSETS,
+  openHostVideoArtifact,
+  inspectHostVideoArtifact,
+  releaseHostVideoArtifact,
   hostHash,
   hostUuid,
   hostNames,
@@ -236,6 +241,11 @@ export function createHostFactory(
     liveObservationKey: string | null = null,
     readGeneration = 0,
     pinned: string | null = null;
+  let videoArtifact: ReturnType<typeof openHostVideoArtifact> = null;
+  let videoRegistered = false,
+    videoStopped = false,
+    videoHanded = false;
+  let registeredVideoId: string | null = null;
   let root: ReturnType<typeof createHostRoot> | null = null,
     bootstrap = '',
     inputEnded = false,
@@ -339,9 +349,12 @@ export function createHostFactory(
     const exePin = selected?.candidate.files.find((f) => f.path === 'adb.exe')?.sha256;
     if (!selected?.launchAllowed || !exePin) fail();
     pinned = observationKey(o);
+    videoArtifact = operationSet === 'SERVER_ONLY' ? openHostVideoArtifact(desktopRoot) : null;
+    const videoAdmission = videoArtifact ? inspectHostVideoArtifact(videoArtifact) : null;
+    if (videoArtifact && !videoAdmission?.finalCurrent()) fail();
     root = createHostRoot(launchRoot, sessionId, entry.ownerToken, () => currentRuntime(o));
     bootstrap = JSON.stringify({
-      version: 2,
+      version: 3,
       operationSet,
       sessionId,
       launchId: context.receipt.launchId,
@@ -358,6 +371,7 @@ export function createHostFactory(
       expectedRelease: selected.versionObservation.release,
       expectedBuildGrammar: selected.versionObservation.buildGrammar,
       assets: context.assets,
+      videoArtifact: videoAdmission?.record ?? null,
     });
     hostWrite(join(root.root, 'bootstrap.json'), bootstrap, 8192, () => currentRuntime(o));
     const env: NodeJS.ProcessEnv = {
@@ -575,6 +589,71 @@ export function createHostFactory(
   });
   let closing: Promise<'RETIRED' | 'UNRETIRED'> | null = null;
   const factory = Object.freeze({
+    videoArtifactAvailable(): boolean {
+      return (
+        realFactories.has(factory) &&
+        !stopped &&
+        !broken &&
+        videoArtifact !== null &&
+        !!inspectHostVideoArtifact(videoArtifact)?.finalCurrent()
+      );
+    },
+    startVideo(capability: HostCapability, raw: unknown, target: unknown) {
+      if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY' || videoRegistered) fail();
+      videoRegistered = true;
+      const request = snapshotVideoAdmission(raw),
+        proof = inspectRegistryVideoBinding(target);
+      if (!request) fail();
+      registeredVideoId = request.videoId;
+      const artifact = videoArtifact ? inspectHostVideoArtifact(videoArtifact) : null;
+      if (!proof || !artifact?.finalCurrent()) fail();
+      const now = clock();
+      if (
+        now >= request.deadlineUtc ||
+        request.deadlineUtc - now > 30000 ||
+        videoStopped ||
+        !artifact.finalCurrent() ||
+        !proof.finalCurrent()
+      )
+        fail();
+      videoHanded = true;
+      return adapter.startVideo(
+        capability,
+        Object.freeze({
+          ...request,
+          transportId: proof.binding.transportId,
+          hostEpoch: proof.binding.hostEpoch,
+          artifactId: artifact.record.artifactId,
+        }),
+        target,
+      );
+    },
+    statusVideo(capability: HostCapability, id: string, target: unknown) {
+      if (
+        !realFactories.has(factory) ||
+        !videoRegistered ||
+        videoStopped ||
+        !videoArtifact ||
+        !inspectHostVideoArtifact(videoArtifact)?.finalCurrent()
+      )
+        fail();
+      return adapter.statusVideo(capability, id, target);
+    },
+    stopVideo(capability: HostCapability, id: string) {
+      if (!realFactories.has(factory) || !videoRegistered || id !== registeredVideoId) fail();
+      videoStopped = true;
+      if (!videoHanded)
+        return Promise.resolve(
+          Object.freeze({
+            ...preparingVideo(id),
+            snapshotRevision: 1,
+            state: 'CLOSED' as const,
+            code: 'CLOSED' as const,
+            localRetired: true,
+          }),
+        );
+      return adapter.stopVideo(capability, id);
+    },
     acquireInput(capability: HostCapability, request: unknown) {
       if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY') fail();
       const descriptor =
@@ -741,6 +820,10 @@ export function createHostFactory(
           if (root) {
             fence();
             cleanupHostRoot(root, bootstrap, owned);
+          }
+          if (videoArtifact) {
+            releaseHostVideoArtifact(videoArtifact);
+            videoArtifact = null;
           }
           clean = true;
           return 'RETIRED';

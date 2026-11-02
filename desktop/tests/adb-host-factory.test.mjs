@@ -984,7 +984,8 @@ test('actual transformed catalog/factory binds selected prior release in bootstr
         const bootstrap = JSON.parse(
           readFileSync(join(f.launch, '.host-session', 'bootstrap.json'), 'utf8'),
         );
-        assert.equal(bootstrap.version, 2);
+        assert.equal(bootstrap.version, 3);
+        assert.equal(bootstrap.videoArtifact, null);
         assert.equal(bootstrap.expectedRelease, '36.0.0');
         assert.equal(bootstrap.expectedBuildGrammar, 'DECIMAL_1_20');
         assert.equal(bootstrap.candidateArchiveSha256, prior.archive.sha256);

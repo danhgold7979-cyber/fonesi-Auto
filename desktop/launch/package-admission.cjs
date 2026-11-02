@@ -52,6 +52,7 @@ const NATIVE = [
   'RetainedAdbSession.cs',
   'RetainedAdbProtocol.cs',
   'RetainedHostAdmission.cs',
+  'RetainedVideoSession.cs',
 ];
 const CLOSURE = [
   'Invoke-Package.ps1',

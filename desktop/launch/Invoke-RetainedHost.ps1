@@ -134,6 +134,41 @@ function Parse([byte[]]$Bytes,[string[]]$Keys) {
     if((@($v.PSObject.Properties.Name) -join '|') -cne ($Keys -join '|')){Reject}
     return $v
 }
+# Source-owned reviewed output pin. Null is intentionally unavailable, never caller authority.
+$ReviewedVideoPairSha256=$null
+function Video-Pair($b,[string]$desktop) {
+    if($null -eq $ReviewedVideoPairSha256){Reject}
+    $a=$b.videoArtifact
+    if((@($a.PSObject.Properties.Name) -join '|') -cne 'artifactId|relativePath|bytes|sha256|protocolId|pairManifestSha256'){Reject}
+    if($a.artifactId -isnot [string] -or $a.artifactId -cnotmatch '\A[0-9a-f]{64}\z' -or $a.artifactId -cne $a.sha256 -or $a.relativePath -cne 'video/server.jar' -or $a.protocolId -cne 'AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1' -or $a.bytes -lt 1 -or $a.bytes -gt 8388608 -or [Math]::Truncate([double]$a.bytes) -ne $a.bytes -or $a.pairManifestSha256 -cne $ReviewedVideoPairSha256){Reject}
+    $pairRaw=Read-Bounded (Join-Path $desktop 'video/pair.json') 8192
+    if((Digest $pairRaw) -cne $ReviewedVideoPairSha256){Reject}
+    $pair=Parse $pairRaw @('version','serverVersion','serverBytes','serverSha256','protocolId','consumerBytes','consumerWindowsArtifactSha256','consumerBuildManifestSha256','serverBuildManifestSha256','architecture')
+    if($pair.version -ne 1 -or $pair.serverVersion -cne '5.0.1' -or $pair.architecture -cne 'AMD64' -or $pair.serverBytes -ne $a.bytes -or $pair.serverSha256 -cne $a.sha256 -or $pair.protocolId -cne $a.protocolId -or $pair.consumerBytes -lt 1 -or $pair.consumerBytes -gt 8388608 -or [Math]::Truncate([double]$pair.consumerBytes) -ne $pair.consumerBytes){Reject}
+    foreach($key in @('consumerWindowsArtifactSha256','consumerBuildManifestSha256','serverBuildManifestSha256')){if($pair.$key -isnot [string] -or $pair.$key -cnotmatch '\A[0-9a-f]{64}\z'){Reject}}
+    $serverBuildRaw=Read-Bounded (Join-Path $desktop 'video/server-build.json') 8192
+    if((Digest $serverBuildRaw) -cne $pair.serverBuildManifestSha256){Reject}
+    $serverBuild=Parse $serverBuildRaw @('version','upstreamCommit','sourcePatchSha256','toolchainManifestSha256','dependenciesManifestSha256','buildCommandSha256','serverBytes','serverSha256','protocolId')
+    if($serverBuild.version -ne 1 -or $serverBuild.upstreamCommit -cne 'a60891aea193d92e7e5c3942700eca63f9d19a5f' -or $serverBuild.serverBytes -ne $a.bytes -or $serverBuild.serverSha256 -cne $a.sha256 -or $serverBuild.protocolId -cne $a.protocolId){Reject}
+    foreach($key in @('sourcePatchSha256','toolchainManifestSha256','dependenciesManifestSha256','buildCommandSha256')){if($serverBuild.$key -isnot [string] -or $serverBuild.$key -cnotmatch '\A[0-9a-f]{64}\z'){Reject}}
+    $buildRaw=Read-Bounded (Join-Path $desktop 'video/consumer-build.json') 8192
+    if((Digest $buildRaw) -cne $pair.consumerBuildManifestSha256){Reject}
+    $build=Parse $buildRaw @('version','sourceCommit','compilerSha256','compilerVersion','arguments','frameworkReferences','sources','consumerSha256')
+    if($build.version -ne 1 -or $build.sourceCommit -cnotmatch '\A[0-9a-f]{40}\z' -or $build.compilerSha256 -cnotmatch '\A[0-9a-f]{64}\z' -or $build.compilerVersion -isnot [string] -or $build.compilerVersion.Length -gt 64 -or $build.compilerVersion -cnotmatch '\A[0-9]+(\.[0-9]+){1,3}\z' -or $build.arguments -isnot [Array] -or $build.arguments.Count -ne 4 -or ($build.arguments -join '|') -cne '/nologo|/target:library|/platform:x64|/optimize+' -or $build.consumerSha256 -cne $pair.consumerWindowsArtifactSha256){Reject}
+    if((@($build.frameworkReferences.PSObject.Properties.Name) -join '|') -cne 'System.dll|System.Core.dll'){Reject}
+    foreach($key in @('System.dll','System.Core.dll')){if($build.frameworkReferences.$key -cnotmatch '\A[0-9a-f]{64}\z'){Reject}}
+    $sourceNames=@('native/IsolatedAdbServer.cs','native/RetainedAdbSession.cs','native/RetainedAdbProtocol.cs','native/RetainedHostAdmission.cs','native/RetainedVideoSession.cs')
+    if((@($build.sources.PSObject.Properties.Name) -join '|') -cne ($sourceNames -join '|')){Reject}
+    $total=0;foreach($name in $sourceNames){$source=Read-Bounded (Join-Path $desktop $name) 1048576;$total+=$source.Length;if($total -gt 4194304 -or (Digest $source) -cne $build.sources.$name){Reject}}
+    $server=Read-Bounded (Join-Path $desktop 'video/server.jar') 8388608
+    if($server.Length -ne $a.bytes -or (Digest $server) -cne $a.sha256){Reject}
+    $dll=Read-Bounded (Join-Path $desktop 'native/RetainedVideoConsumer.dll') 8388608
+    if($dll.Length -ne $pair.consumerBytes -or (Digest $dll) -cne $pair.consumerWindowsArtifactSha256 -or $dll.Length -lt 64 -or [BitConverter]::ToUInt16($dll,0) -ne 0x5a4d){Reject}
+    $pe=[BitConverter]::ToUInt32($dll,60)
+    if($pe -gt $dll.Length-26 -or [BitConverter]::ToUInt32($dll,$pe) -ne 0x4550 -or [BitConverter]::ToUInt16($dll,$pe+4) -ne 0x8664 -or [BitConverter]::ToUInt16($dll,$pe+24) -ne 0x20b){Reject}
+    return ,$dll
+}
+
 try {
     Progress 'ENVIRONMENT'
     if($PSVersionTable.PSVersion.Major -ne 5 -or $BootstrapSha256 -cnotmatch '^[0-9a-f]{64}$'){Reject}
@@ -141,8 +176,11 @@ try {
     $phase='CONTEXT';Progress 'CONTEXT'
     $raw=Read-Bounded $BootstrapFile 8192
     if((Digest $raw) -cne $BootstrapSha256){Reject}
-    $b=Parse $raw @('version','operationSet','sessionId','launchId','storeId','ownerToken','parentReceiptSha256','readySha256','runRoot','adbPath','adbExeSha256','candidateArchiveSha256','candidateManifestSha256','installationRevision','expectedRelease','expectedBuildGrammar','assets')
-    if($b.version -ne 2 -or ($b.operationSet -cne 'VERSION_ONLY' -and $b.operationSet -cne 'SERVER_ONLY')){Reject}
+    $shape=ConvertFrom-Json -InputObject ([Text.Encoding]::UTF8.GetString($raw))
+    $keys=@('version','operationSet','sessionId','launchId','storeId','ownerToken','parentReceiptSha256','readySha256','runRoot','adbPath','adbExeSha256','candidateArchiveSha256','candidateManifestSha256','installationRevision','expectedRelease','expectedBuildGrammar','assets')
+    if($shape.version -eq 3){$keys+=,'videoArtifact'}
+    $b=Parse $raw $keys
+    if(($b.version -ne 2 -and $b.version -ne 3) -or ($b.operationSet -cne 'VERSION_ONLY' -and $b.operationSet -cne 'SERVER_ONLY')){Reject}
     foreach($key in @('sessionId','launchId','storeId','ownerToken')){if($b.$key -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'){Reject}}
     foreach($key in @('parentReceiptSha256','readySha256','adbExeSha256','candidateArchiveSha256','candidateManifestSha256')){if($b.$key -cnotmatch '^[0-9a-f]{64}$'){Reject}}
     if($b.installationRevision -lt 1 -or $b.installationRevision -gt 9007199254740991 -or [Math]::Truncate([double]$b.installationRevision) -ne $b.installationRevision){Reject}
@@ -160,16 +198,20 @@ try {
     if($p.version -ne 1 -or $p.launchId -cne $b.launchId -or $p.storeId -cne $b.storeId -or $p.ownerToken -cne $b.ownerToken -or $p.readySha256 -cne $b.readySha256 -or $p.parentPid -lt 1 -or $p.parentPid -gt 4294967295 -or $p.parentCreationFileTime -cnotmatch '^[0-9a-f]{16}$'){Reject}
     $phase='ASSETS';Progress 'ASSETS'
     $names=@('launch/Invoke-RetainedHost.ps1','native/IsolatedAdbServer.cs','native/RetainedAdbSession.cs','native/RetainedAdbProtocol.cs','native/RetainedHostAdmission.cs')
+    if($b.version -eq 3){$names+=,'native/RetainedVideoSession.cs'}
     if((@($b.assets.PSObject.Properties.Name) -join '|') -cne ($names -join '|')){Reject}
     $paths=@();$total=0
     foreach($name in $names){$asset=Join-Path $desktop $name;$bytes=Read-Bounded $asset 1048576;$total+=$bytes.Length;if($total -gt 4194304 -or $b.assets.$name -cnotmatch '^[0-9a-f]{64}$' -or (Digest $bytes) -cne $b.assets.$name){Reject};if($name.EndsWith('.cs')){$paths+=,$asset}}
+    $videoDll=$null
+    if($b.version -eq 3 -and $null -ne $b.videoArtifact){if($b.operationSet -cne 'SERVER_ONLY'){Reject};$videoDll=Video-Pair $b $desktop}
     $phase='COMPILE';Progress 'COMPILE_BEGIN'
-    Add-Type -Path $paths -ReferencedAssemblies @('System.dll','System.Core.dll') -ErrorAction Stop
+    if($null -ne $videoDll){[void][Reflection.Assembly]::Load([byte[]]$videoDll)}else{Add-Type -Path $paths -ReferencedAssemblies @('System.dll','System.Core.dll') -ErrorAction Stop}
     Progress 'COMPILE_END'
     $phase='PARENT';Progress 'PARENT_BEGIN'
     $admission=[Fonesi.Development.Server.IsolatedAdbServer]::OpenParentAdmission([uint32]$p.parentPid,$p.parentCreationFileTime,$p.parentImagePath,$p.parentImageSha256,$p.jobName)
     Progress 'PARENT_END'
     $provider=New-Object Fonesi.Development.Server.IsolatedAdbServer+RetainedProvider($b.runRoot,$b.ownerToken,$b.adbPath,$b.adbExeSha256,$b.expectedRelease,$b.expectedBuildGrammar,$true)
+    if($null -ne $videoDll){$a=$b.videoArtifact;$provider.ConfigureVideo($b.launchId,$b.storeId,$b.sessionId,$a.artifactId,(Join-Path $desktop 'video/server.jar'),[int]$a.bytes,$a.sha256,$a.protocolId,$a.pairManifestSha256,[long]$b.installationRevision)}
     $adapter=New-Object Fonesi.Development.Server.RetainedAdbProtocol+NativeProvider($provider)
     $phase='READER';Progress 'READER'
     $result=[Fonesi.Development.Server.RetainedAdbProtocol]::Run([Console]::OpenStandardInput(),[Console]::OpenStandardOutput(),$b.sessionId,$adapter,$admission.Liveness(),$true,$b.operationSet)

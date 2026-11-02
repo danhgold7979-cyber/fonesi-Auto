@@ -214,9 +214,9 @@ test('selected release is immutable, absolutely bounded and literal escaped rath
   );
   before(body('Reply VersionCore('), 'Reply retired = RetireCore(a)', 'VersionOutputMatches(');
 });
-test('current bootstrap v2 supplies exact catalog expectations while old live v1 cannot enter provider', () => {
+test('current bootstrap v3 supplies five native sources and exact catalog expectations; historical v2 shape stays separate', () => {
   const ps = readFileSync(new URL('../launch/Invoke-RetainedHost.ps1', import.meta.url), 'utf8');
-  const keys = ps.match(/\$b=Parse \$raw @\(([^\n]+)\)/)?.[1];
+  const keys = ps.match(/\$keys=@\(([^\n]+)\)/)?.[1];
   assert.ok(keys);
   assert.deepEqual(
     [...keys.matchAll(/'([^']+)'/g)].map((v) => v[1]),
@@ -242,8 +242,26 @@ test('current bootstrap v2 supplies exact catalog expectations while old live v1
   );
   assert.match(
     ps,
-    /if\(\$b.version -ne 2 -or \(\$b.operationSet -cne 'VERSION_ONLY' -and \$b.operationSet -cne 'SERVER_ONLY'\)\)\{Reject\}/,
+    /if\(\(\$b.version -ne 2 -and \$b.version -ne 3\) -or \(\$b.operationSet -cne 'VERSION_ONLY' -and \$b.operationSet -cne 'SERVER_ONLY'\)\)\{Reject\}/,
   );
+  assert.ok(ps.includes("if($shape.version -eq 3){$keys+=,'videoArtifact'}"));
+  assert.ok(ps.includes('$b=Parse $raw $keys'));
+  const assetNames = ps.match(/\$names=@\(([^\n]+)\)/)?.[1];
+  assert.ok(assetNames);
+  assert.deepEqual(
+    [...assetNames.matchAll(/'([^']+)'/g)].map((v) => v[1]),
+    [
+      'launch/Invoke-RetainedHost.ps1',
+      'native/IsolatedAdbServer.cs',
+      'native/RetainedAdbSession.cs',
+      'native/RetainedAdbProtocol.cs',
+      'native/RetainedHostAdmission.cs',
+    ],
+  );
+  assert.ok(ps.includes("if($b.version -eq 3){$names+=,'native/RetainedVideoSession.cs'}"));
+  assert.ok(ps.includes('if($b.version -eq 3 -and $null -ne $b.videoArtifact)'));
+  assert.ok(ps.includes('Add-Type -Path $paths'));
+  assert.ok(ps.includes('[Reflection.Assembly]::Load([byte[]]$videoDll)'));
   assert.ok(ps.includes("$b.expectedRelease -cnotmatch '\\A[0-9]+\\.[0-9]+\\.[0-9]+\\z'"));
   assert.match(ps, /\$b.expectedRelease.Length -gt 32/);
   assert.match(ps, /\$b.expectedBuildGrammar -cne 'DECIMAL_1_20'/);
@@ -274,7 +292,12 @@ test('new managed A/B parser groups are source-only and separate from historical
   assert.match(pure, /123456789012345678901/);
   assert.match(pure, /1\.0\.42/);
   assert.match(pure, /DECIMAL_1_20\\n/);
-  assert.equal((fixture.match(/passed\+\+;/g) || []).length, 8);
+  const runAll = fixture.slice(
+    fixture.indexOf('public static int RunAll()'),
+    fixture.indexOf('sealed class VideoChannel :'),
+  );
+  assert.ok(runAll.startsWith('public static int RunAll()'));
+  assert.equal((runAll.match(/passed\+\+;/g) || []).length, 8);
 });
 
 test('discovery framing uses fixed service, absolute bounded I/O and retained connect accounting', () => {

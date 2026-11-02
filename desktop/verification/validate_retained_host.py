@@ -153,14 +153,19 @@ MANAGED_V5_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f75
 # Current bounded input fixture; exact pins refreshed only after source freeze.
 MANAGED_V6_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': '24dd1324671214de7f0a2dcd41a9725c5823d5ca641ca8a9398a5d83dcd07a50', 'protocol': '61f2cf81b13c337d82ba4d0a469f3a068715bbd68564bb0df3f6143dcf01696e', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'fixture': '49abbd1eb8d5553caabf5a437c11849b97437c5c57b0e13c7e50421c1b1dcbb2', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': '5780548a37618215de753c2c9dc4934268c0e7862d106947665528ed3a75c5f7', 'wrapper': '28686c630a208789558035559333a4ad6a7f98c8ee28267b90c9661ee4b75d38', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
 
+# Current video pins are populated only at reviewed source freeze.
+MANAGED_V7_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': '959354d2fcabc08d1ad3bfd4326b4049fa33814c1e942d2a06598145161f94c7', 'protocol': '2b540242f411e7c3091d2bd13dff33be14c996194b4f5cb4486d8ec6e9d801cd', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'video': 'c4311d6080f6b566353c6f72151d8ef04b99e60a1f16ce396d020d3b86770ccf', 'fixture': '3d576c73fa16b1dd410c76273b8217a604900f0dd2bd89cdde2d97a03a46c6b9', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': 'b4074928b30ab42ac9434798f9685e1091567fc40c62c8d6d48fcaf04a434078', 'wrapper': '7d69ee3c6f753d45b3bbfe30ed5cb3f0ac91fe64349395708a25463eaffa68a1', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
+
 def validate_managed(value):
-    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2, 3, 4, 5, 6):
+    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2, 3, 4, 5, 6, 7):
         reject()
     version = value['version']
     keys = ('version', 'scope', 'compileProcess', 'fixtureProcess', 'groupsPassed', 'compilerDiagnostics', 'sourceUnchanged', 'directoryCleanup', 'passed')
     exact_record(value, keys + (('inputHashes',) if version >= 2 else ()))
-    groups = {1: 8, 2: 10, 3: 19, 4: 27, 5: 39, 6: 51}[version]
-    expected_hashes = {2: MANAGED_V2_HASHES, 3: MANAGED_V3_HASHES, 4: MANAGED_V4_HASHES, 5: MANAGED_V5_HASHES, 6: MANAGED_V6_HASHES}.get(version, {})
+    groups = {1: 8, 2: 10, 3: 19, 4: 27, 5: 39, 6: 51, 7: 74}[version]
+    expected_hashes = {2: MANAGED_V2_HASHES, 3: MANAGED_V3_HASHES, 4: MANAGED_V4_HASHES, 5: MANAGED_V5_HASHES, 6: MANAGED_V6_HASHES, 7: MANAGED_V7_HASHES}.get(version, {})
+    if version == 7 and len(expected_hashes) != 11:
+        reject()
     hashes = {}
     if version >= 2:
         hashes = value['inputHashes']
@@ -232,7 +237,7 @@ def managed_output(raw):
     return value
 
 
-def managed(base, current_server=False, current_discovery=False, current_metadata=False, current_input=False):
+def managed(base, current_server=False, current_discovery=False, current_metadata=False, current_input=False, current_video=False):
     if (not base.is_absolute() or base.resolve() != base or
             not stat.S_ISDIR(base.lstat().st_mode)):
         reject()
@@ -248,6 +253,8 @@ def managed(base, current_server=False, current_discovery=False, current_metadat
         reject()
     if current_input and value['version'] != 6:
         reject()
+    if current_video and value['version'] != 7:
+        reject()
     _write_new(base, 'retained-managed-validated.json', value)
     return value['passed']
 
@@ -260,8 +267,8 @@ def main(argv=None):
             ok = stage(Path(args[1]))
             print('RETAINED_HOST_STAGE_VALIDATED')
             return 0 if ok else 1
-        if args in (['managed'], ['managed-server'], ['managed-discovery'], ['managed-metadata'], ['managed-input']):
-            ok = managed(Path(__file__).resolve().parents[1], args == ['managed-server'], args == ['managed-discovery'], args == ['managed-metadata'], args == ['managed-input'])
+        if args in (['managed'], ['managed-server'], ['managed-discovery'], ['managed-metadata'], ['managed-input'], ['managed-video']):
+            ok = managed(Path(__file__).resolve().parents[1], args == ['managed-server'], args == ['managed-discovery'], args == ['managed-metadata'], args == ['managed-input'], args == ['managed-video'])
             print('RETAINED_MANAGED_VALIDATION_WRITTEN')
             print('RETAINED_MANAGED_VALIDATION_PASS' if ok else 'RETAINED_MANAGED_VALIDATION_FAIL')
             return 0 if ok else 1
@@ -269,7 +276,7 @@ def main(argv=None):
             reject()
         ok = publish(Path(__file__).resolve().parents[1] / '.retained-host-runtime')
     except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
-        print('RETAINED_MANAGED_VALIDATION_INVALID' if args in (['managed'], ['managed-server'], ['managed-discovery'], ['managed-metadata'], ['managed-input']) else 'RETAINED_HOST_VALIDATION_INVALID')
+        print('RETAINED_MANAGED_VALIDATION_INVALID' if args in (['managed'], ['managed-server'], ['managed-discovery'], ['managed-metadata'], ['managed-input'], ['managed-video']) else 'RETAINED_HOST_VALIDATION_INVALID')
         return 2
     print('RETAINED_HOST_VALIDATION_WRITTEN')
     print('RETAINED_HOST_VALIDATION_PASS' if ok else 'RETAINED_HOST_VALIDATION_FAIL')

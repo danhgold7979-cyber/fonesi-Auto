@@ -288,6 +288,92 @@ export function inspectRegistryProjection(
   const inspect = projectionInspectors.get(store);
   return inspect ? inspect(expectedProjection) : null;
 }
+export type OwnedRegistryVideoBinding = Readonly<{ registryVideoBinding: true }>;
+export type RegistryVideoBindingRecord = Readonly<{
+  projection: RegistrySnapshot;
+  binding: Readonly<{
+    deviceId: string;
+    bindingId: string;
+    generation: number;
+    serial: string;
+    transportId: string;
+    hostEpoch: number;
+    registryRevision: number;
+    observationSequence: number;
+  }>;
+  finalCurrent(): boolean;
+}>;
+const videoBindings = new WeakMap<object, RegistryVideoBindingRecord>();
+const videoBindingCounts = new WeakMap<object, number>();
+export function inspectRegistryVideoBinding(value: unknown): RegistryVideoBindingRecord | null {
+  return value !== null && typeof value === 'object' ? (videoBindings.get(value) ?? null) : null;
+}
+export function captureRegistryVideoBinding(
+  store: unknown,
+  projection: unknown,
+  deviceId: string,
+): OwnedRegistryVideoBinding | null {
+  if (
+    !store ||
+    typeof store !== 'object' ||
+    !projectionInspectors.has(store) ||
+    typeof deviceId !== 'string'
+  )
+    return null;
+  const count = videoBindingCounts.get(store) ?? 0;
+  if (count >= 65536) return null;
+  videoBindingCounts.set(store, count + 1); // Reserve before the existing owner admission callback.
+  const proof = inspectRegistryProjection(store, projection);
+  if (proof?.snapshot.source !== 'ADB_DISCOVERY' || proof.snapshot.sequence === null) return null;
+  const device = proof.snapshot.devices.find((d) => d.deviceId === deviceId);
+  const binding = proof.snapshot.bindings.find((b) => b.bindingId === device?.currentBindingId);
+  if (
+    device?.verification !== 'VERIFIED' ||
+    device.state !== 'DEVICE' ||
+    !binding ||
+    binding.retired ||
+    binding.state !== 'DEVICE' ||
+    binding.source !== 'ADB_DISCOVERY' ||
+    binding.deviceId !== deviceId ||
+    binding.generation !== device.generation ||
+    binding.transportId === null
+  )
+    return null;
+  const claims = proof.snapshot.claims.filter(
+    (c) => c.serial === binding.serial || c.transportId === binding.transportId,
+  );
+  if (
+    claims.length !== 1 ||
+    claims[0]?.reason !== 'CURRENT' ||
+    claims[0].state !== 'DEVICE' ||
+    claims[0].deviceId !== deviceId ||
+    claims[0].bindingId !== binding.bindingId ||
+    claims[0].serial !== binding.serial ||
+    claims[0].transportId !== binding.transportId ||
+    !proof.finalCurrent()
+  )
+    return null;
+  const ticket = Object.freeze({ registryVideoBinding: true as const });
+  const captured = Object.freeze({
+    deviceId,
+    bindingId: binding.bindingId,
+    generation: binding.generation,
+    serial: binding.serial,
+    transportId: binding.transportId,
+    hostEpoch: proof.hostEpoch,
+    registryRevision: proof.snapshot.revision,
+    observationSequence: proof.snapshot.sequence,
+  });
+  videoBindings.set(
+    ticket,
+    Object.freeze({
+      projection: proof.snapshot,
+      binding: captured,
+      finalCurrent: proof.finalCurrent,
+    }),
+  );
+  return ticket;
+}
 export function createRegistryStore(
   options: Readonly<{
     coordinator: DurableCoordinator;

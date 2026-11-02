@@ -428,6 +428,170 @@ function hostParent(header, launch) {
     fail();
   return Object.freeze({ receipt: r, sha256: sha(raw) });
 }
+const HOST_VIDEO_PROTOCOL = 'AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1';
+
+/** Closed metadata only; this does not issue artifact or execution authority. */
+function snapshotHostVideoArtifact(value) {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const keys = [
+      'artifactId',
+      'relativePath',
+      'bytes',
+      'sha256',
+      'protocolId',
+      'pairManifestSha256',
+    ];
+    const ds = Object.getOwnPropertyDescriptors(value);
+    if (JSON.stringify(Object.keys(ds)) !== JSON.stringify(keys)) return null;
+    const v = {};
+    for (const key of keys) {
+      if (!('value' in ds[key])) return null;
+      v[key] = ds[key].value;
+    }
+    if (
+      !hash(v.artifactId) ||
+      v.artifactId.length !== 64 ||
+      v.artifactId !== v.sha256 ||
+      v.relativePath !== 'video/server.jar' ||
+      !Number.isSafeInteger(v.bytes) ||
+      typeof v.bytes !== 'number' ||
+      v.bytes < 1 ||
+      v.bytes > 8 * 1024 * 1024 ||
+      v.protocolId !== HOST_VIDEO_PROTOCOL ||
+      !hash(v.pairManifestSha256) ||
+      v.pairManifestSha256.length !== 64
+    )
+      return null;
+    return Object.freeze(v);
+  } catch {
+    return null;
+  }
+}
+const VIDEO_BASE_KEYS = [
+  'version',
+  'launchId',
+  'storeId',
+  'ownerToken',
+  'hostSessionId',
+  'attemptId',
+  'videoId',
+  'transportId',
+  'hostEpoch',
+  'installationRevision',
+  'artifactSha256',
+  'protocolId',
+];
+const VIDEO_INTENT_KEYS = [
+  ...VIDEO_BASE_KEYS,
+  'remoteDirectory',
+  'scid',
+  'nonceSha256',
+  'admittedUtc',
+  'deadlineUtc',
+];
+const VIDEO_SETTLEMENT_KEYS = [
+  ...VIDEO_BASE_KEYS,
+  'directory',
+  'upload',
+  'launch',
+  'localRetired',
+  'cleanup',
+  'streamObserved',
+  'code',
+];
+/** Inspect retained metadata; only requireClean permits a deletion plan. */
+function validateHostVideoJournal(root, bootstrapRaw, requireClean) {
+  const b = JSON.parse(bootstrapRaw);
+  const names = fs.readdirSync(root),
+    hasIntent = names.includes('video-intent.json'),
+    hasSettlement = names.includes('video-settlement.json');
+  if (!hasIntent && !hasSettlement) return;
+  const artifact = b.version === 3 ? snapshotHostVideoArtifact(b.videoArtifact) : null;
+  if (!artifact || b.operationSet !== 'SERVER_ONLY' || !hasIntent) fail();
+  const i = hostRecord(path.join(root, 'video-intent.json'), 8192, VIDEO_INTENT_KEYS).value;
+  const integer = (v, min, max = Number.MAX_SAFE_INTEGER) =>
+    typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
+  for (const key of ['launchId', 'storeId', 'ownerToken']) if (i[key] !== b[key]) fail();
+  if (
+    i.version !== 1 ||
+    i.hostSessionId !== b.sessionId ||
+    !uuid(i.attemptId) ||
+    i.attemptId.length !== 36 ||
+    !uuid(i.videoId) ||
+    i.videoId.length !== 36
+  )
+    fail();
+  if (
+    typeof i.transportId !== 'string' ||
+    i.transportId.length > 20 ||
+    !/^[1-9][0-9]*$/.test(i.transportId) ||
+    /[^0-9]/.test(i.transportId) ||
+    !integer(i.hostEpoch, 1) ||
+    i.installationRevision !== b.installationRevision ||
+    i.artifactSha256 !== artifact.sha256 ||
+    i.protocolId !== artifact.protocolId ||
+    i.remoteDirectory !== `/data/local/tmp/fonesi-video-${i.videoId}` ||
+    !integer(i.scid, 0, 2147483647) ||
+    !hash(i.nonceSha256) ||
+    i.nonceSha256.length !== 64 ||
+    !integer(i.admittedUtc, 0, 8640000000000000) ||
+    !integer(i.deadlineUtc, 0, 8640000000000000) ||
+    i.deadlineUtc <= i.admittedUtc ||
+    i.deadlineUtc - i.admittedUtc > 30000
+  )
+    fail();
+  if (!hasSettlement) {
+    if (requireClean) fail();
+    return;
+  }
+  const s = hostRecord(path.join(root, 'video-settlement.json'), 8192, VIDEO_SETTLEMENT_KEYS).value;
+  for (const key of VIDEO_BASE_KEYS) if (s[key] !== i[key]) fail();
+  if (
+    !['NONE', 'CREATED', 'UNKNOWN'].includes(s.directory) ||
+    !['NONE', 'PARTIAL', 'VERIFIED', 'UNKNOWN'].includes(s.upload) ||
+    !['NONE', 'STARTED', 'EXITED', 'UNKNOWN'].includes(s.launch) ||
+    !['NOT_REQUIRED', 'PENDING', 'CLEANED', 'UNKNOWN'].includes(s.cleanup) ||
+    typeof s.localRetired !== 'boolean' ||
+    typeof s.streamObserved !== 'boolean' ||
+    ![
+      'OK',
+      'NOT_READY',
+      'BUSY',
+      'STALE_TARGET',
+      'ADMISSION_REJECTED',
+      'DEPLOYMENT_FAILED',
+      'PROTOCOL_FAILED',
+      'REMOTE_FAILED',
+      'DEADLINE_EXCEEDED',
+      'OUTCOME_UNKNOWN',
+      'CLOSED',
+    ].includes(s.code)
+  )
+    fail();
+  const none =
+    s.directory === 'NONE' &&
+    s.upload === 'NONE' &&
+    s.launch === 'NONE' &&
+    s.cleanup === 'NOT_REQUIRED' &&
+    s.streamObserved === false;
+  const cleaned =
+    s.directory === 'CREATED' &&
+    s.cleanup === 'CLEANED' &&
+    ['NONE', 'EXITED'].includes(s.launch) &&
+    ['NONE', 'PARTIAL', 'VERIFIED'].includes(s.upload) &&
+    (s.launch !== 'EXITED' || s.upload === 'VERIFIED') &&
+    (!s.streamObserved || s.launch === 'EXITED');
+  if (
+    (s.directory === 'NONE' && !none) ||
+    (s.cleanup === 'CLEANED' && !cleaned) ||
+    (s.streamObserved && s.launch === 'NONE')
+  )
+    fail();
+  if (requireClean && (!s.localRetired || s.code === 'OUTCOME_UNKNOWN' || !(none || cleaned)))
+    fail();
+}
+
 function hostSession(root, header, receipt) {
   if (!receipt) fail();
   plain(root);
@@ -439,7 +603,13 @@ function hostSession(root, header, receipt) {
     read(path.join(root, '.owner')) !== header.ownerToken
   )
     fail();
-  const { value: b } = hostRecord(path.join(root, 'bootstrap.json'), 8192, [
+  const bootstrapFile = path.join(root, 'bootstrap.json');
+  const bootstrapStat = fs.lstatSync(bootstrapFile);
+  if (bootstrapStat.nlink !== 1 || bootstrapStat.size < 1 || bootstrapStat.size > 8192) fail();
+  const rawBootstrap = read(bootstrapFile);
+  if (Buffer.byteLength(rawBootstrap) > 8192) fail();
+  const parsedBootstrap = canonical(rawBootstrap);
+  const { value: b } = hostRecord(bootstrapFile, 8192, [
     'version',
     'operationSet',
     'sessionId',
@@ -457,9 +627,10 @@ function hostSession(root, header, receipt) {
     'expectedRelease',
     'expectedBuildGrammar',
     'assets',
+    ...(parsedBootstrap.version === 3 ? ['videoArtifact'] : []),
   ]);
   if (
-    b.version !== 2 ||
+    ![2, 3].includes(b.version) ||
     !['VERSION_ONLY', 'SERVER_ONLY'].includes(b.operationSet) ||
     !uuid(b.sessionId) ||
     b.launchId !== header.launchId ||
@@ -495,8 +666,17 @@ function hostSession(root, header, receipt) {
     )
   )
     fail();
-  exact(b.assets, HOST_ASSET_KEYS);
-  if (HOST_ASSET_KEYS.some((k) => !hash(b.assets[k]))) fail();
+  if (
+    b.version === 3 &&
+    b.videoArtifact !== null &&
+    (!snapshotHostVideoArtifact(b.videoArtifact) || b.operationSet !== 'SERVER_ONLY')
+  )
+    fail();
+  validateHostVideoJournal(root, rawBootstrap, false);
+  const assetKeys =
+    b.version === 3 ? [...HOST_ASSET_KEYS, 'native/RetainedVideoSession.cs'] : HOST_ASSET_KEYS;
+  exact(b.assets, assetKeys);
+  if (assetKeys.some((k) => !hash(b.assets[k]))) fail();
   let count = 0,
     bytes = 0;
   function scan(directory, depth) {
@@ -509,7 +689,15 @@ function hostSession(root, header, receipt) {
         if (!item) break;
         if (
           ++count > 256 ||
-          (depth === 0 && !['.owner', 'bootstrap.json', 'profile', 'adb.log'].includes(item.name))
+          (depth === 0 &&
+            ![
+              '.owner',
+              'bootstrap.json',
+              'profile',
+              'adb.log',
+              'video-intent.json',
+              'video-settlement.json',
+            ].includes(item.name))
         )
           fail();
         const file = path.join(directory, item.name),

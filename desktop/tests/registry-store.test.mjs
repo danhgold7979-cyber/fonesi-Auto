@@ -6,7 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { FoundationDatabase } from '../src/main/foundation-database.ts';
 import { createDurableCoordinator, DurableFault } from '../src/main/durable-coordinator.ts';
-import { createRegistryStore } from '../src/main/registry-store.ts';
+import {
+  createRegistryStore,
+  captureRegistryVideoBinding,
+  inspectRegistryVideoBinding,
+} from '../src/main/registry-store.ts';
 import { isRegistrySnapshot, isCurrentBinding } from '../src/main/transport-registry.ts';
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const observation = (sequence = 1, source = 'ADB_DISCOVERY', proofs = []) => ({
@@ -856,6 +860,37 @@ test('historical association promotes only selected row while unchanged second h
     assert.equal(f.db.readDurable().associationReceipts.length, 1);
   } finally {
     store?.close();
+    await f.close();
+  }
+});
+
+test('video binding witness is actual store-owned VERIFIED projection, not a structural callback or copied tuple', async () => {
+  const f = await fixture();
+  try {
+    await f.store.startup();
+    await f.store.reconcile(1, observation(1));
+    const deviceId = f.store.snapshot().devices[0].deviceId;
+    assert.equal(captureRegistryVideoBinding(f.store, f.store.snapshot(), deviceId), null);
+    await f.store.reconcile(
+      2,
+      observation(2, 'ADB_DISCOVERY', [
+        { deviceId, evidenceId: id(999), serial: 'synthetic-private-device', transportId: '1' },
+      ]),
+    );
+    const projection = f.store.snapshot(),
+      ticket = captureRegistryVideoBinding(f.store, projection, deviceId);
+    assert.ok(ticket);
+    const witness = inspectRegistryVideoBinding(ticket);
+    assert.equal(witness.finalCurrent(), true);
+    assert.equal(witness.binding.hostEpoch, 1);
+    assert.equal(witness.binding.transportId, '1');
+    assert.equal(inspectRegistryVideoBinding({ ...ticket }), null);
+    assert.equal(captureRegistryVideoBinding({ ...f.store }, projection, deviceId), null);
+    assert.equal(captureRegistryVideoBinding(f.store, { ...projection }, deviceId), null);
+    assert.equal(captureRegistryVideoBinding(f.store, projection, id(777)), null);
+    await f.store.reconcile(3, observation(3));
+    assert.equal(witness.finalCurrent(), false);
+  } finally {
     await f.close();
   }
 });

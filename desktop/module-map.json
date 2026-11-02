@@ -1797,6 +1797,15 @@
   "main/adb-host-adapter.ts": {
    "role": "main-adapter",
    "imports": {
+    "./registry-store.ts": {
+     "inspectRegistryVideoBinding": "value"
+    },
+    "./video-contract.ts": {
+     "snapshotVideo": "value",
+     "snapshotVideoStart": "value",
+     "VideoSnapshot": "type",
+     "VideoStart": "type"
+    },
     "./fleet-service.ts": {
      "inspectFleetActiveInputIntent": "value"
     },
@@ -1835,6 +1844,14 @@
   "main/adb-host-bridge.ts": {
    "role": "main-adapter",
    "imports": {
+    "./video-contract.ts": {
+     "snapshotVideo": "value",
+     "snapshotVideoStart": "value",
+     "videoUuid": "value",
+     "VideoSnapshot": "type",
+     "VideoStart": "type",
+     "VideoControl": "type"
+    },
     "./input-query-contract.ts": {
      "snapshotInputQueryFacts": "value",
      "validInputAction": "value",
@@ -1898,6 +1915,13 @@
   "main/adb-host-factory.ts": {
    "role": "main-adapter",
    "imports": {
+    "./registry-store.ts": {
+     "inspectRegistryVideoBinding": "value"
+    },
+    "./video-contract.ts": {
+     "snapshotVideoAdmission": "value",
+     "preparingVideo": "value"
+    },
     "./fleet-service.ts": {
      "inspectFleetActiveInputIntent": "value"
     },
@@ -1937,6 +1961,9 @@
     },
     "./adb-host-context.ts": {
      "HOST_ASSETS": "value",
+     "openHostVideoArtifact": "value",
+     "inspectHostVideoArtifact": "value",
+     "releaseHostVideoArtifact": "value",
      "hostHash": "value",
      "hostUuid": "value",
      "hostNames": "value",
@@ -2073,6 +2100,17 @@
   "main/adb-server-service.ts": {
    "role": "main-adapter",
    "imports": {
+    "./registry-store.ts": {
+     "inspectRegistryVideoBinding": "value",
+     "OwnedRegistryVideoBinding": "type"
+    },
+    "./video-contract.ts": {
+     "snapshotVideoAdmission": "value",
+     "snapshotVideo": "value",
+     "preparingVideo": "value",
+     "VideoSnapshot": "type",
+     "VideoTransportSession": "type"
+    },
     "./fleet-service.ts": {
      "inspectFleetActiveInputIntent": "value",
      "OwnedFleetActiveIntent": "type"
@@ -2113,6 +2151,9 @@
   "main/adb-discovery-service.ts": {
    "role": "main-adapter",
    "imports": {
+    "./video-contract.ts": {
+     "VideoTransportSession": "type"
+    },
     "./fleet-service.ts": {
      "inspectFleetActiveInputIntent": "value",
      "OwnedFleetActiveIntent": "type"
@@ -2143,6 +2184,7 @@
      "DurableMutationResult": "type"
     },
     "./registry-store.ts": {
+     "captureRegistryVideoBinding": "value",
      "inspectRegistryProjection": "value",
      "RegistryStore": "type"
     },
@@ -2568,6 +2610,29 @@
   "ui/tile-zoom.ts": {
    "role": "contract",
    "imports": {}
+  },
+  "main/video-contract.ts": {
+   "role": "contract",
+   "imports": {}
+  },
+  "main/owned-video-consumer.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "node:crypto": {
+     "randomBytes": "value",
+     "randomUUID": "value"
+    },
+    "./adb-discovery-service.ts": {
+     "inspectOwnedVideoTarget": "value"
+    },
+    "./video-contract.ts": {
+     "preparingVideo": "value",
+     "snapshotVideo": "value",
+     "VideoSnapshot": "type",
+     "VideoSession": "type",
+     "VideoTransportSession": "type"
+    }
+   }
   }
  }
 }

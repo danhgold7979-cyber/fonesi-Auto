@@ -1,3 +1,11 @@
+import { inspectRegistryVideoBinding, type OwnedRegistryVideoBinding } from './registry-store.ts';
+import {
+  snapshotVideoAdmission,
+  snapshotVideo,
+  preparingVideo,
+  type VideoSnapshot,
+  type VideoTransportSession,
+} from './video-contract.ts';
 import { inspectFleetActiveInputIntent, type OwnedFleetActiveIntent } from './fleet-service.ts';
 import {
   snapshotInputQueryFacts,
@@ -53,6 +61,10 @@ type Factory = Pick<
   | 'acquireDiscovery'
   | 'acquireMetadata'
   | 'acquireInput'
+  | 'videoArtifactAvailable'
+  | 'startVideo'
+  | 'statusVideo'
+  | 'stopVideo'
   | 'assertDiscoveryEpochCurrent'
   | 'discoveryEpochWitness'
 >;
@@ -94,6 +106,8 @@ type OwnedProviderRecord = Readonly<{
   current(): void;
   finalCurrent(): boolean;
   localBusy(): boolean;
+  videoAvailable(): boolean;
+  beginVideo(binding: OwnedRegistryVideoBinding, request: unknown): VideoTransportSession;
   beginMetadata(request: OwnedMetadataRequest): MetadataQueryHandle;
   beginInput(request: OwnedInputRequest): InputQueryHandle;
   begin(
@@ -709,6 +723,116 @@ export function createAdbServerService(
         | MetadataQueryHandle
         | InputQueryHandle;
     }
+    let video: VideoTransportSession | null = null;
+    let videoReserved = false;
+    function beginVideo(
+      bindingTicket: OwnedRegistryVideoBinding,
+      raw: unknown,
+    ): VideoTransportSession {
+      if (videoReserved || active || closed || discoveryRevoked) throw Error('VIDEO_REJECTED');
+      videoReserved = true;
+      const request = snapshotVideoAdmission(raw);
+      const binding = inspectRegistryVideoBinding(bindingTicket);
+      if (!request || !binding?.finalCurrent()) throw Error('VIDEO_REJECTED');
+      if (video || active || closed || discoveryRevoked) throw Error('VIDEO_REJECTED');
+      let handed = false;
+      let stopRequested = false,
+        stopWork: Promise<VideoSnapshot> | null = null;
+      let latest = preparingVideo(request.videoId);
+      let resolveStart: (value: VideoSnapshot) => void = () => {};
+      let rejectStart: (reason: Error) => void = () => {};
+      const started = new Promise<VideoSnapshot>((resolve, reject) => {
+        resolveStart = resolve;
+        rejectStart = reject;
+      });
+      let release: () => void = () => {};
+      active = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const session: VideoTransportSession = Object.freeze({
+        started,
+        async status() {
+          if (stopRequested) return latest;
+          if (active || closed || discoveryRevoked) throw Error('VIDEO_REJECTED');
+          let releaseStatus: () => void = () => {};
+          active = new Promise<void>((r) => {
+            releaseStatus = r;
+          });
+          try {
+            currentEpoch(true);
+            const facts = snapshotVideo(
+              await factory.statusVideo(grant, request.videoId, bindingTicket),
+            );
+            if (!facts) throw Error('VIDEO_REJECTED');
+            latest = facts;
+            return facts;
+          } finally {
+            active = null;
+            releaseStatus();
+          }
+        },
+        stop() {
+          if (stopWork) return stopWork;
+          stopRequested = true;
+          // Cleanup preempts immediately, but retirement also owns the ordinary
+          // START/STATUS admission already in flight (including custody awaits).
+          const ordinaryDrain = active;
+          let resolveCleanup: (value: VideoSnapshot | PromiseLike<VideoSnapshot>) => void =
+            () => {};
+          let rejectCleanup: (reason: Error) => void = () => {};
+          const cleanup = new Promise<VideoSnapshot>((resolve, reject) => {
+            resolveCleanup = resolve;
+            rejectCleanup = reject;
+          });
+          stopWork = Promise.allSettled([cleanup, ordinaryDrain]).then(([result]) => {
+            if (result.status !== 'fulfilled') throw Error('VIDEO_REJECTED');
+            latest = result.value;
+            return latest;
+          });
+          // Publish the idempotent latch before callbacks, then synchronously
+          // propagate cancellation to the final adapter handoff fence.
+          try {
+            resolveCleanup(
+              handed ? factory.stopVideo(grant, request.videoId) : started.then(() => latest),
+            );
+          } catch {
+            rejectCleanup(Error('VIDEO_REJECTED'));
+          }
+          return stopWork;
+        },
+      });
+      video = session; // Register before ordinary, clock, custody and artifact callbacks.
+      void Promise.resolve()
+        .then(async () => {
+          if (stopRequested) {
+            latest = Object.freeze({
+              ...latest,
+              state: 'CLOSED',
+              code: 'CLOSED',
+              localRetired: true,
+            });
+            resolveStart(latest);
+            return;
+          }
+          currentEpoch(true);
+          if (!binding.finalCurrent()) throw Error('VIDEO_REJECTED');
+          handed = true;
+          const facts = snapshotVideo(await factory.startVideo(grant, request, bindingTicket));
+          if (!facts) throw Error('VIDEO_REJECTED');
+          latest = facts;
+          resolveStart(facts);
+        })
+        .catch(() => {
+          discoveryRevoked = true;
+          void close();
+          rejectStart(Error('VIDEO_REJECTED'));
+        })
+        .finally(() => {
+          active = null;
+          release();
+        });
+      return session;
+    }
     const provider = Object.freeze({ ownedDiscovery: true as const });
     const record: OwnedProviderRecord = Object.freeze({
       epoch,
@@ -720,6 +844,8 @@ export function createAdbServerService(
       current: currentEpoch,
       localBusy: () => active !== null && !closed && !discoveryRevoked,
       finalCurrent: () => !discoveryRevoked && !closed && epochWitness.valid,
+      beginVideo,
+      videoAvailable: () => !closed && !discoveryRevoked && factory.videoArtifactAvailable(),
       beginMetadata: (input: OwnedMetadataRequest) =>
         beginQuery(input, 'METADATA') as MetadataQueryHandle,
       beginInput: (input: OwnedInputRequest) => beginQuery(input, 'INPUT') as InputQueryHandle,

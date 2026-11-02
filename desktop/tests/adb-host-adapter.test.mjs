@@ -1,3 +1,4 @@
+import { registryVideoFixture } from './fixtures/registry-video.mjs';
 import { fleetActiveFixture } from './fixtures/fleet-active-input.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -1000,4 +1001,218 @@ test('input final owned callback invalidates held token after ordinary assertRea
   assert.equal(await f.adapter.close(), 'RETIRED');
   assert.equal(f.released(), 1);
   await fleet.service.close();
+});
+const videoRequest = () => ({
+  videoId: id(91),
+  transportId: '1',
+  hostEpoch: 1,
+  deadlineUtc: 2000,
+  artifactId: 'a'.repeat(64),
+  scid: 7,
+  nonceHex: 'b'.repeat(64),
+});
+const videoPreparing = () => ({
+  sessionId: id(91),
+  snapshotRevision: 0,
+  state: 'PREPARING',
+  code: 'OK',
+  streamObserved: false,
+  sessionPackets: 0,
+  mediaPackets: 0,
+  encodedBytes: 0,
+  lastWidth: null,
+  lastHeight: null,
+  directory: 'NONE',
+  upload: 'NONE',
+  launch: 'NONE',
+  localRetired: false,
+  cleanup: 'NOT_REQUIRED',
+});
+test('video final opaque store witness follows held custody and refuses replaced projection', async () => {
+  const actual = await registryVideoFixture(),
+    hold = deferred();
+  let dispatched = 0,
+    inspect = false;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    custody: {
+      async revalidateRead(token) {
+        if (inspect) await hold.promise;
+        return {
+          ok: true,
+          token,
+          observation: {
+            release: '37.0.1',
+            archiveSha256: 'a'.repeat(64),
+            manifestSha256: 'b'.repeat(64),
+            installationRevision: 1,
+            adbPath: '/synthetic/adb.exe',
+          },
+        };
+      },
+    },
+    provider: {
+      videoStart: async () => {
+        dispatched++;
+        return videoPreparing();
+      },
+    },
+  });
+  try {
+    await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    inspect = true;
+    const pending = f.adapter.startVideo(f.cap, videoRequest(), actual.binding);
+    await tick();
+    await actual.replace();
+    hold.resolve();
+    await assert.rejects(pending);
+    assert.equal(dispatched, 0);
+    await f.adapter.close();
+    assert.equal(f.released(), 1);
+  } finally {
+    hold.resolve();
+    await f.adapter.close();
+    await actual.close();
+  }
+});
+test('pending video startup retains ordinary lane and real obligation while Stop preempts', async () => {
+  const actual = await registryVideoFixture(),
+    start = deferred(),
+    stop = deferred();
+  let stops = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      videoStart: () => start.promise,
+      videoStop: () => {
+        stops++;
+        return stop.promise;
+      },
+    },
+  });
+  try {
+    await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    const started = f.adapter.startVideo(f.cap, videoRequest(), actual.binding);
+    await tick();
+    assert.equal((await f.adapter.execute(f.cap, f.request('SERVER_HEALTH'))).code, 'BUSY');
+    const stopping = f.adapter.stopVideo(f.cap, id(91));
+    await tick();
+    assert.equal(stops, 1);
+    assert.equal(f.held(), true);
+    assert.equal(f.adapter.stopVideo(f.cap, id(91)), stopping);
+    const wrongStop = f.adapter.stopVideo(f.cap, id(92)).then(
+      () => false,
+      (error) => error.message === 'VIDEO_REJECTED',
+    );
+    assert.equal(stops, 1, 'wrong ID cannot dispatch or adopt cached Stop receipt');
+    stop.resolve({
+      ...videoPreparing(),
+      snapshotRevision: 1,
+      state: 'CLOSED',
+      code: 'CLOSED',
+      localRetired: true,
+    });
+    await stopping;
+    assert.equal(await wrongStop, true, 'wrong canonical ID cannot adopt another video receipt');
+    assert.equal(f.held(), true);
+    start.resolve(videoPreparing());
+    await started;
+    assert.equal(await f.adapter.close(), 'RETIRED');
+    assert.equal(f.released(), 1);
+  } finally {
+    start.resolve(videoPreparing());
+    stop.resolve({
+      ...videoPreparing(),
+      snapshotRevision: 1,
+      state: 'CLOSED',
+      code: 'CLOSED',
+      localRetired: true,
+    });
+    await f.adapter.close();
+    await actual.close();
+  }
+});
+
+test('video restrictive witness rejects forged and cross-transport/epoch targets before native handoff', async () => {
+  const actual = await registryVideoFixture();
+  try {
+    for (const [ticket, change] of [
+      [{ ...actual.binding }, {}],
+      [actual.binding, { transportId: '7' }],
+      [actual.binding, { hostEpoch: 2 }],
+    ]) {
+      let dispatched = 0;
+      const f = fixture({
+        operationSet: 'SERVER_ONLY',
+        provider: {
+          videoStart: async () => {
+            dispatched++;
+            return videoPreparing();
+          },
+        },
+      });
+      try {
+        await f.adapter.execute(f.cap, f.request('SERVER_START'));
+        await assert.rejects(f.adapter.startVideo(f.cap, { ...videoRequest(), ...change }, ticket));
+        assert.equal(dispatched, 0);
+      } finally {
+        await f.adapter.close();
+      }
+    }
+  } finally {
+    await actual.close();
+  }
+});
+
+test('late uncertain or malformed video work requires fresh cleanup confirmation before read release', async () => {
+  for (const malformed of [false, true, 'REJECTED']) {
+    const actual = await registryVideoFixture(),
+      video = deferred(),
+      confirmation = deferred();
+    let retires = 0;
+    const f = fixture({
+      operationSet: 'SERVER_ONLY',
+      provider: {
+        videoStart: () =>
+          video.promise.then((value) => {
+            if (malformed === 'REJECTED') throw Error('private');
+            return value;
+          }),
+        retire: async () => (++retires === 1 ? dead() : confirmation.promise),
+      },
+    });
+    try {
+      await f.adapter.execute(f.cap, f.request('SERVER_START'));
+      const started = f.adapter.startVideo(f.cap, videoRequest(), actual.binding).catch(() => null);
+      await tick();
+      let settled = false;
+      const closing = f.adapter.close().then((v) => {
+        settled = true;
+        return v;
+      });
+      await tick();
+      assert.equal(retires, 1);
+      video.resolve(
+        malformed
+          ? { private: 'refused' }
+          : {
+              ...videoPreparing(),
+              state: 'UNCERTAIN',
+              code: 'OUTCOME_UNKNOWN',
+            },
+      );
+      await started;
+      await tick();
+      assert.equal(retires, 2, 'late unresolved video invalidates earlier terminal proof');
+      assert.equal(settled, false);
+      assert.equal(f.held(), true);
+      confirmation.resolve(dead());
+      assert.equal(await closing, 'RETIRED');
+    } finally {
+      video.resolve(videoPreparing());
+      confirmation.resolve(dead());
+      await f.adapter.close();
+      await actual.close();
+    }
+  }
 });

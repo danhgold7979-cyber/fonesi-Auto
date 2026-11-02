@@ -634,3 +634,107 @@ test('retained bootstrap scope is exactly VERSION_ONLY or SERVER_ONLY with uncha
     assert.deepEqual(snapshot(f.parent), before);
   }
 });
+
+const videoWrite = (file, value) => fs.writeFileSync(file, JSON.stringify(value));
+
+function videoRecords(f, h) {
+  const artifact = {
+    artifactId: 'c'.repeat(64),
+    relativePath: 'video/server.jar',
+    bytes: 100,
+    sha256: 'c'.repeat(64),
+    protocolId: 'AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1',
+    pairManifestSha256: 'd'.repeat(64),
+  };
+  const bootstrap = {
+    ...h.bootstrap,
+    version: 3,
+    operationSet: 'SERVER_ONLY',
+    assets: { ...h.bootstrap.assets, 'native/RetainedVideoSession.cs': 'b'.repeat(64) },
+    videoArtifact: artifact,
+  };
+  videoWrite(path.join(h.root, 'bootstrap.json'), bootstrap);
+  const videoId = randomUUID();
+  const base = {
+    version: 1,
+    launchId: f.header.launchId,
+    storeId: f.header.storeId,
+    ownerToken: f.header.ownerToken,
+    hostSessionId: h.bootstrap.sessionId,
+    attemptId: randomUUID(),
+    videoId,
+    transportId: '1',
+    hostEpoch: 1,
+    installationRevision: h.bootstrap.installationRevision,
+    artifactSha256: artifact.sha256,
+    protocolId: artifact.protocolId,
+  };
+  const intent = {
+    ...base,
+    remoteDirectory: `/data/local/tmp/fonesi-video-${videoId}`,
+    scid: 1,
+    nonceSha256: 'e'.repeat(64),
+    admittedUtc: 1000,
+    deadlineUtc: 31000,
+  };
+  const settlement = {
+    ...base,
+    directory: 'CREATED',
+    upload: 'VERIFIED',
+    launch: 'EXITED',
+    localRetired: true,
+    cleanup: 'CLEANED',
+    streamObserved: true,
+    code: 'CLOSED',
+  };
+  videoWrite(path.join(h.root, 'video-intent.json'), intent);
+  videoWrite(path.join(h.root, 'video-settlement.json'), settlement);
+  return { bootstrap, intent, settlement };
+}
+test('video bootstrap and exact retained intent/settlement remain inspectable but never grant RELEASE', (t) => {
+  const f = fixture(t),
+    h = hostMain(f);
+  videoRecords(f, h);
+  assert.deepEqual(j.inspect(f.parent, f.launch).hostSessions, ['.host-session']);
+  fs.unlinkSync(path.join(h.root, 'video-settlement.json'));
+  assert.deepEqual(j.inspect(f.parent, f.launch).hostSessions, ['.host-session']);
+  assert.throws(() => j.appendIntent(f.parent, f.launch, 7, 'RELEASE'));
+});
+test('video journal refuses malformed bindings, unknown entries, legacy bootstrap and noncanonical records', (t) => {
+  for (const kind of [
+    'binding',
+    'path',
+    'deadline',
+    'artifact',
+    'duplicate',
+    'legacy',
+    'unknown',
+  ]) {
+    const f = fixture(t),
+      h = hostMain(f),
+      v = videoRecords(f, h);
+    if (kind === 'binding')
+      videoWrite(path.join(h.root, 'video-settlement.json'), { ...v.settlement, hostEpoch: 2 });
+    if (kind === 'path')
+      videoWrite(path.join(h.root, 'video-intent.json'), {
+        ...v.intent,
+        remoteDirectory: '/data/local/tmp/foreign',
+      });
+    if (kind === 'deadline')
+      videoWrite(path.join(h.root, 'video-intent.json'), { ...v.intent, deadlineUtc: 31001 });
+    if (kind === 'artifact')
+      videoWrite(path.join(h.root, 'bootstrap.json'), {
+        ...v.bootstrap,
+        videoArtifact: { ...v.bootstrap.videoArtifact, bytes: 8388609 },
+      });
+    if (kind === 'duplicate')
+      fs.writeFileSync(
+        path.join(h.root, 'video-intent.json'),
+        JSON.stringify(v.intent).replace('"version":1', '"version":1,"version":1'),
+      );
+    if (kind === 'legacy') videoWrite(path.join(h.root, 'bootstrap.json'), h.bootstrap);
+    if (kind === 'unknown') videoWrite(path.join(h.root, 'video-other.json'), {});
+    assert.throws(() => j.inspect(f.parent, f.launch), kind);
+    assert.equal(fs.existsSync(path.join(h.root, 'video-intent.json')), true);
+  }
+});

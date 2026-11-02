@@ -1,3 +1,4 @@
+import { preparingVideo } from '../src/main/video-contract.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHostBridge, parseHostFrame, HOST_FRAME_LIMIT } from '../src/main/adb-host-bridge.ts';
@@ -690,4 +691,231 @@ test('input response is withheld until actual request write completion', async (
   assert.equal(settled, false);
   done();
   assert.equal((await q).remoteExitCode, 0);
+});
+
+const videoResponse = (r, result) => ({
+  version: 5,
+  requestId: r.requestId,
+  sessionId: r.sessionId,
+  attemptId: r.attemptId,
+  kind: r.kind,
+  result,
+});
+test('v5 exact separate video control framing retains foreground and supports pending START Stop', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const liveStart = p.startForeground(t, {});
+  await tick();
+  f.receive(frame(response(f.writes[0], live)));
+  await liveStart;
+  const req = {
+    videoId: id(9),
+    transportId: '7',
+    hostEpoch: 3,
+    deadlineUtc: 2000,
+    artifactId: 'a'.repeat(64),
+    scid: 17,
+    nonceHex: 'b'.repeat(64),
+  };
+  const start = p.videoStart(t, req);
+  await tick();
+  assert.deepEqual(Object.keys(f.writes[1]), [
+    'version',
+    'requestId',
+    'sessionId',
+    'attemptId',
+    'kind',
+    'videoId',
+    'transportId',
+    'hostEpoch',
+    'deadlineUtc',
+    'artifactId',
+    'scid',
+    'nonceHex',
+  ]);
+  const stop = p.videoStop(t, id(9));
+  await tick();
+  assert.equal(f.writes.length, 3);
+  const stopping = {
+    ...preparingVideo(id(9)),
+    snapshotRevision: 1,
+    state: 'STOPPING',
+    code: 'CLOSED',
+  };
+  f.receive(frame(videoResponse(f.writes[2], stopping)));
+  assert.equal((await stop).localRetired, false);
+  f.receive(frame(videoResponse(f.writes[1], preparingVideo(id(9)))));
+  await start;
+  assert.throws(() => p.reserveAttempt('FOREGROUND'));
+  await assert.rejects(p.videoStatus(t, id(9)));
+  const retire = p.retire(t);
+  await tick();
+  f.receive(frame(response(f.writes[3], retired)));
+  await retire;
+});
+test('v5 snapshot mismatch, duplicate keys and v1 video confusion refuse without media leak', () => {
+  const r = {
+    version: 5,
+    requestId: 1,
+    sessionId: id(1),
+    attemptId: id(2),
+    kind: 'VIDEO_STATUS',
+    result: preparingVideo(id(9)),
+  };
+  assert.ok(parseHostFrame(frame(r)));
+  for (const change of [
+    { upload: 'PARTIAL' },
+    { cleanup: 'PENDING' },
+    { directory: 'CREATED', launch: 'EXITED', upload: 'NONE' },
+  ])
+    assert.equal(parseHostFrame(frame({ ...r, result: { ...r.result, ...change } })), null);
+  assert.equal(parseHostFrame(frame({ ...r, kind: 'INPUT' })), null);
+  assert.equal(parseHostFrame(frame({ ...r, version: 1 })), null);
+  assert.equal(
+    parseHostFrame(
+      new TextEncoder().encode(
+        JSON.stringify(r).replace('"version":5', '"version":5,"version":5') + '\n',
+      ),
+    ),
+    null,
+  );
+  assert.equal(
+    parseHostFrame(frame({ ...r, result: { ...r.result, encodedPayload: 'private' } })),
+    null,
+  );
+});
+test('v5 controls have their own128 cap and retain Stop after exhaustion without a new videoId', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const a = p.startForeground(t, {});
+  await tick();
+  f.receive(frame(response(f.writes.at(-1), live)));
+  await a;
+  const request = {
+    videoId: id(9),
+    transportId: '7',
+    hostEpoch: 3,
+    deadlineUtc: 2000,
+    artifactId: 'a'.repeat(64),
+    scid: 17,
+    nonceHex: 'b'.repeat(64),
+  };
+  const start = p.videoStart(t, request);
+  await tick();
+  f.receive(frame(videoResponse(f.writes.at(-1), preparingVideo(id(9)))));
+  await start;
+  for (let i = 1; i < 128; i++) {
+    const status = p.videoStatus(t, id(9));
+    await tick();
+    f.receive(frame(videoResponse(f.writes.at(-1), preparingVideo(id(9)))));
+    await status;
+  }
+  const before = f.writes.length;
+  await assert.rejects(p.videoStatus(t, id(9)));
+  assert.equal(f.writes.length, before);
+  const stop = p.videoStop(t, id(9));
+  await tick();
+  f.receive(
+    frame(
+      videoResponse(f.writes.at(-1), {
+        ...preparingVideo(id(9)),
+        snapshotRevision: 1,
+        state: 'CLOSED',
+        code: 'CLOSED',
+        localRetired: true,
+      }),
+    ),
+  );
+  await stop;
+  await assert.rejects(p.videoStart(t, { ...request, videoId: id(10) }));
+});
+test('v5 response is not delivered before actual transport write settlement', async () => {
+  let receive, done;
+  const writes = [];
+  const f = fixture({
+    transport: {
+      subscribe(c) {
+        receive = c;
+      },
+      requestCleanup() {},
+      write(bytes) {
+        const r = JSON.parse(new TextDecoder().decode(bytes));
+        writes.push(r);
+        return r.version === 5
+          ? new Promise((resolve) => {
+              done = resolve;
+            })
+          : Promise.resolve();
+      },
+    },
+  });
+  const p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND'),
+    a = p.startForeground(t, {});
+  await tick();
+  receive(frame(response(writes[0], live)));
+  await a;
+  let settled = false;
+  const q = p
+    .videoStart(t, {
+      videoId: id(9),
+      transportId: '7',
+      hostEpoch: 3,
+      deadlineUtc: 2000,
+      artifactId: 'a'.repeat(64),
+      scid: 17,
+      nonceHex: 'b'.repeat(64),
+    })
+    .then((v) => {
+      settled = true;
+      return v;
+    });
+  await tick();
+  receive(frame(videoResponse(writes[1], preparingVideo(id(9)))));
+  await tick();
+  assert.equal(settled, false);
+  done();
+  await q;
+});
+
+test('late unretired v5 response invalidates prior foreground terminal evidence', async () => {
+  const f = fixture(),
+    p = f.bridge.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const starting = p.startForeground(t, {});
+  await tick();
+  f.receive(frame(response(f.writes.at(-1), live)));
+  await starting;
+  const video = p.videoStart(t, {
+    videoId: id(9),
+    transportId: '7',
+    hostEpoch: 3,
+    deadlineUtc: 2000,
+    artifactId: 'a'.repeat(64),
+    scid: 17,
+    nonceHex: 'b'.repeat(64),
+  });
+  await tick();
+  const videoRequest = f.writes.at(-1);
+  const retiring = p.retire(t);
+  await tick();
+  f.receive(frame(response(f.writes.at(-1), retired)));
+  await retiring;
+  f.receive(
+    frame(
+      videoResponse(videoRequest, {
+        ...preparingVideo(id(9)),
+        state: 'UNCERTAIN',
+        code: 'OUTCOME_UNKNOWN',
+      }),
+    ),
+  );
+  await video;
+  assert.throws(() => p.reserveAttempt('FOREGROUND'));
+  const confirmation = p.retire(t);
+  await tick();
+  f.receive(frame(response(f.writes.at(-1), retired)));
+  await confirmation;
 });

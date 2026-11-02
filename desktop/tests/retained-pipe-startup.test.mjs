@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { createRequire } from 'node:module';
+import { createRequire, Module } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   runPairedStartup,
@@ -149,12 +149,51 @@ test('four fixed cases isolate mandatory binding and cwd/TEMP depth while script
       .startsWith(
         source
           .toString()
-          .split("try {\n    Progress 'ENVIRONMENT'")[0]
+          .split(
+            '# Source-owned reviewed output pin. Null is intentionally unavailable, never caller authority.',
+          )[0]
           .replace(/function Compile-Type[\s\S]*?(?=function Reject)/, ''),
       ),
   );
   assert.doesNotMatch(materializeScript(true).toString(), /Add-Type|::Run\(|function Compile-/);
   assert.ok(materializeScript(true).length <= 8192);
+  assert.equal(
+    createHash('sha256').update(materializeScript(true)).digest('hex'),
+    'ce092c9606548923cec4254602bafc2fff8a1f2000944ebf6f94bb42e465740d',
+  );
+  assert.equal(
+    createHash('sha256').update(materializeScript(false)).digest('hex'),
+    '2bbe32ee4de81e6d2197320fa272eaea20aeb1ebe61c081b769526482c51d026',
+  );
+  assert.doesNotMatch(materializeScript(true).toString(), /Video-Pair|ReviewedVideoPair|Assembly/);
+  // Explicit synthetic source-pin transform tests the shape fence beneath the full-file hash.
+  // No production registration, PowerShell execution, or changed historical materialization.
+  const helperPath = require.resolve('../verification/retained-pipe-startup.cjs');
+  const helperSource = fs.readFileSync(helperPath, 'utf8');
+  const sourceFile = path.join(f.root, 'synthetic-bootstrap-source.ps1');
+  const loadDerived = (bytes) => {
+    fs.writeFileSync(sourceFile, bytes);
+    const transformed = helperSource
+      .replace(SOURCE_SHA256, createHash('sha256').update(bytes).digest('hex'))
+      .replace(
+        "path.join(__dirname, '../launch/Invoke-RetainedHost.ps1')",
+        JSON.stringify(sourceFile),
+      );
+    const module = new Module(helperPath);
+    module.filename = helperPath;
+    module.paths = Module._nodeModulePaths(path.dirname(helperPath));
+    module._compile(transformed, helperPath);
+    return module.exports.materializeScript;
+  };
+  assert.deepEqual(loadDerived(source)(true), materializeScript(true));
+  const changed = source
+    .toString()
+    .replace(
+      '# Source-owned reviewed output pin. Null is intentionally unavailable, never caller authority.',
+      '# Removed source-shape witness',
+    );
+  assert.notEqual(changed, source.toString());
+  assert.throws(() => loadDerived(Buffer.from(changed))(true), /RETAINED_PIPE_REJECTED/);
 });
 test('late startup after requested EOF stays EOF_REQUIRED and never becomes before-EOF success', async (t) => {
   const f = fixture(t),

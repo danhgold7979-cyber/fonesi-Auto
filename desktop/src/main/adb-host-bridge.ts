@@ -1,4 +1,12 @@
 import {
+  snapshotVideo,
+  snapshotVideoStart,
+  videoUuid,
+  type VideoSnapshot,
+  type VideoStart,
+  type VideoControl,
+} from './video-contract.ts';
+import {
   snapshotInputQueryFacts,
   validInputAction,
   type InputQueryFacts,
@@ -29,6 +37,9 @@ const operations = [
   'DISCOVER',
   'METADATA',
   'INPUT',
+  'VIDEO_START',
+  'VIDEO_STATUS',
+  'VIDEO_STOP',
 ] as const;
 type Operation = (typeof operations)[number];
 const errors = [
@@ -125,7 +136,7 @@ function json(raw: string): unknown {
   return out;
 }
 type Response = Readonly<{
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   sessionId: string;
   requestId: number;
   attemptId: string;
@@ -135,6 +146,7 @@ type Response = Readonly<{
     | HostAcquisitionFacts
     | MetadataQueryFacts
     | InputQueryFacts
+    | VideoSnapshot
     | Readonly<{ code: string }>;
 }>;
 export function parseHostFrame(bytes: Uint8Array): Response | null {
@@ -149,7 +161,36 @@ export function parseHostFrame(bytes: Uint8Array): Response | null {
       return null;
     if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return null;
     const raw = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, -1));
-    const v = record(json(raw), [
+    const parsed = json(raw);
+    if (parsed && typeof parsed === 'object' && (parsed as { version?: unknown }).version === 5) {
+      const v = record(parsed, [
+        'version',
+        'requestId',
+        'sessionId',
+        'attemptId',
+        'kind',
+        'result',
+      ]);
+      const result = snapshotVideo(v.result);
+      if (
+        !result ||
+        !uuid(v.sessionId) ||
+        !uuid(v.attemptId) ||
+        !Number.isSafeInteger(v.requestId) ||
+        (v.requestId as number) <= 0 ||
+        !['VIDEO_START', 'VIDEO_STATUS', 'VIDEO_STOP'].includes(v.kind as string)
+      )
+        return null;
+      return Object.freeze({
+        version: 5,
+        sessionId: v.sessionId,
+        requestId: v.requestId as number,
+        attemptId: v.attemptId,
+        operation: v.kind as VideoControl,
+        result,
+      });
+    }
+    const v = record(parsed, [
       'version',
       'sessionId',
       'requestId',
@@ -218,13 +259,22 @@ type Attempt = {
   terminal: boolean;
   stopping: boolean;
   queries: number;
+  videoId: string | null;
+  videoControls: number;
+  videoStopping: boolean;
 };
 type Pending = {
   attempt: Attempt;
   operation: Operation;
   deadlineUtc: number | undefined;
+  videoId?: string;
   resolve(
-    f: HostTransportFacts | HostAcquisitionFacts | MetadataQueryFacts | InputQueryFacts,
+    f:
+      | HostTransportFacts
+      | HostAcquisitionFacts
+      | MetadataQueryFacts
+      | InputQueryFacts
+      | VideoSnapshot,
   ): void;
   reject(e: Error): void;
   writeDone: boolean;
@@ -277,6 +327,22 @@ export function createHostBridge(
     if (!p.writeDone || !p.response || pending.get(id) !== p) return;
     pending.delete(id);
     const result = p.response.result;
+    if (p.operation.startsWith('VIDEO_')) {
+      const facts = snapshotVideo(result);
+      if (!facts || facts.sessionId !== p.videoId) {
+        breakChannel();
+        p.reject(failure());
+        return;
+      }
+      if (!facts.localRetired) p.attempt.terminal = false;
+      p.resolve(facts);
+      return; // Video snapshots never release foreground attempt/runtime custody.
+    }
+    if ('snapshotRevision' in result) {
+      breakChannel();
+      p.reject(failure());
+      return;
+    }
     if (p.operation === 'DISCOVER' || p.operation === 'METADATA' || p.operation === 'INPUT') {
       if (
         !('kind' in result) ||
@@ -411,7 +477,10 @@ export function createHostBridge(
         throw failure();
       if (
         pending.size >= 2 ||
-        [...pending.values()].some((p) => (p.operation === 'RETIRE') === (operation === 'RETIRE'))
+        [...pending.values()].some(
+          (p) =>
+            (p.operation === 'RETIRE' || p.operation === 'VIDEO_STOP') === (operation === 'RETIRE'),
+        )
       )
         throw failure();
       if (operation === 'VERSION' || operation === 'START') {
@@ -464,7 +533,88 @@ export function createHostBridge(
           attempt: a,
           operation,
           deadlineUtc,
-          resolve,
+          resolve: (value) => {
+            if ('snapshotRevision' in value) reject(failure());
+            else resolve(value);
+          },
+          reject,
+          writeDone: false,
+          response: null,
+        };
+        pending.set(id, p);
+        try {
+          Promise.resolve(write(frame)).then(
+            () => {
+              p.writeDone = true;
+              finish(id, p);
+            },
+            () => breakChannel(),
+          );
+        } catch {
+          breakChannel();
+        }
+      });
+    } catch {
+      return Promise.reject(failure());
+    }
+  }
+  function sendVideo(
+    token: object,
+    kind: VideoControl,
+    raw: VideoStart | string,
+  ): Promise<VideoSnapshot> {
+    try {
+      const a = exact(token);
+      const start = kind === 'VIDEO_START' ? snapshotVideoStart(raw) : null;
+      const videoId = start?.videoId ?? raw;
+      const cleanupKind = (operation: Operation) =>
+        operation === 'RETIRE' || operation === 'VIDEO_STOP';
+      if (
+        !videoUuid(videoId) ||
+        a.kind !== 'FOREGROUND' ||
+        !a.handed ||
+        a.terminal ||
+        broken ||
+        (kind !== 'VIDEO_STOP' &&
+          (closed || a.stopping || a.videoStopping || a.videoControls >= 128)) ||
+        (kind === 'VIDEO_START' ? !start || a.videoId !== null : a.videoId !== videoId) ||
+        pending.size >= 2 ||
+        [...pending.values()].some((p) => cleanupKind(p.operation) === cleanupKind(kind)) ||
+        next >= Number.MAX_SAFE_INTEGER
+      )
+        throw failure();
+      if (kind === 'VIDEO_START') a.videoId = videoId;
+      if (kind === 'VIDEO_STOP') a.videoStopping = true;
+      else a.videoControls++;
+      const id = ++next;
+      const body = start
+        ? {
+            version: 5,
+            requestId: id,
+            sessionId,
+            attemptId: a.id,
+            kind,
+            videoId,
+            transportId: start.transportId,
+            hostEpoch: start.hostEpoch,
+            deadlineUtc: start.deadlineUtc,
+            artifactId: start.artifactId,
+            scid: start.scid,
+            nonceHex: start.nonceHex,
+          }
+        : { version: 5, requestId: id, sessionId, attemptId: a.id, kind, videoId };
+      const frame = new TextEncoder().encode(`${JSON.stringify(body)}\n`);
+      return new Promise<VideoSnapshot>((resolve, reject) => {
+        const p: Pending = {
+          attempt: a,
+          operation: kind,
+          deadlineUtc: start?.deadlineUtc,
+          videoId,
+          resolve: (value) => {
+            const facts = snapshotVideo(value);
+            if (facts) resolve(facts);
+            else reject(failure());
+          },
           reject,
           writeDone: false,
           response: null,
@@ -487,6 +637,9 @@ export function createHostBridge(
     }
   }
   const provider: HostNativeProvider = Object.freeze({
+    videoStart: (token: object, request: VideoStart) => sendVideo(token, 'VIDEO_START', request),
+    videoStatus: (token: object, videoId: string) => sendVideo(token, 'VIDEO_STATUS', videoId),
+    videoStop: (token: object, videoId: string) => sendVideo(token, 'VIDEO_STOP', videoId),
     reserveAttempt(kind: 'VERSION' | 'FOREGROUND') {
       if (
         closed ||
@@ -514,7 +667,18 @@ export function createHostBridge(
         throw failure();
       ids.add(id);
       const token = Object.freeze({});
-      current = { token, id, kind, handed: false, terminal: false, stopping: false, queries: 0 };
+      current = {
+        token,
+        id,
+        kind,
+        handed: false,
+        terminal: false,
+        stopping: false,
+        queries: 0,
+        videoId: null,
+        videoControls: 0,
+        videoStopping: false,
+      };
       return token;
     },
     version: (token: object, runtime: RuntimeReadObservation) =>

@@ -22,6 +22,7 @@ export const HOST_ASSETS = Object.freeze([
   'native/RetainedAdbSession.cs',
   'native/RetainedAdbProtocol.cs',
   'native/RetainedHostAdmission.cs',
+  'native/RetainedVideoSession.cs',
 ] as const);
 export const hostHash = (b: string | Uint8Array) => createHash('sha256').update(b).digest('hex');
 export const hostUuid = (v: unknown): v is string =>
@@ -347,6 +348,419 @@ export function createHostRoot(
   mkdirSync(join(root, 'profile'));
   return Object.freeze({ root, dev: identity.dev, ino: identity.ino, ownerToken });
 }
+export const HOST_VIDEO_PROTOCOL = 'AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1';
+export type HostVideoArtifact = Readonly<{
+  artifactId: string;
+  relativePath: 'video/server.jar';
+  bytes: number;
+  sha256: string;
+  protocolId: typeof HOST_VIDEO_PROTOCOL;
+  pairManifestSha256: string;
+}>;
+/** Closed metadata only; this does not issue artifact or execution authority. */
+export function snapshotHostVideoArtifact(value: unknown): HostVideoArtifact | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const keys = [
+      'artifactId',
+      'relativePath',
+      'bytes',
+      'sha256',
+      'protocolId',
+      'pairManifestSha256',
+    ];
+    const ds = Object.getOwnPropertyDescriptors(value);
+    if (JSON.stringify(Object.keys(ds)) !== JSON.stringify(keys)) return null;
+    const v: Record<string, unknown> = {};
+    for (const key of keys) {
+      const descriptor = ds[key];
+      if (!descriptor || !('value' in descriptor)) return null;
+      v[key] = descriptor.value;
+    }
+    if (
+      !hash(v.artifactId) ||
+      v.artifactId.length !== 64 ||
+      v.artifactId !== v.sha256 ||
+      v.relativePath !== 'video/server.jar' ||
+      !Number.isSafeInteger(v.bytes) ||
+      typeof v.bytes !== 'number' ||
+      v.bytes < 1 ||
+      v.bytes > 8 * 1024 * 1024 ||
+      v.protocolId !== HOST_VIDEO_PROTOCOL ||
+      !hash(v.pairManifestSha256) ||
+      v.pairManifestSha256.length !== 64
+    )
+      return null;
+    return Object.freeze(v) as HostVideoArtifact;
+  } catch {
+    return null;
+  }
+}
+/** Reviewed output pin is intentionally absent until an actual Windows/server pair exists. */
+const REVIEWED_VIDEO_PAIR: Readonly<{ manifestSha256: string }> | null = null;
+export const HOST_VIDEO_NATIVE_SOURCES = Object.freeze([
+  'native/IsolatedAdbServer.cs',
+  'native/RetainedAdbSession.cs',
+  'native/RetainedAdbProtocol.cs',
+  'native/RetainedHostAdmission.cs',
+  'native/RetainedVideoSession.cs',
+] as const);
+export type OwnedHostVideoArtifact = Readonly<{ videoArtifact: true }>;
+type VideoCustody = {
+  fd: number;
+  path: string;
+  dev: number;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+  record: HostVideoArtifact;
+  retained: boolean;
+};
+const videoArtifacts = new WeakMap<object, VideoCustody>();
+function videoPin(): Readonly<{ manifestSha256: string }> | null {
+  return REVIEWED_VIDEO_PAIR;
+}
+function sameVideo(c: VideoCustody): boolean {
+  if (!c.retained) return false;
+  try {
+    const s = hostPlain(c.path),
+      f = fstatSync(c.fd);
+    if (
+      s.dev !== c.dev ||
+      s.ino !== c.ino ||
+      s.size !== c.size ||
+      s.mtimeMs !== c.mtimeMs ||
+      f.dev !== c.dev ||
+      f.ino !== c.ino ||
+      f.size !== c.size ||
+      f.mtimeMs !== c.mtimeMs ||
+      f.nlink !== 1
+    )
+      return false;
+    const digest = createHash('sha256'),
+      block = Buffer.alloc(65536);
+    let offset = 0;
+    while (offset < c.size) {
+      const n = readSync(c.fd, block, 0, Math.min(block.length, c.size - offset), offset);
+      if (!n) return false;
+      digest.update(block.subarray(0, n));
+      offset += n;
+    }
+    const after = fstatSync(c.fd),
+      atPath = hostPlain(c.path);
+    return (
+      digest.digest('hex') === c.record.sha256 &&
+      after.dev === c.dev &&
+      after.ino === c.ino &&
+      after.size === c.size &&
+      after.mtimeMs === c.mtimeMs &&
+      after.nlink === 1 &&
+      atPath.dev === c.dev &&
+      atPath.ino === c.ino &&
+      atPath.size === c.size &&
+      atPath.mtimeMs === c.mtimeMs
+    );
+  } catch {
+    return false;
+  }
+}
+/** No caller pin/manifest/callback; absence is unavailable, never a self-issued pair. */
+export function openHostVideoArtifact(desktopRoot: string): OwnedHostVideoArtifact | null {
+  const pin = videoPin();
+  if (!pin) return null;
+  hostPlain(desktopRoot, true);
+  const raw = hostRead(join(desktopRoot, 'video/pair.json'), 8192);
+  if (hostHash(raw) !== pin.manifestSha256) reject();
+  const p = hostRecord(raw, [
+    'version',
+    'serverVersion',
+    'serverBytes',
+    'serverSha256',
+    'protocolId',
+    'consumerBytes',
+    'consumerWindowsArtifactSha256',
+    'consumerBuildManifestSha256',
+    'serverBuildManifestSha256',
+    'architecture',
+  ]);
+  const record = snapshotHostVideoArtifact({
+    artifactId: p.serverSha256,
+    relativePath: 'video/server.jar',
+    bytes: p.serverBytes,
+    sha256: p.serverSha256,
+    protocolId: p.protocolId,
+    pairManifestSha256: pin.manifestSha256,
+  });
+  if (
+    p.version !== 1 ||
+    p.serverVersion !== '5.0.1' ||
+    p.architecture !== 'AMD64' ||
+    !record ||
+    !Number.isSafeInteger(p.consumerBytes) ||
+    typeof p.consumerBytes !== 'number' ||
+    p.consumerBytes < 1 ||
+    p.consumerBytes > 8388608 ||
+    !hash(p.consumerWindowsArtifactSha256) ||
+    p.consumerWindowsArtifactSha256.length !== 64 ||
+    !hash(p.consumerBuildManifestSha256) ||
+    p.consumerBuildManifestSha256.length !== 64
+  )
+    reject();
+  if (!hash(p.serverBuildManifestSha256) || p.serverBuildManifestSha256.length !== 64) reject();
+  const serverBuildRaw = hostRead(join(desktopRoot, 'video/server-build.json'), 8192);
+  if (hostHash(serverBuildRaw) !== p.serverBuildManifestSha256) reject();
+  const serverBuild = hostRecord(serverBuildRaw, [
+    'version',
+    'upstreamCommit',
+    'sourcePatchSha256',
+    'toolchainManifestSha256',
+    'dependenciesManifestSha256',
+    'buildCommandSha256',
+    'serverBytes',
+    'serverSha256',
+    'protocolId',
+  ]);
+  if (
+    serverBuild.version !== 1 ||
+    serverBuild.upstreamCommit !== 'a60891aea193d92e7e5c3942700eca63f9d19a5f' ||
+    serverBuild.serverBytes !== record.bytes ||
+    serverBuild.serverSha256 !== record.sha256 ||
+    serverBuild.protocolId !== record.protocolId
+  )
+    reject();
+  for (const key of [
+    'sourcePatchSha256',
+    'toolchainManifestSha256',
+    'dependenciesManifestSha256',
+    'buildCommandSha256',
+  ])
+    if (!hash(serverBuild[key]) || (serverBuild[key] as string).length !== 64) reject();
+  const buildRaw = hostRead(join(desktopRoot, 'video/consumer-build.json'), 8192);
+  if (hostHash(buildRaw) !== p.consumerBuildManifestSha256) reject();
+  const build = hostRecord(buildRaw, [
+    'version',
+    'sourceCommit',
+    'compilerSha256',
+    'compilerVersion',
+    'arguments',
+    'frameworkReferences',
+    'sources',
+    'consumerSha256',
+  ]);
+  if (
+    build.version !== 1 ||
+    typeof build.sourceCommit !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(build.sourceCommit) ||
+    build.sourceCommit.length !== 40 ||
+    !hash(build.compilerSha256) ||
+    build.compilerSha256.length !== 64 ||
+    typeof build.compilerVersion !== 'string' ||
+    build.compilerVersion.length > 64 ||
+    !/^[0-9]+(?:\.[0-9]+){1,3}$/.test(build.compilerVersion) ||
+    /[^0-9.]/.test(build.compilerVersion) ||
+    JSON.stringify(build.arguments) !==
+      JSON.stringify(['/nologo', '/target:library', '/platform:x64', '/optimize+']) ||
+    build.consumerSha256 !== p.consumerWindowsArtifactSha256
+  )
+    reject();
+  const refs = build.frameworkReferences as Record<string, unknown>,
+    sources = build.sources as Record<string, unknown>;
+  if (
+    !refs ||
+    JSON.stringify(Object.keys(refs)) !== JSON.stringify(['System.dll', 'System.Core.dll']) ||
+    Object.values(refs).some((v) => !hash(v) || v.length !== 64) ||
+    !sources ||
+    JSON.stringify(Object.keys(sources)) !== JSON.stringify(HOST_VIDEO_NATIVE_SOURCES)
+  )
+    reject();
+  let sourceBytes = 0;
+  for (const name of HOST_VIDEO_NATIVE_SOURCES) {
+    const source = hostRead(join(desktopRoot, name), 1048576);
+    sourceBytes += source.length;
+    if (sourceBytes > 4194304 || hostHash(source) !== sources[name]) reject();
+  }
+  const dll = hostRead(join(desktopRoot, 'native/RetainedVideoConsumer.dll'), 8388608);
+  if (
+    dll.length !== p.consumerBytes ||
+    hostHash(dll) !== p.consumerWindowsArtifactSha256 ||
+    dll.length < 64 ||
+    dll.readUInt16LE(0) !== 0x5a4d
+  )
+    reject();
+  const pe = dll.readUInt32LE(60);
+  if (
+    pe > dll.length - 26 ||
+    dll.readUInt32LE(pe) !== 0x4550 ||
+    dll.readUInt16LE(pe + 4) !== 0x8664 ||
+    dll.readUInt16LE(pe + 24) !== 0x20b
+  )
+    reject();
+  const file = join(desktopRoot, 'video/server.jar'),
+    bytes = hostRead(file, 8388608);
+  if (bytes.length !== record.bytes || hostHash(bytes) !== record.sha256) reject();
+  const s = hostPlain(file),
+    fd = openSync(file, 'r');
+  const c: VideoCustody = {
+    fd,
+    path: file,
+    dev: s.dev,
+    ino: s.ino,
+    size: s.size,
+    mtimeMs: s.mtimeMs,
+    record,
+    retained: true,
+  };
+  if (!sameVideo(c)) {
+    closeSync(fd);
+    reject();
+  }
+  const token = Object.freeze({ videoArtifact: true as const });
+  videoArtifacts.set(token, c);
+  return token;
+}
+export function inspectHostVideoArtifact(
+  value: unknown,
+): Readonly<{ record: HostVideoArtifact; finalCurrent: () => boolean }> | null {
+  if (!value || typeof value !== 'object') return null;
+  const c = videoArtifacts.get(value);
+  if (!c?.retained) return null;
+  return Object.freeze({ record: c.record, finalCurrent: () => sameVideo(c) });
+}
+export function releaseHostVideoArtifact(value: OwnedHostVideoArtifact): void {
+  const c = videoArtifacts.get(value);
+  if (!c?.retained) return;
+  c.retained = false;
+  closeSync(c.fd);
+}
+
+const VIDEO_BASE_KEYS = [
+  'version',
+  'launchId',
+  'storeId',
+  'ownerToken',
+  'hostSessionId',
+  'attemptId',
+  'videoId',
+  'transportId',
+  'hostEpoch',
+  'installationRevision',
+  'artifactSha256',
+  'protocolId',
+];
+const VIDEO_INTENT_KEYS = [
+  ...VIDEO_BASE_KEYS,
+  'remoteDirectory',
+  'scid',
+  'nonceSha256',
+  'admittedUtc',
+  'deadlineUtc',
+];
+const VIDEO_SETTLEMENT_KEYS = [
+  ...VIDEO_BASE_KEYS,
+  'directory',
+  'upload',
+  'launch',
+  'localRetired',
+  'cleanup',
+  'streamObserved',
+  'code',
+];
+/** Inspect retained metadata; only requireClean permits a deletion plan. */
+export function validateHostVideoJournal(
+  root: string,
+  bootstrapRaw: string,
+  requireClean: boolean,
+): void {
+  const b = JSON.parse(bootstrapRaw) as Record<string, unknown>;
+  const names = hostNames(root),
+    hasIntent = names.includes('video-intent.json'),
+    hasSettlement = names.includes('video-settlement.json');
+  if (!hasIntent && !hasSettlement) return;
+  const artifact = b.version === 3 ? snapshotHostVideoArtifact(b.videoArtifact) : null;
+  if (!artifact || b.operationSet !== 'SERVER_ONLY' || !hasIntent) reject();
+  const i = hostRecord(hostRead(join(root, 'video-intent.json'), 8192), VIDEO_INTENT_KEYS);
+  const integer = (v: unknown, min: number, max = Number.MAX_SAFE_INTEGER) =>
+    typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
+  for (const key of ['launchId', 'storeId', 'ownerToken']) if (i[key] !== b[key]) reject();
+  if (
+    i.version !== 1 ||
+    i.hostSessionId !== b.sessionId ||
+    !hostUuid(i.attemptId) ||
+    i.attemptId.length !== 36 ||
+    !hostUuid(i.videoId) ||
+    i.videoId.length !== 36
+  )
+    reject();
+  if (
+    typeof i.transportId !== 'string' ||
+    i.transportId.length > 20 ||
+    !/^[1-9][0-9]*$/.test(i.transportId) ||
+    /[^0-9]/.test(i.transportId) ||
+    !integer(i.hostEpoch, 1) ||
+    i.installationRevision !== b.installationRevision ||
+    i.artifactSha256 !== artifact.sha256 ||
+    i.protocolId !== artifact.protocolId ||
+    i.remoteDirectory !== `/data/local/tmp/fonesi-video-${i.videoId}` ||
+    !integer(i.scid, 0, 2147483647) ||
+    !hash(i.nonceSha256) ||
+    i.nonceSha256.length !== 64 ||
+    !integer(i.admittedUtc, 0, 8640000000000000) ||
+    !integer(i.deadlineUtc, 0, 8640000000000000) ||
+    (i.deadlineUtc as number) <= (i.admittedUtc as number) ||
+    (i.deadlineUtc as number) - (i.admittedUtc as number) > 30000
+  )
+    reject();
+  if (!hasSettlement) {
+    if (requireClean) reject();
+    return;
+  }
+  const s = hostRecord(hostRead(join(root, 'video-settlement.json'), 8192), VIDEO_SETTLEMENT_KEYS);
+  for (const key of VIDEO_BASE_KEYS) if (s[key] !== i[key]) reject();
+  if (
+    !['NONE', 'CREATED', 'UNKNOWN'].includes(s.directory as string) ||
+    !['NONE', 'PARTIAL', 'VERIFIED', 'UNKNOWN'].includes(s.upload as string) ||
+    !['NONE', 'STARTED', 'EXITED', 'UNKNOWN'].includes(s.launch as string) ||
+    !['NOT_REQUIRED', 'PENDING', 'CLEANED', 'UNKNOWN'].includes(s.cleanup as string) ||
+    typeof s.localRetired !== 'boolean' ||
+    typeof s.streamObserved !== 'boolean' ||
+    ![
+      'OK',
+      'NOT_READY',
+      'BUSY',
+      'STALE_TARGET',
+      'ADMISSION_REJECTED',
+      'DEPLOYMENT_FAILED',
+      'PROTOCOL_FAILED',
+      'REMOTE_FAILED',
+      'DEADLINE_EXCEEDED',
+      'OUTCOME_UNKNOWN',
+      'CLOSED',
+    ].includes(s.code as string)
+  )
+    reject();
+  const none =
+    s.directory === 'NONE' &&
+    s.upload === 'NONE' &&
+    s.launch === 'NONE' &&
+    s.cleanup === 'NOT_REQUIRED' &&
+    s.streamObserved === false;
+  const cleaned =
+    s.directory === 'CREATED' &&
+    s.cleanup === 'CLEANED' &&
+    ['NONE', 'EXITED'].includes(s.launch as string) &&
+    ['NONE', 'PARTIAL', 'VERIFIED'].includes(s.upload as string) &&
+    (s.launch !== 'EXITED' || s.upload === 'VERIFIED') &&
+    (!s.streamObserved || s.launch === 'EXITED');
+  if (
+    (s.directory === 'NONE' && !none) ||
+    (s.cleanup === 'CLEANED' && !cleaned) ||
+    (s.streamObserved && s.launch === 'NONE')
+  )
+    reject();
+  if (requireClean && (!s.localRetired || s.code === 'OUTCOME_UNKNOWN' || !(none || cleaned)))
+    reject();
+}
+
 export function cleanupHostRoot(
   owned: ReturnType<typeof createHostRoot>,
   bootstrap: string,
@@ -363,10 +777,12 @@ export function cleanupHostRoot(
     reject();
   const top = hostNames(root);
   if (
-    JSON.stringify(top.filter((n) => n !== 'adb.log')) !==
-    JSON.stringify(['.owner', 'bootstrap.json', 'profile'])
+    JSON.stringify(
+      top.filter((n) => !['adb.log', 'video-intent.json', 'video-settlement.json'].includes(n)),
+    ) !== JSON.stringify(['.owner', 'bootstrap.json', 'profile'])
   )
     reject();
+  validateHostVideoJournal(root, bootstrap, true);
   hostPlain(join(root, 'profile'), true);
   if (top.includes('adb.log')) hostPlain(join(root, 'adb.log'));
   const files: { path: string; dev: number; ino: number; size: number; mtimeMs: number }[] = [],
@@ -397,27 +813,60 @@ export function cleanupHostRoot(
     if (now.dev !== f.dev || now.ino !== f.ino || now.size !== f.size || now.mtimeMs !== f.mtimeMs)
       reject();
   }
+  fence();
+  validateHostVideoJournal(root, bootstrap, true);
   for (const f of files) sameFile(f);
   for (const d of dirs) {
     const now = hostPlain(d.path, true);
     if (now.dev !== d.dev || now.ino !== d.ino) reject();
   }
+  let videoRecordsRemoved = false,
+    bootstrapRemoved = false;
+  function retainedOwner() {
+    const now = hostPlain(root, true);
+    if (
+      now.dev !== owned.dev ||
+      now.ino !== owned.ino ||
+      hostRead(join(root, '.owner'), 36).toString() !== owned.ownerToken ||
+      (!bootstrapRemoved && hostRead(join(root, 'bootstrap.json'), 8192).toString() !== bootstrap)
+    )
+      reject();
+  }
   function removeFile(f: (typeof files)[number]) {
     fence();
+    retainedOwner();
+    if (!videoRecordsRemoved) validateHostVideoJournal(root, bootstrap, true);
     sameFile(f);
+    if (['video-intent.json', 'video-settlement.json'].includes(basename(f.path)))
+      videoRecordsRemoved = true;
     unlinkSync(f.path);
+    if (basename(f.path) === 'bootstrap.json') bootstrapRemoved = true;
   }
   for (const f of files.filter(
-    (f) => ![join(root, '.owner'), join(root, 'bootstrap.json')].includes(f.path),
+    (f) =>
+      !['.owner', 'bootstrap.json', 'video-intent.json', 'video-settlement.json']
+        .map((name) => join(root, name))
+        .includes(f.path),
   ))
     removeFile(f);
   for (const d of dirs) {
     fence();
+    retainedOwner();
     const now = hostPlain(d.path, true);
     if (now.dev !== d.dev || now.ino !== d.ino) reject();
     rmdirSync(d.path);
   }
-  for (const name of ['bootstrap.json', '.owner']) {
+  const metadata = [
+    'video-intent.json',
+    'video-settlement.json',
+    'bootstrap.json',
+    '.owner',
+  ].filter((name) => files.some((f) => f.path === join(root, name)));
+  fence();
+  retainedOwner();
+  if (JSON.stringify(hostNames(root)) !== JSON.stringify([...metadata].sort())) reject();
+  validateHostVideoJournal(root, bootstrap, true);
+  for (const name of metadata) {
     const f = files.find((f) => f.path === join(root, name));
     if (!f) reject();
     removeFile(f);

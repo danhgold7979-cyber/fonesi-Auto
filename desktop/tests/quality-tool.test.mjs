@@ -162,3 +162,27 @@ test('production launch CJS is an active linted corpus, not an ignored directory
     rmdirSync(directory);
   }
 });
+
+test('measured 515-entry corpus permits one owned fixture pair but refuses entry 518', () => {
+  const parent = fileURLToPath(new URL('.', import.meta.url));
+  const directory = mkdtempSync(`${parent}quality-bound-`);
+  const first = `${directory}/first.ts`,
+    second = `${directory}/second.ts`;
+  function removeOwnedFile(path) {
+    try {
+      unlinkSync(path);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  try {
+    writeFileSync(first, 'export const first = 1;\n', { flag: 'wx' });
+    assert.ok(inventory().some((path) => path.endsWith('first.ts')));
+    writeFileSync(second, 'export const second = 2;\n', { flag: 'wx' });
+    assert.throws(() => inventory(), /INVENTORY_LIMIT/);
+  } finally {
+    for (const path of [first, second]) removeOwnedFile(path);
+    rmdirSync(directory);
+  }
+  assert.ok(inventory().length > 0);
+});
