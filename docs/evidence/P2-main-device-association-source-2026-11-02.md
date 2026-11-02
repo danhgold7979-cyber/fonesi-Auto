@@ -1,6 +1,6 @@
 # P2-03 / P2-05 / P2-06 — explicit main/UI device-session association
 
-**Final source freeze — 2026-11-02 01:12 UTC; hosted result NOT_RUN.** This checkpoint implements the effect-ready interaction boundary of the user-approved identity-mechanism work. It does not execute or certify a real dialog, operator ceremony, server, profile or phone. P2 technical remains 1/13, overall 11/154, formal 0.
+**Hosted source PASS — 2026-11-02 01:19 UTC.** This checkpoint implements the effect-ready interaction boundary of the user-approved identity-mechanism work. It does not execute or certify a real dialog, operator ceremony, server, profile or phone. P2 technical remains 1/13, overall 11/154, formal 0.
 
 ## Reviewed source entry
 
@@ -27,7 +27,7 @@ Current affected evidence is source/VM/synthetic composition only:
 - Facade/ingestion passes 10/10 new owned SQLite compositions plus 68/68 existing affected checks. The chain uses actual server/ingestion/store/foundation maps with explicitly transformed native/Electron recognition, not direct proof-array injection. Covered cases include held-audit cancellation before lower entry, pending baseline cancellation by its real private ID, original deadline, retained known COMMITTED at R+3, and request-history/diagnostic exhaustion without blocking cleanup.
 - The first full source check stopped at quality before any build/test: a test-only forEach callback implicitly returned a resolver result. A bounded per-file diagnostic found it; an explicit void block passes scoped quality and 3/3 bridge cases. The failed quality run remains historical.
 - The resumed source check passes graph/quality/typecheck/product and demo builds/manifests, then batches 1–7. Batch 8 failed 89/88/1 because the exact JSX import expectation omitted the newly reviewed association-contract edge. Adding that one exact expected edge passes its targeted 1/1 case; no graph predicate was relaxed. Remaining batches 8–21 now pass 927/927, completing stitched coverage of the 164-file inventory at that source checkpoint. Independent review identified the final causal corrections described below; those received the targeted revalidation and build refresh below, not a relabelled uninterrupted aggregate.
-- No new uninterrupted full-suite or hosted total is claimed. The registered inventory adds exactly six paths, 158→164, preserving every prior path/order and all caps.
+- No uninterrupted local aggregate is claimed. Hosted results were pending at source freeze; the actual hosted result below now supersedes that pending status. The registered inventory adds exactly six paths, 158→164, preserving every prior path/order and all caps.
 
 A narrow implementation ordering amendment was independently reviewed at 00:54 UTC: immutable PENDING acknowledges local reservation only and returns DEGRADED before audit; real flushed INTENT still gates every dialog/query. Cancel invalidates before diagnostic allocation, while real audit/query/COMMIT work remains tracked. This avoids making cancellation depend on a held audit without fabricating AVAILABLE or native dispatch. The unchanged native four-source/managed v6/51 evidence is not a real association or phone proof and is not rerun merely for UI wiring.
 
@@ -45,7 +45,7 @@ The narrowed reread additionally found a BEGIN lifetime gap: an external clock/a
 
 ## Final local closure
 
-After the final causal correction, the unchanged bounded graph/quality/typecheck/product-build/demo-typecheck/demo-build/manifest gates all pass. Graph has 117 modules; test registration has exactly 164 files with six additive paths. Coverage remains stitched plus the final affected checks described above, not an uninterrupted aggregate or a hosted result. Native C#/PowerShell/managed inputs and workflow are unchanged; no native or dialog execution was attempted. Consolidated independent implementation review is CLEAR at 01:12 UTC. Mechanical closure verified all 33 staged paths, 15 exact disk/index hashes, local links, the additive six test paths and five graph modules, with no unstaged tracked delta or whitespace errors. The two wording-only clarifications preserve the reviewed source bytes and require no rerun.
+After the final causal correction, the unchanged bounded graph/quality/typecheck/product-build/demo-typecheck/demo-build/manifest gates all pass. Graph has 117 modules; test registration has exactly 164 files with six additive paths. Coverage remains stitched plus the final affected checks described above, not an uninterrupted local aggregate; the later hosted result is separately recorded below. Native C#/PowerShell/managed inputs and workflow are unchanged; no native or dialog execution was attempted. Consolidated independent implementation review is CLEAR at 01:12 UTC. Mechanical closure verified all 33 staged paths, 15 exact disk/index hashes, local links, the additive six test paths and five graph modules, with no unstaged tracked delta or whitespace errors. The two wording-only clarifications preserve the reviewed source bytes and require no rerun.
 
 ### Frozen source SHA256
 
@@ -100,3 +100,14 @@ After the final causal correction, the unchanged bounded graph/quality/typecheck
 - `docs/PHASE_STATUS.md`
 - `docs/evidence/P2-main-device-association-source-2026-11-02.md`
 - `docs/phases/P2-MAIN-DEVICE-ASSOCIATION-PROPOSAL.md`
+
+## Actual hosted source result
+
+CI [41371646576](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41371646576) completed SUCCESS on public `53c6d847bc6725bd700414997995fadbe5f69722`, exact local source commit `e3964f33a2d5ed1a904aab73f1c4a8adef6e2a4b` / tree `e2acda040345de19ef6771a1008bdd80ee9f5d3b`.
+
+- Source job `125043184048`: actual **1522/1522** desktop with `DESKTOP_SOURCE_CHECK_PASS`; foundation **109/109**, zero failures/cancelled/skipped/todo; Python **286/OK** under the exact-count/no-skips gate.
+- Terminal API metadata separately records ten optional jobs SKIPPED. This is not inferred from the source log, and no optional native campaign ran.
+- Sole retained decoded source log: **81,873 bytes**, SHA256 `6063a57da65f428bb4c0b81a25412bf0856bbc0e9f50c011b01c03145adc8c28`; exact checkout/SOURCE_HEAD and source-only/no-ADB markers are present.
+- Independent retained-log audit PASS is recorded at 01:19 UTC; no duplicate fetch or test rerun is requested. The earlier local quality/import-expectation failures and stitched/overlapping validation remain historical rather than relabelled as a local uninterrupted run.
+
+This establishes current source/build/test compatibility for the effect-ready admitted interaction path. It does not establish a displayed real Windows dialog, trusted operator assertion, fresh-profile server eligibility, actual handset identity, or device execution. P2 technical remains 1/13, overall 11/154, formal 0.
