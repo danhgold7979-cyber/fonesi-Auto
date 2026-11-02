@@ -139,10 +139,11 @@ const cfg = configuration();
 const flush = async () => {
   for (let i = 0; i < 4; i++) await Promise.resolve();
 };
-function rig({ support = async () => true } = {}) {
+function rig({ support = async () => true, deadline = 30000 } = {}) {
   let now = 0,
     current = true,
-    paintHook = null;
+    paintHook = null,
+    stateHook = null;
   const consumed = [],
     painted = [],
     states = [],
@@ -165,7 +166,7 @@ function rig({ support = async () => true } = {}) {
       videoId: id,
       deviceId: id,
       generation: 1,
-      deadlineUtc: 30000,
+      deadlineUtc: deadline,
       canvas,
       current: () => current,
       onConsumed: (v) => consumed.push(v),
@@ -173,7 +174,10 @@ function rig({ support = async () => true } = {}) {
         painted.push(v);
         paintHook?.();
       },
-      onState: (s) => states.push(s),
+      onState: (s) => {
+        states.push(s);
+        stateHook?.(s);
+      },
     },
     {
       now: () => now,
@@ -253,6 +257,10 @@ function rig({ support = async () => true } = {}) {
   };
   return {
     owner,
+    canvas,
+    setStateHook: (hook) => {
+      stateHook = hook;
+    },
     setPaintHook: (hook) => {
       paintHook = hook;
     },
@@ -501,4 +509,131 @@ test('VUI buffering below actual SPS reference count refuses while equal bound a
     parseAvcConfiguration(configuration({ vui: true, refs: 2, buffering: 2 }), 32, 32).width,
     32,
   );
+});
+
+async function configuredRig() {
+  const r = rig();
+  r.send('SESSION');
+  r.send('CONFIG');
+  await flush();
+  return r;
+}
+test('fixed reasons distinguish native callback, submission, malformed configuration and capability', async () => {
+  const n = await configuredRig();
+  n.setStateHook((s) => {
+    if (s === 'DECODE_FAILED') assert.equal(n.owner.snapshot().failureReason, 'NATIVE_ERROR');
+  });
+  n.decoders[0].error();
+  assert.equal(n.owner.snapshot().failureReason, 'NATIVE_ERROR');
+  n.owner.close();
+  assert.equal(n.owner.snapshot().failureReason, 'NATIVE_ERROR');
+  const d = await configuredRig();
+  d.decoders[0].decode = () => {
+    throw Error('private');
+  };
+  d.send('KEY');
+  assert.equal(d.owner.snapshot().failureReason, 'SUBMISSION');
+  const c = rig();
+  c.send('SESSION');
+  c.send('CONFIG', { bytes: Uint8Array.of(0), totalBytes: 1 });
+  assert.equal(c.owner.snapshot().failureReason, 'CONFIGURATION');
+  const u = rig({ support: async () => false });
+  u.send('SESSION');
+  u.send('CONFIG');
+  await flush();
+  assert.equal(u.owner.snapshot().failureReason, 'CAPABILITY');
+});
+test('fixed reasons distinguish output identity, geometry, draw, acknowledgment and frame-close failures', async () => {
+  const frame = (extra = {}) => ({
+    timestamp: 2000,
+    codedWidth: 32,
+    codedHeight: 32,
+    displayWidth: 32,
+    displayHeight: 32,
+    close() {},
+    ...extra,
+  });
+  const i = await configuredRig();
+  i.send('KEY');
+  i.decoders[0].output(frame({ timestamp: 999 }));
+  assert.equal(i.owner.snapshot().failureReason, 'OUTPUT_IDENTITY');
+  const g = await configuredRig();
+  g.send('KEY');
+  g.decoders[0].output(frame({ codedWidth: 16 }));
+  assert.equal(g.owner.snapshot().failureReason, 'OUTPUT_GEOMETRY');
+  const p = await configuredRig();
+  p.canvas.getContext = () => ({
+    clearRect() {},
+    drawImage() {
+      throw Error('private');
+    },
+  });
+  p.send('KEY');
+  p.decoders[0].output(frame());
+  assert.equal(p.owner.snapshot().failureReason, 'PAINT');
+  assert.equal(p.painted.length, 0);
+  const a = await configuredRig();
+  a.setPaintHook(() => {
+    throw Error('private');
+  });
+  a.send('KEY');
+  a.decoders[0].output(frame());
+  assert.equal(a.owner.snapshot().failureReason, 'PAINT_ACK');
+  const f = await configuredRig();
+  f.send('KEY');
+  f.decoders[0].output(
+    frame({
+      close() {
+        throw Error('private');
+      },
+    }),
+  );
+  assert.equal(f.owner.snapshot().failureReason, 'FRAME_CLOSE');
+});
+test('watchdog, clock validation, delivery and normal cancellation remain distinct with unchanged deadline', async () => {
+  const w = await configuredRig();
+  w.send('KEY');
+  w.setNow(30000);
+  for (const { fn } of [...w.timers.values()]) fn();
+  assert.equal(w.owner.snapshot().failureReason, 'DEADLINE');
+  const late = await configuredRig();
+  late.send('KEY');
+  late.setNow(30000);
+  late.frame(late.decoders[0], 2000);
+  assert.equal(late.owner.snapshot().failureReason, 'DEADLINE');
+  const c = rig();
+  c.send('SESSION');
+  c.setNow(-1);
+  c.send('CONFIG');
+  assert.equal(c.owner.snapshot().failureReason, 'CLOCK');
+  const d = rig();
+  const v = d.send('SESSION');
+  d.owner.receive(v);
+  assert.equal(d.owner.snapshot().failureReason, 'DELIVERY');
+  const normal = await configuredRig();
+  normal.owner.close();
+  assert.equal(normal.owner.snapshot().failureReason, null);
+  assert.equal(normal.owner.snapshot().state, 'STOPPED');
+  const early = rig({ deadline: 0 });
+  assert.equal(early.owner.snapshot().failureReason, 'ADMISSION');
+});
+test('terminal reason is latched before observer and later observer error cannot replace native cause', async () => {
+  const r = await configuredRig();
+  let observed;
+  r.setStateHook((s) => {
+    if (s === 'DECODE_FAILED') {
+      observed = r.owner.snapshot().failureReason;
+      throw Error('private');
+    }
+  });
+  r.decoders[0].error();
+  assert.equal(observed, 'NATIVE_ERROR');
+  assert.equal(r.owner.snapshot().failureReason, 'NATIVE_ERROR');
+  assert.equal(JSON.stringify(r.owner.snapshot()).includes('private'), false);
+  const callback = rig();
+  callback.setStateHook(() => {
+    throw Error('private');
+  });
+  callback.send('SESSION');
+  assert.equal(callback.owner.snapshot().failureReason, 'STATE_CALLBACK');
 });

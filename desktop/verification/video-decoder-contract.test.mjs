@@ -1,3 +1,4 @@
+import { TILE_VIDEO_FAILURE_REASONS } from '../src/video-decoder.ts';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { parseFleetRequest, fleetSuccess, parseFleetResponse } from '../src/fleet-contract.ts';
@@ -14,6 +15,7 @@ import {
   validateVideoSupervisor,
   validateVideoEvidence,
   VIDEO_DIAGNOSTIC_STAGES,
+  VIDEO_DIAGNOSTIC_STATES,
 } from './video-decoder-contract.mjs';
 const valid = () => ({
   version: 1,
@@ -252,4 +254,11 @@ test('sanitized aggregate cannot promote failed or missing pixel evidence to pas
     validateVideoEvidence({ ...v, result: { ...valid(), head: 'b'.repeat(40) } }),
     false,
   );
+});
+
+test('qualification failure suffixes exactly cover reviewed production reasons without raw errors', () => {
+  for (const reason of [...TILE_VIDEO_FAILURE_REASONS, 'UNOBSERVED'])
+    for (const state of ['STOPPING', 'STOPPED', 'UNCERTAIN'])
+      assert.ok(VIDEO_DIAGNOSTIC_STATES.includes(`DECODE_FAILED:${reason} / ${state}`));
+  assert.equal(VIDEO_DIAGNOSTIC_STATES.includes('DECODE_FAILED:secret / STOPPED'), false);
 });

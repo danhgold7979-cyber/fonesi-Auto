@@ -27,6 +27,24 @@ export type TileVideoState =
   | 'STOPPED'
   | 'DECODER_UNAVAILABLE'
   | 'DECODE_FAILED';
+export const TILE_VIDEO_FAILURE_REASONS = Object.freeze([
+  'ADMISSION',
+  'DEADLINE',
+  'CLOCK',
+  'STATE_CALLBACK',
+  'DELIVERY',
+  'CONFIGURATION',
+  'CAPABILITY',
+  'SUBMISSION',
+  'NATIVE_ERROR',
+  'OUTPUT_IDENTITY',
+  'OUTPUT_GEOMETRY',
+  'PAINT',
+  'PAINT_ACK',
+  'FRAME_CLOSE',
+  'UNCLASSIFIED',
+] as const);
+export type TileVideoFailureReason = (typeof TILE_VIDEO_FAILURE_REASONS)[number];
 type Frame = Pick<
   VideoFrame,
   'timestamp' | 'codedWidth' | 'codedHeight' | 'displayWidth' | 'displayHeight' | 'close'
@@ -73,6 +91,8 @@ export function createTileVideoDecoder(
     set: (fn, ms) => setTimeout(fn, ms),
     clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
   };
+  let failureReason: TileVideoFailureReason | null = null;
+  let clockFailed = false;
   let closed = false,
     state: TileVideoState = 'STARTING',
     generation = 0,
@@ -97,7 +117,10 @@ export function createTileVideoDecoder(
     until = admitted + Math.min(30000, remaining);
   function clock() {
     const n = native.now();
-    if (!Number.isFinite(n) || n < lastNow) throw Error();
+    if (!Number.isFinite(n) || n < lastNow) {
+      clockFailed = true;
+      throw Error();
+    }
     lastNow = n;
     return n;
   }
@@ -122,11 +145,13 @@ export function createTileVideoDecoder(
     try {
       options.onState(next);
     } catch {
-      stop('DECODE_FAILED');
+      stop('DECODE_FAILED', 'STATE_CALLBACK');
     }
   }
-  function stop(next: TileVideoState = 'STOPPED') {
+  function stop(next: TileVideoState = 'STOPPED', reason: TileVideoFailureReason = 'UNCLASSIFIED') {
     if (closed) return;
+    if (next === 'DECODE_FAILED' || next === 'DECODER_UNAVAILABLE')
+      failureReason ??= clockFailed ? 'CLOCK' : reason;
     closed = true;
     generation++;
     held = null;
@@ -147,7 +172,7 @@ export function createTileVideoDecoder(
     if (closed) return;
     const wait = until - clock();
     if (wait <= 0) {
-      stop('DECODE_FAILED');
+      stop('DECODE_FAILED', 'DEADLINE');
       return;
     }
     timer = native.set(() => {
@@ -184,11 +209,13 @@ export function createTileVideoDecoder(
   }
   function output(frame: Frame, token: number) {
     let completed: number | null = null;
+    let failureContext: TileVideoFailureReason = 'OUTPUT_IDENTITY';
     try {
       if (closed || token !== generation) return;
       const v = pending.get(frame.timestamp);
-      if (!v || !config || !live() || token !== generation || clock() >= until)
-        return stop('DECODE_FAILED');
+      if (!v || !config || !live() || token !== generation)
+        return stop('DECODE_FAILED', 'OUTPUT_IDENTITY');
+      if (clock() >= until) return stop('DECODE_FAILED', 'DEADLINE');
       if (
         frame.codedWidth !== config.codedWidth ||
         frame.codedHeight !== config.codedHeight ||
@@ -199,10 +226,11 @@ export function createTileVideoDecoder(
         ) ||
         frame.displayWidth > 4096 ||
         frame.displayHeight > 4096 ||
-        frame.displayWidth * frame.displayHeight > 8388608 ||
-        frame.timestamp <= lastPaint
+        frame.displayWidth * frame.displayHeight > 8388608
       )
-        return stop('DECODE_FAILED');
+        return stop('DECODE_FAILED', 'OUTPUT_GEOMETRY');
+      if (frame.timestamp <= lastPaint) return stop('DECODE_FAILED', 'OUTPUT_IDENTITY');
+      failureContext = 'PAINT';
       const context = options.canvas.getContext('2d');
       if (!context || !live() || token !== generation || closed) return stop();
       options.canvas.width = config.displayWidth;
@@ -213,6 +241,7 @@ export function createTileVideoDecoder(
       completed = frame.timestamp;
       lastPaint = frame.timestamp;
       if (!live() || token !== generation || closed) return stop();
+      failureContext = 'PAINT_ACK';
       options.onPainted(
         Object.freeze({
           version: 1,
@@ -232,12 +261,12 @@ export function createTileVideoDecoder(
       publish('DISPLAYING');
       schedule();
     } catch {
-      stop('DECODE_FAILED');
+      stop('DECODE_FAILED', failureContext);
     } finally {
       try {
         frame.close();
       } catch {
-        stop('DECODE_FAILED');
+        stop('DECODE_FAILED', 'FRAME_CLOSE');
       }
       if (!closed && token === generation && completed !== null) pending.delete(completed);
       if (!closed && held && !busy) {
@@ -250,10 +279,11 @@ export function createTileVideoDecoder(
   async function process(v: VideoDelivery) {
     if (closed) return;
     busy = true;
+    let failureContext: TileVideoFailureReason = 'DELIVERY';
     try {
       if (!live() || clock() >= until) return stop();
       if (v.kind === 'SESSION') {
-        if (v.geometryId !== geometry + 1) return stop('DECODE_FAILED');
+        if (v.geometryId !== geometry + 1) return stop('DECODE_FAILED', 'DELIVERY');
         reset();
         geometry = v.geometryId;
         configId = 0;
@@ -269,11 +299,12 @@ export function createTileVideoDecoder(
         v.height !== height ||
         v.packetId !== packet + 1
       )
-        return stop('DECODE_FAILED');
+        return stop('DECODE_FAILED', 'DELIVERY');
       if (v.kind === 'CONFIG') {
-        if (v.configId !== lastConfig + 1) return stop('DECODE_FAILED');
+        if (v.configId !== lastConfig + 1) return stop('DECODE_FAILED', 'DELIVERY');
         reset();
         const token = generation;
+        failureContext = 'CONFIGURATION';
         config = parseAvcConfiguration(v.bytes, width, height);
         configId = v.configId;
         lastConfig = configId;
@@ -290,7 +321,7 @@ export function createTileVideoDecoder(
           supported = await native.supported(cfg);
         } catch {}
         if (!supported) {
-          if (token === generation) stop('DECODER_UNAVAILABLE');
+          if (token === generation) stop('DECODER_UNAVAILABLE', 'CAPABILITY');
           return;
         }
         if (closed || token !== generation) return;
@@ -298,7 +329,7 @@ export function createTileVideoDecoder(
         decoder = native.create(
           (f) => output(f, token),
           () => {
-            if (token === generation) stop('DECODE_FAILED');
+            if (token === generation) stop('DECODE_FAILED', 'NATIVE_ERROR');
           },
         );
         decoder.configure(cfg);
@@ -308,7 +339,7 @@ export function createTileVideoDecoder(
         return;
       }
       if (v.configId !== configId || !config || !decoder || v.ptsUs === null || v.ptsUs <= pts)
-        return stop('DECODE_FAILED');
+        return stop('DECODE_FAILED', 'DELIVERY');
       if (pending.size >= 2 || decoder.decodeQueueSize >= 2) {
         held = v;
         return;
@@ -319,6 +350,7 @@ export function createTileVideoDecoder(
         acknowledge(v);
         return;
       }
+      failureContext = 'SUBMISSION';
       const bytes = prepareAvcChunk(v.bytes, key, config);
       const chunk = native.chunk({ type: key ? 'key' : 'delta', timestamp: v.ptsUs, data: bytes });
       if (!live() || closed) return stop();
@@ -330,7 +362,7 @@ export function createTileVideoDecoder(
       if (pending.has(v.ptsUs)) publish('DECODING');
       acknowledge(v);
     } catch {
-      stop('DECODE_FAILED');
+      stop('DECODE_FAILED', failureContext);
     } finally {
       busy = false;
     }
@@ -344,7 +376,7 @@ export function createTileVideoDecoder(
     remaining <= 0 ||
     remaining > 30000
   )
-    stop('DECODE_FAILED');
+    stop('DECODE_FAILED', 'ADMISSION');
   else
     try {
       schedule();
@@ -356,13 +388,14 @@ export function createTileVideoDecoder(
       if (closed) return;
       const v = snapshotVideoMediaDelivery(raw);
       if (!v || v.videoId !== options.videoId || v.deliveryId !== delivery + 1 || busy || held) {
-        stop('DECODE_FAILED');
+        stop('DECODE_FAILED', 'DELIVERY');
         return;
       }
       delivery = v.deliveryId;
       void process(v);
     },
     close: () => stop(),
-    snapshot: () => Object.freeze({ state, closed, pending: pending.size, held: held !== null }),
+    snapshot: () =>
+      Object.freeze({ state, closed, pending: pending.size, held: held !== null, failureReason }),
   });
 }

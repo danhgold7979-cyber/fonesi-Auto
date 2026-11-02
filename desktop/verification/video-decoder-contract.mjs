@@ -121,7 +121,28 @@ export const VIDEO_DIAGNOSTIC_STAGES = Object.freeze([
   'STALE',
   'CLOSE',
 ]);
+const diagnosticFailureReasons = Object.freeze([
+  'ADMISSION',
+  'DEADLINE',
+  'CLOCK',
+  'STATE_CALLBACK',
+  'DELIVERY',
+  'CONFIGURATION',
+  'CAPABILITY',
+  'SUBMISSION',
+  'NATIVE_ERROR',
+  'OUTPUT_IDENTITY',
+  'OUTPUT_GEOMETRY',
+  'PAINT',
+  'PAINT_ACK',
+  'FRAME_CLOSE',
+  'UNCLASSIFIED',
+  'UNOBSERVED',
+]);
 export const VIDEO_DIAGNOSTIC_STATES = Object.freeze([
+  ...diagnosticFailureReasons.flatMap((reason) =>
+    ['STOPPING', 'STOPPED', 'UNCERTAIN'].map((state) => `DECODE_FAILED:${reason} / ${state}`),
+  ),
   'UNOBSERVED',
   'UNRECOGNIZED',
   'STARTING',

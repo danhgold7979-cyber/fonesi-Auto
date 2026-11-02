@@ -926,7 +926,10 @@ function Diagnostic() {
         if (videoSession.current !== r || !videoAlive.current) return;
         setVideoView({ deviceId: r.deviceId, generation: r.generation, state });
         if (state === 'DECODE_FAILED' || state === 'DECODER_UNAVAILABLE') {
-          r.failure = state;
+          r.failure =
+            state === 'DECODE_FAILED'
+              ? `${state}:${r.decoder?.snapshot().failureReason ?? 'UNOBSERVED'}`
+              : state;
           void videoActions.current.stopVideo();
         }
       },
