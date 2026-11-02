@@ -80,17 +80,17 @@ The 23-file packet includes only the paths below. Caches, archive/source origina
 
 | Source / gate | SHA256 |
 |---|---|
-| `.github/workflows/phase-02-software.yml` | `338754ea6c2191867c608434a58cd1f130afd0f8d94ce5fde3f7850b93b7b2e5` |
+| `.github/workflows/phase-02-software.yml` | `d0e962f871e921b9b7e4fec7747ae890b8fe355c42dffa892013cec5c12119fa` |
 | `desktop/scripts/quality-tool.mjs` | `ccff8a43620c7cea61d81b5c3ae0ea5e963431ae2e7b7fdd73975b5c500f663d` |
 | `desktop/scripts/test-batches.mjs` | `0489ff8d0afaa86a83bad671bc4a762a0343c4bf3b53c600804f985e8f511f63` |
-| `desktop/tests/phase-source-workflow.test.mjs` | `adc1451d3c81d4498be5f85f4ebad69dada3d39e18221b180ea1433befb63bb8` |
+| `desktop/tests/phase-source-workflow.test.mjs` | `a79f3e98d457a236226fbf37400384dd9f484e1688cdbdda17bf1f1bfaed74cd` |
 | `desktop/tests/quality-tool.test.mjs` | `05110e6803d583a3574a3cc93d30c5e6c71f91f485dfb64e5029794296767bf5` |
 | `desktop/tests/retained-managed-fixture.test.mjs` | `a05176ed8fe84fc460d508fb01af5ded49814adb5e2e942124451d04298e09b8` |
-| `desktop/verification/retained-rollback-workflow.test.cjs` | `443ea0b8a972281774013755dfa1d6ca5b6c97dc79b60f9ba3c128fcd0238da6` |
-| `desktop/verification/Invoke-DerivedPairBuild.ps1` | `657d452b817ecee80561752155c05476480dc1c87a7dabddf776f02b76380152` |
-| `desktop/verification/derived-pair-wrapper.test.cjs` | `b0b7ed75cabb651f930226429ecba82819dfbd428a6057540e0091f07db1a4f5` |
-| `desktop/verification/derived_pair_build.py` | `a94d8166adfc86eabd460464c79b380b386bdd1f89074a447d00e8bf571ee766` |
-| `desktop/verification/test_derived_pair_build.py` | `ab1e6867c2bdec12ef8530068a78c9e2510e5daeba472e59f49ded072fc65e14` |
+| `desktop/verification/retained-rollback-workflow.test.cjs` | `43f1adcf1cf924159264d49eee5581b0bbef861e29af2fa4a36c6d97dc354be9` |
+| `desktop/verification/Invoke-DerivedPairBuild.ps1` | `1f92dd122c48d5a8a978e5db34183274d7a6456f9072138c21c5740cf5ae81c0` |
+| `desktop/verification/derived-pair-wrapper.test.cjs` | `2c50844f0f9f42ca8b295a9b659eb8ae5ddab7fee192f9adb61f8679e5b1d541` |
+| `desktop/verification/derived_pair_build.py` | `44963fca862532237291e6019a8f5818ea56d724ef73bb857b5c9e0d65cf7877` |
+| `desktop/verification/test_derived_pair_build.py` | `f7fb49f17743a140db9ca3f8bd0a0e25cf8c3a93ab34c7aedb935f6a70a959ea` |
 | `desktop/verification/test_validate_derived_pair_build.py` | `0eeebd9f8fe3ce4a5d97999f7c107f9805e0d4406ea32adef71533426708492e` |
 | `desktop/verification/validate_derived_pair_build.py` | `7d2c7fda2c24cecb487ff03fcb86231804936fc6e14bcff903aeb4f1241d99ce` |
 | `desktop/video-source/README.md` | `71886a1b4a7a210757da499cebe7bbf55e860bd25cf28b51ceaef1fd0f535d42` |
@@ -175,3 +175,14 @@ The official runner installer source documents the physical SDK at `C:\Program F
 The explanatory [official installer blob](https://api.github.com/repos/actions/runner-images/git/blobs/853fa25e01caf81ac86ed3b333c9fe3048c52f7e) is pinned at Git blob853fa25e01caf81ac86ed3b333c9fe3048c52f7e,9,813 bytes. The original source comment calls the alias a hardlink, but the actual creation specifies SymbolicLink; only the actual operation is attributed. This is current-source explanation, not a claim that the failed runner used this exact blob.
 
 Author affected wrapper13/13 source-static cases PASS, including exact profile strings, fixed authority path, alias metadata predicates, plain ancestry and mutation/refusal witnesses; shared quality PASS. No PowerShell or Windows filesystem case was executed locally. One new desktop case makes next expected1600; actual hosted1599/109/325 remains the established result. Independent exact five-file correction review is CLEAR at06:03 UTC; all18 fingerprints, index/disk identity, unchanged inventory fences and exact profile refusal verified. The same bounded compile-only retry is supported.
+
+
+## Sixth hosted source PASS; controller preparation refusal — 06:10 UTC
+
+Public `fe99b9b22baea2c12858146b6cc871bd3cb4fbd7` / local `7bc0be17f838c4c3d186d67137a1d86a2212f2b9`, exact tree `4626042eb500a6e5e04a7d2227ee9b8d259cd642`, CI41397644305/source job125122331816, establishes actual **1600/1600 desktop plus sourcePASS, foundation109 with zero exclusions, Python325/OK**. Retained90,305-byte source log SHA256 `678ee0a1e0ec4b38a7eeb71f78be668fdb14b255d2566b4a53c5affbcd95b0bb` is independently audited. Paired job125123430358 passes TOOLS and reaches PREPARE, then refuses before any compiler. Retained21,159-byte log SHA256 `bd7ea908e7fe9b10fb1c4daf58df97853c87dc1c2f6487f6bd8504e2d6de5037` is independently audited. Elapsed preparation time does not identify which archive, context, tool-inventory, materialization or closure predicate failed. No report/output was uploaded and no bound is raised from timing alone.
+
+### Closed controller diagnostics
+
+The independent reviewer approved one comprehensive diagnostic correction rather than further opaque one-predicate probes. Controller actions retain success output unchanged. A caught refusal may emit one bounded ASCII frame with only source-assigned action, last-entered fixed checkpoint and fixed predicate category, followed by the existing failure marker. No raw exception text, path, tool value, identifier or count is emitted. The wrapper admits that diagnostic only for the requested action and exact complete output from an actually retired exit1 process, with both streams untruncated and empty stderr. Duplicate, malformed or extra output never becomes a trusted diagnostic. Otherwise only DIAGNOSTIC_UNAVAILABLE and actual closed supervisor facts may be shown; no failure predicate is inferred. All refusal codes, admission, byte/count caps, original deadlines, cleanup and no-install scope remain unchanged. This supplies diagnosis, not successful build or artifact admission.
+
+Author diagnostic validation: four affected controller cases PASS plus one overlapping strengthened hostile-value rerun; wrapper15/15 source-static cases and shared quality PASS; exact workflow/count4/4 PASS. Three new Python methods yield measured discovery328; exact328/no-skip gate is retained. Two new wrapper cases yield expected1602 desktop, while actual latest source remains1600/109/325. Synthetic tests cover predicate categories, bounded all-action frames, isolated CLI composition, hostile values, complete-frame/requested-action/supervisor admission and actual workflow forwarding/refusal. They do not claim Windows PowerShell execution or compiler evidence. Independent exact ten-file coherent diagnostic review is CLEAR at06:18 UTC: all18 fingerprints, index/disk identity, exact grammar and unchanged bounds verified. The same bounded compile-only retry is supported.

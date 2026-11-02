@@ -290,7 +290,7 @@ test('tools diagnostics identify only one closed source substep without exposing
     'SOURCE_IDS',
     'CONTEXT',
   ];
-  const filter = workflow.match(/-cmatch '(\^DERIVED_PAIR_\(STAGE_[^'\n]+)'/)?.[1];
+  const filter = workflow.match(/-cmatch '(\^DERIVED_PAIR_[^'\n]+)'/)?.[1];
   assert.ok(filter);
   const admitted = new RegExp(filter);
   for (const step of steps) assert.equal(admitted.test(`DERIVED_PAIR_TOOLS_${step}`), true);
@@ -398,4 +398,143 @@ test('win22 SDK uses only fixed physical authority and checks documented alias m
   const controller = fs.readFileSync(path.join(__dirname, 'derived_pair_build.py'), 'utf8');
   assert.ok(controller.includes('for parent in path.parents:'));
   assert.ok(controller.includes("parent.is_symlink() or getattr(ps,'st_file_attributes',0)&0x400"));
+});
+
+// The extracted fixed grammar is executed here; PowerShell/supervisor are not executed.
+test('controller failure diagnostic requires exact bounded action-bound retired frame', () => {
+  const section = source.slice(
+    source.indexOf('function PythonDiagnostic('),
+    source.indexOf('function Python([string]'),
+  );
+  const pattern = section.match(/\$pattern='([^'\n]+)'/)?.[1];
+  assert.ok(pattern);
+  const controller = fs.readFileSync(path.join(__dirname, 'derived_pair_build.py'), 'utf8');
+  for (const name of ['ACTIONS', 'STEPS', 'REASONS']) {
+    const values = controller.match(new RegExp(`^DIAGNOSTIC_${name} = \\(([^\\n]+)\\)$`, 'm'))?.[1];
+    assert.ok(values);
+    const alternatives = [...values.matchAll(/'([A-Z0-9_]+)'/g)].map((match) => match[1]).join('|');
+    assert.ok(pattern.includes(`(${alternatives})`));
+  }
+  const forwarding = workflow.match(/-cmatch '(\^DERIVED_PAIR_[^'\n]+)'/)?.[1];
+  assert.ok(forwarding);
+  const forwarded = new RegExp(forwarding);
+  assert.equal(forwarded.test('DERIVED_PAIR_CONTROL_DIAG|PREPARE|TOOLS_JDK17|REPARSE'), true);
+  assert.equal(forwarded.test('DERIVED_PAIR_DIAGNOSTIC_UNAVAILABLE'), true);
+  for (const line of [
+    'DERIVED_PAIR_CONTROL_DIAG|FOREIGN|TOOLS_JDK17|REPARSE',
+    'DERIVED_PAIR_CONTROL_DIAG|PREPARE|C:\\private|IO_OTHER',
+    'DERIVED_PAIR_CONTROL_DIAG|PREPARE|TOOLS_JDK17|RAW_CANARY',
+    'DERIVED_PAIR_CONTROL_DIAG|PREPARE|TOOLS_JDK17|REPARSE\nraw-canary',
+    'raw-canary',
+  ])
+    assert.equal(forwarded.test(line), false);
+  const framePattern = new RegExp(pattern.replace(/^\\A/, '^').replace(/\\z$/, '$(?![\\s\\S])'));
+  const good =
+    'DERIVED_PAIR_CONTROL_DIAG|PREPARE|TOOLS_JDK17|REPARSE\nDERIVED_PAIR_CONTROL_FAILED\n';
+  function admit(raw, action = 'prepare', facts = {}) {
+    const p = {
+      retired: true,
+      exitCode: 1,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      stderr: '',
+      controller: true,
+      ...facts,
+    };
+    if (
+      !p.controller ||
+      !p.retired ||
+      p.exitCode !== 1 ||
+      p.stdoutTruncated ||
+      p.stderrTruncated ||
+      p.stderr !== '' ||
+      raw.length > 256 ||
+      [...raw].some((character) => character.charCodeAt(0) > 127)
+    )
+      return false;
+    const m = framePattern.exec(raw.replace(/\r\n/g, '\n'));
+    return !!m && m[1] === action.toUpperCase();
+  }
+  assert.equal(admit(good), true);
+  assert.equal(admit(good.replace(/\n/g, '\r\n')), true);
+  for (const bad of [
+    `${good}\n`,
+    good + good,
+    good.replace('PREPARE', 'CLI'),
+    good.replace('REPARSE', 'PRIVATE_PATH'),
+    good.replace('TOOLS_JDK17', 'C:\\private'),
+    good.replace('CONTROL_FAILED', 'CONTROL_PASS'),
+    good.replace('REPARSE', 'é'),
+    'x'.repeat(257),
+    good.replace(/\n$/, ''),
+  ])
+    assert.equal(admit(bad), false);
+  for (const facts of [
+    { retired: false },
+    { exitCode: null },
+    { exitCode: 0 },
+    { exitCode: 2 },
+    { stdoutTruncated: true },
+    { stderrTruncated: true },
+    { stderr: 'private-canary' },
+    { controller: false },
+  ])
+    assert.equal(admit(good, 'prepare', facts), false);
+  for (const clause of [
+    '$script -ceq $script:controller',
+    '(Retired $p)',
+    '$p.ExitCode -eq 1',
+    '-not $p.StdoutTruncated',
+    '-not $p.StderrTruncated',
+    "$p.Stderr -ceq ''",
+    '$raw.Length -le 256',
+    "$raw -cnotmatch '[^\\x00-\\x7f]'",
+    '$match.Groups[1].Value -ceq $action.ToUpperInvariant()',
+  ])
+    assert.ok(section.includes(clause), clause);
+  assert.match(section, /Write-Output 'DERIVED_PAIR_DIAGNOSTIC_UNAVAILABLE'/);
+  assert.doesNotMatch(
+    section,
+    /Write-Output[^\n]*(?:\$raw|\$frame|\.Reason|\.Stderr|\.Stdout|Exception)/,
+  );
+  assert.ok(source.includes("PythonDiagnostic $p $script $arguments[0];throw 'CONTROL_FAILED'"));
+});
+
+test('supervisor diagnostics expose only actual closed status and finite retirement facts', () => {
+  const statuses = [
+    'SUCCESS',
+    'EMPTY_OUTPUT',
+    'NONZERO_EXIT',
+    'TIMEOUT',
+    'ACCESS_DENIED',
+    'LAUNCH_FAILED',
+    'CAPTURE_FAILED',
+    'CLEANUP_FAILED',
+  ];
+  const native = fs.readFileSync(
+    path.join(__dirname, '../../tools/phase-00/HostProbeNative.cs'),
+    'utf8',
+  );
+  for (const status of statuses) assert.ok(native.includes(`"${status}"`));
+  assert.ok(source.includes(`$statuses=@(${statuses.map((status) => `'${status}'`).join(',')})`));
+  assert.ok(source.includes('if($p.Status -cin $statuses)'));
+  assert.ok(source.includes("$exitFlag=if($null -eq $p.ExitCode){'NULL'}else{'PRESENT'}"));
+  assert.ok(source.includes("$retiredFlag=if(Retired $p){'TRUE'}else{'FALSE'}"));
+  assert.ok(source.includes("$outFlag=if($p.StdoutTruncated){'TRUE'}else{'FALSE'}"));
+  assert.ok(source.includes("$errFlag=if($p.StderrTruncated){'TRUE'}else{'FALSE'}"));
+  const maximum =
+    'DERIVED_PAIR_SUPERVISOR_STATUS_CLEANUP_FAILED_EXIT_PRESENT_RETIRED_FALSE_STDOUT_TRUNCATED_FALSE_STDERR_TRUNCATED_FALSE';
+  assert.ok(maximum.length <= 256);
+  const forwarding = workflow.match(/-cmatch '(\^DERIVED_PAIR_[^'\n]+)'/)?.[1];
+  assert.ok(forwarding);
+  const forwarded = new RegExp(forwarding);
+  for (const status of statuses)
+    assert.equal(forwarded.test(maximum.replace('CLEANUP_FAILED', status)), true);
+  for (const line of [
+    maximum.replace('CLEANUP_FAILED', 'UNKNOWN'),
+    maximum.replace('EXIT_PRESENT', 'EXIT_123'),
+    `${maximum}\nprivate-canary`,
+    maximum.replace('RETIRED_FALSE', 'RETIRED_MAYBE'),
+  ])
+    assert.equal(forwarded.test(line), false);
 });

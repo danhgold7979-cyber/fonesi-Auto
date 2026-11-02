@@ -69,9 +69,29 @@ function RunFixed([string]$exe,[string[]]$arguments,[int]$maximum,[bool]$compile
  $script:allRetired=Retired $p
  return $p
 }
+function PythonDiagnostic($p,[string]$script,[string]$action){
+ $statuses=@('SUCCESS','EMPTY_OUTPUT','NONZERO_EXIT','TIMEOUT','ACCESS_DENIED','LAUNCH_FAILED','CAPTURE_FAILED','CLEANUP_FAILED')
+ if($p.Status -cin $statuses){
+  $exitFlag=if($null -eq $p.ExitCode){'NULL'}else{'PRESENT'}
+  $retiredFlag=if(Retired $p){'TRUE'}else{'FALSE'}
+  $outFlag=if($p.StdoutTruncated){'TRUE'}else{'FALSE'};$errFlag=if($p.StderrTruncated){'TRUE'}else{'FALSE'}
+  Write-Output ('DERIVED_PAIR_SUPERVISOR_STATUS_'+$p.Status+'_EXIT_'+$exitFlag+'_RETIRED_'+$retiredFlag+'_STDOUT_TRUNCATED_'+$outFlag+'_STDERR_TRUNCATED_'+$errFlag)
+ }
+ $raw=$p.Stdout
+ $pattern='\ADERIVED_PAIR_CONTROL_DIAG\|(ACQUIRE|PREPARE|PLAN|VERIFY|FINISH|CLEANUP|CLI)\|(ENTRY|OWNER|CONTEXT|ARCHIVE|PATCH|TOOLS_JDK17|TOOLS_ANDROID36|TOOLS_BUILD_TOOLS36|TOOLS_FRAMEWORK64|TOOLS_METADATA|MATERIALIZE_SOURCE|MATERIALIZE_CONSUMER|GENERATED_INPUTS|RUNNER_CLOSURE|ADMISSION_WRITE|LOAD_ADMISSION|REVALIDATE_SOURCE|PLAN_WRITE|PLAN_COMPARE|PROCESS_RECEIPTS|DEPENDENCIES|OUTPUT_INSPECT|EVIDENCE_WRITE|REPORT_WRITE|CLOSED_LAYOUT|STAGING_BINDING|DELETE_FILES|DELETE_DIRS|ACQUIRE_FETCH|ACQUIRE_WRITE)\|(PREDICATE|CANONICAL_PATH|REPARSE|FILE_TYPE|LINK_COUNT|IDENTITY|BYTE_LIMIT|ENTRY_LIMIT|TOTAL_BYTES|NAME|COLLISION|HASH|SCHEMA|NO_CLOBBER|IO_ACCESS|IO_NOT_FOUND|IO_OTHER|ENCODING|ARCHIVE_FORMAT|INTERNAL)\nDERIVED_PAIR_CONTROL_FAILED\n\z'
+ if($script -ceq $script:controller -and (Retired $p) -and $p.ExitCode -eq 1 -and -not $p.StdoutTruncated -and -not $p.StderrTruncated -and $p.Stderr -ceq '' -and $raw.Length -le 256 -and $raw -cnotmatch '[^\x00-\x7f]'){
+  $frame=$raw.Replace("`r`n","`n")
+  $match=[regex]::Match($frame,$pattern)
+  if($match.Success -and $match.Groups[1].Value -ceq $action.ToUpperInvariant()){
+   Write-Output ('DERIVED_PAIR_CONTROL_DIAG|'+$match.Groups[1].Value+'|'+$match.Groups[2].Value+'|'+$match.Groups[3].Value)
+   return
+  }
+ }
+ Write-Output 'DERIVED_PAIR_DIAGNOSTIC_UNAVAILABLE'
+}
 function Python([string]$script,[string[]]$arguments,[string]$marker,[bool]$cleanup=$false){
  $p=RunFixed $script:PythonPath ([string[]](@('-I','-B',$script)+$arguments)) 120000 $false $cleanup
- if(-not (Success $p) -or $p.Stderr -cne '' -or $p.Stdout.Replace("`r`n","`n") -cne ($marker+"`n")){throw 'CONTROL_FAILED'}
+ if(-not (Success $p) -or $p.Stderr -cne '' -or $p.Stdout.Replace("`r`n","`n") -cne ($marker+"`n")){PythonDiagnostic $p $script $arguments[0];throw 'CONTROL_FAILED'}
 }
 function Property([string]$text,[string]$name,[string]$pattern){
  $matches=[regex]::Matches($text,('(?m)^'+[regex]::Escape($name)+'\s*=\s*(.*?)\r?$'))

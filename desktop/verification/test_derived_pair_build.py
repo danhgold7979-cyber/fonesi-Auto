@@ -273,5 +273,65 @@ class DerivedPairBuildTests(unittest.TestCase):
         self.assertEqual(output.read_bytes(),raw)
         self.assertEqual(d.read(output,100),raw)
 
+    def test_closed_diagnostic_predicates_and_no_private_value_leakage(self):
+        from types import SimpleNamespace
+        base,root=self.root();file=root/'PRIVATE_CANARY';file.write_bytes(b'123')
+        cases=[(lambda:d.plain(Path('PRIVATE_CANARY')), 'CANONICAL_PATH'),
+               (lambda:d.read(file,2),'BYTE_LIMIT'),
+               (lambda:d.parse(b'{"PRIVATE_CANARY":1,"PRIVATE_CANARY":2}'),'SCHEMA'),
+               (lambda:d.inventory(root,'ROOT',max_files=0),'ENTRY_LIMIT'),
+               (lambda:d.inventory(root,'ROOT',max_bytes=1),'TOTAL_BYTES')]
+        for invoke,reason in cases:
+            d.checkpoint('TOOLS_JDK17')
+            with self.assertRaises(d.ControlFailure) as caught:invoke()
+            self.assertEqual(d.diagnostic_frame('PREPARE',caught.exception),'DERIVED_PAIR_CONTROL_DIAG|PREPARE|TOOLS_JDK17|'+reason)
+        original=Path.lstat
+        def reparse(path):
+            value=original(path)
+            return SimpleNamespace(st_mode=value.st_mode,st_file_attributes=0x400)
+        with patch.object(Path,'lstat',reparse):
+            with self.assertRaises(d.ControlFailure) as caught:d.plain(file)
+        self.assertEqual(caught.exception.reason,'REPARSE')
+        original_stat=os.fstat
+        def replacement(fd):
+            value=original_stat(fd)
+            return SimpleNamespace(st_dev=value.st_dev,st_ino=value.st_ino+1,st_size=value.st_size,st_mtime_ns=value.st_mtime_ns,st_ctime_ns=value.st_ctime_ns,st_birthtime_ns=getattr(value,'st_birthtime_ns',value.st_ctime_ns),st_nlink=value.st_nlink)
+        with patch.object(os,'fstat',replacement):
+            with self.assertRaises(d.ControlFailure) as caught:d.read(file,10)
+        self.assertEqual(caught.exception.reason,'IDENTITY')
+
+    def test_diagnostic_all_actions_bounded_and_hostile_exception_inert(self):
+        from contextlib import redirect_stdout
+        class Hostile(ValueError):
+            def __str__(self):raise AssertionError('PRIVATE_CANARY')
+            def __repr__(self):raise AssertionError('PRIVATE_CANARY')
+        class HostileValue:
+            def __eq__(self,other):raise AssertionError('PRIVATE_CANARY')
+            def __str__(self):raise AssertionError('PRIVATE_CANARY')
+        error=d.ControlFailure('SOURCE_REJECTED','HASH');error.reason=HostileValue()
+        d.checkpoint('ENTRY')
+        self.assertEqual(d.diagnostic_frame(HostileValue(),error),'DERIVED_PAIR_CONTROL_DIAG|CLI|ENTRY|INTERNAL')
+        with patch.object(d,'_diagnostic_step',HostileValue()):
+            self.assertEqual(d.diagnostic_frame('PREPARE',error),'DERIVED_PAIR_CONTROL_DIAG|PREPARE|ENTRY|INTERNAL')
+        for action,args in [('acquire',['x']),('prepare',['x','y','z']),('plan',['x','javac']),('verify',['x','javac']),('finish',['x','NONE']),('cleanup',['x'])]:
+            output=io.StringIO()
+            with patch.object(d,action,side_effect=Hostile()),redirect_stdout(output):self.assertEqual(d.main([action,*args]),1)
+            self.assertEqual(output.getvalue(),'DERIVED_PAIR_CONTROL_DIAG|'+action.upper()+'|ENTRY|INTERNAL\nDERIVED_PAIR_CONTROL_FAILED\n')
+        for action in d.DIAGNOSTIC_ACTIONS:
+            for step in d.DIAGNOSTIC_STEPS:
+                d.checkpoint(step)
+                for reason in d.DIAGNOSTIC_REASONS:
+                    frame=d.diagnostic_frame(action,d.ControlFailure('SOURCE_REJECTED',reason))
+                    self.assertLessEqual(len(frame.encode('ascii')),256)
+        output=io.StringIO()
+        with patch.object(d,'verify',return_value=True),redirect_stdout(output):self.assertEqual(d.main(['verify','x','javac']),0)
+        self.assertEqual(output.getvalue(),'DERIVED_PAIR_CONTROL_PASS\n')
+
+    def test_isolated_cli_failure_exact_closed_frame(self):
+        import subprocess
+        result=subprocess.run([__import__('sys').executable,'-I','-B',d.__file__,'PRIVATE_CANARY'],capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,1);self.assertEqual(result.stderr,b'')
+        self.assertEqual(result.stdout.replace(b'\r\n',b'\n'),b'DERIVED_PAIR_CONTROL_DIAG|CLI|ENTRY|PREDICATE\nDERIVED_PAIR_CONTROL_FAILED\n')
+
 
 if __name__=='__main__':unittest.main()

@@ -42,8 +42,47 @@ BUILD_CONFIG = b'package com.genymobile.scrcpy;\n\npublic final class BuildConfi
 PACKAGES = ('android/content', 'android/view', 'com/genymobile/scrcpy', *('com/genymobile/scrcpy/' + x for x in ('audio','control','device','display','model','opengl','util','video','wrappers')))
 
 
-def fail(code='SOURCE_REJECTED'):
-    raise ValueError(code if code in FAILURES else 'INTERNAL_FAILURE')
+DIAGNOSTIC_ACTIONS = ('ACQUIRE','PREPARE','PLAN','VERIFY','FINISH','CLEANUP','CLI')
+DIAGNOSTIC_STEPS = ('ENTRY','OWNER','CONTEXT','ARCHIVE','PATCH','TOOLS_JDK17','TOOLS_ANDROID36','TOOLS_BUILD_TOOLS36','TOOLS_FRAMEWORK64','TOOLS_METADATA','MATERIALIZE_SOURCE','MATERIALIZE_CONSUMER','GENERATED_INPUTS','RUNNER_CLOSURE','ADMISSION_WRITE','LOAD_ADMISSION','REVALIDATE_SOURCE','PLAN_WRITE','PLAN_COMPARE','PROCESS_RECEIPTS','DEPENDENCIES','OUTPUT_INSPECT','EVIDENCE_WRITE','REPORT_WRITE','CLOSED_LAYOUT','STAGING_BINDING','DELETE_FILES','DELETE_DIRS','ACQUIRE_FETCH','ACQUIRE_WRITE')
+DIAGNOSTIC_REASONS = ('PREDICATE','CANONICAL_PATH','REPARSE','FILE_TYPE','LINK_COUNT','IDENTITY','BYTE_LIMIT','ENTRY_LIMIT','TOTAL_BYTES','NAME','COLLISION','HASH','SCHEMA','NO_CLOBBER','IO_ACCESS','IO_NOT_FOUND','IO_OTHER','ENCODING','ARCHIVE_FORMAT','INTERNAL')
+_diagnostic_step = 'ENTRY'
+
+
+def checkpoint(step):
+    global _diagnostic_step
+    if type(step) is not str or step not in DIAGNOSTIC_STEPS:raise ValueError('INTERNAL_FAILURE')
+    _diagnostic_step=step
+
+
+class ControlFailure(ValueError):
+    def __init__(self,code,reason):
+        super().__init__(code)
+        self.code=code
+        self.reason=reason
+
+
+def fail(code='SOURCE_REJECTED',reason='PREDICATE'):
+    raise ControlFailure(code if type(code) is str and code in FAILURES else 'INTERNAL_FAILURE',
+                         reason if type(reason) is str and reason in DIAGNOSTIC_REASONS else 'INTERNAL')
+
+
+def diagnostic_reason(error):
+    # Never inspect exception text, filenames, errno strings or formatting hooks.
+    kind=type(error)
+    if kind is ControlFailure:return error.reason if type(error.reason) is str and error.reason in DIAGNOSTIC_REASONS else 'INTERNAL'
+    if kind is FileExistsError:return 'NO_CLOBBER'
+    if kind is PermissionError:return 'IO_ACCESS'
+    if kind is FileNotFoundError:return 'IO_NOT_FOUND'
+    if kind in (UnicodeError,UnicodeDecodeError,UnicodeEncodeError):return 'ENCODING'
+    if kind in (zipfile.BadZipFile,tarfile.TarError,tarfile.ReadError,struct.error):return 'ARCHIVE_FORMAT'
+    if kind is OSError:return 'IO_OTHER'
+    return 'INTERNAL'
+
+
+def diagnostic_frame(action,error):
+    action=action if type(action) is str and action in DIAGNOSTIC_ACTIONS else 'CLI'
+    step=_diagnostic_step if type(_diagnostic_step) is str and _diagnostic_step in DIAGNOSTIC_STEPS else 'ENTRY'
+    return 'DERIVED_PAIR_CONTROL_DIAG|'+action+'|'+step+'|'+diagnostic_reason(error)
 
 
 def sha(raw): return hashlib.sha256(raw).hexdigest()
@@ -53,19 +92,19 @@ def canonical(value): return json.dumps(value, ensure_ascii=True, separators=(',
 def unique(pairs):
     value = {}
     for key, item in pairs:
-        if key in value: fail()
+        if key in value: fail(reason='SCHEMA')
         value[key] = item
     return value
 
 
 def parse(raw, maximum=262144):
-    if type(raw) is not bytes or not 0 < len(raw) <= maximum: fail()
-    try: return json.loads(raw.decode('utf-8'), object_pairs_hook=unique, parse_constant=lambda _:fail())
-    except (UnicodeError, RecursionError, json.JSONDecodeError): fail()
+    if type(raw) is not bytes or not 0 < len(raw) <= maximum: fail(reason='BYTE_LIMIT')
+    try: return json.loads(raw.decode('utf-8'), object_pairs_hook=unique, parse_constant=lambda _:fail(reason='SCHEMA'))
+    except (UnicodeError, RecursionError, json.JSONDecodeError): fail(reason='SCHEMA')
 
 
 def exact(value, keys):
-    if type(value) is not dict or tuple(value) != tuple(keys): fail()
+    if type(value) is not dict or tuple(value) != tuple(keys): fail(reason='SCHEMA')
 
 
 def hexhash(value, size=64):
@@ -73,12 +112,12 @@ def hexhash(value, size=64):
 
 
 def relative(value):
-    if type(value) is not str or not 0 < len(value) <= 512 or not value.isascii() or '\\' in value or ':' in value: fail()
+    if type(value) is not str or not 0 < len(value) <= 512 or not value.isascii() or '\\' in value or ':' in value: fail(reason='NAME')
     parts = value.split('/')
-    if len(parts) > 16: fail()
+    if len(parts) > 16: fail(reason='NAME')
     for part in parts:
-        if not part or part in ('.','..') or part[-1] in '. ' or any(ord(c)<32 or ord(c)==127 for c in part): fail()
-        if re.fullmatch(r'(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?',part,re.I): fail()
+        if not part or part in ('.','..') or part[-1] in '. ' or any(ord(c)<32 or ord(c)==127 for c in part): fail(reason='NAME')
+        if re.fullmatch(r'(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?',part,re.I): fail(reason='NAME')
     return value
 
 
@@ -101,50 +140,54 @@ def cross_identity(s):
 
 def plain(path, directory=False):
     path=Path(path)
-    if not path.is_absolute() or path.resolve()!=path: fail()
+    if not path.is_absolute() or path.resolve()!=path: fail(reason='CANONICAL_PATH')
     s=path.lstat()
-    if path.is_symlink() or getattr(s,'st_file_attributes',0)&0x400 or not (stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode)): fail()
+    if path.is_symlink() or getattr(s,'st_file_attributes',0)&0x400:fail(reason='REPARSE')
+    if not (stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode)):fail(reason='FILE_TYPE')
     for parent in path.parents:
         ps=parent.lstat()
-        if parent.is_symlink() or getattr(ps,'st_file_attributes',0)&0x400 or not stat.S_ISDIR(ps.st_mode): fail()
+        if parent.is_symlink() or getattr(ps,'st_file_attributes',0)&0x400:fail(reason='REPARSE')
+        if not stat.S_ISDIR(ps.st_mode):fail(reason='FILE_TYPE')
     return s
 
 
 def read(path, maximum, owned=True):
     path=Path(path); initial=plain(path)
-    if initial.st_size > maximum or (owned and initial.st_nlink!=1): fail()
+    if initial.st_size > maximum:fail(reason='BYTE_LIMIT')
+    if owned and initial.st_nlink!=1:fail(reason='LINK_COUNT')
     fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0))
     try:
         before=os.fstat(fd)
-        if cross_identity(before)!=cross_identity(initial): fail()
+        if cross_identity(before)!=cross_identity(initial): fail(reason='IDENTITY')
         data=bytearray()
         while len(data)<=before.st_size:
             chunk=os.read(fd,min(65536,before.st_size+1-len(data)))
             if not chunk: break
             data.extend(chunk)
-        if len(data)!=before.st_size or identity(before)!=identity(os.fstat(fd)) or identity(initial)!=identity(plain(path)): fail()
+        if len(data)!=before.st_size or identity(before)!=identity(os.fstat(fd)) or identity(initial)!=identity(plain(path)): fail(reason='IDENTITY')
         return bytes(data)
     finally: os.close(fd)
 
 
 def digest_file(path, maximum, owned=False):
     s=plain(path)
-    if s.st_size>maximum or (owned and s.st_nlink!=1): fail()
+    if s.st_size>maximum:fail(reason='BYTE_LIMIT')
+    if owned and s.st_nlink!=1:fail(reason='LINK_COUNT')
     fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0)); h=hashlib.sha256(); count=0
     try:
         before=os.fstat(fd)
-        if cross_identity(s)!=cross_identity(before): fail()
+        if cross_identity(s)!=cross_identity(before): fail(reason='IDENTITY')
         while count<=s.st_size:
             b=os.read(fd,min(65536,s.st_size+1-count))
             if not b: break
             count+=len(b);h.update(b)
-        if count!=s.st_size or identity(before)!=identity(os.fstat(fd)) or identity(s)!=identity(plain(path)): fail()
+        if count!=s.st_size or identity(before)!=identity(os.fstat(fd)) or identity(s)!=identity(plain(path)): fail(reason='IDENTITY')
     finally: os.close(fd)
     return {'bytes':s.st_size,'sha256':h.hexdigest()}
 
 
 def write_new(path, raw, maximum):
-    if type(raw) is not bytes or len(raw)>maximum: fail()
+    if type(raw) is not bytes or len(raw)>maximum: fail(reason='BYTE_LIMIT')
     plain(Path(path).parent,True)
     fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0),0o600)
     try:
@@ -155,7 +198,7 @@ def write_new(path, raw, maximum):
             view=view[n:]
         os.fsync(fd)
     finally: os.close(fd)
-    if read(path,maximum)!=raw: fail()
+    if read(path,maximum)!=raw: fail(reason='HASH')
 
 
 def write_json(path,value,maximum=262144): write_new(path,canonical(value),maximum)
@@ -178,13 +221,14 @@ def inventory(root, namespace, max_files=10000, max_bytes=2*1024**3, per_file=25
             child=Path(parent)/name; rel=relative(child.relative_to(root).as_posix());fold=rel.lower();count+=1
             if combined_entries is not None:
                 combined_entries[0]+=1
-                if combined_entries[0]>max_files:fail('TOOLS_REJECTED')
-            if count>max_files or fold in seen: fail()
+                if combined_entries[0]>max_files:fail('TOOLS_REJECTED','ENTRY_LIMIT')
+            if count>max_files:fail(reason='ENTRY_LIMIT')
+            if fold in seen:fail(reason='COLLISION')
             seen.add(fold)
             if name in dirs: plain(child,True)
             else:
                 measured=digest_file(child,per_file,owned);total+=measured['bytes']
-                if total>max_bytes: fail()
+                if total>max_bytes: fail(reason='TOTAL_BYTES')
                 rows.append({'namespace':namespace,'path':rel,**measured})
     return sorted(rows,key=lambda r:(r['namespace'],r['path']))
 
@@ -192,13 +236,14 @@ def inventory(root, namespace, max_files=10000, max_bytes=2*1024**3, per_file=25
 def packet():
     full_raw=read(PACKET/'verified-full-source-manifest.json',100000)
     selected_raw=read(PACKET/'verified-selected-source-manifest.json',32768)
-    if sha(full_raw)!=FULL_SHA or sha(selected_raw)!=SELECTED_SHA: fail()
+    if sha(full_raw)!=FULL_SHA or sha(selected_raw)!=SELECTED_SHA: fail(reason='HASH')
     full=parse(full_raw);selected=parse(selected_raw)
     if len(full['files'])!=387 or len(selected['files'])!=95: fail()
     return full,selected
 
 
 def inspect_archive(path):
+    checkpoint('ARCHIVE')
     raw=read(path,4*1024**2)
     if len(raw)!=ARCHIVE_BYTES or sha(raw)!=ARCHIVE_SHA: fail()
     decoder=zlib.decompressobj(31);tar=decoder.decompress(raw,4*1024**2+1)
@@ -230,6 +275,7 @@ def inspect_archive(path):
 
 
 def apply_patch(files):
+    checkpoint('PATCH')
     provenance=parse(read(PACKET/'source-provenance.json',32768));patch=read(PACKET/'auto-video-nonce-v1.patch',65536)
     if sha(patch)!=provenance['patchSha256'] or provenance['upstreamCommit']!=COMMIT: fail('PATCH_REJECTED')
     lines=patch.decode('utf-8').splitlines(keepends=True);i=0;changed=set();result=dict(files)
@@ -269,6 +315,7 @@ def owner(root):
 
 
 def context_value(path):
+    checkpoint('CONTEXT')
     c=parse(read(path,8192));exact(c,CONTEXT_KEYS)
     if type(c['version']) is not int or c['version']!=1 or not hexhash(c['autoCommit'],40) or not hexhash(c['autoTree'],40): fail()
     if re.fullmatch(r'win22/[0-9.]{1,58}',c['runnerImage']) is None or c['jdkVendor'] not in ('MICROSOFT','TEMURIN','ORACLE','OTHER'): fail('TOOLS_REJECTED')
@@ -283,10 +330,13 @@ def context_value(path):
 def tools_snapshot(c):
     rows=[];count=0;total=0;entries=[0]
     for ns,key in TOOL_KEYS.items():
+        checkpoint('TOOLS_'+ns)
         root=Path(c[key]);part=inventory(root,ns,combined_entries=entries);rows.extend(part);count+=len(part);total+=sum(r['bytes'] for r in part)
-        if count>10000 or total>2*1024**3:fail('TOOLS_REJECTED')
+        if count>10000:fail('TOOLS_REJECTED','ENTRY_LIMIT')
+        if total>2*1024**3:fail('TOOLS_REJECTED','TOTAL_BYTES')
         names={r['path'] for r in part}
         if not set(TOOL_FILES[ns])<=names:fail('TOOLS_UNAVAILABLE')
+    checkpoint('TOOLS_METADATA')
     release=read(Path(c['jdkRoot'])/'release',65536,False).decode('utf-8')
     if 'JAVA_VERSION="'+c['jdkVersion']+'"' not in release.splitlines():fail('TOOLS_REJECTED')
     def props(file):
@@ -303,6 +353,7 @@ def tools_snapshot(c):
 
 
 def runner_closure():
+    checkpoint('RUNNER_CLOSURE')
     paths=('verification/derived_pair_build.py','verification/validate_derived_pair_build.py',
            'verification/Invoke-DerivedPairBuild.ps1','verification/WindowsBoundary.psm1',
            'verification/OwnedFiles.psm1',*NATIVE)
@@ -311,19 +362,23 @@ def runner_closure():
 
 
 def prepare(root,archive,context):
+    checkpoint('OWNER')
     root=Path(root);token,ident=owner(root)
     permitted={'.owner'}
     if Path(archive)==root/'upstream.tar.gz':permitted.add('upstream.tar.gz')
     if {p.name for p in root.iterdir()}!=permitted:fail()
     c=context_value(context);files,readme=inspect_archive(archive);derived,patchsha=apply_patch(files);tools=tools_snapshot(c)
+    checkpoint('MATERIALIZE_SOURCE')
     for name in ('source','generated','classes','output','private','evidence'): (root/name).mkdir(mode=0o700)
     for name in ('java-home','java-tmp'): (root/'private'/name).mkdir(mode=0o700)
     write_json(root/'private/context.json',c,8192)
     for name,data in derived.items():
         target=root/'source'/name;ensure_dirs(root/'source',str(Path(name).parent).replace('\\','/')) if '/' in name else None
         write_new(target,data,65536)
+    checkpoint('MATERIALIZE_CONSUMER')
     for name in NATIVE:
         target=root/'source'/'consumer'/name;ensure_dirs(root/'source','consumer/native');write_new(target,read(BASE/name,1048576),1048576)
+    checkpoint('GENERATED_INPUTS')
     ensure_dirs(root/'generated','com/genymobile/scrcpy');write_new(root/'generated/com/genymobile/scrcpy/BuildConfig.java',BUILD_CONFIG,4096)
     write_new(root/'private/README.md',readme,262144)
     _,selected=packet();upstream=[{k:r[k] for k in ('path','bytes','gitBlobSha1','sha256')} for r in selected['files']]
@@ -332,12 +387,14 @@ def prepare(root,archive,context):
     effective.sort(key=lambda r:(r['namespace'],r['path']))
     source={'version':1,'upstreamCommit':COMMIT,'upstreamTree':TREE,'autoCommit':c['autoCommit'],'autoTree':c['autoTree'],'archiveSha256':ARCHIVE_SHA,'selectionManifestSha256':SELECTED_SHA,'patchSha256':patchsha,'upstream':upstream,'effective':effective}
     state={'version':1,'owner':token,'rootIdentity':list(ident),'context':c,'source':source,'tools':tools,'runnerClosure':runner_closure()}
+    checkpoint('ADMISSION_WRITE')
     write_json(root/'private/admission.json',state,9*1024**2)
     write_json(root/'evidence/source.json',source,EVIDENCE_CAPS['source.json']);write_json(root/'evidence/tools.json',tools,EVIDENCE_CAPS['tools.json'])
     return state
 
 
 def load(root):
+    checkpoint('LOAD_ADMISSION')
     root=Path(root);token,ident=owner(root);s=parse(read(root/'private/admission.json',9*1024**2),9*1024**2)
     if s['owner']!=token or s['rootIdentity']!=list(ident):fail()
     return s
@@ -346,6 +403,7 @@ def load(root):
 def revalidate(root):
     root=Path(root);s=load(root)
     if runner_closure()!=s['runnerClosure']:fail('SOURCE_REJECTED')
+    checkpoint('REVALIDATE_SOURCE')
     expected=s['source']['effective'];actual=[]
     for r in expected:
         file=root/'source'/('consumer' if r['namespace']=='CONSUMER' else '')/r['path'];actual.append({'namespace':r['namespace'],'path':r['path'],**digest_file(file,1048576,True)})
@@ -369,6 +427,7 @@ def retired(p):return p['status'] in ('SUCCESS','EMPTY_OUTPUT','NONZERO_EXIT') a
 
 
 def generated(root):
+    checkpoint('GENERATED_INPUTS')
     rows=inventory(Path(root)/'generated','GENERATED',2048,32*1024**2,32*1024**2,True)+inventory(Path(root)/'classes','CLASSES',2048,32*1024**2,32*1024**2,True)
     if len(rows)>2048 or sum(r['bytes'] for r in rows)>32*1024**2:fail('OUTPUT_REJECTED')
     return {'version':1,'files':sorted(rows,key=lambda r:(r['namespace'],r['path']))}
@@ -420,9 +479,11 @@ def make_plan(root,stage,state):
 def plan(root,stage):
     root=Path(root);s=revalidate(root)
     if stage not in STAGES:fail()
+    checkpoint('PROCESS_RECEIPTS')
     for prior in STAGES[:STAGES.index(stage)]:
         if not successful(process_value(read(root/('private/process-'+prior+'.json'),4096))):fail('COMPILE_FAILED')
     private,public=make_plan(root,stage,s)
+    checkpoint('PLAN_WRITE')
     write_json(root/('private/plan-'+stage+'.json'),private)
     write_json(root/('private/command-'+stage+'.json'),public)
     return private
@@ -430,6 +491,7 @@ def plan(root,stage):
 
 def verify(root,stage):
     s=revalidate(root)
+    checkpoint('PLAN_COMPARE')
     stored=parse(read(Path(root)/('private/plan-'+stage+'.json'),262144))
     if make_plan(root,stage,s)[0]!=stored:fail('COMPILE_FAILED')
     return True
@@ -513,6 +575,7 @@ def inspect_pe(data):
 
 
 def inspect_outputs(root):
+    checkpoint('OUTPUT_INSPECT')
     root=Path(root);raw=read(root/'output/classes.zip',8388608)
     with zipfile.ZipFile(io.BytesIO(raw)) as z:
         infos=z.infolist()
@@ -530,6 +593,7 @@ def inspect_outputs(root):
 
 
 def dependencies(state,root):
+    checkpoint('DEPENDENCIES')
     rows=[]
     for row in state['source']['effective']:
         if row['namespace']=='SERVER':
@@ -554,6 +618,7 @@ def blank_report(context=None):
 
 def closed_layout(root,state):
     """Only fixed producer names and admitted package outputs can be retired."""
+    checkpoint('CLOSED_LAYOUT')
     root=Path(root)
     allowed={'.owner','upstream.tar.gz','private/context.json','private/admission.json','private/README.md','private/report.json','private/cleanup-inventory.json'}
     allowed.update('source/'+('consumer/' if r['namespace']=='CONSUMER' else '')+r['path'] for r in state['source']['effective'])
@@ -580,6 +645,7 @@ def finish(root,failure='NONE'):
     root=Path(root)
     if failure not in ('NONE',*FAILURES):fail()
     state=load(root);report=blank_report(state['context']);report['failure']=None if failure=='NONE' else failure
+    checkpoint('PROCESS_RECEIPTS')
     for stage in STAGES:
         file=root/('private/process-'+stage+'.json')
         if file.exists():report[stage]=process_value(read(file,4096))
@@ -599,6 +665,7 @@ def finish(root,failure='NONE'):
                 if stored!=make_plan(root,stage,state)[1]:fail('SOURCE_REJECTED')
                 commands['stages'].append(stored)
             outputs,jar,dll=inspect_outputs(root)
+            checkpoint('EVIDENCE_WRITE')
             for name,value in (('generated.json',gen),('commands.json',commands),('outputs.json',outputs)):write_json(root/'evidence'/name,value,EVIDENCE_CAPS[name])
             report.update(generatedInputsSha256=sha(canonical(gen)),buildCommandSha256=sha(canonical(commands)),outputsManifestSha256=sha(canonical(outputs)))
             server=outputs['server'];consumer=outputs['consumer'];report['serverOutput']={'bytes':server['bytes'],'sha256':server['sha256'],'dexBytes':server['entries'][0]['bytes'],'dexSha256':server['entries'][0]['sha256']};report['consumerOutput']={k:consumer[k] for k in ('bytes','sha256')}
@@ -609,8 +676,9 @@ def finish(root,failure='NONE'):
             report.update(serverBuildManifestSha256=sha(canonical(sb)),consumerBuildManifestSha256=sha(canonical(cb)),outputInspected=True)
             write_new(root/'evidence/server.jar',jar,8388608);write_new(root/'evidence/RetainedVideoConsumer.dll',dll,8388608)
     except (ValueError,OSError,KeyError,UnicodeError,zipfile.BadZipFile,struct.error) as error:
-        report['failure']=str(error) if str(error) in FAILURES else 'OUTPUT_REJECTED'
+        report['failure']=error.code if type(error) is ControlFailure else 'OUTPUT_REJECTED'
     if any(p is not None and not retired(p) for p in (report[stage] for stage in STAGES)):report['failure']='UNRETIRED'
+    checkpoint('REPORT_WRITE')
     write_json(root/'private/report.json',report,65536)
     # Seal an exact physical inventory for later cleanup; no broad unknown-file deletion.
     sealed=closed_layout(root,state)
@@ -629,6 +697,7 @@ def cleanup(root):
     manifests={name:read(root/'evidence'/name,cap) for name,cap in EVIDENCE_CAPS.items() if (root/'evidence'/name).exists()}
     validate_report(report,manifests)
     from validate_derived_pair_build import staging, base_path
+    checkpoint('STAGING_BINDING')
     base=base_path();binding,context,staged=staging(base)
     if binding['scratchRoot']!=str(root) or binding['owner']!=state['owner'] or context!=state['context'] or staged!=report:fail('CLEANUP_FAILED')
     if any(read(base/'upload'/name,EVIDENCE_CAPS[name])!=raw for name,raw in manifests.items()):fail('CLEANUP_FAILED')
@@ -644,12 +713,14 @@ def cleanup(root):
     known_dirs.update(('private/java-home','private/java-tmp'))
     found_dirs={Path(p).relative_to(root).as_posix() for p,_,_ in os.walk(root)}
     if not found_dirs<=known_dirs:fail('CLEANUP_FAILED')
+    checkpoint('DELETE_FILES')
     for r in actual:
         if r['path']=='.owner':continue
         file=root/r['path']
         if digest_file(file,32*1024**2,True)!={k:r[k] for k in ('bytes','sha256')}:fail('CLEANUP_FAILED')
         if owner(root)!=(state['owner'],tuple(state['rootIdentity'])):fail('CLEANUP_FAILED')
         file.unlink()
+    checkpoint('DELETE_DIRS')
     for directory in sorted((p for p in root.rglob('*') if p.is_dir()),key=lambda p:len(p.parts),reverse=True):
         if owner(root)!=(state['owner'],tuple(state['rootIdentity'])):fail('CLEANUP_FAILED')
         plain(directory,True);directory.rmdir()
@@ -663,8 +734,10 @@ class NoRedirect(HTTPRedirectHandler):
 
 def acquire(root):
     import time
+    checkpoint('OWNER')
     root=Path(root);owner(root)
     if {p.name for p in root.iterdir()}!={'.owner'}:fail()
+    checkpoint('ACQUIRE_FETCH')
     begin=time.monotonic();chunks=[];size=0
     with build_opener(NoRedirect()).open(Request(URL,headers={'User-Agent':'Fonesi-Auto-source-build'}),timeout=30) as response:
         if response.status!=200 or response.geturl()!=URL:fail()
@@ -676,12 +749,15 @@ def acquire(root):
             if size>ARCHIVE_BYTES:fail()
     raw=b''.join(chunks)
     if len(raw)!=ARCHIVE_BYTES or sha(raw)!=ARCHIVE_SHA:fail()
+    checkpoint('ACQUIRE_WRITE')
     owner(root);write_new(root/'upstream.tar.gz',raw,ARCHIVE_BYTES)
     return True
 
 
 def main(argv=None):
     args=sys.argv[1:] if argv is None else argv
+    checkpoint('ENTRY')
+    action=args[0].upper() if args and type(args[0]) is str and args[0] in ('acquire','prepare','plan','verify','finish','cleanup') else 'CLI'
     try:
         if len(args)==2 and args[0]=='acquire':acquire(Path(args[1]))
         elif len(args)==4 and args[0]=='prepare':prepare(Path(args[1]),Path(args[2]),Path(args[3]))
@@ -691,7 +767,8 @@ def main(argv=None):
         elif len(args)==2 and args[0]=='cleanup':cleanup(Path(args[1]))
         else:fail('INTERNAL_FAILURE')
         print('DERIVED_PAIR_CONTROL_PASS');return 0
-    except (OSError,ValueError,KeyError,TypeError,UnicodeError,OverflowError,RecursionError,struct.error,zipfile.BadZipFile,tarfile.TarError):
+    except (OSError,ValueError,KeyError,TypeError,UnicodeError,OverflowError,RecursionError,struct.error,zipfile.BadZipFile,tarfile.TarError) as error:
+        print(diagnostic_frame(action,error))
         print('DERIVED_PAIR_CONTROL_FAILED');return 1
 
 
