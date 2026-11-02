@@ -135,3 +135,33 @@ fixed canonical/alias witness without path, and failure-only named synthetic
 suite diagnostics with30s/64KiB bounds, fixed code allowlist/case ordinals, no raw
 stdout/stderr, and unconditional failed exit. No full-source bypass or relaxed
 runtime admission. Targeted20/20 PASS; actual repeated Windows result pending.
+
+## Second hosted run — source recovery, generic native-step failure
+
+Repair public95eb02f97575541144ebe36a6e00753e4b617cc6 is tree-identical to local
+72b9de5 (d0163c8b5d571e1bc36356ce57479de66f0b2f2e), normal fast-forward from
+9514b308. [Run41474556275](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41474556275),
+job125376588900, is terminal FAILURE. Windows source gate **PASS1738/1738** plus
+DESKTOP_SOURCE_CHECK_PASS at15:47:16 UTC. This runner explicitly emitted
+SCHEDULE_TEMP_ALIAS, consistent with the retained fixture-alias hypothesis and
+successful fixture recovery; no retrospective first-run trace is fabricated.
+
+The dedicated native observation step then emitted only generic
+SCHEDULE_RUNTIME_OBSERVATION_FAILED at15:47:28; artifact upload SKIPPED. Its exact
+failure phase, whether observer launch was requested, and child retirement cannot
+be established from that generic record. No actual tuple/report or native PASS.
+The hosted job completed and cleanup finished; do not reopen/reuse its owned root.
+
+Reviewed diagnostic continuation changes verification code only: fixed wrapper
+stage and observer REQUESTED/NOT_REQUESTED markers (not a fabricated 'started'
+claim), separate actual child retirement from capture completeness, and fixed
+allowlisted child/controller/observer failure markers. Success JSON and runtime
+admission/ownership/cleanup limits stay unchanged. No raw exception, path or
+stdout/stderr is published. Independent21/21 targeted PASS and delta CLEAR;
+normal source aggregate result recorded below. Any repeat is a new owned hosted
+environment after terminal prior job, never overlapping or retrying its private root.
+
+Final diagnostic continuation normal aggregate **PASS1739/1739** and
+DESKTOP_SOURCE_CHECK_PASS at2026-11-02 15:54 UTC; all standard source/build stages
+passed uninterrupted. Independent diagnostic delta CLEAR. Actual fresh hosted
+observation remains pending and is not substituted by this Linux evidence.

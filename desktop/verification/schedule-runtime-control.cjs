@@ -27,6 +27,7 @@ const SOURCE_FILES = Object.freeze([
   'desktop/package-lock.json',
   'tools/phase-00/HostProbeNative.cs',
 ]);
+let phase = 'HOST';
 const fail = () => {
   throw new Error('SCHEDULE_RUNTIME_CONTROL_REJECTED');
 };
@@ -122,14 +123,17 @@ function copyTree(source, target, expected) {
     fail();
 }
 function stage(root, head, tree) {
-  const token = owned(root),
-    source = facts();
+  phase = 'OWNED';
+  const token = owned(root);
+  phase = 'SOURCE';
+  const source = facts();
   if (
     source.head !== head ||
     source.tree !== tree ||
     !equal(read(path.join(root, 'install.json'), 1024), { version: 1, installedThisRun: true })
   )
     fail();
+  phase = 'RUNTIME';
   const dist = path.join(desktop, 'node_modules/electron/dist');
   if (plain(path.join(dist, 'version'), false).size > 64) fail();
   if (fs.readFileSync(path.join(dist, 'version'), 'utf8').trim().replace(/^v/, '') !== '45.1.0')
@@ -143,7 +147,9 @@ function stage(root, head, tree) {
   for (const name of ['electron.exe', 'LICENSE', 'LICENSES.chromium.html'])
     if (!runtime.files.some((f) => f.path === name && f.bytes > 0)) fail();
   const packageRoot = path.join(root, 'package');
+  phase = 'COPY';
   copyTree(dist, packageRoot, runtime);
+  phase = 'APP';
   const app = path.join(packageRoot, 'resources', 'app');
   fs.mkdirSync(app, { recursive: true });
   const observerSha256 = digest(path.join(__dirname, 'schedule-runtime-observer.cjs')).sha256;
@@ -167,6 +173,7 @@ function stage(root, head, tree) {
     16384,
   );
   const packaged = boundedInventory(packageRoot);
+  phase = 'STATE';
   write(path.join(root, 'state.json'), {
     version: 1,
     token,
@@ -231,6 +238,7 @@ function decodeCapture(value) {
   return { ...rest, stdout: decode(stdoutBase64), stderr: decode(stderrBase64) };
 }
 function validate(root) {
+  phase = 'OWNED';
   const token = owned(root),
     state = read(path.join(root, 'state.json'));
   record(state, [
@@ -255,6 +263,7 @@ function validate(root) {
     !equal(state.packaged, boundedInventory(path.join(root, 'package')))
   )
     fail();
+  phase = 'CAPTURE';
   const observation = validateCapture(decodeCapture(read(path.join(root, 'capture.json'), 131072)));
   const exe = state.runtime.files.find((f) => f.path === 'electron.exe');
   if (!exe) fail();
@@ -276,6 +285,7 @@ function validate(root) {
     observation,
     disposition: 'OBSERVED_NOT_ADMITTED',
   };
+  phase = 'REPORT';
   write(path.join(root, 'report.json'), report, 32768);
   return 'SCHEDULE_RUNTIME_VALIDATED';
 }
@@ -292,7 +302,18 @@ if (require.main === module) {
           ? validate(root)
           : fail();
     console.log(out);
-  } catch {
+  } catch (error) {
+    console.log('SCHEDULE_CONTROL_STAGE_' + phase);
+    const reason = [
+      'SCHEDULE_RUNTIME_REJECTED',
+      'SCHEDULE_RUNTIME_CONTROL_REJECTED',
+      'PACKAGE_REJECTED',
+      'ENOENT',
+      'EINVAL',
+      'EPERM',
+      'EACCES',
+    ].find((code) => error?.code === code || error?.message === code);
+    if (reason) console.log('SCHEDULE_CONTROL_REASON_' + reason);
     console.log('SCHEDULE_RUNTIME_CONTROL_FAILED');
     process.exitCode = 1;
   }

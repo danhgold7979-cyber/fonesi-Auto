@@ -17,6 +17,7 @@ const plain = (p, directory) => {
     reject();
   return s;
 };
+let phase = 'HOST';
 const timer = setTimeout(() => app.exit(1), 5000);
 try {
   if (
@@ -33,6 +34,7 @@ try {
   plain(run, true);
   plain(packageRoot, true);
   if (path.resolve(__dirname) !== path.join(packageRoot, 'resources', 'app')) reject();
+  phase = 'CONTROL';
   const file = path.join(__dirname, 'control.json');
   if (plain(file, false).size > 16384) reject();
   const c = canonical(fs.readFileSync(file, 'utf8'), 16384);
@@ -58,6 +60,7 @@ try {
     )
       reject();
   }
+  phase = 'PROFILE';
   const profile = path.join(run, 'fonesi-auto-foundation-source');
   plain(profile, true);
   const profileMarker = path.join(profile, '.owner');
@@ -66,12 +69,14 @@ try {
     fs.readFileSync(profileMarker, 'utf8') !== 'FONESI_AUTO_FOUNDATION_PROFILE_V1\n'
   )
     reject();
+  phase = 'PATHS';
   for (const key of ['userData', 'sessionData', 'logs', 'crashDumps']) {
     const target = path.join(profile, key);
     fs.mkdirSync(target);
     plain(target, true);
     app.setPath(key, target);
   }
+  phase = 'OBSERVATION';
   const result = capture(
     process.versions,
     process.env,
@@ -86,6 +91,7 @@ try {
   app.exit(0);
 } catch {
   clearTimeout(timer);
+  fs.writeSync(2, 'SCHEDULE_OBSERVER_STAGE_' + phase + '\n');
   fs.writeSync(2, 'SCHEDULE_RUNTIME_OBSERVATION_FAILED\n');
   app.exit(1);
 }

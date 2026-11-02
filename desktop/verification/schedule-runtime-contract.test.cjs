@@ -237,7 +237,10 @@ test('CLI refuses unknown command with fixed output and no staging', () => {
     },
   );
   assert.equal(result.status, 1);
-  assert.equal(result.stdout, 'SCHEDULE_RUNTIME_CONTROL_FAILED\n');
+  assert.equal(
+    result.stdout,
+    'SCHEDULE_CONTROL_STAGE_HOST\nSCHEDULE_CONTROL_REASON_SCHEDULE_RUNTIME_CONTROL_REJECTED\nSCHEDULE_RUNTIME_CONTROL_FAILED\n',
+  );
 });
 test('observation entry has no production imports window navigation network database or device execution', () => {
   const source = fs.readFileSync(path.join(__dirname, 'schedule-runtime-observer.cjs'), 'utf8');
@@ -406,7 +409,13 @@ test('actual observer refuses wrong owner source tamper profile marker arguments
     temporary((root) => {
       const result = observerFixture(root, mutate);
       assert.deepEqual(result.exits, [1]);
-      assert.deepEqual(result.output, [{ fd: 2, raw: 'SCHEDULE_RUNTIME_OBSERVATION_FAILED\n' }]);
+      assert.equal(result.output.length, 2);
+      assert.equal(result.output[0].fd, 2);
+      assert.match(
+        result.output[0].raw,
+        /^SCHEDULE_OBSERVER_STAGE_(HOST|CONTROL|PROFILE|PATHS|OBSERVATION)\n$/,
+      );
+      assert.deepEqual(result.output[1], { fd: 2, raw: 'SCHEDULE_RUNTIME_OBSERVATION_FAILED\n' });
     });
 });
 
@@ -565,3 +574,20 @@ test('synthetic fixture inputs use canonical temporary paths without relaxing pr
     fs.symlinkSync(source, alias, process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => boundedInventory(alias));
   }));
+
+test('diagnostic failure markers disclose only fixed stages and preserve retirement vs capture distinction', () => {
+  const wrapper = fs.readFileSync(path.join(__dirname, 'Invoke-ScheduleRuntime.ps1'), 'utf8');
+  assert.match(wrapper, /\$allChildrenRetired=\$observed.CleanupComplete/);
+  assert.match(wrapper, /SCHEDULE_OBSERVER_NOT_REQUESTED/);
+  assert.match(
+    wrapper,
+    /if\(\$allChildrenRetired\)\{Write-Output 'SCHEDULE_OWNED_PROCESSES_RETIRED'/,
+  );
+  assert.doesNotMatch(
+    wrapper,
+    /Write-Output \$_|Write-Output \$reason|Write-Output \$Probe\.(Stdout|Stderr)/,
+  );
+  const observer = fs.readFileSync(path.join(__dirname, 'schedule-runtime-observer.cjs'), 'utf8');
+  assert.match(observer, /SCHEDULE_OBSERVER_STAGE_/);
+  assert.doesNotMatch(observer, /writeSync\(2, error|writeSync\(2, JSON/);
+});
