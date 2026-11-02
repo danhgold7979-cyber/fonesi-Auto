@@ -18,6 +18,7 @@ const nativeNames = [
   'owned-discovery-managed-development',
   'owned-metadata-managed-development',
   'owned-input-managed-development',
+  'owned-video-decoder-development',
   'owned-video-managed-development',
   'derived-pair-compile-development',
   'derived-notice-evidence-development',
@@ -53,7 +54,7 @@ function validate(rawSource) {
     'node foundation/scripts/verify-bootstrap.mjs $npmVersion',
     'npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache',
     'node foundation/scripts/check.mjs $npmVersion',
-    "discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==375;",
+    "discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==383;",
     'r.wasSuccessful() and not r.skipped',
     marker,
     "Write-Output 'SOURCE_JOB_NO_ADB_EXECUTION'",
@@ -72,6 +73,20 @@ function validate(rawSource) {
         condition,
         "github.ref == 'refs/heads/phase-02' && github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)",
       );
+    } else if (jobs[i][1] === 'owned-video-decoder-development') {
+      assert.equal(
+        condition,
+        "github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_video_decoder == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[video-decoder]')))",
+      );
+      assert.match(body, / {4}needs: windows-software-only\n/);
+      assert.match(
+        source,
+        / {6}run_video_decoder:\n {8}description: [^\n]+\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
+      );
+      assert.ok(body.includes('node desktop/verification/build-video-decoder.mjs'));
+      assert.ok(body.includes('& ./desktop/verification/Invoke-VideoDecoder.ps1'));
+      assert.ok(body.includes('if: success()'));
+      assert.doesNotMatch(body, /Invoke-RetainedHost|fetch_platform_tools|adb\.exe|main\.cjs/);
     } else if (jobs[i][1] === 'owned-video-managed-development') {
       assert.equal(
         condition,
@@ -122,7 +137,7 @@ function validate(rawSource) {
     } else assert.ok(condition.startsWith('false && '));
   }
 }
-test('phase03 reuses pinned source gates with only explicit managed-video, compile-pair, notice-evidence, retained-pair and package-check opt-ins on that branch', () => {
+test('phase03 reuses pinned source gates with only explicit synthetic-decoder, managed-video, compile-pair, notice-evidence, retained-pair and package-check opt-ins on that branch', () => {
   for (const source of workflowEncodings(raw)) validate(source);
 });
 test('phase source workflow rejects branch, native authority, marker and gate drift under LF and CRLF', () => {
@@ -139,7 +154,18 @@ test('phase source workflow rejects branch, native authority, marker and gate dr
       / {6}run_pair_retention:\n(?: {8}[^\n]+\n)*? {8}default: false\n/,
     )?.[0];
     assert.ok(retentionInput);
+    const decoderInput = normalized.match(
+      / {6}run_video_decoder:\n(?: {8}[^\n]+\n)*? {8}default: false\n/,
+    )?.[0];
+    assert.ok(decoderInput);
     const mutants = [
+      normalized.replace(decoderInput, decoderInput.replace('default: false', 'default: true')),
+      normalized.replace('inputs.run_video_decoder == true', 'inputs.run_video_decoder != true'),
+      normalized.replace("'[video-decoder]'", "'[video-managed]'"),
+      normalized.replace(
+        '  owned-video-decoder-development:\n    needs: windows-software-only',
+        '  owned-video-decoder-development:\n    needs: missing',
+      ),
       normalized.replace(
         retentionInput,
         retentionInput.replace('        default: false', '        default: true'),
@@ -177,7 +203,7 @@ test('phase source workflow rejects branch, native authority, marker and gate dr
         "if: true || ((github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui)",
       ),
       normalized.replace('PHASE03_SOFTWARE_ONLY', 'PHASE02_SOFTWARE_ONLY'),
-      normalized.replace('s.countTestCases()==375', 's.countTestCases()==289'),
+      normalized.replace('s.countTestCases()==383', 's.countTestCases()==289'),
       normalized.replace('r.wasSuccessful() and not r.skipped', 'r.wasSuccessful()'),
       normalized.replace('node desktop/scripts/check.mjs --restore', 'echo bypass'),
       normalized.replace("node-version: '24.22.1'", "node-version: 'latest'"),

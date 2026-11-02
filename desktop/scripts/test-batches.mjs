@@ -183,6 +183,9 @@ export const TEST_FILES = Object.freeze([
   'verification/vault-artifacts.test.cjs',
   'verification/vault-contract.test.cjs',
   'verification/vault-record-negative.test.cjs',
+  'verification/video-decoder-contract.test.mjs',
+  'verification/video-decoder-control.test.mjs',
+  'verification/video-decoder-fixture.test.mjs',
 ]);
 export const TEST_BATCH_SIZE = 8;
 export function tapCounts(stdout) {

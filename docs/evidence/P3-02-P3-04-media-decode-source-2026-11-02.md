@@ -84,3 +84,41 @@ No publication or main merge occurred in this worker. Normal reviewed Windows so
 - `p303-prekey-regression3.log`: 2508 bytes, SHA256 `9ffb86639555d7e9c11a6d921f0d560efcf9d11d4392dfa2f8952fea1e9e1d6a`.
 - `p303-shutdown-regression4.log`: 790 bytes, SHA256 `86a175c0a0a27b43d17b882a433bdbbad16fdb0bac35d796ec9369c3e0eaf041`.
 - `p303-batch19-diagnostic.log`: 20536 bytes, SHA256 `e368876b71f98b24c02e8c820059dcf6b33b678d4e4fb317f2c91b303c767e87`.
+
+## Actual hosted software milestone — 2026-11-02 15:16 UTC
+
+Published `phase-03` commit `6c755b7288f68e65b56c62964195de88f112e614` preserves parent `2b02ef7cbcfdf46b99e67c78570c6239a404dc23`. Its tree `2ccae8343103183dd099eddfe01a37b4a8e28abb` exactly equals local `143437958ec9a25cba69948c56db77ce6944f080`; all53 changed blob identities were checked, expected-head/nonforce ref update and final remote readback succeeded. Local and public lineages remain intact; main was not changed.
+
+CI41469006549 on that exact public SHA completed SUCCESS. Source job125357327580 emits actual1752/1752, DESKTOP_SOURCE_CHECK_PASS, foundation109/109 with zero fail/cancel/skip/todo, Python375/OK, PHASE03_SOFTWARE_ONLY and SOURCE_JOB_NO_ADB_EXECUTION. Exact retained job log100482bytes SHA256 `951cb7b8c89895d8b7b427b66c1c7d3e42999d3e00c58be474937a7ffab931fa`. Separate jobs API confirms15 optional jobs SKIPPED, including managed92 and pair compilation; skip is not inferred from source log absence. Independent coordinator audit confirmed exact run/commit/tree/log markers. No device, real decoder, native managed92 or retained pair campaign occurred. This closes the source/build milestone, not04.A/C actual-output qualification or task acceptance. Record retained here for the next functional milestone; no status-only public push.
+
+## Next bounded qualification increment — 2026-11-02
+
+The independently reviewed [actual-decoder source entry](../phases/P3-DECODER-OUTPUT-QUALIFICATION-PROPOSAL.md) was adopted at 15:25 UTC. Verification-only source now generates two self-authored fixed AVC I_PCM frames, compiles the real production bridge against the unchanged preload/renderer/decoder, and defines an opt-in disposable Windows Electron pixel/contain-placement campaign. Production runtime pair pins and all device/provider gates remain unchanged. No actual decoder output has yet been observed for this increment; source generation/parser tests are not decoder evidence. Fixed ledger remains source26/100, integration22/100, formal acceptance0/19.
+
+Final source checks: authored fixture/schema/owned-file tests18/18; source-boundary/mutation tests8/8; full desktop aggregate1770/1770 with DESKTOP_SOURCE_CHECK_PASS; foundation109/109; Python aggregate383/383; production build and verification bundle PASS. The initial aggregate rejected stale exact workflow job/count assertions (batch11 output exceeded capture bound); the detailed isolated failure was retained and exact opt-in/default-false mutation tests updated. An initial direct quality test rejected inherited NODE_PATH as designed; sanitized quality13/13 PASS. The second aggregate exposed the retained-rollback workflow’s separate historical375-count assertion; that test was updated to383 without enabling its suspended campaign. Final uninterrupted aggregate passes. Independent implementation review CLEAR at15:56 UTC followed three repairs: known-retired failure-path owned cleanup, observed non-neutral letterbox pixels plus stable actual tile/label geometry, and explicit Stop causally stopping the producer before late stale-media refusal. The source fixture selects exactly its synthetic tile; a regression invokes the actual extracted fleet reply through production validation. No runtime result or additional04.A/C integration credit is claimed. Only the separately selected opt-in campaign may establish actual decode evidence.
+
+Final local evidence (not uploaded runtime evidence):
+
+| Check | Log SHA256 |
+|---|---|
+| `p303-decoder-reviewed-source.log` | `3b2f4a5b6a5287c2c9d60d991acc4fefda6d837dc6e8ffeb1a45347286e3c8e4` |
+| `p303-decoder-reviewed-python.log` | `ef6430563c388bd768fb111c5e373cbfcede2bf85315c9eb6596c8eb30b80114` |
+| `p303-decoder-foundation.log` | `42d9c87caa146937ca855fc88d396f1634db577b3dba0aae72e1a3906ca33729` |
+
+### Reviewed qualification source identities
+
+No generated Electron binary, fixture clip, profile, screenshot or personal data is committed. The actual captured image remains only in memory; evidence contains bounded synthetic pixel samples and numeric rectangles. Native bitmap color order is not assumed: content is neutral grayscale and the existing V9 letterbox gradient is non-neutral.
+
+| Source | SHA256 |
+|---|---|
+| `desktop/verification/build-video-decoder.mjs` | `bce0a8522f5eab6d067b3bd6271acb39d5b3965bd5de8c8fc4efa6e3fff0959f` |
+| `desktop/verification/video-decoder-contract.mjs` | `c775de66b31fdc8c6c8d370fce57461381628601182523231992475471725aa6` |
+| `desktop/verification/video-decoder-contract.test.mjs` | `bafbeca331114991d0b947d376bc5e00d4b8fbb1ddd0489098c80f2028ab0a2a` |
+| `desktop/verification/video-decoder-control.mjs` | `59ccc2e7772b6c25d8bc369a832a5137d1475471ce424f0ce10cd334557a9f6f` |
+| `desktop/verification/video-decoder-control.test.mjs` | `c8849f883bc3f0923431a75f5ef6138f9f58ac1094c21cf6c084a3c699039507` |
+| `desktop/verification/video-decoder-fixture.mjs` | `7f339972fc5e3ccefd0d4a9b24a3b009f891fa1df714f9dcfeeb8856f00af4b8` |
+| `desktop/verification/video-decoder-fixture.test.mjs` | `7db65a5f3d41ae508543559a856565ca7e751dc9d696f7e48cbefc3247173baf` |
+| `desktop/verification/video-decoder-probe.mjs` | `92ae01b2f3abce2c0d9d03ab10e69068ea4c65b4bddb9cc7bb556ca2620bd359` |
+| `desktop/verification/Invoke-VideoDecoder.ps1` | `a0226f950bf998d4667a937f79057f7d4f0501b4ed1cc1e502e44c20e8d41b66` |
+| `desktop/verification/validate_video_decoder.py` | `180d28fc7b74d0c72ee3df9422b72128674eae68edc412a1736b3b2fab135150` |
+| `desktop/verification/test_validate_video_decoder.py` | `e9ceacca20a23843c32de820dcda0a8cc84faadfd447483eb9b3ed4eab3fefff` |
