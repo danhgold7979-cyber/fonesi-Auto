@@ -1,9 +1,11 @@
 # PHASE-04 — UI Automator, OpenCV and OCR recognition
 
 **Revision/date:** 1.0-draft / 2026-10-30
-**Plan:** DRAFT / NOT AUTHORIZED · **Execution:** NOT_STARTED · **Coding:** NO
-**Proposed branch:** `phase-04` (not created)
-**Execution base:** accepted `main` SHA after Phase 3 acceptance/merge, to verify at entry
+**Narrow software entry ADOPTED 2026-11-02:** P4-03 → P4-04 supplied-input normalization/selectors only, under [Amendment03 §C](PARALLEL-SOFTWARE-EXECUTION-AMENDMENT-03.md). Independent review CLEAR; all other phase tasks, acquisition/helper certification, hardware and acceptance gates remain unaccepted.
+
+**Plan outside this exception:** historical draft / NOT AUTHORIZED · **Other execution:** NOT_STARTED
+**Software-entry branch:** `phase-04`, isolated `fonesi-Auto-phase-04` worktree
+**Software-entry base:** reviewed development `a1291d99e464292a6709351e54b79a6d366e48ef`, tree `2a56b23b829f46d1f4890189a5c8ef3f2723829b`; not accepted-main or Phase3 acceptance. Historical accepted-main prerequisite remains for formal acceptance outside Amendment03.
 **Owner/reviewer:** assign at approval
 
 > Phase 0 is unfinished. Accepted product/technology directions do not authorize this Phase, a helper install, device access or application coding. All implementation, OCR, Windows, GPU and physical-device tests below remain NOT RUN.

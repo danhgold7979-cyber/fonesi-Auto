@@ -26,8 +26,8 @@ const map = JSON.parse(readFileSync(new URL('../module-map.json', import.meta.ur
 const actual = () => inventory(root);
 const denied = async (sources, pattern) =>
   assert.rejects(() => validateGraph(sources, map), pattern);
-test('actual one hundred twenty-three modules pass source and restricted parser runtime graph', async () => {
-  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 123, runtimeInputs: 123 });
+test('actual one hundred twenty-four modules pass source and restricted parser runtime graph', async () => {
+  assert.deepEqual(await verifyRuntimeGraph(actual(), map), { modules: 124, runtimeInputs: 124 });
 });
 test('synthetic metadata stays unactivated and native owner has only the reviewed facade edge', () => {
   for (const [file, binding] of [
@@ -64,8 +64,8 @@ test('synthetic metadata stays unactivated and native owner has only the reviewe
     assert.deepEqual(incoming(wrong), ['main.ts', ...expected]);
   }
 });
-test('fleet stays in its exact role boundary and graph limit remains finite at one hundred twenty-three', async () => {
-  assert.equal(Object.keys(map.modules).length, 123);
+test('fleet stays in its exact role boundary and graph limit remains finite at one hundred twenty-four', async () => {
+  assert.equal(Object.keys(map.modules).length, 124);
   await assert.rejects(
     () =>
       validateGraph(actual(), {

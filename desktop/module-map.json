@@ -2634,6 +2634,20 @@
      "VideoTransportSession": "type"
     }
    }
+  },
+  "main/hierarchy-selector.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "./capture-contract.ts": {
+     "CAPTURE_LIMITS": "value",
+     "classifyCaptureEvidence": "value",
+     "HierarchyNode": "type",
+     "NormalizedHierarchy": "type"
+    },
+    "./input-contract.ts": {
+     "snapshotDisplayEvidence": "value"
+    }
+   }
   }
  }
 }

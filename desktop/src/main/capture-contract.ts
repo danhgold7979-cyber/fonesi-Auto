@@ -216,6 +216,32 @@ export function validateCapturePng(input: unknown, display: unknown): PngCapture
     return bad();
   }
 }
+export type HierarchyNode = Readonly<{
+  ordinal: number;
+  parentOrdinal: number | null;
+  childOrdinals: readonly number[];
+  resourceId: string | null;
+  contentDescription: string | null;
+  text: string | null;
+  className: string;
+  packageName: string | null;
+  hint: string | null;
+  index: number;
+  drawingOrder: number | null;
+  bounds: readonly [number, number, number, number];
+  flags: Readonly<Record<string, boolean | null>>;
+}>;
+export type NormalizedHierarchy = Readonly<{
+  version: 1;
+  source: 'SUPPLIED_HIERARCHY_V1';
+  sha256: string;
+  encodedBytes: number;
+  evidence: DisplayEvidence;
+  nodes: readonly HierarchyNode[];
+}>;
+export type NormalizedHierarchyResult =
+  | Rejection
+  | Readonly<{ ok: true; tree: NormalizedHierarchy }>;
 const xmlAttributes = new Set([
   'index',
   'text',
@@ -268,7 +294,7 @@ function attributes(text: string): Map<string, string> | null {
   }
   return out;
 }
-export function validateHierarchyXml(input: unknown, display: unknown): HierarchyCaptureResult {
+export function normalizeHierarchyXml(input: unknown, display: unknown): NormalizedHierarchyResult {
   const evidence = snapshotDisplayEvidence(display);
   if (!evidence || typeof input !== 'string') return bad();
   if (input.length > CAPTURE_LIMITS.xmlBytes) return bad('CAPTURE_LIMIT');
@@ -297,6 +323,8 @@ export function validateHierarchyXml(input: unknown, display: unknown): Hierarch
     closed = false,
     opened = false;
   const stack: string[] = [];
+  const parents: (number | null)[] = [];
+  const normalized: { node: Omit<HierarchyNode, 'childOrdinals'>; children: number[] }[] = [];
   while (at < text.length) {
     const whitespace = /^[ \t\r\n]+/.exec(text.slice(at));
     if (whitespace) {
@@ -318,6 +346,7 @@ export function validateHierarchyXml(input: unknown, display: unknown): Hierarch
     at = end + 1;
     if (stack.length > 0 && tag === '/' + stack.at(-1)) {
       const name = stack.pop();
+      parents.pop();
       if (name === 'hierarchy') closed = true;
       continue;
     }
@@ -326,6 +355,7 @@ export function validateHierarchyXml(input: unknown, display: unknown): Hierarch
     const name = m[1],
       attrs = attributes(m[2]);
     if (!attrs) return bad();
+    let ordinal: number | null = null;
     if (name === 'hierarchy') {
       if (opened || stack.length || m[3] === '/' || attrs.size !== 1 || !attrs.has('rotation'))
         return bad();
@@ -348,22 +378,73 @@ export function validateHierarchyXml(input: unknown, display: unknown): Hierarch
         attrs.get('bounds') ?? '',
       );
       if (!b || Number(b[1]) > Number(b[3]) || Number(b[2]) > Number(b[4])) return bad();
+      ordinal = normalized.length;
+      const parentOrdinal = parents.at(-1) ?? null;
+      const flags: Record<string, boolean | null> = Object.create(null);
+      for (const key of xmlBools) flags[key] = attrs.has(key) ? attrs.get(key) === 'true' : null;
+      const node = Object.freeze({
+        ordinal,
+        parentOrdinal,
+        resourceId: attrs.get('resource-id') ?? null,
+        contentDescription: attrs.get('content-desc') ?? null,
+        text: attrs.get('text') ?? null,
+        className: attrs.get('class') ?? '',
+        packageName: attrs.get('package') ?? null,
+        hint: attrs.get('hint') ?? null,
+        index: Number(attrs.get('index')),
+        drawingOrder: attrs.has('drawing-order') ? Number(attrs.get('drawing-order')) : null,
+        bounds: Object.freeze([
+          Number(b[1]) || 0,
+          Number(b[2]) || 0,
+          Number(b[3]) || 0,
+          Number(b[4]) || 0,
+        ]) as readonly [number, number, number, number],
+        flags: Object.freeze(flags),
+      });
+      normalized.push({ node, children: [] });
+      if (parentOrdinal !== null) {
+        const parent = normalized[parentOrdinal];
+        if (!parent) return bad();
+        parent.children.push(ordinal);
+      }
     }
     if (m[3] !== '/') {
       stack.push(name);
+      parents.push(ordinal);
       if (stack.length > CAPTURE_LIMITS.xmlDepth) return bad('CAPTURE_LIMIT');
     }
   }
   if (!opened || !closed || stack.length) return bad();
   return Object.freeze({
     ok: true,
-    format: 'HIERARCHY_XML',
-    nodeCount: nodes,
-    encodedBytes: encoded.length,
-    sha256: sha(encoded),
-    evidence,
+    tree: Object.freeze({
+      version: 1,
+      source: 'SUPPLIED_HIERARCHY_V1',
+      encodedBytes: encoded.length,
+      sha256: sha(encoded),
+      evidence,
+      nodes: Object.freeze(
+        normalized.map(({ node, children }) =>
+          Object.freeze({ ...node, childOrdinals: Object.freeze(children) }),
+        ),
+      ),
+    }),
   });
 }
+export function validateHierarchyXml(input: unknown, display: unknown): HierarchyCaptureResult {
+  const result = normalizeHierarchyXml(input, display);
+  if (!result.ok) return result;
+  const tree = result.tree;
+  return Object.freeze({
+    ok: true,
+    format: 'HIERARCHY_XML',
+    nodeCount: tree.nodes.length,
+    encodedBytes: tree.encodedBytes,
+    sha256: tree.sha256,
+    evidence: tree.evidence,
+  });
+}
+
 export function classifyCaptureEvidence(
   captured: unknown,
   current: unknown,
