@@ -1,6 +1,6 @@
 # P2-07 / P2-08 / P2-10 — explicit main ACTIVE-target fixed input
 
-**Final reviewed source freeze — 2026-11-02 01:49 UTC; hosted result NOT_RUN.** No actual input, native socket, dialog, server, profile or physical-phone operation is performed by this checkpoint. P2 technical remains 1/13, overall 11/154, formal 0.
+**Hosted source PASS — 2026-11-02 01:57 UTC.** No actual input, native socket, dialog, server, profile or physical-phone operation is performed by this checkpoint. P2 technical remains 1/13, overall 11/154, formal 0.
 
 ## Source-entry disposition
 
@@ -20,7 +20,7 @@ The previous [main association checkpoint](P2-main-device-association-source-202
 
 ## Validation and remaining proof
 
-The sole author aggregate passed 1547/1547 with DESKTOP_SOURCE_CHECK_PASS before the final review corrections below; its normal graph/quality/typecheck/product/demo-build/manifest gates all ran successfully. Final correction checks are separately attributed, and independent implementation review is CLEAR at 01:49 UTC. No final uninterrupted rerun or hosted result is claimed. Owner/actor added four causal cases (one actor, three owner): the first affected run passed 55/56 and exposed an exact exported-key fixture missing the newly reviewed pending getter; correcting only that expectation and rerunning its one case passes. This is stitched 56-case affected evidence, not an uninterrupted aggregate. The owner fixture uses a genuine Fleet issuer/controller and actual opened logger with explicitly transformed native ticket lookup; it is not physical-device evidence. The other affected slices are frozen; the sole author aggregate completed at 01:45 UTC.
+The sole author aggregate passed 1547/1547 with DESKTOP_SOURCE_CHECK_PASS before the final review corrections below; its normal graph/quality/typecheck/product/demo-build/manifest gates all ran successfully. Final correction checks are separately attributed, and independent implementation review is CLEAR at 01:49 UTC. No final uninterrupted local rerun is claimed. Hosted results were pending at source freeze; the actual result below now supersedes that pending state. Owner/actor added four causal cases (one actor, three owner): the first affected run passed 55/56 and exposed an exact exported-key fixture missing the newly reviewed pending getter; correcting only that expectation and rerunning its one case passes. This is stitched 56-case affected evidence, not an uninterrupted aggregate. The owner fixture uses a genuine Fleet issuer/controller and actual opened logger with explicitly transformed native ticket lookup; it is not physical-device evidence. The other affected slices are frozen; the sole author aggregate completed at 01:45 UTC.
 
 - Lower Fleet/adapter/factory/server: focused 10/10 (including two new Fleet cases), three causal adapter/server checks, one factory pipe-guard check, then two overlapping Fleet rechecks pass. Six authored additions total. Holder/native facts are explicitly synthetic; the final factory test uses actual owned files and a synthetic process/pipe, not a Windows command.
 - UI/wire/main/preload: final 48/48 affected PASS and strict TypeScript/scoped quality PASS. Earlier 40-case and renderer runs overlap; renderer fixture runs first failed on test IDs/closed Device labels, then repaired 30/30 PASS. Source review also caught a parser misreading distinct command/correlation UUIDs as equal. Corrected parser and positive preserve actual distinct IDs; genuine early UNKNOWN may retain null/null IDs, never fabricated command IDs. The contract records this source-faithful tuple clarification.
@@ -98,3 +98,14 @@ After the corrections, the unchanged bounded graph/quality/typecheck/product-bui
 - `docs/PHASE_STATUS.md`
 - `docs/evidence/P2-main-noncoordinate-input-source-2026-11-02.md`
 - `docs/phases/P2-MAIN-NONCOORDINATE-INPUT-PROPOSAL.md`
+
+## Actual hosted source result
+
+CI [41374857121](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41374857121) completed SUCCESS on public `2e7209827397e9b3fbbb947c18a9b1cf0fe5fa79`, exact local source commit `758f73343a66758f485652afb4ee0b92d19ecfb6` / tree `516c3a4cd5cc227231a7f85d8894342b633907d4`.
+
+- Source job `125052777883`: actual **1550/1550** desktop with `DESKTOP_SOURCE_CHECK_PASS`; foundation **109/109**, zero failures/cancelled/skipped/todo; Python **286/OK** under the exact-count/no-skips gate.
+- Terminal API metadata separately records ten optional jobs SKIPPED. This is not inferred from the source log; no optional native input/managed campaign ran.
+- Sole retained decoded source log: **81,875 bytes**, SHA256 `05afcff76b1cc58f01eb6b6cf46dcb1cef373a8b0d4f47d36eb8aef673090a4a`; exact checkout/SOURCE_HEAD and source-only/no-ADB markers are present.
+- Independent retained-log audit PASS is recorded at 01:58 UTC; no duplicate fetch or test rerun is requested. Historical 1547 local aggregate and final 6/1/4 corrections remain separately attributed rather than rewritten as a local 1550 run.
+
+This establishes current source/build/test compatibility for explicit ACTIVE-target fixed input. It does not establish Android execution, a changed phone UI, actual target isolation on two phones, or eligible profile/server/physical association. No real effect is promoted from remote protocol semantics or managed fixtures; P2 technical remains 1/13, overall 11/154, formal 0.
