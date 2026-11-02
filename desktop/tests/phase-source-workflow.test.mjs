@@ -19,6 +19,7 @@ const nativeNames = [
   'owned-metadata-managed-development',
   'owned-input-managed-development',
   'owned-video-managed-development',
+  'derived-pair-compile-development',
 ];
 const marker = `          if ($env:GITHUB_REF -eq 'refs/heads/phase-03') {
             Write-Output 'PHASE03_SOFTWARE_ONLY'
@@ -49,7 +50,7 @@ function validate(rawSource) {
     'node foundation/scripts/verify-bootstrap.mjs $npmVersion',
     'npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache',
     'node foundation/scripts/check.mjs $npmVersion',
-    "discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==289;",
+    "discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==320;",
     'r.wasSuccessful() and not r.skipped',
     marker,
     "Write-Output 'SOURCE_JOB_NO_ADB_EXECUTION'",
@@ -74,17 +75,41 @@ function validate(rawSource) {
         "github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_video_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[video-managed]')))",
       );
       assert.match(body, / {4}needs: windows-software-only\n/);
+    } else if (jobs[i][1] === 'derived-pair-compile-development') {
+      assert.equal(
+        condition,
+        "github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_pair_build == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[pair-build]')))",
+      );
+      assert.match(body, / {4}needs: windows-software-only\n/);
+      assert.match(
+        source,
+        / {6}run_pair_build:\n {8}description: [^\n]+\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
+      );
     } else assert.ok(condition.startsWith('false && '));
   }
 }
-test('phase03 reuses pinned source gates with only explicit managed-video opt-in on that branch', () => {
+test('phase03 reuses pinned source gates with only explicit managed-video and compile-pair opt-ins on that branch', () => {
   for (const source of workflowEncodings(raw)) validate(source);
 });
 test('phase source workflow rejects branch, native authority, marker and gate drift under LF and CRLF', () => {
   for (const source of workflowEncodings(raw)) {
     const normalized = source.replaceAll('\r\n', '\n');
+    const pairInput = normalized.match(
+      / {6}run_pair_build:\n(?: {8}[^\n]+\n)*? {8}default: false\n/,
+    )?.[0];
+    assert.ok(pairInput);
+    const enabledPairInput = pairInput.replace('        default: false', '        default: true');
+    const enabledPair = normalized.replace(pairInput, enabledPairInput);
+    assert.equal(enabledPair.replace(enabledPairInput, pairInput), normalized);
     const mutants = [
       normalized.replace('branches: [phase-02, phase-03]', 'branches: [phase-02]'),
+      normalized.replace('inputs.run_pair_build == true', 'inputs.run_pair_build != true'),
+      normalized.replace("'[pair-build]'", "'[video-managed]'"),
+      normalized.replace(
+        '  derived-pair-compile-development:\n    needs: windows-software-only',
+        '  derived-pair-compile-development:\n    needs: nonexistent',
+      ),
+      enabledPair,
       normalized.replace(
         "if: github.ref == 'refs/heads/phase-02' && github.event_name",
         'if: github.event_name',
@@ -95,7 +120,7 @@ test('phase source workflow rejects branch, native authority, marker and gate dr
         "if: true || ((github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui)",
       ),
       normalized.replace('PHASE03_SOFTWARE_ONLY', 'PHASE02_SOFTWARE_ONLY'),
-      normalized.replace('s.countTestCases()==289', 's.countTestCases()==285'),
+      normalized.replace('s.countTestCases()==320', 's.countTestCases()==289'),
       normalized.replace('r.wasSuccessful() and not r.skipped', 'r.wasSuccessful()'),
       normalized.replace('node desktop/scripts/check.mjs --restore', 'echo bypass'),
       normalized.replace("node-version: '24.22.1'", "node-version: 'latest'"),

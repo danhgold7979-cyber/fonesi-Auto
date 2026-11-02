@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "protocolId": "AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1",
+  "upstreamRepository": "https://github.com/Genymobile/scrcpy",
+  "upstreamCommit": "a60891aea193d92e7e5c3942700eca63f9d19a5f",
+  "upstreamVersion": "5.0.1",
+  "patch": "auto-video-nonce-v1.patch",
+  "patchSha256": "caaadaecd4b559ef8f980e5eae84c47c9f7174a8d916f8fda05612fed7ff6f8c",
+  "files": [
+    {
+      "path": "server/src/main/java/com/genymobile/scrcpy/Options.java",
+      "url": "https://raw.githubusercontent.com/Genymobile/scrcpy/a60891aea193d92e7e5c3942700eca63f9d19a5f/server/src/main/java/com/genymobile/scrcpy/Options.java",
+      "upstreamBytes": 23888,
+      "upstreamSha256": "d210ce50bb429a7be943e08b2dc445e309ad67c3de23a8b5f222e2d10b612a62",
+      "derivedBytes": 25659,
+      "derivedSha256": "4eda087a84d42b5710d6ccaf5dd29b6caeaabea8fc7368aa76c92a2ec8eabbe4",
+      "modified": true
+    },
+    {
+      "path": "server/src/main/java/com/genymobile/scrcpy/Server.java",
+      "url": "https://raw.githubusercontent.com/Genymobile/scrcpy/a60891aea193d92e7e5c3942700eca63f9d19a5f/server/src/main/java/com/genymobile/scrcpy/Server.java",
+      "upstreamBytes": 10937,
+      "upstreamSha256": "290f195e42419f24ee0e518fc2970c87492a76cf10428afce1e1c14e79b32bf9",
+      "derivedBytes": 11042,
+      "derivedSha256": "df921583e16e0da6c84b4b9438190525828142342596e231f35bf4d6f4c7c40e",
+      "modified": true
+    },
+    {
+      "path": "server/src/main/java/com/genymobile/scrcpy/device/DesktopConnection.java",
+      "url": "https://raw.githubusercontent.com/Genymobile/scrcpy/a60891aea193d92e7e5c3942700eca63f9d19a5f/server/src/main/java/com/genymobile/scrcpy/device/DesktopConnection.java",
+      "upstreamBytes": 6221,
+      "upstreamSha256": "4907a37c7c84d3012e76329f3761d8fcc05488ace71fbaf013048d33f21e414c",
+      "derivedBytes": 7304,
+      "derivedSha256": "4fa19ea8d565d7e7e3e58ae733d229d260e8c78ac1a87f8f95dd68ab16600b0b",
+      "modified": true
+    },
+    {
+      "path": "server/src/main/java/com/genymobile/scrcpy/device/Streamer.java",
+      "url": "https://raw.githubusercontent.com/Genymobile/scrcpy/a60891aea193d92e7e5c3942700eca63f9d19a5f/server/src/main/java/com/genymobile/scrcpy/device/Streamer.java",
+      "upstreamBytes": 8093,
+      "upstreamSha256": "6e0183bd0373b2f85867a3196cdc3829696782d3cf1f807f131f923b9dff8eff",
+      "derivedBytes": 8093,
+      "derivedSha256": "6e0183bd0373b2f85867a3196cdc3829696782d3cf1f807f131f923b9dff8eff",
+      "modified": false
+    }
+  ],
+  "buildStatus": "NOT_BUILT",
+  "derivedServerSha256": null,
+  "windowsConsumerSha256": null,
+  "pairManifestSha256": null
+}

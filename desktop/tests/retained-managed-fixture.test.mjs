@@ -190,8 +190,16 @@ test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects 
       assert.notEqual(changed, text.replaceAll('\r\n', '\n'));
       assert.throws(() => managedOnlyJob(changed));
     }
-    const changedDefault = text.replace('        default: false', '        default: true');
-    assert.notEqual(changedDefault, text);
+    const normalized = text.replaceAll('\r\n', '\n');
+    const input = normalized.match(
+      / {6}run_video_managed:\n(?: {8}[^\n]+\n)*? {8}default: false\n/,
+    )?.[0];
+    assert.ok(input);
+    const changedInput = input.replace('        default: false', '        default: true');
+    const changedDefault = normalized.replace(input, changedInput);
+    assert.notEqual(changedDefault, normalized);
+    assert.ok(changedDefault.includes(changedInput));
+    assert.equal(changedDefault.replace(changedInput, input), normalized);
     assert.throws(() => managedOnlyJob(changedDefault));
   }
 });

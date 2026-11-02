@@ -138,6 +138,7 @@ export const TEST_FILES = Object.freeze([
   'tests/video-contract.test.mjs',
   'tests/work-pages.test.mjs',
   'verification/demo-contract.test.cjs',
+  'verification/derived-pair-wrapper.test.cjs',
   'verification/fetch-retained-archives.test.cjs',
   'verification/fleet-ui-contract.test.cjs',
   'verification/fleet-ui-control.test.cjs',

@@ -1,5 +1,7 @@
 # Phase 3 — software-deliverable checklist
 
+> Historical whole-deliverable metric retained unchanged. The current finer [functional-subdeliverable ledger v1.0](P3-IMPLEMENTATION-SUBDELIVERABLES-v1.md) covers all19 tasks before scoring; its baseline is not a newly earned percentage increase.
+
 **Code checklist coverage: 1/19 = 5.3%. Integrated and software-tested: 1/19. Technical task acceptance: 0/19.**
 
 Recorded 2026-11-02 04:03 UTC after independent engineering review. This answers the user's request to distinguish implemented code from acceptance. It is **binary checklist coverage, not an effort-weighted estimate, percentage of source lines, or predicted time remaining**.
