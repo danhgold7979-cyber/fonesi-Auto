@@ -76,7 +76,7 @@ The canonical reference column maps each cell to the task row; **D**=deliverable
 
 Task distribution checksum: **4 + 4 + 3 + 4 + 3 + 4 + 5 + 6 + 4 + 4 + 4 + 4 = 49**. All P4-01…12 have a home; no later unimplemented task was collapsed to one placeholder while completed work was finely split.
 
-## 3. Adopted evidence overlay — baseline and supplied-stability continuation
+## 3. Adopted evidence overlay — baseline and supplied-input continuations
 
 Initial bounded source lane: `phase-04` based on `a1291d99e464292a6709351e54b79a6d366e48ef`, tree `2a56b23b829f46d1f4890189a5c8ef3f2723829b`. No main/native/IPC/DB/logger/actor acquisition or action path was activated. The local integrated check now passes1663/1663 and DESKTOP_SOURCE_CHECK_PASS; independent source and tooling review is CLEAR.
 
@@ -87,7 +87,7 @@ Initial bounded source lane: `phase-04` based on `a1291d99e464292a6709351e54b79a
 | P4-05.B | I | Actual PNG/XML codec → bounded supplied-observation stability → selector composition; explicit policy, change/gap reset, original supplied-monotonic timeout, immediate cancellation and immutable terminal history. No autonomous acquisition/timer, variance estimate or physical-stability guarantee. |
 | All remaining 42 cells | N | No complete implementation is evidenced for the named behavior. Existing freshness helpers and P2 capture/actor storage are partial dependencies of P4-01/05/10/11, not counted again as full functions. No deployed profile-disable lifecycle is claimed from pure unsupported-profile refusal. |
 
-**Current counts: N42 / S0 / I7, total49. Source coverage7/49=14.3%; integrated coverage7/49=14.3%; acceptance0/12.** Independent criterion review on 2026-11-02 permits exactly P4-05.B N→I after the [supplied-stability checkpoint](../evidence/P4-05-supplied-stability-2026-11-02.md): 12 affected cases and one integrated1675/1675 PASS. This is +1/49, or +2.04 percentage points, in each coverage measure versus the preserved first baseline N43/S0/I6 (12.2%/12.2%). The denominator is unchanged. P4-03.A/B/C and P4-04.A/B/C remain I; P4-04.D and P4-05.A/C remain N. Supplied observations are not acquisition or action authority.
+**Previous supplied-stability counts: N42 / S0 / I7, total49. Source coverage7/49=14.3%; integrated coverage7/49=14.3%; acceptance0/12.** Independent criterion review on 2026-11-02 permits exactly P4-05.B N→I after the [supplied-stability checkpoint](../evidence/P4-05-supplied-stability-2026-11-02.md): 12 affected cases and one integrated1675/1675 PASS. This is +1/49, or +2.04 percentage points, in each coverage measure versus the preserved first baseline N43/S0/I6 (12.2%/12.2%). The denominator is unchanged. P4-03.A/B/C and P4-04.A/B/C remain I; P4-04.D and P4-05.A/C remain N. Supplied observations are not acquisition or action authority.
 
 The [source checkpoint](../evidence/P4-03-04-supplied-hierarchy-selector-2026-11-02.md) records17/17 affected cases, one normal integrated1663/1663 source PASS, and overlapping2/2 graph-title corrections. Exact integrated log SHA256 `63222687f77637143834fd313d44eafea3d2e398810ae2d6279ce9a5c0bc4cc4`; module map124nodes/65,373bytes, test inventory177. These are local software facts, not native acquisition/Windows/physical/profile/action acceptance.
 
@@ -102,3 +102,15 @@ Source evidence identities at this snapshot:
 **Formal acceptance: 0/12.** The seven integrated software cells do not turn P4-03, P4-04 or P4-05 into accepted tasks. P4-01/02 capture/model/helper compatibility is still unavailable; actual physical hierarchy replay and actor read-back for selected elements remain NOT_RUN. Autonomous acquisition/action-bound stable-screen operation, OpenCV, OCR/model admission/benchmark, worker lifecycle, calibrated decision/fallback, private recognition replay and unknown-screen application safe-stop remain unimplemented at their full named scope.
 
 Every task retains its canonical device/AVD/Windows/visual/performance/privacy/recovery acceptance requirements. Held-out VI/EN accuracy and latency criteria, semantic-versus-coordinate baseline, stream/vision coexistence and preservation of actor ownership must be measured rather than inferred from a synthetic tree. CPU results do not certify GPU behavior, AVDs do not replace OEM devices, and supplied context does not prove account identity or permitted access. Physical deferral and parallel source entry change neither the acceptance denominator nor these obligations.
+
+
+## 4. Reviewed OpenCV and worker continuation — local software evidence
+
+Independent criterion review on 2026-11-02 permits exactly **P4-06.A/B/C and P4-08.A/B/D/E N→I**, based on the [actual supplied-image OpenCV/owned-worker checkpoint](../evidence/P4-06-08-supplied-opencv-worker-2026-11-02.md). The fixed denominator and cell definitions above are unchanged.
+
+| Cells | Status | Exact basis and remaining boundary |
+|---|---|---|
+| P4-06.A/B/C | I | Actual bounded PNG decoder → cv2 crop/ROI/scale/gain → verified RGBA pipeline; separately bound source/wire hashes; exact forward/inverse rational edges/rectangles and conservative cover; invalid input, pre-inflate limits and overflow refusal. Coordinate mapping is not lossless image reconstruction or action authority. |
+| P4-08.A/B/D/E | I | Actual fixed Linux development backend composes versioned bounded correlated byte-only IPC, one owned child/zero queue, original deadline/cancel, retained writes/EOF/close, late-output rejection and no automatic restart. A later explicit request requires actual prior retirement; processing supplies no Device Actor dispatch authority and does not replace the actor. |
+
+**Current counts: N35 / S0 / I14, total49. Source coverage14/49=28.6%; integrated coverage14/49=28.6%; acceptance0/12.** This is +7/49 (+14.29 percentage points) in each measure from the preceding7/49 baseline, not seven completed tasks. Evidence is local: 20 affected JS cases, separate8 actual Python cases, and uninterrupted1695/1695 integrated source PASS. No hosted/Windows runtime result is claimed. P4-06.D prior-version recovery, P4-08.C stream/resource-budget coexistence, P4-08.F application health, native acquisition, OCR/models and action integration remain N/open.

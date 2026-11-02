@@ -16,6 +16,7 @@ const directories = [
   'desktop/tests',
   'desktop/verification',
   'desktop/launch',
+  'desktop/vision',
 ];
 function rejectConfig(path) {
   try {
@@ -36,7 +37,7 @@ export function inventory() {
   const files = [];
   let entries = 0;
   function walk(path, depth) {
-    if (++entries > 538 || depth > 12) throw new Error('INVENTORY_LIMIT');
+    if (++entries > 547 || depth > 12) throw new Error('INVENTORY_LIMIT');
     const stat = lstatSync(path);
     if (stat.isSymbolicLink()) throw new Error('INVENTORY_LINK');
     if (stat.isDirectory()) {

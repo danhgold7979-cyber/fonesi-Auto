@@ -1,8 +1,8 @@
 # Phase Status — Fonesi-Auto
 
-**Phase04 — UI Automator, OpenCV and OCR recognition:** source7/49=14.3%, integrated7/49=14.3%, technical acceptance0/12. Exactly P4-05.B moves N→I: +1/49 (+2.04 percentage points) in each coverage measure versus12.2%/12.2%; fixed denominator unchanged. [Exact cells and evidence](phases/P4-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
+**Phase04 — UI Automator, OpenCV and OCR recognition:** source14/49=28.6%, integrated14/49=28.6%, technical acceptance0/12. Exactly P4-06.A/B/C and P4-08.A/B/D/E move N→I: +7/49 (+14.29 percentage points) in each measure versus14.3%/14.3%; fixed denominator unchanged. [Exact cells and evidence](phases/P4-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
 
-**Current local Phase04 milestone:** bounded supplied-screen stability now composes the actual PNG/XML codecs and selector, with explicit policy/reset/deadline/cancellation and historical terminal results. Product/tooling review is CLEAR;12 affected cases and one uninterrupted1675/1675 source aggregate PASS. [Evidence](evidence/P4-05-supplied-stability-2026-11-02.md). No autonomous capture, action dispatch, physical-stability guarantee or task acceptance. The sole `phase-04` branch remains local; no remote publication is claimed. **Stop reason / required action:** none. OpenCV/worker continuation is being assessed separately before source entry; no extra source permission is inferred.
+**Current local Phase04 milestone:** actual supplied-image PNG→OpenCV crop/scale/gain→verified pixels/mapping and owned isolated Linux worker now have independent source/tooling/criterion CLEAR. Actual20 affected JS cases, separate8 Python cases and one uninterrupted1695/1695 source aggregate PASS. [Evidence](evidence/P4-06-08-supplied-opencv-worker-2026-11-02.md). No Windows packaged runtime, application health/actor activation, native acquisition, OCR qualification, physical result or task acceptance. The sole `phase-04` branch remains local; no remote publication is claimed. **Stop reason / required action:** none; local evidence closure follows the completed integrated check.
 
 ## Inherited Phase03 history at the branch base
 

@@ -101,6 +101,8 @@ export const TEST_FILES = Object.freeze([
   'tests/platform-tools-setup-service.test.mjs',
   'tests/policy.test.mjs',
   'tests/preferences-bridge.test.mjs',
+  'tests/preprocess-contract.test.mjs',
+  'tests/preprocess-worker.test.mjs',
   'tests/primary-pages.test.mjs',
   'tests/quality-tool.test.mjs',
   'tests/registry-store.test.mjs',

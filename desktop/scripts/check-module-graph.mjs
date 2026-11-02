@@ -147,7 +147,7 @@ export async function validateGraph(sources, map) {
   if (
     map.schemaVersion !== 1 ||
     !map.modules ||
-    Object.keys(map.modules).length > 125 ||
+    Object.keys(map.modules).length > 127 ||
     Object.keys(map.modules).length === 0
   )
     reject('MAP_INVALID');
@@ -296,7 +296,7 @@ export function inventory(sourceRoot) {
   const sources = {};
   let count = 0;
   function walk(path, name, depth) {
-    if (++count > 128 || depth > 8) reject('INVENTORY_LIMIT');
+    if (++count > 130 || depth > 8) reject('INVENTORY_LIMIT');
     const stat = lstatSync(path);
     if (stat.isSymbolicLink()) reject('SOURCE_LINK');
     if (stat.isDirectory()) {

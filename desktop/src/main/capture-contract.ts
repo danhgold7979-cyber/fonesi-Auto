@@ -86,7 +86,13 @@ function paeth(a: number, b: number, c: number): number {
     pc = Math.abs(p - c);
   return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
 }
-export function validateCapturePng(input: unknown, display: unknown): PngCaptureResult {
+type DecodedPng = Exclude<PngCaptureResult, Rejection> &
+  Readonly<{ pixels: Uint8Array; channels: number }>;
+function decodePng(
+  input: unknown,
+  display: unknown,
+  preprocessing: boolean,
+): Rejection | DecodedPng {
   const evidence = snapshotDisplayEvidence(display);
   if (!evidence) return bad();
   const bytes = snapshotBytes(input);
@@ -133,6 +139,8 @@ export function validateCapturePng(input: unknown, display: unknown): PngCapture
           data[12] !== 0
         )
           return bad();
+        if (preprocessing && (width > 4096 || height > 4096 || width * height > 4194304))
+          return bad('CAPTURE_LIMIT');
         channels = data[9] === 2 ? 3 : 4;
         if ((width * channels + 1) * height > CAPTURE_LIMITS.decodedBytes)
           return bad('CAPTURE_LIMIT');
@@ -210,11 +218,23 @@ export function validateCapturePng(input: unknown, display: unknown): PngCapture
       encodedBytes: bytes.length,
       decodedBytes: pixels.length,
       pixelSha256: sha(pixels),
+      pixels,
+      channels,
       evidence,
     });
   } catch {
     return bad();
   }
+}
+// Fixed preprocessing admission occurs at IHDR before inflate; no caller cap selector.
+export function decodePreprocessPng(input: unknown, display: unknown): Rejection | DecodedPng {
+  return decodePng(input, display, true);
+}
+export function validateCapturePng(input: unknown, display: unknown): PngCaptureResult {
+  const result = decodePng(input, display, false);
+  if (!result.ok) return result;
+  const { pixels: _pixels, channels: _channels, ...original } = result;
+  return Object.freeze(original);
 }
 export type HierarchyNode = Readonly<{
   ordinal: number;
