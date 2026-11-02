@@ -551,23 +551,23 @@ class ManagedInputEvidence(unittest.TestCase):
 
 class ManagedVideoEvidence(unittest.TestCase):
     def current(self):
-        return {**managed_sample(), 'version': 7, 'groupsPassed': 74,
-                'inputHashes': dict(validator.MANAGED_V7_HASHES)}
+        return {**managed_sample(), 'version': 8, 'groupsPassed': 92,
+                'inputHashes': dict(validator.MANAGED_V8_HASHES)}
 
-    def test_current_seventyfour_requires_exact_hashes_and_never_relabels_historical(self):
+    def test_current_ninetytwo_requires_exact_hashes_and_never_relabels_historical(self):
         value = self.current()
         self.assertEqual(validator.managed_output(managed_text(value)), value)
-        for version, groups, pins in ((1, 8, None), (2, 10, validator.MANAGED_V2_HASHES), (3, 19, validator.MANAGED_V3_HASHES), (4, 27, validator.MANAGED_V4_HASHES), (5, 39, validator.MANAGED_V5_HASHES), (6, 51, validator.MANAGED_V6_HASHES)):
+        for version, groups, pins in ((1, 8, None), (2, 10, validator.MANAGED_V2_HASHES), (3, 19, validator.MANAGED_V3_HASHES), (4, 27, validator.MANAGED_V4_HASHES), (5, 39, validator.MANAGED_V5_HASHES), (6, 51, validator.MANAGED_V6_HASHES), (7, 74, validator.MANAGED_V7_HASHES)):
             old = {**managed_sample(), 'version': version, 'groupsPassed': groups}
             if pins is not None:
                 old['inputHashes'] = dict(pins)
             self.assertTrue(validator.validate_managed(old)['passed'])
             with self.assertRaises(ValueError):
-                validator.validate_managed({**old, 'version': 7})
-        for groups in (8, 10, 19, 27, 39, 51, 65, 73, 75):
+                validator.validate_managed({**old, 'version': 8})
+        for groups in (8, 10, 19, 27, 39, 51, 65, 73, 74, 75, 91, 93):
             with self.assertRaises(ValueError):
                 validator.validate_managed({**value, 'groupsPassed': groups})
-        for key in validator.MANAGED_V7_HASHES:
+        for key in validator.MANAGED_V8_HASHES:
             bad = self.current()
             bad['inputHashes'][key] = '0' * 64
             with self.assertRaises(ValueError):
@@ -576,14 +576,14 @@ class ManagedVideoEvidence(unittest.TestCase):
         import hashlib
         paths = ('native/IsolatedAdbServer.cs','native/RetainedAdbSession.cs','native/RetainedAdbProtocol.cs','native/RetainedHostAdmission.cs','native/RetainedVideoSession.cs','tests/fixtures/RetainedAdbProtocolFixture.cs','../tools/phase-00/HostProbeNative.cs','scripts/retained-managed-fixture.mjs','verification/Invoke-RetainedManagedFixture.ps1','verification/WindowsBoundary.psm1','verification/OwnedFiles.psm1')
         actual = [hashlib.sha256((base/p).read_bytes()).hexdigest() for p in paths]
-        self.assertEqual(actual, list(validator.MANAGED_V7_HASHES.values()))
+        self.assertEqual(actual, list(validator.MANAGED_V8_HASHES.values()))
 
-    def test_current_input_publisher_exclusively_requires_v7(self):
-        for value in (managed_sample(), ManagedCurrentEvidence().current(), ManagedServerEvidence().current(), ManagedDiscoveryEvidence().current(), ManagedMetadataEvidence().current(), ManagedInputEvidence().current(), self.current()):
+    def test_current_input_publisher_exclusively_requires_v8(self):
+        for value in (managed_sample(), ManagedCurrentEvidence().current(), ManagedServerEvidence().current(), ManagedDiscoveryEvidence().current(), ManagedMetadataEvidence().current(), ManagedInputEvidence().current(), {**managed_sample(), 'version': 7, 'groupsPassed': 74, 'inputHashes': dict(validator.MANAGED_V7_HASHES)}, self.current()):
             with tempfile.TemporaryDirectory() as directory:
                 base=Path(directory).resolve()
                 (base/'.retained-managed-output.txt').write_bytes(managed_text(value))
-                if value['version'] != 7:
+                if value['version'] != 8:
                     with self.assertRaises(ValueError): validator.managed(base, False, False, False, False, True)
                     self.assertFalse((base/'retained-managed-validated.json').exists())
                 else:

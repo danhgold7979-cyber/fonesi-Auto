@@ -23,7 +23,7 @@ on:
         type: boolean
         default: false
       run_video_managed:
-        description: 'Compile five current sources and run 74 pure/fake managed groups; no live socket/server/device'
+        description: 'Compile five current sources and run 92 pure/fake managed groups; no live socket/server/device'
         required: false
         type: boolean
         default: false
@@ -1139,7 +1139,7 @@ jobs:
             [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
             if (@($errors).Count -ne 0) { Write-Output 'RETAINED_MANAGED_SYNTAX_FAILED'; exit 1 }
           }
-      - name: Compile five production sources and run 51 historical and 23 pure or fake video groups
+      - name: Compile five production sources and run 74 historical and 18 pure or fake media groups
         run: |
           $ErrorActionPreference='Stop'
           try {
@@ -1163,7 +1163,7 @@ jobs:
             if(@($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
             if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_PASS'}).Count -ne 1){exit 1}
           } catch { Write-Output 'RETAINED_MANAGED_PUBLICATION_FAILED'; exit 1 }
-      - name: Upload only strict current seventy-four-group managed evidence
+      - name: Upload only strict current ninety-two-group managed evidence
         if: always() && steps.retained_managed_validation.outputs.written == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:

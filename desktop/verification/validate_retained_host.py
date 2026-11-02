@@ -153,18 +153,21 @@ MANAGED_V5_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f75
 # Current bounded input fixture; exact pins refreshed only after source freeze.
 MANAGED_V6_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': '24dd1324671214de7f0a2dcd41a9725c5823d5ca641ca8a9398a5d83dcd07a50', 'protocol': '61f2cf81b13c337d82ba4d0a469f3a068715bbd68564bb0df3f6143dcf01696e', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'fixture': '49abbd1eb8d5553caabf5a437c11849b97437c5c57b0e13c7e50421c1b1dcbb2', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': '5780548a37618215de753c2c9dc4934268c0e7862d106947665528ed3a75c5f7', 'wrapper': '28686c630a208789558035559333a4ad6a7f98c8ee28267b90c9661ee4b75d38', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
 
-# Current video pins are populated only at reviewed source freeze.
+# Historical v7 pins remain bound to their original reviewed source.
 MANAGED_V7_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': '959354d2fcabc08d1ad3bfd4326b4049fa33814c1e942d2a06598145161f94c7', 'protocol': '2b540242f411e7c3091d2bd13dff33be14c996194b4f5cb4486d8ec6e9d801cd', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'video': 'c4311d6080f6b566353c6f72151d8ef04b99e60a1f16ce396d020d3b86770ccf', 'fixture': '3d576c73fa16b1dd410c76273b8217a604900f0dd2bd89cdde2d97a03a46c6b9', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': 'b4074928b30ab42ac9434798f9685e1091567fc40c62c8d6d48fcaf04a434078', 'wrapper': '7d69ee3c6f753d45b3bbfe30ed5cb3f0ac91fe64349395708a25463eaffa68a1', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
 
+# Current v8 media fixture closure; historical tables above are unchanged.
+MANAGED_V8_HASHES = {'server': '4bf1cddd06ad6ead68f2f22cdb0c9b7c43cda96d41005f7546973c81b92029d7', 'session': '959354d2fcabc08d1ad3bfd4326b4049fa33814c1e942d2a06598145161f94c7', 'protocol': '74d9e0d3614f055e8cb82b0db328b950cf8c8988929e51fc6e0077918a960ac0', 'admission': '2e5602d3965b753ae536cf51a9467af77e59fc1b477ae06029dcfbd56e9c3110', 'video': 'ba1f50cc58fedf13675b935188b10ae991bf73bc50c8c1440dd79818b03199b6', 'fixture': 'b94eca7ae5ce8e425a4ab0959e6d1a65004be8abcb3386d7ca727cb81ce431e6', 'probe': 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89', 'gate': '1e7dfadd3dec0a49fbae1920388804cd8b125881bef832aec7b1ef4e7d4604b7', 'wrapper': 'fa0bd305a1a194d9f0f41b9e9c7385e93578e9d6cdc2ec90802563d339159c13', 'boundary': 'd796fa5596b4d3c140bd1044033274481e4d90cf0d69226bdde09eae8a602aaf', 'ownedFiles': '17884274d9647f22a431aca83fbd7bc7c624f7b5cf334a2aba7b7da44eea2a29'}
+
 def validate_managed(value):
-    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2, 3, 4, 5, 6, 7):
+    if type(value) is not dict or type(value.get('version')) is not int or value['version'] not in (1, 2, 3, 4, 5, 6, 7, 8):
         reject()
     version = value['version']
     keys = ('version', 'scope', 'compileProcess', 'fixtureProcess', 'groupsPassed', 'compilerDiagnostics', 'sourceUnchanged', 'directoryCleanup', 'passed')
     exact_record(value, keys + (('inputHashes',) if version >= 2 else ()))
-    groups = {1: 8, 2: 10, 3: 19, 4: 27, 5: 39, 6: 51, 7: 74}[version]
-    expected_hashes = {2: MANAGED_V2_HASHES, 3: MANAGED_V3_HASHES, 4: MANAGED_V4_HASHES, 5: MANAGED_V5_HASHES, 6: MANAGED_V6_HASHES, 7: MANAGED_V7_HASHES}.get(version, {})
-    if version == 7 and len(expected_hashes) != 11:
+    groups = {1: 8, 2: 10, 3: 19, 4: 27, 5: 39, 6: 51, 7: 74, 8: 92}[version]
+    expected_hashes = {2: MANAGED_V2_HASHES, 3: MANAGED_V3_HASHES, 4: MANAGED_V4_HASHES, 5: MANAGED_V5_HASHES, 6: MANAGED_V6_HASHES, 7: MANAGED_V7_HASHES, 8: MANAGED_V8_HASHES}.get(version, {})
+    if version in (7, 8) and len(expected_hashes) != 11:
         reject()
     hashes = {}
     if version >= 2:
@@ -253,7 +256,7 @@ def managed(base, current_server=False, current_discovery=False, current_metadat
         reject()
     if current_input and value['version'] != 6:
         reject()
-    if current_video and value['version'] != 7:
+    if current_video and value['version'] != 8:
         reject()
     _write_new(base, 'retained-managed-validated.json', value)
     return value['passed']

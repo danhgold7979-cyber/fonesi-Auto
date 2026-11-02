@@ -27,7 +27,7 @@ const success = () => ({
   stderr: '',
 });
 const before = (text, a, b) => assert.ok(text.indexOf(a) >= 0 && text.indexOf(a) < text.indexOf(b));
-test('managed evidence requires exact seventy-four-group marker, actual zero exit and retirement', () => {
+test('managed evidence requires exact ninety-two-group marker, actual zero exit and retirement', () => {
   assert.equal(managedProcessPassed(success(), true), true);
   assert.equal(managedProcessPassed({ ...success(), stdout: MANAGED_MARKER + '\n' }, true), true);
   for (const patch of [
@@ -43,6 +43,7 @@ test('managed evidence requires exact seventy-four-group marker, actual zero exi
     { stdout: 'RETAINED_MANAGED_GROUPS_27\n' },
     { stdout: 'RETAINED_MANAGED_GROUPS_39\n' },
     { stdout: 'RETAINED_MANAGED_GROUPS_51\n' },
+    { stdout: 'RETAINED_MANAGED_GROUPS_74\n' },
     { stdout: MANAGED_MARKER },
     { stdout: MANAGED_MARKER + '\n\n' },
     { stdout: 'private-canary\n' + MANAGED_MARKER + '\n' },
@@ -78,7 +79,8 @@ test('generated fixed entry calls only the managed fixture and demands eight pro
   assert.match(entry, /RunMetadata\(\) != 12/);
   assert.match(entry, /RunInput\(\) != 12/);
   assert.match(entry, /RunVideo\(\) != 23/);
-  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_74"\)/);
+  assert.match(entry, /RunVideoMedia\(\) != 18/);
+  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_92"\)/);
   assert.match(
     entry,
     /catch \{ Console\.Error\.WriteLine\("RETAINED_MANAGED_FIXTURE_FAILED"\); return 1;/,
@@ -203,7 +205,7 @@ test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects 
     assert.throws(() => managedOnlyJob(changedDefault));
   }
 });
-test('managed-only job has no native campaign or archive actions and publishes only strict version7 JSON', () => {
+test('managed-only job has no native campaign or archive actions and publishes only strict version8 JSON', () => {
   const job = managedOnlyJob(workflow);
   assert.match(job, /Invoke-RetainedManagedFixture\.ps1\)/);
   assert.match(job, /validate_retained_host\.py managed-video 2>&1/);

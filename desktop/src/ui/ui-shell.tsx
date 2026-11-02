@@ -14,6 +14,14 @@ import { Icon, SocialIcon, UnavailableButton, EmptyPanel, UiModal } from './ui-s
 import { OverviewPage, AccountsPage, TrackingPage } from './primary-pages.tsx';
 import { SetupPage, CalendarPage, WorkflowsPage, WORKFLOW_LABELS } from './work-pages.tsx';
 export type ShellProps = Readonly<{
+  video?: Readonly<{
+    view: Readonly<{ deviceId: string; generation: number; state: string }> | null;
+    available: boolean;
+    canStart: (id: string, generation: number) => boolean;
+    onStart: (id: string, generation: number) => void;
+    onStop: () => void;
+    canvasRef: (canvas: HTMLCanvasElement | null) => void;
+  }>;
   hostResources?: ReactNode;
   onHostResourcesClose?: () => void;
   onHostResourcesRead?: () => void;
@@ -1154,9 +1162,62 @@ export function UiShell(p: ShellProps) {
                         <div className="android-view">
                           <span className="screen-order">{index + 1}</span>
                           <p>{d.name}</p>
-                          <small>UNAVAILABLE · không có stream</small>
+                          {p.video?.view?.deviceId === d.id &&
+                          p.video.view.generation === d.generation ? (
+                            <>
+                              <canvas
+                                ref={p.video.canvasRef}
+                                aria-label={`Video ${d.name}`}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'contain',
+                                  pointerEvents: 'none',
+                                }}
+                              />
+                              <small>{p.video.view.state}</small>
+                            </>
+                          ) : (
+                            <small>UNAVAILABLE · không có stream</small>
+                          )}
                         </div>
                       </button>
+                      {p.video ? (
+                        <div className="rowflex">
+                          <button
+                            type="button"
+                            className="tinybtn"
+                            aria-label={`Start video ${d.name}`}
+                            disabled={!p.video.available || !p.video.canStart(d.id, d.generation)}
+                            onClick={() => {
+                              if (allowed() && p.video?.canStart(d.id, d.generation))
+                                p.video.onStart(d.id, d.generation);
+                            }}
+                          >
+                            Start video
+                          </button>
+                          <button
+                            type="button"
+                            className="tinybtn"
+                            aria-label={`Stop video ${d.name}`}
+                            disabled={
+                              p.video.view?.deviceId !== d.id ||
+                              p.video.view.generation !== d.generation
+                            }
+                            onClick={() => {
+                              if (
+                                lifetime.current &&
+                                latest.current.renderToken === renderToken &&
+                                p.video?.view?.deviceId === d.id &&
+                                p.video.view.generation === d.generation
+                              )
+                                p.video.onStop();
+                            }}
+                          >
+                            Stop video
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
               </div>

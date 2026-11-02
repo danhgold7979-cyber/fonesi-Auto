@@ -919,3 +919,294 @@ test('late unretired v5 response invalidates prior foreground terminal evidence'
   f.receive(frame(response(f.writes.at(-1), retired)));
   await confirmation;
 });
+
+function mediaFrame(h, bytes = new Uint8Array()) {
+  const header = new TextEncoder().encode(JSON.stringify(h));
+  const out = new Uint8Array(16 + header.length + bytes.length);
+  out.set([0, 65, 86, 77, 69, 68, 48, 49]);
+  const d = new DataView(out.buffer);
+  d.setUint32(8, header.length);
+  d.setUint32(12, bytes.length);
+  out.set(header, 16);
+  out.set(bytes, 16 + header.length);
+  return out;
+}
+const mediaHeader = (creditId, extra = {}) => ({
+  version: 1,
+  sessionId: id(1),
+  attemptId: id(2),
+  videoId: id(9),
+  creditId,
+  geometryId: 1,
+  configId: 0,
+  packetId: 0,
+  kind: 'SESSION',
+  ptsUs: null,
+  totalBytes: 0,
+  offset: 0,
+  width: 100,
+  height: 200,
+  ...extra,
+});
+const mediaStart = {
+  videoId: id(9),
+  transportId: '1',
+  hostEpoch: 1,
+  deadlineUtc: 31000,
+  artifactId: 'a'.repeat(64),
+  scid: 1,
+  nonceHex: 'b'.repeat(64),
+};
+function v6Response(request, facts) {
+  return {
+    version: 6,
+    requestId: request.requestId,
+    sessionId: request.sessionId,
+    attemptId: request.attemptId,
+    kind: request.kind,
+    result: facts,
+  };
+}
+test('v6 initial credit follows actual START write, precedes response; sink and credit drains survive STOP', async () => {
+  let receive,
+    releaseStart,
+    releaseSink,
+    closed = 0;
+  const writes = [];
+  const startWrite = new Promise((r) => (releaseStart = r)),
+    sinkWork = new Promise((r) => (releaseSink = r));
+  const b = createHostBridge({
+    sessionId: id(1),
+    newAttemptId: () => id(2),
+    assertRuntime() {},
+    transport: {
+      subscribe(c) {
+        receive = c;
+      },
+      requestCleanup() {},
+      write(bytes) {
+        const r = JSON.parse(new TextDecoder().decode(bytes));
+        writes.push(r);
+        return r.kind === 'VIDEO_START' ? startWrite : Promise.resolve();
+      },
+    },
+  });
+  const p = b.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const foreground = p.startForeground(t, {});
+  await tick();
+  receive(frame(response(writes[0], live)));
+  await foreground;
+  const start = p.videoStart(t, mediaStart, {
+    accept: () => sinkWork,
+    close() {
+      closed++;
+    },
+  });
+  await tick();
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].version, 6);
+  releaseStart();
+  await tick();
+  assert.equal(writes[2].kind, 'VIDEO_CREDIT');
+  assert.equal(writes[2].creditId, 1);
+  assert.equal('requestId' in writes[2], false);
+  const raw = mediaFrame(mediaHeader(1));
+  for (let i = 0; i < raw.length; i++) receive(raw.slice(i, i + 1));
+  await tick();
+  assert.equal(writes.length, 3);
+  const stop = p.videoStop(t, id(9));
+  assert.equal(closed, 1);
+  await tick();
+  receive(
+    frame(
+      v6Response(writes[3], {
+        ...preparingVideo(id(9)),
+        state: 'CLOSED',
+        code: 'CLOSED',
+        localRetired: true,
+      }),
+    ),
+  );
+  receive(frame(v6Response(writes[1], preparingVideo(id(9)))));
+  await start;
+  let done = false;
+  void stop.then(() => (done = true));
+  await tick();
+  assert.equal(done, false);
+  releaseSink();
+  await stop;
+  assert.equal(writes.length, 4);
+});
+test('v6 correlation/config/offset and duplicate-credit refusals close the actual channel', async () => {
+  for (const bad of [
+    mediaHeader(2),
+    mediaHeader(1, { videoId: id(8) }),
+    mediaHeader(1, { geometryId: 2 }),
+    mediaHeader(1, { kind: 'DELTA', configId: 1, packetId: 1, totalBytes: 1, ptsUs: 0 }),
+  ]) {
+    const f = fixture(),
+      p = f.bridge.provider,
+      t = p.reserveAttempt('FOREGROUND');
+    const fg = p.startForeground(t, {});
+    await tick();
+    f.receive(frame(response(f.writes[0], live)));
+    await fg;
+    const start = p.videoStart(t, mediaStart, { accept: async () => {}, close() {} });
+    const rejected = assert.rejects(start);
+    await tick();
+    f.receive(mediaFrame(bad, bad.totalBytes ? new Uint8Array([1]) : undefined));
+    await rejected;
+    assert.equal(f.cleanups, 1);
+  }
+});
+
+test('v6 repeated CONFIG and split chunks use one session-wide sequence; successor awaits actual credit write', async () => {
+  let receive, releaseCredit;
+  const writes = [],
+    accepted = [];
+  const creditHeld = new Promise((r) => (releaseCredit = r));
+  const b = createHostBridge({
+    sessionId: id(1),
+    newAttemptId: () => id(2),
+    assertRuntime() {},
+    transport: {
+      subscribe(c) {
+        receive = c;
+      },
+      requestCleanup() {},
+      write(bytes) {
+        const r = JSON.parse(new TextDecoder().decode(bytes));
+        writes.push(r);
+        if (r.kind === 'VIDEO_CREDIT' && r.creditId === 1) {
+          receive(mediaFrame(mediaHeader(1))); // Native output before callback settlement.
+          return creditHeld;
+        }
+        return Promise.resolve();
+      },
+    },
+  });
+  const p = b.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const fg = p.startForeground(t, {});
+  await tick();
+  receive(frame(response(writes[0], live)));
+  await fg;
+  const start = p.videoStart(t, mediaStart, {
+    accept: async (h) => {
+      accepted.push(h);
+    },
+    close() {},
+  });
+  await tick();
+  await tick();
+  assert.equal(accepted.length, 1);
+  assert.equal(writes.length, 3);
+  releaseCredit();
+  await tick();
+  await tick();
+  assert.equal(writes.at(-1).creditId, 2);
+  receive(
+    mediaFrame(
+      mediaHeader(2, { kind: 'CONFIG', configId: 1, packetId: 1, totalBytes: 2 }),
+      new Uint8Array([1, 2]),
+    ),
+  );
+  await tick();
+  await tick();
+  assert.equal(writes.at(-1).creditId, 3);
+  receive(
+    mediaFrame(
+      mediaHeader(3, { kind: 'CONFIG', configId: 2, packetId: 2, totalBytes: 2 }),
+      new Uint8Array([1, 2]),
+    ),
+  );
+  await tick();
+  await tick();
+  receive(
+    mediaFrame(
+      mediaHeader(4, { kind: 'KEY', configId: 2, packetId: 3, totalBytes: 32769, ptsUs: 1 }),
+      new Uint8Array(32768),
+    ),
+  );
+  await tick();
+  await tick();
+  receive(
+    mediaFrame(
+      mediaHeader(5, {
+        kind: 'KEY',
+        configId: 2,
+        packetId: 3,
+        totalBytes: 32769,
+        offset: 32768,
+        ptsUs: 1,
+      }),
+      new Uint8Array(1),
+    ),
+  );
+  await tick();
+  await tick();
+  assert.equal(accepted.length, 5);
+  assert.equal(writes.at(-1).creditId, 6);
+  receive(frame(v6Response(writes[1], preparingVideo(id(9)))));
+  await start;
+  const stop = p.videoStop(t, id(9));
+  await tick();
+  // A record already in the native pipe is parsed/discarded after Stop, never sent to the sink.
+  receive(mediaFrame(mediaHeader(6, { geometryId: 2 })));
+  receive(
+    frame(
+      v6Response(writes.at(-1), {
+        ...preparingVideo(id(9)),
+        state: 'CLOSED',
+        code: 'CLOSED',
+        localRetired: true,
+      }),
+    ),
+  );
+  await stop;
+  assert.equal(accepted.length, 5);
+});
+
+test('v6 synchronous sink close cannot reenter the reserved STOP or RETIRE lane', async () => {
+  for (const kind of ['VIDEO_STOP', 'RETIRE']) {
+    const f = fixture(),
+      p = f.bridge.provider,
+      t = p.reserveAttempt('FOREGROUND');
+    const fg = p.startForeground(t, {});
+    await tick();
+    f.receive(frame(response(f.writes[0], live)));
+    await fg;
+    let reentry,
+      closes = 0;
+    const start = p.videoStart(t, mediaStart, {
+      accept: async () => {},
+      close() {
+        closes++;
+        reentry = assert.rejects(p.retire(t));
+      },
+    });
+    await tick();
+    f.receive(frame(v6Response(f.writes[1], preparingVideo(id(9)))));
+    await start;
+    const stop = kind === 'VIDEO_STOP' ? p.videoStop(t, id(9)) : p.retire(t);
+    await tick();
+    await reentry;
+    assert.equal(closes, 1);
+    const request = f.writes.at(-1);
+    assert.equal(f.writes.length, 4);
+    f.receive(
+      frame(
+        kind === 'VIDEO_STOP'
+          ? v6Response(request, {
+              ...preparingVideo(id(9)),
+              state: 'CLOSED',
+              code: 'CLOSED',
+              localRetired: true,
+            })
+          : response(request, retired),
+      ),
+    );
+    await stop;
+  }
+});

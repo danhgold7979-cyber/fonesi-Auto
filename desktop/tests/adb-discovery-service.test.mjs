@@ -811,7 +811,9 @@ async function exerciseNativeIssuer(verified = false, video = false) {
     n = 40000;
   let videoFacts = null,
     videoStarts = 0,
-    videoStops = 0;
+    videoStops = 0,
+    mediaAccepted = 0,
+    mediaClosed = 0;
   const videoRead = Object.freeze({}),
     videoRuntime = {
       release: '37.0.1',
@@ -871,8 +873,13 @@ async function exerciseNativeIssuer(verified = false, video = false) {
           startForeground: async () => hostFacts('STARTED'),
           health: async () => hostFacts('HEALTHY'),
           retire: async () => hostFacts('STOPPED'),
-          videoStart: async (_attempt, request) => {
+          videoStart: async (_attempt, request, media) => {
             videoStarts++;
+            if (video === 'MEDIA' || video === 'MEDIA_REENTRY') {
+              assert.ok(media);
+              assert.equal(request.deadlineUtc, 30500);
+              await media.accept(Object.freeze({ syntheticMediaOnly: true }), new Uint8Array([1]));
+            } else assert.equal(media, undefined);
             videoFacts = Object.freeze({
               ...preparingVideo(request.videoId),
               snapshotRevision: 1,
@@ -970,7 +977,7 @@ async function exerciseNativeIssuer(verified = false, video = false) {
           return 'RETIRED';
         },
         videoArtifactAvailable: () => video,
-        startVideo: (_cap, request, ticket) => {
+        startVideo: (_cap, request, ticket, media) => {
           const binding = inspectRegistryVideoBinding(ticket);
           assert.equal(binding.finalCurrent(), true);
           assert.equal(binding.binding.transportId, '1');
@@ -983,6 +990,7 @@ async function exerciseNativeIssuer(verified = false, video = false) {
               artifactId: 'a'.repeat(64),
             },
             ticket,
+            media,
           );
         },
         statusVideo: (cap, videoId, ticket) => videoAdapter.statusVideo(cap, videoId, ticket),
@@ -1144,7 +1152,31 @@ async function exerciseNativeIssuer(verified = false, video = false) {
       const ownerModule = await import(moduleUrl(ownerSource, ownerPath));
       if (video === 'CANCEL') videoInspect = true;
       if (video === 'OWNER_CLOSE') videoOwnerArmed = true;
-      const consumer = ownerModule.createOwnedVideoConsumer(videoTicket);
+      let reentrantClose;
+      const consumer =
+        video === 'MEDIA' || video === 'MEDIA_REENTRY'
+          ? ownerModule.createOwnedVideoMediaConsumer(
+              videoTicket,
+              {
+                admittedUtc: 500,
+                deadlineUtc: 30500,
+                videoId: '00000000-0000-0000-0000-000000009999',
+              },
+              {
+                accept: async () => {
+                  mediaAccepted++;
+                },
+                close() {
+                  mediaClosed++;
+                  if (video === 'MEDIA_REENTRY') {
+                    assert.equal(consumer.retired, false);
+                    assert.ok(consumer.stop());
+                    reentrantClose = ingestion.close();
+                  }
+                },
+              },
+            )
+          : ownerModule.createOwnedVideoConsumer(videoTicket);
       if (video === 'CANCEL') {
         for (let i = 0; i < 30 && !videoInspectEntered; i++) await Promise.resolve();
         assert.equal(videoInspectEntered, true);
@@ -1206,7 +1238,15 @@ async function exerciseNativeIssuer(verified = false, video = false) {
       await consumer.stop();
       assert.equal(videoStops, 1);
       assert.equal(consumer.retired, true);
+      if (video === 'MEDIA' || video === 'MEDIA_REENTRY') {
+        assert.equal(mediaAccepted, 1);
+        assert.equal(mediaClosed, 1);
+      }
       assert.throws(() => ownerModule.createOwnedVideoConsumer(videoTicket));
+      if (video === 'MEDIA_REENTRY') {
+        assert.equal((await reentrantClose).status, 'RETIRED');
+        return;
+      }
     } else assert.equal(ingestion.videoTarget(deviceId), null);
     const metadata = target.begin('MODEL', 1100);
     assert.equal(metadata.handoff, 'QUERY');
@@ -2151,3 +2191,9 @@ test('held video STATUS custody keeps Stop and ingestion close pending until act
 
 test('last adapter owner callback synchronously closes ingestion before video handoff', () =>
   exerciseNativeIssuer(true, 'OWNER_CLOSE'));
+
+test('sealed media target carries original deadline and restrictive sink through actual ingestion/service/adapter over synthetic factory facts', () =>
+  exerciseNativeIssuer(true, 'MEDIA'));
+
+test('synchronous sink close reentry through actual owner/service/ingestion keeps cleanup reserved and retirement pending', () =>
+  exerciseNativeIssuer(true, 'MEDIA_REENTRY'));

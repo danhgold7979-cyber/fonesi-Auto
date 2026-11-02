@@ -1,4 +1,4 @@
-import type { VideoTransportSession } from './video-contract.ts';
+import type { VideoTransportSession, VideoMediaSink } from './video-contract.ts';
 import { inspectFleetActiveInputIntent, type OwnedFleetActiveIntent } from './fleet-service.ts';
 import { inspectAssociationConfirmation } from './association-confirmation.ts';
 import {
@@ -216,6 +216,7 @@ export type VideoTargetRecord = Readonly<{
   finalCurrent(): boolean;
   begin(
     request: Readonly<{ videoId: string; deadlineUtc: number; scid: number; nonceHex: string }>,
+    media?: VideoMediaSink,
   ): VideoTransportSession;
 }>;
 const videoTargets = new WeakMap<object, VideoTargetRecord>();
@@ -1596,12 +1597,12 @@ export function createAdbDiscoveryService(
       installationRevision: native.installationRevision,
       current: proof.current,
       finalCurrent: proof.finalCurrent,
-      begin(request) {
+      begin(request, media) {
         if (used) throw Error('VIDEO_REJECTED');
         used = true;
         proof.current();
         if (!proof.finalCurrent() || !native) throw Error('VIDEO_REJECTED');
-        const session = native.beginVideo(bindingWitness, request);
+        const session = native.beginVideo(bindingWitness, request, media);
         videoSessions.add(session);
         videoWorks.add(session.started);
         void session.started

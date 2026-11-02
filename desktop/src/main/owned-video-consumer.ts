@@ -3,6 +3,9 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { inspectOwnedVideoTarget } from './adb-discovery-service.ts';
 import {
   preparingVideo,
+  videoRecord,
+  videoUuid,
+  type VideoMediaSink,
   snapshotVideo,
   type VideoSnapshot,
   type VideoSession,
@@ -12,6 +15,44 @@ const claimed = new WeakSet<object>();
 const scids = new Set<number>();
 const clock = Date.now.bind(Date);
 export function createOwnedVideoConsumer(target: unknown): VideoSession {
+  return createConsumer(target);
+}
+export function createOwnedVideoMediaConsumer(
+  target: unknown,
+  context: Readonly<{ admittedUtc: number; deadlineUtc: number; videoId: string }>,
+  sink: VideoMediaSink,
+): VideoSession {
+  const c = videoRecord(context, ['admittedUtc', 'deadlineUtc', 'videoId']);
+  const m = videoRecord(sink, ['accept', 'close']);
+  if (
+    !c ||
+    !m ||
+    typeof m.accept !== 'function' ||
+    typeof m.close !== 'function' ||
+    !Number.isSafeInteger(c.admittedUtc) ||
+    (c.admittedUtc as number) < 0 ||
+    Object.is(c.admittedUtc, -0) ||
+    !Number.isSafeInteger(c.deadlineUtc) ||
+    c.deadlineUtc !== (c.admittedUtc as number) + 30000 ||
+    !videoUuid(c.videoId)
+  )
+    throw Error('VIDEO_REJECTED');
+  const captured = Object.freeze({
+    admittedUtc: c.admittedUtc as number,
+    deadlineUtc: c.deadlineUtc as number,
+    videoId: c.videoId,
+  });
+  const media: VideoMediaSink = Object.freeze({
+    accept: m.accept.bind(sink),
+    close: m.close.bind(sink),
+  });
+  return createConsumer(target, captured, media);
+}
+function createConsumer(
+  target: unknown,
+  context?: Readonly<{ admittedUtc: number; deadlineUtc: number; videoId: string }>,
+  media?: VideoMediaSink,
+): VideoSession {
   const record = inspectOwnedVideoTarget(target);
   if (
     !record ||
@@ -22,15 +63,33 @@ export function createOwnedVideoConsumer(target: unknown): VideoSession {
   )
     throw Error('VIDEO_REJECTED');
   claimed.add(target); // Before clock, UUID, authority, artifact or transport callbacks.
-  const admittedUtc = clock();
-  const deadlineUtc = admittedUtc + 30000;
-  const sessionId = randomUUID();
+  const admittedUtc = context?.admittedUtc ?? clock();
+  const deadlineUtc = context?.deadlineUtc ?? admittedUtc + 30000;
+  const sessionId = context?.videoId ?? randomUUID();
   let view = preparingVideo(sessionId),
     native: VideoSnapshot | null = null;
   let stopped = false,
     unknown = false,
     actualPending = 0,
     beginEntered = false;
+  let mediaClosed = false;
+  const guardedMedia: VideoMediaSink | undefined = media
+    ? Object.freeze({
+        async accept(header, bytes) {
+          if (stopped || mediaClosed) throw Error('VIDEO_REJECTED');
+          record.current();
+          if (stopped || mediaClosed || !record.finalCurrent()) throw Error('VIDEO_REJECTED');
+          await media.accept(header, bytes);
+          record.current();
+          if (stopped || mediaClosed || !record.finalCurrent()) throw Error('VIDEO_REJECTED');
+        },
+        close() {
+          if (mediaClosed) return;
+          mediaClosed = true;
+          media.close();
+        },
+      })
+    : undefined;
   let failure: VideoSnapshot['code'] | null = null;
   let startWork: Promise<void>;
   let transport: VideoTransportSession | null = null;
@@ -53,6 +112,11 @@ export function createOwnedVideoConsumer(target: unknown): VideoSession {
   function latchUnknown() {
     unknown = true;
     stopped = true;
+    try {
+      guardedMedia?.close();
+    } catch {
+      unknown = true;
+    }
     publish({ ...view, state: 'UNCERTAIN', code: 'OUTCOME_UNKNOWN' });
   }
   function accept(raw: unknown) {
@@ -117,15 +181,26 @@ export function createOwnedVideoConsumer(target: unknown): VideoSession {
     stopPromise = new Promise((r) => {
       resolve = r;
     });
+    actualPending++;
+    try {
+      guardedMedia?.close();
+    } catch {
+      latchUnknown();
+    }
     // Retain actual transport completion independently of bounded logical reporting.
     const timer = setTimeout(() => {
       latchUnknown();
       resolve(view);
     }, 120000);
-    actualPending++;
+    let immediate: Promise<VideoSnapshot> | null = null;
+    try {
+      if (transport) immediate = transport.stop();
+    } catch {
+      latchUnknown();
+    }
     void Promise.resolve()
       .then(async () => {
-        if (transport) accept(await transport.stop());
+        if (immediate) accept(await immediate);
         else {
           await startWork;
           if (!transport && !beginEntered && !unknown)
@@ -158,6 +233,7 @@ export function createOwnedVideoConsumer(target: unknown): VideoSession {
   startWork = Promise.resolve()
     .then(async () => {
       if (stopped) return;
+      if (clock() < admittedUtc || clock() >= deadlineUtc) throw Error('VIDEO_REJECTED');
       record.current();
       const scid = randomBytes(4).readUInt32BE(0) & 0x7fffffff;
       if (scids.has(scid) || clock() >= deadlineUtc || !record.finalCurrent())
@@ -168,7 +244,10 @@ export function createOwnedVideoConsumer(target: unknown): VideoSession {
       if (stopped || clock() >= deadlineUtc || !record.finalCurrent())
         throw Error('VIDEO_REJECTED');
       beginEntered = true;
-      transport = record.begin(Object.freeze({ videoId: sessionId, scid, nonceHex, deadlineUtc }));
+      transport = record.begin(
+        Object.freeze({ videoId: sessionId, scid, nonceHex, deadlineUtc }),
+        guardedMedia,
+      );
       accept(await transport.started);
       if (!record.finalCurrent() && !stopped) {
         stopped = true;

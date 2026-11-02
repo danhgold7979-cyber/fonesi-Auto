@@ -1,3 +1,4 @@
+import type { VideoMediaHeader } from '../video-media-contract.ts';
 /** Private headless video control facts; no media bytes, issuer or effect authority. */
 export const VIDEO_PROTOCOL = 'AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1' as const;
 export const VIDEO_CODES = Object.freeze([
@@ -248,3 +249,9 @@ export function snapshotVideoAdmission(raw: unknown): VideoAdmission | null {
     return null;
   return Object.freeze(v) as VideoAdmission;
 }
+
+/** Restrictive downstream backpressure only; never target authority. */
+export type VideoMediaSink = Readonly<{
+  accept(header: VideoMediaHeader, bytes: Uint8Array): Promise<void>;
+  close(): void;
+}>;

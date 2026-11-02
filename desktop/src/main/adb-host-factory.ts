@@ -1,5 +1,5 @@
 import { inspectRegistryVideoBinding } from './registry-store.ts';
-import { snapshotVideoAdmission, preparingVideo } from './video-contract.ts';
+import { snapshotVideoAdmission, preparingVideo, type VideoMediaSink } from './video-contract.ts';
 import { inspectFleetActiveInputIntent } from './fleet-service.ts';
 /** Default VERSION_ONLY; SERVER_ONLY remains private and unwired from main. */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -598,7 +598,7 @@ export function createHostFactory(
         !!inspectHostVideoArtifact(videoArtifact)?.finalCurrent()
       );
     },
-    startVideo(capability: HostCapability, raw: unknown, target: unknown) {
+    startVideo(capability: HostCapability, raw: unknown, target: unknown, media?: VideoMediaSink) {
       if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY' || videoRegistered) fail();
       videoRegistered = true;
       const request = snapshotVideoAdmission(raw),
@@ -626,6 +626,7 @@ export function createHostFactory(
           artifactId: artifact.record.artifactId,
         }),
         target,
+        media,
       );
     },
     statusVideo(capability: HostCapability, id: string, target: unknown) {

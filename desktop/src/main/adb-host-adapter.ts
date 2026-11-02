@@ -3,6 +3,7 @@ import {
   snapshotVideo,
   snapshotVideoStart,
   type VideoSnapshot,
+  type VideoMediaSink,
   type VideoStart,
 } from './video-contract.ts';
 import { inspectFleetActiveInputIntent } from './fleet-service.ts';
@@ -130,7 +131,7 @@ export function snapshotHostAcquisitionFacts(raw: unknown): HostAcquisitionFacts
   }
 }
 export interface HostNativeProvider {
-  videoStart?(attempt: object, request: VideoStart): Promise<VideoSnapshot>;
+  videoStart?(attempt: object, request: VideoStart, media?: VideoMediaSink): Promise<VideoSnapshot>;
   videoStatus?(attempt: object, videoId: string): Promise<VideoSnapshot>;
   videoStop?(attempt: object, videoId: string): Promise<VideoSnapshot>;
   reserveAttempt(kind: 'VERSION' | 'FOREGROUND'): object;
@@ -551,6 +552,7 @@ export function createHostAdapter(
     kind: 'START' | 'STATUS' | 'STOP',
     raw: unknown,
     bindingTicket?: unknown,
+    media?: VideoMediaSink,
   ): Promise<VideoSnapshot> {
     const request = kind === 'START' ? snapshotVideoStart(raw) : null;
     const id = request?.videoId ?? raw;
@@ -619,7 +621,7 @@ export function createHostAdapter(
       }
       const rawFacts =
         kind === 'START'
-          ? await videoStart?.(a.token, request as VideoStart)
+          ? await videoStart?.(a.token, request as VideoStart, media)
           : kind === 'STATUS'
             ? await videoStatus?.(a.token, id)
             : await videoStop?.(a.token, id);
@@ -647,8 +649,12 @@ export function createHostAdapter(
   }
   return Object.freeze({
     snapshot: engine.snapshot,
-    startVideo: (cap: HostCapability, request: unknown, bindingTicket: unknown) =>
-      videoControl(cap, 'START', request, bindingTicket),
+    startVideo: (
+      cap: HostCapability,
+      request: unknown,
+      bindingTicket: unknown,
+      media?: VideoMediaSink,
+    ) => videoControl(cap, 'START', request, bindingTicket, media),
     statusVideo: (cap: HostCapability, id: string, bindingTicket: unknown) =>
       videoControl(cap, 'STATUS', id, bindingTicket),
     stopVideo: (cap: HostCapability, id: string) => videoControl(cap, 'STOP', id),

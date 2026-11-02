@@ -1,3 +1,9 @@
+import { createVideoStreamClient } from './video-stream-client.ts';
+import {
+  VIDEO_STREAM_CHANNEL,
+  VIDEO_PORT_CHANNEL,
+  VIDEO_WINDOW_ORIGIN,
+} from './video-stream-contract.ts';
 import { createHostResourceClient } from './host-resource-client.ts';
 import { HOST_RESOURCE_CHANNEL } from './host-resource-contract.ts';
 import { createInputInteractionClient } from './input-interaction-client.js';
@@ -14,6 +20,20 @@ import { createInvocationBudget } from './invocation-budget.js';
 import { createSettingsClient, createSettingsReadiness } from './settings-client.js';
 
 const budget = createInvocationBudget();
+const videoStream = createVideoStreamClient(
+  (wire) => ipcRenderer.invoke(VIDEO_STREAM_CHANNEL, wire),
+  budget,
+);
+const videoPort = (event: Electron.IpcRendererEvent, raw: unknown) => {
+  videoStream.acceptPort(raw, event.ports, (metadata, port) => {
+    window.postMessage({ type: 'AUTO_VIDEO_PORT_V1', ...metadata }, VIDEO_WINDOW_ORIGIN, [port]);
+  });
+};
+ipcRenderer.on(VIDEO_PORT_CHANNEL, videoPort);
+contextBridge.exposeInMainWorld(
+  'videoStream',
+  Object.freeze({ invoke: (wire: unknown) => videoStream.invoke(wire) }),
+);
 const hostResources = createHostResourceClient(
   (wire) => ipcRenderer.invoke(HOST_RESOURCE_CHANNEL, wire),
   budget,
@@ -205,6 +225,8 @@ window.addEventListener(
   () => {
     ipcRenderer.removeListener('foundation:preferences:ready', ready);
     readiness.dispose();
+    ipcRenderer.removeListener(VIDEO_PORT_CHANNEL, videoPort);
+    videoStream.dispose();
     hostResources.dispose();
     client.dispose();
     preferences.dispose();

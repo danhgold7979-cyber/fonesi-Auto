@@ -26,7 +26,7 @@ Exactly five new source modules extend graph 123→128, with 129 rejected. The s
 
 The literal worker is emitted by the existing build, required by main's exact output list, hashed by the production manifest and required by package admission. Missing or extra worker outputs are refused in the actual package-policy fixture. An additional test really bundles the current worker and proves its generated hash in the actual manifest composer; all other temporary outputs in that test are explicitly synthetic. The generated worker is **not executed**.
 
-The isolated actual build produced a 6,838-byte worker, SHA256 `16f0fe5f674e4672b72eaffb9ad4443b99daa9fe33da5e8f572d1ef3001da05c`, equal to its manifest entry. Parent subsequently rebuilt the integrated canonical source. Test inventory is 176→177, one additive path; quality inventory is 542→544 with exact 545 overflow negative. No scanner, output, dependency, deadline or capture cap is relaxed.
+The isolated actual build produced a 6,838-byte worker, SHA256 `16f0fe5f674e4672b72eaffb9ad4443b99daa9fe33da5e8f572d1ef3001da05c`, equal to its manifest entry. Parent subsequently rebuilt the integrated canonical source. The isolated test inventory was176→177; integration onto the package milestone gives178→179, the same one additive path. Measured canonical quality traversal is542 entries, bound544 preserving two fixture entries, with exact545 overflow negative. No scanner, output, dependency, deadline or capture cap is relaxed.
 
 The isolated worktree used an untracked tooling-only dependency link. An initial build refused the ambient NODE_PATH with OVERRIDE_REJECTED; removing that prohibited environment override, without modifying verifier policy, yielded actual installed-dependency verification and BUILD_VERIFIED. This is not a claim of physical link-free dependency custody. The link, generated outputs and copied amendment are not source payload.
 
@@ -95,3 +95,10 @@ These hashes bind the integrated canonical files (including the parent's preserv
 | `auto-telemetry-discovery-final.log` | `235dc0caf4f3df24b0b481cfb85e6f28d66e0f0ac6f9ec387820e64c8a08f3e8` |
 | `auto-telemetry-remainder-batch5.log` | `cf436c79dbb9ff390241bbf7cfda037ec0f345bbdc264fbb62e7f202f13f5f7d` |
 | `auto-telemetry-final-refresh.log` | `abf64b11f1204bbafc0ca3c98c4ba390175cdcf484517a205ac6a9525bf84cc6` |
+
+
+## Actual hosted source PASS — 2026-11-02 12:35 UTC
+
+Normal source CI41445067768/public `2b02ef7cbcfdf46b99e67c78570c6239a404dc23` completed SUCCESS. Corresponding local `2c125363b428427397128a06756902bf7568c5ad`, tree `2d94412f17fd47c26c91b79a6645de87dfd81d10`. Source job125276016722 emits actual1693/1693 and DESKTOP_SOURCE_CHECK_PASS, foundation109 with fail/cancel/skip/todo all0, Python375/OK, PHASE03_SOFTWARE_ONLY and SOURCE_JOB_NO_ADB_EXECUTION. Retained log100481bytes SHA256 `8b59471c18ac114e24b772bbf5ef03f3db6b46603fe3fe06fd413a0b24fe5a9f`. Fifteen optional jobs were SKIPPED by separate API observation, not inferred from source output.
+
+Independent retained-log audit is PASS at12:37 UTC: exact log bytes, emitted markers, committed sampler/worker hashes and public/local/tree binding verified without rerunning tests. This supersedes only the source-freeze expected hosted count, not its honest local failure history. No actual host worker measurement, device, decoder, package campaign or native execution occurred in this source job. A/G software credit was already supported locally; increased test count adds no cells. Existing actual package evidence is the preceding1bf3086c checkpoint and is not silently attributed to the new telemetry-inclusive application.

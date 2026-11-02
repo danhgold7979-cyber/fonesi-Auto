@@ -1,3 +1,6 @@
+import * as videoContract from '../src/video-stream-contract.ts';
+import * as videoClient from '../src/video-stream-client.ts';
+import * as videoDecoder from '../src/video-decoder.ts';
 import * as hostClient from '../src/host-resource-client.ts';
 import * as hostContract from '../src/host-resource-contract.ts';
 import * as inputClient from '../src/input-interaction-client.ts';
@@ -166,6 +169,8 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
     events = [],
     invocations = [];
   const modules = {
+    './video-stream-contract.ts': videoContract,
+    './video-stream-client.ts': videoClient,
     './association-client.js': associationClient,
     './association-contract.js': associationContract,
     './input-interaction-client.js': inputClient,
@@ -191,6 +196,7 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
               },
             },
             ipcRenderer: {
+              on: (k, f) => ready.set(k, f),
               once: (k, f) => ready.set(k, f),
               removeListener: (k) => ready.delete(k),
               invoke: (channel, wire) => {
@@ -328,6 +334,8 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
             },
           }),
         };
+      if (name === './video-stream-contract.ts') return videoContract;
+      if (name === './video-decoder.ts') return videoDecoder;
       if (name === './association-contract.js') return associationContract;
       if (name === './host-resource-contract.ts') return hostContract;
       if (name === './input-interaction-contract.js') return inputContract;

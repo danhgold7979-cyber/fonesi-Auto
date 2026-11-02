@@ -1,3 +1,5 @@
+import { createOwnedVideoMediaConsumer } from './owned-video-consumer.ts';
+import type { VideoMediaSink, VideoSession } from './video-contract.ts';
 // Main-owned explicit lifecycle facade. No implicit start, acquisition, retry or epoch reset.
 import {
   snapshotDiscoveryRequest,
@@ -160,6 +162,157 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     cleanupSettled = false,
     cleanupResource = false,
     cleanupAuditPending = false;
+  type VideoReservation = Readonly<{
+    videoId: string;
+    deviceId: string;
+    generation: number;
+    admittedUtc: number;
+    deadlineUtc: number;
+    current(): boolean;
+    begin(sink: VideoMediaSink): VideoSession;
+    stop(): Promise<boolean>;
+  }>;
+  let videoReservation: VideoReservation | null = null;
+  function reserveVideo(deviceId: string, expectedRegistryRevision: number): VideoReservation {
+    if (
+      !uuid(deviceId) ||
+      !Number.isSafeInteger(expectedRegistryRevision) ||
+      expectedRegistryRevision < 0 ||
+      Object.is(expectedRegistryRevision, -0) ||
+      busy ||
+      metadataOwner?.pending ||
+      videoReservation ||
+      !ingestion ||
+      !currentProjection() ||
+      projection?.revision !== expectedRegistryRevision
+    )
+      throw Error('VIDEO_UNAVAILABLE');
+    const captured = projection,
+      capturedIngestion = ingestion,
+      ownerGeneration = generation;
+    const rows = captured.devices.filter((row) => row.deviceId === deviceId);
+    if (rows.length !== 1 || rows[0]?.verification !== 'VERIFIED' || rows[0].state !== 'DEVICE')
+      throw Error('VIDEO_UNAVAILABLE');
+    const deviceGeneration = rows[0].generation;
+    busy = true; // Reserve shared ordinary lane before clock, allocator or target callbacks.
+    let cancelled = false,
+      entered = false,
+      constructing = false;
+    let consumer: VideoSession | null = null;
+    let stopWork: Promise<boolean> | null = null;
+    let constructionDone: () => void = () => {};
+    const construction = new Promise<void>((resolve) => {
+      constructionDone = resolve;
+    });
+    let reservation: VideoReservation;
+    const current = () =>
+      !cancelled &&
+      videoReservation === reservation &&
+      generation === ownerGeneration &&
+      currentProjection(captured) &&
+      ingestion === capturedIngestion;
+    function stop(): Promise<boolean> {
+      if (stopWork) return stopWork;
+      cancelled = true;
+      let complete: (value: boolean) => void = () => {};
+      stopWork = new Promise<boolean>((resolve) => {
+        complete = resolve;
+      });
+      work.add(stopWork);
+      const retained = stopWork;
+      let lower: Promise<unknown> | null = null;
+      try {
+        lower = consumer?.stop() ?? null;
+      } catch {
+        uncertain = true;
+      }
+      void Promise.resolve().then(async () => {
+        try {
+          if (constructing) await construction;
+          if (!lower && consumer) lower = consumer.stop();
+          if (lower) await lower;
+          const ok = !consumer || consumer.retired;
+          if (!ok) uncertain = true;
+          complete(ok);
+        } catch {
+          uncertain = true;
+          complete(false);
+        } finally {
+          work.delete(retained);
+          if (!entered) busy = false;
+        }
+      });
+      return retained;
+    }
+    try {
+      const admittedUtc = clock(),
+        deadlineUtc = admittedUtc + 30000,
+        videoId = allocate();
+      if (
+        !Number.isSafeInteger(admittedUtc) ||
+        admittedUtc < 0 ||
+        !Number.isSafeInteger(deadlineUtc) ||
+        generation !== ownerGeneration ||
+        !currentProjection(captured) ||
+        ingestion !== capturedIngestion
+      )
+        throw Error('VIDEO_UNAVAILABLE');
+      reservation = Object.freeze({
+        videoId,
+        deviceId,
+        generation: deviceGeneration,
+        admittedUtc,
+        deadlineUtc,
+        current,
+        begin(sink: VideoMediaSink) {
+          if (entered || !current()) throw Error('VIDEO_UNAVAILABLE');
+          entered = true;
+          constructing = true;
+          try {
+            const now = clock();
+            if (!current() || !Number.isSafeInteger(now) || now < admittedUtc || now >= deadlineUtc)
+              throw Error('VIDEO_UNAVAILABLE');
+            const target = capturedIngestion.videoTarget(deviceId);
+            if (!target || !current()) throw Error('VIDEO_UNAVAILABLE');
+            consumer = createOwnedVideoMediaConsumer(
+              target,
+              { admittedUtc, deadlineUtc, videoId },
+              sink,
+            );
+            const started = consumer.started.finally(() => {
+              busy = false;
+            });
+            work.add(started);
+            void started
+              .then(
+                () => {},
+                () => {
+                  uncertain = true;
+                },
+              )
+              .finally(() => work.delete(started));
+            if (!current()) void consumer.stop();
+            return consumer;
+          } catch (error) {
+            busy = false;
+            void stop();
+            throw error;
+          } finally {
+            constructing = false;
+            constructionDone();
+          }
+        },
+        stop,
+      });
+      videoReservation = reservation;
+      return reservation;
+    } catch (error) {
+      busy = false;
+      cancelled = true;
+      constructionDone();
+      throw error;
+    }
+  }
   let lastReceipt: DiscoveryReceipt | null = null;
   let state: DiscoverySnapshot = Object.freeze({
     revision: 0,
@@ -1970,6 +2123,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     );
   }
   function invalidate() {
+    void videoReservation?.stop();
     metadataStale();
     projection = null;
     if (attempted) put({ observedAtUtc: null, restartRequired: true });
@@ -2643,6 +2797,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     return ack;
   }
   return Object.freeze({
+    reserveVideo,
     execute(input: unknown, operationCurrent: () => boolean): Promise<string> {
       const admittedCurrent = () => {
         if (operationCurrent() !== true) throw new Fault('SESSION_REVOKED');

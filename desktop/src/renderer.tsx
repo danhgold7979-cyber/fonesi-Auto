@@ -1,3 +1,10 @@
+import { createTileVideoDecoder } from './video-decoder.ts';
+import {
+  parseVideoStreamResponse,
+  snapshotVideoPortMetadata,
+  VIDEO_WINDOW_ORIGIN,
+  type VideoPortMetadata,
+} from './video-stream-contract.ts';
 import {
   parseHostResourceResponse,
   HOST_METRICS,
@@ -32,6 +39,7 @@ import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
   interface Window {
+    videoStream?: Readonly<{ invoke: (wire: string) => Promise<string> }>;
     hostResources?: Readonly<{ sample: () => Promise<string>; cancel: () => Promise<string> }>;
     input: Readonly<{
       get: () => Promise<string>;
@@ -815,6 +823,272 @@ function Diagnostic() {
       }
     }
   }
+  type DisplaySession = {
+    requestId: string;
+    deviceId: string;
+    generation: number;
+    registryRevision: number;
+    videoId: string | null;
+    stopped: boolean;
+    failure: string | null;
+    stopping: boolean;
+    port: MessagePort | null;
+    metadata: VideoPortMetadata | null;
+    decoder: ReturnType<typeof createTileVideoDecoder> | null;
+    canvas: HTMLCanvasElement | null;
+  };
+  const [videoView, setVideoView] = useState<{
+    deviceId: string;
+    generation: number;
+    state: string;
+  } | null>(null);
+  const videoSession = useRef<DisplaySession | null>(null);
+  const videoAlive = useRef(true);
+  const videoFleetBlocked = fleetFailed || fleetReconcile || fleetPending;
+  const videoFleet = useRef({ fleet, fleetFailed, fleetReconcile, fleetPending });
+  videoFleet.current = { fleet, fleetFailed, fleetReconcile, fleetPending };
+  const eligibleVideo = useCallback((deviceId: string, generation: number) => {
+    const f = videoFleet.current;
+    return (
+      videoAlive.current &&
+      !f.fleetFailed &&
+      !f.fleetReconcile &&
+      !f.fleetPending &&
+      f.fleet?.availability === 'OBSERVED' &&
+      f.fleet.devices.some(
+        (d) =>
+          d.deviceId === deviceId &&
+          d.generation === generation &&
+          d.verification === 'VERIFIED' &&
+          d.state === 'DEVICE',
+      )
+    );
+  }, []);
+  const stopVideo = async () => {
+    const r = videoSession.current;
+    if (!r) return;
+    r.stopped = true;
+    r.decoder?.close();
+    r.decoder = null;
+    r.port?.close();
+    r.port = null;
+    if (videoAlive.current)
+      setVideoView({
+        deviceId: r.deviceId,
+        generation: r.generation,
+        state: r.failure ? `${r.failure} / STOPPING` : 'STOPPING',
+      });
+    if (!r.videoId || r.stopping) return;
+    r.stopping = true;
+    try {
+      const wire = await window.videoStream?.invoke(
+        JSON.stringify({
+          version: 1,
+          requestId: crypto.randomUUID(),
+          kind: 'STOP',
+          videoId: r.videoId,
+        }),
+      );
+      const result = parseVideoStreamResponse(wire);
+      if (videoSession.current !== r) return;
+      if (videoAlive.current)
+        setVideoView({
+          deviceId: r.deviceId,
+          generation: r.generation,
+          state: `${r.failure ? `${r.failure} / ` : ''}${result?.code === 'STOPPED' ? 'STOPPED' : 'UNCERTAIN'}`,
+        });
+      if (result?.code === 'STOPPED') videoSession.current = null;
+    } catch {
+      if (videoAlive.current && videoSession.current === r)
+        setVideoView({ deviceId: r.deviceId, generation: r.generation, state: 'UNCERTAIN' });
+    }
+  };
+  const videoActions = useRef({ stopVideo });
+  videoActions.current = { stopVideo };
+  const attachVideo = () => {
+    const r = videoSession.current;
+    if (!r || r.stopped || r.decoder || !r.port || !r.metadata || !r.canvas) return;
+    const port = r.port;
+    r.decoder = createTileVideoDecoder({
+      videoId: r.metadata.videoId,
+      deviceId: r.deviceId,
+      generation: r.generation,
+      deadlineUtc: r.metadata.deadlineUtc,
+      canvas: r.canvas,
+      current: () =>
+        videoSession.current === r &&
+        !r.stopped &&
+        eligibleVideo(r.deviceId, r.generation) &&
+        videoFleet.current.fleet?.registryRevision === r.registryRevision,
+      onConsumed: (value) => port.postMessage(value),
+      onPainted: (value) => port.postMessage(value),
+      onState: (state) => {
+        if (videoSession.current !== r || !videoAlive.current) return;
+        setVideoView({ deviceId: r.deviceId, generation: r.generation, state });
+        if (state === 'DECODE_FAILED' || state === 'DECODER_UNAVAILABLE') {
+          r.failure = state;
+          void videoActions.current.stopVideo();
+        }
+      },
+    });
+    if (r.stopped || videoSession.current !== r) {
+      r.decoder.close();
+      return;
+    }
+    port.onmessage = (event) => {
+      if (videoSession.current === r && !r.stopped) r.decoder?.receive(event.data);
+    };
+    port.onmessageerror = () => {
+      void videoActions.current.stopVideo();
+    };
+    port.start();
+    port.postMessage({ version: 1, videoId: r.videoId, kind: 'READY' });
+  };
+  const videoAttach = useRef(attachVideo);
+  videoAttach.current = attachVideo;
+  const videoCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
+    const r = videoSession.current;
+    if (!r) return;
+    r.canvas = canvas;
+    if (canvas) videoAttach.current();
+    else void videoActions.current.stopVideo();
+  }, []);
+  async function startVideo(deviceId: string, generation: number) {
+    if (
+      videoSession.current ||
+      !window.videoStream ||
+      !eligibleVideo(deviceId, generation) ||
+      !videoFleet.current.fleet
+    )
+      return;
+    if (
+      typeof VideoDecoder === 'undefined' ||
+      typeof EncodedVideoChunk === 'undefined' ||
+      !window.isSecureContext
+    ) {
+      setVideoView({ deviceId, generation, state: 'DECODER_UNAVAILABLE' });
+      return;
+    }
+    const r: DisplaySession = {
+      requestId: crypto.randomUUID(),
+      deviceId,
+      generation,
+      registryRevision: videoFleet.current.fleet.registryRevision,
+      videoId: null,
+      stopped: false,
+      failure: null,
+      stopping: false,
+      port: null,
+      metadata: null,
+      decoder: null,
+      canvas: null,
+    };
+    videoSession.current = r;
+    setVideoView({ deviceId, generation, state: 'STARTING' });
+    try {
+      const raw = await window.videoStream.invoke(
+        JSON.stringify({
+          version: 1,
+          requestId: r.requestId,
+          kind: 'START',
+          deviceId,
+          expectedRegistryRevision: r.registryRevision,
+        }),
+      );
+      const result = parseVideoStreamResponse(raw);
+      if (videoSession.current !== r) return;
+      if (
+        !result ||
+        result.requestId !== r.requestId ||
+        result.code !== 'PENDING' ||
+        !result.videoId
+      ) {
+        r.stopped = true;
+        r.decoder?.close();
+        r.port?.close();
+        if (videoAlive.current)
+          setVideoView({ deviceId, generation, state: result?.code ?? 'UNCERTAIN' });
+        if (
+          result &&
+          ['UNAVAILABLE', 'INVALID', 'STALE', 'BUSY', 'FAILED', 'CLOSED'].includes(result.code)
+        )
+          videoSession.current = null;
+        return;
+      }
+      if (r.videoId && r.videoId !== result.videoId) {
+        void videoActions.current.stopVideo();
+        return;
+      }
+      r.videoId = result.videoId;
+      if (r.stopped) void videoActions.current.stopVideo();
+    } catch {
+      if (videoSession.current === r) {
+        r.stopped = true;
+        r.port?.close();
+        r.decoder?.close();
+        if (videoAlive.current) setVideoView({ deviceId, generation, state: 'UNCERTAIN' });
+      }
+    }
+  }
+  useEffect(() => {
+    const message = (event: MessageEvent) => {
+      if (event.source !== window || event.origin !== VIDEO_WINDOW_ORIGIN) return;
+      const data = event.data;
+      let metadata: VideoPortMetadata | null = null;
+      try {
+        if (data && data.type === 'AUTO_VIDEO_PORT_V1' && Object.keys(data).length === 7) {
+          const { type: _, ...rest } = data;
+          metadata = snapshotVideoPortMetadata(rest);
+        }
+      } catch {}
+      const r = videoSession.current;
+      if (
+        !metadata ||
+        !r ||
+        r.port ||
+        metadata.requestId !== r.requestId ||
+        metadata.deviceId !== r.deviceId ||
+        metadata.generation !== r.generation ||
+        event.ports.length !== 1 ||
+        (r.videoId !== null && r.videoId !== metadata.videoId)
+      ) {
+        for (const port of event.ports) port.close();
+        return;
+      }
+      r.videoId = metadata.videoId;
+      if (r.stopped) {
+        for (const port of event.ports) port.close();
+        void videoActions.current.stopVideo();
+        return;
+      }
+      r.port = event.ports[0] ?? null;
+      r.metadata = metadata;
+      videoAttach.current();
+    };
+    const pagehide = () => {
+      videoAlive.current = false;
+      void videoActions.current.stopVideo();
+    };
+    window.addEventListener('message', message);
+    window.addEventListener('pagehide', pagehide);
+    return () => {
+      videoAlive.current = false;
+      window.removeEventListener('message', message);
+      window.removeEventListener('pagehide', pagehide);
+      void videoActions.current.stopVideo();
+    };
+  }, []);
+  useEffect(() => {
+    const r = videoSession.current;
+    if (
+      r &&
+      !r.stopped &&
+      (videoFleetBlocked ||
+        !eligibleVideo(r.deviceId, r.generation) ||
+        fleet?.registryRevision !== r.registryRevision)
+    )
+      void videoActions.current.stopVideo();
+  }, [fleet, eligibleVideo, videoFleetBlocked]);
   const emptyRows = { devices: [], accounts: [], media: [], jobs: [] };
   const fleetUi: UiSnapshot = fleetFailed
     ? { status: 'ERROR', code: 'UNAVAILABLE', ...emptyRows }
@@ -990,6 +1264,18 @@ function Diagnostic() {
       : hostStatus;
   return (
     <UiShell
+      video={{
+        view: videoView,
+        available: !!window.videoStream,
+        canStart: (id, generation) => !videoSession.current && eligibleVideo(id, generation),
+        onStart: (id, generation) => {
+          void startVideo(id, generation);
+        },
+        onStop: () => {
+          void stopVideo();
+        },
+        canvasRef: videoCanvas,
+      }}
       onHostResourcesClose={cancelHost}
       onHostResourcesRead={() => {
         void readHost();

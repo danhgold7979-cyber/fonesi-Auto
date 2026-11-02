@@ -214,6 +214,12 @@ test('actual renderer-loss failure uses coordinated quit before cleanup owner in
   );
   const revoked = [];
   runInNewContext(detached, {
+    videoStreamBridge: {
+      close() {
+        revoked.push('video');
+        return Promise.resolve(true);
+      },
+    },
     window: {},
     bridge: {
       attach(_window, onLoss) {
@@ -233,7 +239,7 @@ test('actual renderer-loss failure uses coordinated quit before cleanup owner in
       },
     },
   });
-  assert.deepEqual(revoked, ['discovery', 'host']);
+  assert.deepEqual(revoked, ['video', 'discovery', 'host']);
 });
 
 test('main metadata audit forwards actual logger result and absent logger degrades without native builders', async () => {
@@ -243,4 +249,65 @@ test('main metadata audit forwards actual logger result and absent logger degrad
   f.context.logger = undefined;
   assert.equal(await f.captured.facade.metadataAudit({}), 'DEGRADED');
   assert.deepEqual(f.calls, []);
+});
+
+test('uncertain or rejected video cleanup still drains independent shutdown owners and fails final cleanliness', async () => {
+  const body = section('    flush: async () => {', '\n    degraded: reportLoggingDegraded,');
+  for (const mode of ['uncertain', 'rejected', 'custody-unretired']) {
+    const rejected = mode === 'rejected';
+    const calls = [];
+    const context = {
+      cleanupComplete: true,
+      videoStreamBridge: {
+        async close() {
+          calls.push('video');
+          if (rejected) throw Error('unretired');
+          return false;
+        },
+      },
+      hostResourceSampler: {
+        async close() {
+          calls.push('resource');
+        },
+      },
+      cleanup() {
+        calls.push('cleanup');
+        return true;
+      },
+      logger: {
+        async close() {
+          calls.push('logger');
+          return 'CLOSED';
+        },
+      },
+      console: { error() {} },
+    };
+    for (const name of ['platformTools', 'fleet', 'settings', 'durable', 'secret', 'persistence']) {
+      context[`${name}Lifecycle`] = {
+        async stop() {
+          calls.push(name);
+          if (name === 'platformTools' && mode === 'custody-unretired') throw Error('custody');
+        },
+      };
+    }
+    runInNewContext(`globalThis.flush = ({${body}}).flush;`, context);
+    assert.equal(await context.flush(), 'CLOSED');
+    assert.equal(context.cleanupComplete, false);
+    if (mode === 'custody-unretired') {
+      assert.deepEqual(calls, ['video', 'resource', 'platformTools', 'logger']);
+      continue;
+    }
+    assert.deepEqual(calls, [
+      'video',
+      'resource',
+      'platformTools',
+      'fleet',
+      'settings',
+      'durable',
+      'cleanup',
+      'secret',
+      'persistence',
+      'logger',
+    ]);
+  }
 });

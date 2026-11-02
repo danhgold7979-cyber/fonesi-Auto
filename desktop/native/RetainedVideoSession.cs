@@ -63,18 +63,19 @@ namespace Fonesi.Development.Server
             internal sealed class VideoState
             {
                 readonly object sync = new object();
-                readonly IVideoIo io; readonly string id,nonce,hash; readonly int scid,artifactBytes;
+                readonly IVideoIo io; readonly RetainedAdbProtocol.VideoMedia media; readonly string id,nonce,hash; readonly int scid,artifactBytes;
                 readonly long deadline; readonly Stopwatch life=Stopwatch.StartNew(); readonly long admitted;
-                long lastClock,revision,sessionPackets,mediaPackets,encodedBytes; int? width,height;
+                long lastClock,revision,sessionPackets,mediaPackets,encodedBytes; long geometryId,configCounter,activeConfig,packetId,lastPts=-1,lastMedia=-1; int? width,height;
                 string state="PREPARING",code="OK",directory="NONE",upload="NONE",launch="NONE",cleanup="NOT_REQUIRED";
                 bool observed,stop,unknown,localRetired,bindReady,intentWritten,settlementWritten,workerDone,shellDone,shellExit;
                 int shellExitCode; long stopAt=-1; Thread worker,shell; IVideoChannel video,shellChannel;
                 readonly ManualResetEvent ready;
                 IDictionary<string,object> cached,completion;Task cancellation;int cancelRequested;bool cleaned;
-                internal VideoState(IVideoIo io,string id,string nonce,int scid,int bytes,string hash,long deadline)
+                internal VideoState(IVideoIo io,string id,string nonce,int scid,int bytes,string hash,long deadline) : this(io,id,nonce,scid,bytes,hash,deadline,null) {}
+                internal VideoState(IVideoIo io,string id,string nonce,int scid,int bytes,string hash,long deadline,RetainedAdbProtocol.VideoMedia media)
                 {
                     if(io==null||!VideoUuid(id)||!VideoHash(nonce)||!VideoHash(hash)||scid<0||bytes<1||bytes>VideoArtifactLimit)throw new IOException("ADMISSION_REJECTED");
-                    this.io=io;this.id=id;this.nonce=nonce;this.scid=scid;artifactBytes=bytes;this.hash=hash;this.deadline=deadline;
+                    this.io=io;this.media=media;this.id=id;this.nonce=nonce;this.scid=scid;artifactBytes=bytes;this.hash=hash;this.deadline=deadline;
                     admitted=UtcMilliseconds();lastClock=admitted;if(deadline>8640000000000000L||deadline<=admitted||deadline-admitted>30000)throw new IOException("DEADLINE_EXCEEDED");ready=new ManualResetEvent(false);cached=Capture();
                 }
                 void Changed() { if(revision>=VideoSafe){unknown=true;stop=true;state="UNCERTAIN";code="OUTCOME_UNKNOWN";throw new IOException("OUTCOME_UNKNOWN");}revision++;cached=Capture(); }
@@ -85,7 +86,9 @@ namespace Fonesi.Development.Server
                         if(!cleanupWork&&(stop||Interlocked.CompareExchange(ref cancelRequested,0,0)!=0))throw new IOException("CLOSED");if(remaining<=0)throw new IOException("DEADLINE_EXCEEDED");return (int)Math.Min(1000,remaining);}
                 }
                 int StreamTime()
-                { lock(sync){if(stop||Interlocked.CompareExchange(ref cancelRequested,0,0)!=0)throw new IOException("CLOSED");return observed?1000:Remaining(false);} }
+                { lock(sync){if(stop||Interlocked.CompareExchange(ref cancelRequested,0,0)!=0||media!=null&&media.Stopped)throw new IOException("CLOSED");
+                    if(media==null)return observed?1000:Remaining(false);if(lastMedia<0)return Remaining(false);
+                    long left=30000-(life.ElapsedMilliseconds-lastMedia);if(left<=0)throw new IOException("DEADLINE_EXCEEDED");return (int)Math.Min(1000,left);} }
                 IDictionary<string,object> Capture()
                 {return new ReadOnlyDictionary<string,object>(new Dictionary<string,object>{
                     {"sessionId",id},{"snapshotRevision",revision},{"state",state},{"code",code},{"streamObserved",observed},
@@ -145,7 +148,7 @@ namespace Fonesi.Development.Server
                 int ShellDrain(IVideoChannel c,bool foreground,bool cleanupWork)
                 {
                     byte[] header=new byte[5],scratch=new byte[16384];int total=0,markerAt=0;bool lineOther=false;bool exit=false;int result=-1;byte[] marker=Encoding.ASCII.GetBytes("AUTOVID1_READY");
-                    Func<int> time=delegate(){if(!foreground)return Remaining(cleanupWork);lock(sync){if(stop)return Remaining(true);return observed?1000:Remaining(false);}};
+                    Func<int> time=delegate(){if(!foreground)return Remaining(cleanupWork);lock(sync){if(stop)return Remaining(true);return media==null?(observed?1000:Remaining(false)):StreamTime();}};
                     for(;;){
                         Exact(c,header,0,5,time);uint size=Little(header,1);int kind=header[0];
                         if(kind==3){if(size!=1||exit)throw new IOException("PROTOCOL_FAILED");Exact(c,scratch,0,1,time);result=scratch[0];exit=true;break;}
@@ -186,13 +189,24 @@ namespace Fonesi.Development.Server
                     if(preamble[0]!=0||Encoding.ASCII.GetString(preamble,1,8)!="AUTOVID1")throw new IOException("PROTOCOL_FAILED");
                     for(int n=0;n<32;n++)if(preamble[n+9]!=Byte.Parse(nonce.Substring(n*2,2),NumberStyles.HexNumber,CultureInfo.InvariantCulture))throw new IOException("PROTOCOL_FAILED");
                     byte[] codec=new byte[4];Exact(video,codec,0,4,StreamTime);if(Big(codec,0)!=0x68323634)throw new IOException("PROTOCOL_FAILED");
-                    byte[] h=new byte[12],scratch=new byte[65536];
+                    byte[] h=new byte[12],scratch=new byte[media==null?65536:32768];
                     for(;;){Exact(video,h,0,12,StreamTime);uint high=Big(h,0),lo=Big(h,4),size=Big(h,8);
-                        if((high&0x80000000)!=0){if(high!=0x80000000||lo==0||lo>16384||size==0||size>16384)throw new IOException("PROTOCOL_FAILED");lock(sync){if(sessionPackets>=VideoSafe)throw new IOException("PROTOCOL_FAILED");sessionPackets++;width=(int)lo;height=(int)size;Changed();}continue;}
+                        if((high&0x80000000)!=0){if(high!=0x80000000||lo==0||lo>16384||size==0||size>16384)throw new IOException("PROTOCOL_FAILED");
+                            if(media!=null&&(lo>4096||size>4096||(long)lo*size>8388608))throw new IOException("PROTOCOL_FAILED");
+                            lock(sync){if(sessionPackets>=VideoSafe||geometryId>=VideoSafe)throw new IOException("PROTOCOL_FAILED");sessionPackets++;width=(int)lo;height=(int)size;if(media!=null){geometryId++;activeConfig=0;lastPts=-1;}Changed();}
+                            if(media!=null)media.Emit(geometryId,0,0,"SESSION",null,0,0,(int)lo,(int)size,scratch,0,StreamTime);continue;}
                         if(size==0||size>VideoPacketLimit)throw new IOException("PROTOCOL_FAILED");
                         lock(sync){if(!width.HasValue)throw new IOException("PROTOCOL_FAILED");}
-                        uint left=size;while(left>0){int n=(int)Math.Min((uint)scratch.Length,left);Exact(video,scratch,0,n,StreamTime);left-=(uint)n;}
-                        lock(sync){if(mediaPackets>=VideoSafe||encodedBytes>VideoSafe-size)throw new IOException("PROTOCOL_FAILED");mediaPackets++;encodedBytes+=size;observed=true;if(!stop){state="RECEIVING";code="OK";}Changed();ready.Set();}
+                        bool config=(high&0x40000000)!=0;long? pts=null;string kind=null;
+                        if(media!=null){
+                            if(packetId>=VideoSafe)throw new IOException("PROTOCOL_FAILED");packetId++;
+                            if(config){if(high!=0x40000000||lo!=0||size>65536||configCounter>=VideoSafe)throw new IOException("PROTOCOL_FAILED");activeConfig=++configCounter;lastPts=-1;kind="CONFIG";}
+                            else{if(activeConfig==0)throw new IOException("PROTOCOL_FAILED");long stamp=((long)(high&0x1fffffff)<<32)|lo;if(stamp>VideoSafe||stamp<=lastPts)throw new IOException("PROTOCOL_FAILED");pts=stamp;lastPts=stamp;kind=(high&0x20000000)!=0?"KEY":"DELTA";}
+                        }
+                        uint left=size;int offset=0;while(left>0){int n=(int)Math.Min((uint)scratch.Length,left);Exact(video,scratch,0,n,StreamTime);
+                            if(media!=null)media.Emit(geometryId,activeConfig,packetId,kind,pts,(int)size,offset,width.Value,height.Value,scratch,n,StreamTime);
+                            left-=(uint)n;offset+=n;}
+                        lock(sync){if(mediaPackets>=VideoSafe||encodedBytes>VideoSafe-size)throw new IOException("PROTOCOL_FAILED");mediaPackets++;encodedBytes+=size;observed=true;if(media!=null&&!config)lastMedia=life.ElapsedMilliseconds;if(!stop){state="RECEIVING";code="OK";}Changed();if(media==null||!config)ready.Set();}
                     }
                 }
                 void SafeRun()
@@ -338,20 +352,26 @@ namespace Fonesi.Development.Server
                 public bool Retired {get{if(!Monitor.TryEnter(sync,0))return false;try{foreach(NativeVideoChannel c in channels)if(!c.Retired)return false;return true;}finally{Monitor.Exit(sync);}}}
             }
             public IDictionary<string,object> VideoStart(Attempt attempt,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex)
+            {return VideoStartCore(attempt,attemptId,videoId,transportId,hostEpoch,deadlineUtc,artifactId,scid,nonceHex,null);}
+            public IDictionary<string,object> VideoStartMedia(Attempt attempt,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex,RetainedAdbProtocol.VideoMedia media)
+            {if(media==null)throw new IOException("ADMISSION_REJECTED");return VideoStartCore(attempt,attemptId,videoId,transportId,hostEpoch,deadlineUtc,artifactId,scid,nonceHex,media);}
+            IDictionary<string,object> VideoStartCore(Attempt attempt,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex,RetainedAdbProtocol.VideoMedia media)
             {
                 State a=attempt==null?null:attempt.state as State;
                 if(!VideoUuid(attemptId)||!VideoUuid(videoId)||!MetadataTransport(transportId)||hostEpoch<1||hostEpoch>VideoSafe||!VideoHash(nonceHex)||scid<0)throw new IOException("ADMISSION_REJECTED");
                 if(!Enter(a,"FOREGROUND",false))throw new IOException("BUSY");
-                try{VideoState v;lock(gate){if(videoAdmission==null||videoAdmission.hash!=artifactId||a.video!=null||a.stopping)throw new IOException("ADMISSION_REJECTED");
+                try{VideoState v;lock(gate){if(videoAdmission==null||videoAdmission.hash!=artifactId||a.video!=null||a.stopping||media!=null&&!media.Matches(videoAdmission.sessionId,attemptId,videoId))throw new IOException("ADMISSION_REJECTED");
                         NativeVideoIo io=new NativeVideoIo(this,a,videoAdmission,attemptId,videoId,transportId,hostEpoch,scid,nonceHex,deadlineUtc);
-                        v=new VideoState(io,videoId,nonceHex,scid,videoAdmission.bytes,videoAdmission.hash,deadlineUtc);a.video=v;a.videoId=videoId;v.Start();}
+                        v=new VideoState(io,videoId,nonceHex,scid,videoAdmission.bytes,videoAdmission.hash,deadlineUtc,media);a.video=v;a.videoId=videoId;if(media!=null)media.BindStop(v.RequestStop);v.Start();}
                     return v.AwaitStarted();
                 }finally{Leave(a);}
             }
             public IDictionary<string,object> VideoStatus(Attempt attempt,string videoId)
             {if(!Monitor.TryEnter(gate,0))throw new IOException("BUSY");try{State a=attempt==null?null:attempt.state as State;if(!Exact(a)||a.video==null||a.videoId!=videoId)throw new IOException("ADMISSION_REJECTED");return a.video.Snapshot();}finally{Monitor.Exit(gate);}}
             public IDictionary<string,object> VideoStop(Attempt attempt,string videoId)
-            {Stopwatch budget=Stopwatch.StartNew();VideoState v;if(!RetirementLock(gate,budget))throw new IOException("UNRETIRED");try{State a=attempt==null?null:attempt.state as State;if(!Exact(a)||a.video==null||a.videoId!=videoId)throw new IOException("ADMISSION_REJECTED");v=a.video;}finally{Monitor.Exit(gate);}return v.Stop(budget);}
+            {return VideoStopMedia(attempt,videoId,Stopwatch.StartNew());}
+            public IDictionary<string,object> VideoStopMedia(Attempt attempt,string videoId,Stopwatch budget)
+            {if(budget==null)throw new IOException("ADMISSION_REJECTED");VideoState v;if(!RetirementLock(gate,budget))throw new IOException("UNRETIRED");try{State a=attempt==null?null:attempt.state as State;if(!Exact(a)||a.video==null||a.videoId!=videoId)throw new IOException("ADMISSION_REJECTED");v=a.video;}finally{Monitor.Exit(gate);}return v.Stop(budget);}
             bool RetireVideo(State a,Stopwatch deadline)
             {VideoState v;if(!RetirementLock(gate,deadline))return false;try{v=a.video;}finally{Monitor.Exit(gate);}if(v==null)return true;if(!v.TryRequestStop(deadline,10000))return false;while(!v.Done){if(deadline.ElapsedMilliseconds>=10000||v.StopExpired)return false;Thread.Sleep(5);}return v.Clean;}
         }

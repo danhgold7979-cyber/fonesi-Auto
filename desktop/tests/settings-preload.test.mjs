@@ -1,3 +1,6 @@
+import * as videoContract from '../src/video-stream-contract.ts';
+import * as videoClient from '../src/video-stream-client.ts';
+import * as videoDecoder from '../src/video-decoder.ts';
 import * as hostClient from '../src/host-resource-client.ts';
 import * as hostContract from '../src/host-resource-contract.ts';
 import * as inputClient from '../src/input-interaction-client.ts';
@@ -35,6 +38,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
             },
           },
           ipcRenderer: {
+            on: (name, fn) => readyListeners.set(name, fn),
             once: (name, fn) => readyListeners.set(name, fn),
             removeListener: (name, fn) => {
               if (readyListeners.get(name) === fn) readyListeners.delete(name);
@@ -45,6 +49,9 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
             },
           },
         };
+      if (name === './video-stream-contract.ts') return videoContract;
+      if (name === './video-stream-client.ts') return videoClient;
+      if (name === './video-decoder.ts') return videoDecoder;
       if (name === './host-resource-client.ts') return hostClient;
       if (name === './host-resource-contract.ts') return hostContract;
       if (name === './preload-client.js') return clients;
@@ -72,6 +79,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'metadata',
     'platformTools',
     'preferences',
+    'videoStream',
   ]);
   assert.deepEqual(Object.keys(exposed.hostResources).sort(), ['cancel', 'sample']);
   assert.equal(Object.isFrozen(exposed.hostResources), true);
@@ -108,7 +116,10 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   assert.ok(Object.isFrozen(exposed.fleet));
   assert.ok(Object.isFrozen(exposed.foundation));
   assert.ok(Object.isFrozen(exposed.preferences));
-  assert.deepEqual([...readyListeners.keys()], ['foundation:preferences:ready']);
+  assert.deepEqual(
+    [...readyListeners.keys()],
+    ['foundation:video:port:v1', 'foundation:preferences:ready'],
+  );
   readyListeners.get('foundation:preferences:ready')();
   const pending = [
     exposed.foundation.health(),

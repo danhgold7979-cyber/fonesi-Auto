@@ -1,3 +1,6 @@
+import * as videoContract from '../src/video-stream-contract.ts';
+import * as videoClient from '../src/video-stream-client.ts';
+import * as videoDecoder from '../src/video-decoder.ts';
 import * as hostContract from '../src/host-resource-contract.ts';
 import * as inputContract from '../src/input-interaction-contract.ts';
 import * as associationContract from '../src/association-contract.ts';
@@ -26,6 +29,7 @@ const settings = (extra = {}) => ({
   persistence: 'PERSISTED',
   ...extra,
 });
+function SyntheticApiPresence() {}
 function mount(
   api,
   width = 1600,
@@ -36,6 +40,7 @@ function mount(
   associationApi = null,
   inputApi = null,
   hostApi = null,
+  videoApi = null,
 ) {
   let component,
     cursor = 0;
@@ -45,6 +50,8 @@ function mount(
     events = new Map();
   const hostWindow = {
     innerWidth: width,
+    videoStream: videoApi,
+    isSecureContext: true,
     preferences: api,
     discovery: discoveryApi,
     association: associationApi,
@@ -130,6 +137,14 @@ function mount(
             },
           }),
         };
+      if (name === './video-stream-contract.ts')
+        return {
+          ...videoContract,
+          snapshotVideoPortMetadata: (raw) =>
+            videoContract.snapshotVideoPortMetadata(JSON.parse(JSON.stringify(raw))),
+        }; // VM realm marshaling only
+      if (name === './video-stream-client.ts') return videoClient;
+      if (name === './video-decoder.ts') return videoDecoder;
       if (name === './host-resource-contract.ts') return hostContract;
       if (name === './input-interaction-contract.js') return inputContract;
       if (name === './association-contract.js') return associationContract;
@@ -141,6 +156,14 @@ function mount(
       if (name === './runtime-version-contract.js') return runtimeVersionContract;
       if (name === './ui/ui-shell.tsx') return { UiShell: 'UiShell' };
       throw Error('UNKNOWN_MODULE');
+    },
+    VideoDecoder: SyntheticApiPresence,
+    EncodedVideoChunk: SyntheticApiPresence,
+    crypto: {
+      randomUUID: (() => {
+        let n = 0;
+        return () => `00000000-0000-4000-8000-${(++n).toString().padStart(12, '0')}`;
+      })(),
     },
     performance: { now: () => hostClock },
     setTimeout: (fn, ms) => {
@@ -171,6 +194,7 @@ function mount(
   };
   return {
     render,
+    hostWindow,
     find,
     hostTimers,
     hostTime: (value) => {
@@ -1912,5 +1936,148 @@ test('host panel close cancels only owned pending read and suppresses late compl
   await flush();
   assert.ok(JSON.stringify(m.render().props.hostResources).includes('STALE'));
   assert.equal(m.hostTimers.size, 0);
+  m.dispose();
+});
+test('actual renderer registers explicit video request before early port and READY only after matching canvas and handlers', async () => {
+  const calls = [],
+    posts = [];
+  let settle;
+  const f = fleetState(0, [fleetId]);
+  f.devices[0].state = 'DEVICE';
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    { read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE') },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    {
+      invoke: (raw) => {
+        const r = JSON.parse(raw);
+        calls.push(r);
+        return r.kind === 'START'
+          ? new Promise((resolve) => (settle = resolve))
+          : Promise.resolve(videoContract.videoStreamResponse(r.requestId, 'STOPPED', r.videoId));
+      },
+    },
+  );
+  m.effects();
+  await flush();
+  m.effects();
+  await flush();
+  assert.equal(calls.length, 0);
+  assert.equal(m.render().props.video.canStart(fleetId, 1), true);
+  m.render().props.video.onStart(fleetId, 1);
+  assert.equal(calls.length, 1);
+  const videoId = '00000000-0000-4000-8000-000000000099';
+  const port = {
+    onmessage: null,
+    onmessageerror: null,
+    closed: 0,
+    start() {
+      assert.equal(typeof this.onmessage, 'function');
+    },
+    postMessage: (v) => posts.push(v),
+    close() {
+      this.closed++;
+    },
+  };
+  const metadata = {
+    version: 1,
+    videoId,
+    requestId: calls[0].requestId,
+    deviceId: fleetId,
+    generation: 1,
+    deadlineUtc: Date.now() + 20000,
+  };
+  m.events.get('message')({
+    source: m.hostWindow,
+    origin: videoContract.VIDEO_WINDOW_ORIGIN,
+    data: { type: 'AUTO_VIDEO_PORT_V1', ...metadata },
+    ports: [port],
+  });
+  assert.equal(posts.length, 0);
+  m.render().props.video.canvasRef({
+    width: 0,
+    height: 0,
+    style: {},
+    getContext: () => ({ clearRect() {}, drawImage() {} }),
+  });
+  assert.deepEqual(
+    posts.map((v) => v.kind),
+    ['READY'],
+  );
+  settle(videoContract.videoStreamResponse(calls[0].requestId, 'PENDING', videoId));
+  await flush();
+  m.render().props.video.onStop();
+  await flush();
+  assert.equal(calls[1].kind, 'STOP');
+  assert.equal(m.render().props.video.view.state, 'STOPPED');
+  assert.ok(port.closed > 0);
+  m.dispose();
+});
+test('renderer rejects foreign port and Stop before PENDING never sends READY or starts a replacement', async () => {
+  const calls = [];
+  let settle;
+  const f = fleetState(0, [fleetId]);
+  f.devices[0].state = 'DEVICE';
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    { read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE') },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    {
+      invoke: (raw) => {
+        const r = JSON.parse(raw);
+        calls.push(r);
+        return r.kind === 'START'
+          ? new Promise((resolve) => (settle = resolve))
+          : Promise.resolve(videoContract.videoStreamResponse(r.requestId, 'STOPPED', r.videoId));
+      },
+    },
+  );
+  m.effects();
+  await flush();
+  m.effects();
+  m.render().props.video.onStart(fleetId, 1);
+  m.render().props.video.onStop();
+  const videoId = '00000000-0000-4000-8000-000000000098';
+  let closes = 0;
+  const port = {
+    close() {
+      closes++;
+    },
+    postMessage() {
+      assert.fail('no READY');
+    },
+  };
+  m.events.get('message')({
+    source: m.hostWindow,
+    origin: videoContract.VIDEO_WINDOW_ORIGIN,
+    data: {
+      type: 'AUTO_VIDEO_PORT_V1',
+      version: 1,
+      videoId,
+      requestId: calls[0].requestId,
+      deviceId: fleetId,
+      generation: 1,
+      deadlineUtc: Date.now() + 20000,
+    },
+    ports: [port],
+  });
+  assert.equal(closes, 1);
+  await flush();
+  assert.equal(calls[1].kind, 'STOP');
+  settle(videoContract.videoStreamResponse(calls[0].requestId, 'PENDING', videoId));
+  await flush();
+  assert.equal(calls.length, 2);
   m.dispose();
 });

@@ -1,8 +1,10 @@
+import { createVideoWireParser, type VideoMediaHeader } from '../video-media-contract.ts';
 import {
   snapshotVideo,
   snapshotVideoStart,
   videoUuid,
   type VideoSnapshot,
+  type VideoMediaSink,
   type VideoStart,
   type VideoControl,
 } from './video-contract.ts';
@@ -136,7 +138,7 @@ function json(raw: string): unknown {
   return out;
 }
 type Response = Readonly<{
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   sessionId: string;
   requestId: number;
   attemptId: string;
@@ -162,7 +164,11 @@ export function parseHostFrame(bytes: Uint8Array): Response | null {
     if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return null;
     const raw = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, -1));
     const parsed = json(raw);
-    if (parsed && typeof parsed === 'object' && (parsed as { version?: unknown }).version === 5) {
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      [5, 6].includes((parsed as { version: number }).version)
+    ) {
       const v = record(parsed, [
         'version',
         'requestId',
@@ -182,7 +188,7 @@ export function parseHostFrame(bytes: Uint8Array): Response | null {
       )
         return null;
       return Object.freeze({
-        version: 5,
+        version: v.version as 5 | 6,
         sessionId: v.sessionId,
         requestId: v.requestId as number,
         attemptId: v.attemptId,
@@ -262,6 +268,7 @@ type Attempt = {
   videoId: string | null;
   videoControls: number;
   videoStopping: boolean;
+  media: VideoMediaSink | null;
 };
 type Pending = {
   attempt: Attempt;
@@ -303,6 +310,136 @@ export function createHostBridge(
     cleanupRequested = false;
   const buffer = new Uint8Array(HOST_FRAME_LIMIT);
   let buffered = 0;
+  const mediaWorks = new Set<Promise<void>>();
+  let creditWork: Promise<void> = Promise.resolve();
+  let credit = 0,
+    creditAvailable = false,
+    mediaBusy = false;
+  let geometry = 0,
+    config = 0,
+    configCounter = 0,
+    packet = 0,
+    offset = 0;
+  let activeHeader: VideoMediaHeader | null = null;
+  let width = 0,
+    height = 0;
+  function stopMedia() {
+    const sink = current?.media;
+    if (current) current.videoStopping = true;
+    try {
+      sink?.close();
+    } catch {
+      signalCleanup();
+    }
+  }
+  function retainMedia(work: Promise<void>) {
+    mediaWorks.add(work);
+    void work.then(
+      () => mediaWorks.delete(work),
+      () => {
+        mediaWorks.delete(work);
+        breakChannel();
+      },
+    );
+  }
+  function sendCredit(a: Attempt) {
+    if (broken || a.videoStopping || !a.media) return;
+    if (credit >= Number.MAX_SAFE_INTEGER) throw failure();
+    credit++;
+    creditAvailable = true; // Before write: a native response may arrive synchronously.
+    const frame = new TextEncoder().encode(
+      `${JSON.stringify({
+        version: 6,
+        sessionId,
+        attemptId: a.id,
+        kind: 'VIDEO_CREDIT',
+        videoId: a.videoId,
+        creditId: credit,
+      })}\n`,
+    );
+    let resolveWrite: () => void = () => {};
+    let rejectWrite: (reason: unknown) => void = () => {};
+    const work = new Promise<void>((resolve, reject) => {
+      resolveWrite = resolve;
+      rejectWrite = reject;
+    });
+    creditWork = work; // Register before write, including synchronous/early native output.
+    retainMedia(work);
+    try {
+      Promise.resolve(write(frame)).then(resolveWrite, rejectWrite);
+    } catch (error) {
+      rejectWrite(error);
+    }
+  }
+  function receiveMedia(h: VideoMediaHeader, bytes: Uint8Array) {
+    const a = current;
+    if (
+      !a?.media ||
+      broken ||
+      mediaBusy ||
+      !creditAvailable ||
+      h.sessionId !== sessionId ||
+      h.attemptId !== a.id ||
+      h.videoId !== a.videoId ||
+      h.creditId !== credit
+    )
+      throw failure();
+    creditAvailable = false;
+    if (h.kind === 'SESSION') {
+      if (activeHeader || h.geometryId !== geometry + 1) throw failure();
+      geometry = h.geometryId;
+      config = 0;
+      width = h.width;
+      height = h.height;
+    } else {
+      if (h.geometryId !== geometry || h.width !== width || h.height !== height) throw failure();
+      if (!activeHeader) {
+        if (h.offset !== 0 || h.packetId !== packet + 1) throw failure();
+        if (h.kind === 'CONFIG') {
+          if (h.configId !== configCounter + 1) throw failure();
+          config = h.configId;
+          configCounter = config;
+        } else if (config === 0 || h.configId !== config) throw failure();
+        activeHeader = h;
+        offset = 0;
+      }
+      const first = activeHeader;
+      if (
+        h.offset !== offset ||
+        h.packetId !== first.packetId ||
+        h.kind !== first.kind ||
+        h.configId !== first.configId ||
+        h.ptsUs !== first.ptsUs ||
+        h.totalBytes !== first.totalBytes
+      )
+        throw failure();
+      offset += bytes.length;
+      if (offset === h.totalBytes) {
+        packet = h.packetId;
+        activeHeader = null;
+        offset = 0;
+      }
+    }
+    if (a.videoStopping) return; // Discard an already in-flight record after checking its tuple.
+    mediaBusy = true;
+    const sink = a.media;
+    const priorCredit = creditWork;
+    const work = Promise.resolve()
+      .then(() => {
+        if (a.videoStopping || broken) return;
+        return sink.accept(h, bytes);
+      })
+      .then(() => priorCredit)
+      .then(() => {
+        mediaBusy = false;
+        if (!a.videoStopping && !broken) sendCredit(a);
+      });
+    retainMedia(work);
+  }
+  const wire = createVideoWireParser((frame) => {
+    if (frame.kind === 'CONTROL') receiveControl(frame.bytes);
+    else receiveMedia(frame.header, frame.bytes);
+  });
   const failure = () => Error('HOST_BRIDGE_UNCONFIRMED');
   function signalCleanup() {
     if (!cleanupRequested) {
@@ -317,6 +454,8 @@ export function createHostBridge(
     broken = true;
     closed = true;
     buffered = 0;
+    stopMedia();
+    wire.close();
     if (current) current.terminal = false;
     // Rejection is uncertainty, never retirement. Adapter retains exact attempt/read custody.
     for (const p of pending.values()) p.reject(failure());
@@ -390,9 +529,11 @@ export function createHostBridge(
       (result.kind === 'INVOCATION'
         ? result.processRetired
         : result.jobState === 'RETIRED' && result.endpointState === 'ABSENT');
-    p.resolve(result);
+    if (p.operation === 'RETIRE' && mediaWorks.size) {
+      void Promise.allSettled([...mediaWorks]).then(() => p.resolve(result));
+    } else p.resolve(result);
   }
-  function receive(bytes: Uint8Array) {
+  function receiveControl(bytes: Uint8Array) {
     try {
       if (broken || !(bytes instanceof Uint8Array) || bytes.length > HOST_FRAME_LIMIT) {
         breakChannel();
@@ -416,7 +557,8 @@ export function createHostBridge(
           !p ||
           p.response ||
           p.attempt.id !== response.attemptId ||
-          p.operation !== response.operation
+          p.operation !== response.operation ||
+          (p.operation.startsWith('VIDEO_') && response.version !== (p.attempt.media ? 6 : 5))
         ) {
           breakChannel();
           return;
@@ -429,7 +571,11 @@ export function createHostBridge(
     }
   }
   try {
-    options.transport.subscribe(receive, breakChannel);
+    options.transport.subscribe((bytes) => {
+      if (current?.media) {
+        if (!wire.push(bytes)) breakChannel();
+      } else receiveControl(bytes);
+    }, breakChannel);
   } catch {
     breakChannel();
     throw failure();
@@ -542,6 +688,7 @@ export function createHostBridge(
           response: null,
         };
         pending.set(id, p);
+        if (operation === 'RETIRE') stopMedia();
         try {
           Promise.resolve(write(frame)).then(
             () => {
@@ -562,6 +709,7 @@ export function createHostBridge(
     token: object,
     kind: VideoControl,
     raw: VideoStart | string,
+    media?: VideoMediaSink,
   ): Promise<VideoSnapshot> {
     try {
       const a = exact(token);
@@ -583,13 +731,17 @@ export function createHostBridge(
         next >= Number.MAX_SAFE_INTEGER
       )
         throw failure();
-      if (kind === 'VIDEO_START') a.videoId = videoId;
-      if (kind === 'VIDEO_STOP') a.videoStopping = true;
-      else a.videoControls++;
+      if (kind === 'VIDEO_START') {
+        a.videoId = videoId;
+        a.media = media ?? null;
+      }
+      if (kind === 'VIDEO_STOP') {
+        a.videoStopping = true;
+      } else a.videoControls++;
       const id = ++next;
       const body = start
         ? {
-            version: 5,
+            version: a.media ? 6 : 5,
             requestId: id,
             sessionId,
             attemptId: a.id,
@@ -602,7 +754,7 @@ export function createHostBridge(
             scid: start.scid,
             nonceHex: start.nonceHex,
           }
-        : { version: 5, requestId: id, sessionId, attemptId: a.id, kind, videoId };
+        : { version: a.media ? 6 : 5, requestId: id, sessionId, attemptId: a.id, kind, videoId };
       const frame = new TextEncoder().encode(`${JSON.stringify(body)}\n`);
       return new Promise<VideoSnapshot>((resolve, reject) => {
         const p: Pending = {
@@ -612,18 +764,28 @@ export function createHostBridge(
           videoId,
           resolve: (value) => {
             const facts = snapshotVideo(value);
-            if (facts) resolve(facts);
-            else reject(failure());
+            if (facts) {
+              if (kind === 'VIDEO_STOP') {
+                void Promise.allSettled([...mediaWorks]).then(() => resolve(facts));
+              } else resolve(facts);
+            } else reject(failure());
           },
           reject,
           writeDone: false,
           response: null,
         };
         pending.set(id, p);
+        if (kind === 'VIDEO_STOP') stopMedia();
         try {
           Promise.resolve(write(frame)).then(
             () => {
               p.writeDone = true;
+              try {
+                if (kind === 'VIDEO_START' && a.media) sendCredit(a);
+              } catch {
+                breakChannel();
+                return;
+              }
               finish(id, p);
             },
             () => breakChannel(),
@@ -637,7 +799,8 @@ export function createHostBridge(
     }
   }
   const provider: HostNativeProvider = Object.freeze({
-    videoStart: (token: object, request: VideoStart) => sendVideo(token, 'VIDEO_START', request),
+    videoStart: (token: object, request: VideoStart, media?: VideoMediaSink) =>
+      sendVideo(token, 'VIDEO_START', request, media),
     videoStatus: (token: object, videoId: string) => sendVideo(token, 'VIDEO_STATUS', videoId),
     videoStop: (token: object, videoId: string) => sendVideo(token, 'VIDEO_STOP', videoId),
     reserveAttempt(kind: 'VERSION' | 'FOREGROUND') {
@@ -646,6 +809,7 @@ export function createHostBridge(
         broken ||
         ids.size >= 128 ||
         pending.size ||
+        mediaWorks.size ||
         (current && !current.terminal) ||
         !['VERSION', 'FOREGROUND'].includes(kind)
       )
@@ -662,6 +826,7 @@ export function createHostBridge(
         closed ||
         broken ||
         pending.size ||
+        mediaWorks.size ||
         (current && !current.terminal)
       )
         throw failure();
@@ -678,6 +843,7 @@ export function createHostBridge(
         videoId: null,
         videoControls: 0,
         videoStopping: false,
+        media: null,
       };
       return token;
     },
@@ -709,6 +875,7 @@ export function createHostBridge(
     provider,
     close() {
       closed = true;
+      stopMedia();
       signalCleanup();
     },
     get closed() {

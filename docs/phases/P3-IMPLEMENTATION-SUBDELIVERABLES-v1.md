@@ -218,6 +218,22 @@ Independent [actual Windows package-only audit](../evidence/P3-01-retained-pair-
 
 **Current ledger N79/S4/I17: source21/100=21.0% (unchanged versus §3.5); integrated17/100=17.0% (+1.0pp); acceptance0/19.** No A/F/legal/runtime credit. This actual Windows package predates telemetry, whose separate A/G credit is local integrated software evidence; no telemetry-inclusive Windows package is claimed.
 
+## 3.7. Single-session media/decode software milestone — 2026-11-02 15:03 UTC
+
+Independent source/criterion review of the [media/decode evidence](../evidence/P3-02-P3-04-media-decode-source-2026-11-02.md) and final local desktop1752/1752, foundation109/109 and Python375/375 supports these exact fixed-cell transitions:
+
+| Cell | Before | Now | Attributable bounded behavior |
+|---|---|---|---|
+| P3-02.A | S | I | Explicit main-owned verified-target start through fixed port READY, retained provider and original deadline; stale/failure integration tests |
+| P3-02.C | S | I | Preemptive Stop, held media/write/cleanup obligations and truthful uncertain retirement wired through existing shutdown owners |
+| P3-04.A | N | S | Full bounded Annex-B/WebCodecs/canvas source path exists; synthetic decoder orchestration does not establish actual WebCodecs output |
+| P3-04.B | N | I | Main and renderer tuple/generation/delivery routing to the exact tile, with stale callback/ACK/paint negatives |
+| P3-04.C | N | S | Bounded SPS/session/config geometry, SAR and contain placement implemented; explicit portrait/landscape transition integration remains unproved |
+| P3-04.D | N | I | Empty/loading/error and actual-paint-only display state in the existing tile with index badge and inherited theme |
+| P3-09.A | N | I | App-wired bounded native/main/decoder queues, credit/ACK backpressure and pre-key drop handling; held output and exhaustion tests |
+
+**Current fixed ledger N74/S4/I22: source26/100=26.0% (+5.0pp versus §3.6); integrated22/100=22.0% (+5.0pp); technical acceptance0/19.** No denominator or definition changed. P3-04.E remains N because the complete named display recovery behavior is absent; partial rejection/detach work is not rounded up. Pause/resume, restart, multi-stream and focused/background profiles remain open. Null runtime pair admission does not erase complete source/software-integration behavior, but actual matching-pair/managed92, Windows H.264/custom-origin, rendered visual parity and physical qualification remain NOT_RUN for these bytes. No new runtime/task acceptance is implied.
+
 ## 4. First baseline and honest deltas
 
 The independently reviewed complete mapping and evidence overlay establish:

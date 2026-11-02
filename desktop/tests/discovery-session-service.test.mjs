@@ -60,10 +60,18 @@ const ownerUrl = moduleUrl(
     .replace('const systemClock = Date.now,', 'const systemClock = () => 1000,'),
   ownerPath,
 );
+// Only new video consumer/target are substituted below; SQLite, projection,
+// facade reservation, CAS, busy and shutdown code remain actual source.
+const videoConsumers = new WeakMap();
+globalThis.__facadeVideoConsumers = videoConsumers;
 const facadePath = new URL('../src/main/discovery-session-service.ts', import.meta.url);
 const { createDiscoverySessionService } = await import(
   moduleUrl(
     readFileSync(facadePath, 'utf8')
+      .replace(
+        "import { createOwnedVideoMediaConsumer } from './owned-video-consumer.ts';",
+        'const createOwnedVideoMediaConsumer=(target,context,sink)=>globalThis.__facadeVideoConsumers.get(target)(context,sink);',
+      )
       .replace("'./adb-server-service.ts'", JSON.stringify(serverUrl))
       .replaceAll("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
       .replace("'./owned-transport-metadata.ts'", JSON.stringify(ownerUrl))
@@ -295,7 +303,7 @@ async function fixture(extra = {}) {
     },
     createIngestion(provider, current) {
       assert.equal(originalInspector(provider), null); // Deliberately separate test-transformed module instance.
-      return (extra.foreignModule ? originalIngestion : createAdbDiscoveryService)({
+      const actual = (extra.foreignModule ? originalIngestion : createAdbDiscoveryService)({
         provider,
         registry,
         readDurableRevision: () => db.readDurable().meta.revision,
@@ -303,6 +311,17 @@ async function fixture(extra = {}) {
         clock: () => extra.clock?.() ?? 1000,
         newId: next,
       });
+      return extra.videoTarget
+        ? Object.freeze(
+            Object.defineProperties(
+              {},
+              {
+                ...Object.getOwnPropertyDescriptors(actual),
+                videoTarget: { value: extra.videoTarget, enumerable: true },
+              },
+            ),
+          )
+        : actual;
     },
   });
   let request = 0;
@@ -1290,6 +1309,246 @@ test('metadata synchronous EXEC diagnostic exhaustion retains immutable PENDING 
     assert.equal(handoffs, 0);
   } finally {
     delete globalThis.__metadataIdCapacityExhausted;
+    await f.cleanup();
+  }
+});
+
+function syntheticVideo(extra = {}) {
+  const target = Object.freeze({ syntheticVideoTarget: true });
+  const start = deferred(),
+    stop = deferred();
+  let context,
+    starts = 0,
+    stops = 0,
+    retired = false;
+  videoConsumers.set(target, (captured, sink) => {
+    context = captured;
+    starts++;
+    extra.construct?.();
+    return Object.freeze({
+      started: start.promise,
+      snapshot: () => null,
+      status: async () => null,
+      get retired() {
+        return retired;
+      },
+      stop() {
+        stops++;
+        sink.close();
+        return stop.promise;
+      },
+    });
+  });
+  return {
+    target,
+    start,
+    stop,
+    get context() {
+      return context;
+    },
+    get starts() {
+      return starts;
+    },
+    get stops() {
+      return stops;
+    },
+    retire() {
+      retired = true;
+      stop.resolve(null);
+    },
+    settle() {
+      start.resolve(null);
+    },
+  };
+}
+const videoSink = () => ({ accept: async () => {}, close() {} });
+test('video reservation precedes allocator/clock reentry; captured deadline survives delayed negotiation and consumed reservation cannot rearm', async () => {
+  const v = syntheticVideo();
+  let f,
+    armed = false,
+    idArmed = false,
+    now = 1000,
+    reentries = 0;
+  f = await fixture({
+    videoTarget: () => v.target,
+    clock() {
+      if (armed) {
+        armed = false;
+        reentries++;
+        const s = f.facade.snapshot();
+        assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+      }
+      return now;
+    },
+    id() {
+      if (idArmed) {
+        idArmed = false;
+        reentries++;
+        const s = f.facade.snapshot();
+        assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+      }
+    },
+  });
+  try {
+    const s = await metadataReady(f);
+    armed = true;
+    idArmed = true;
+    const r = f.facade.reserveVideo(s.devices[0].deviceId, s.revision);
+    assert.equal(reentries, 2);
+    assert.equal(v.starts, 0);
+    assert.equal(r.admittedUtc, 1000);
+    assert.equal(r.deadlineUtc, 31000);
+    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+    now = 25000;
+    const consumer = r.begin(videoSink());
+    assert.equal(v.context.deadlineUtc, 31000);
+    assert.equal(v.context.admittedUtc, 1000);
+    assert.equal(v.context.videoId, r.videoId);
+    assert.throws(() => r.begin(videoSink()));
+    v.settle();
+    await consumer.started;
+    await tick();
+    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+    const stopped = r.stop();
+    v.retire();
+    await stopped;
+    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+  } finally {
+    v.settle();
+    v.retire();
+    await f.cleanup();
+  }
+});
+test('video reservation rejects provisional/stale/foreign rows and null target without consumer effects', async () => {
+  const v = syntheticVideo();
+  const f = await fixture({ videoTarget: () => null });
+  try {
+    let s = await metadataReady(f, false);
+    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+    // Advance through the actual proof-bearing reconciliation, not a forged public row.
+    globalThis.__metadataFixtureProofs = s.devices.map((d, i) => ({
+      deviceId: d.deviceId,
+      evidenceId: id(980000 + i),
+      serial: s.bindings[i].serial,
+      transportId: s.bindings[i].transportId,
+    }));
+    await f.call('refresh', { expectedRevision: 4 });
+    await f.terminal();
+    delete globalThis.__metadataFixtureProofs;
+    s = f.facade.snapshot();
+    assert.throws(() => f.facade.reserveVideo(id(999999), s.revision));
+    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision - 1));
+    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, -0));
+    const r = f.facade.reserveVideo(s.devices[0].deviceId, s.revision);
+    assert.throws(() => r.begin(videoSink()));
+    await r.stop();
+    assert.equal(v.starts, 0);
+  } finally {
+    delete globalThis.__metadataFixtureProofs;
+    await f.cleanup();
+  }
+});
+test('video expired negotiation and Stop before begin have no consumer handoff', async () => {
+  for (const mode of ['DEADLINE', 'STOP']) {
+    const v = syntheticVideo();
+    let now = 1000;
+    const f = await fixture({ videoTarget: () => v.target, clock: () => now });
+    try {
+      const s = await metadataReady(f),
+        r = f.facade.reserveVideo(s.devices[0].deviceId, s.revision);
+      if (mode === 'DEADLINE') now = 31000;
+      else await r.stop();
+      assert.throws(() => r.begin(videoSink()));
+      assert.equal(v.starts, 0);
+      await r.stop();
+    } finally {
+      await f.cleanup();
+    }
+  }
+});
+test('video construction revocation retains actual consumer start and stop through shared close', async () => {
+  let f, closing;
+  const v = syntheticVideo({
+    construct() {
+      f.facade.revoke();
+      closing = f.facade.close();
+    },
+  });
+  f = await fixture({ videoTarget: () => v.target });
+  try {
+    const s = await metadataReady(f),
+      r = f.facade.reserveVideo(s.devices[0].deviceId, s.revision);
+    r.begin(videoSink());
+    assert.equal(r.current(), false);
+    await tick();
+    assert.ok(v.stops >= 1);
+    let done = false;
+    void closing.then(() => (done = true));
+    await tick();
+    assert.equal(done, false);
+    v.retire();
+    await tick();
+    assert.equal(done, false, 'real START is still a drain obligation');
+    v.settle();
+    assert.equal(await closing, 'RETIRED');
+  } finally {
+    v.settle();
+    v.retire();
+    await f.cleanup();
+  }
+});
+test('video busy refusals and invalid requests cannot clear held ordinary query; Refresh cannot steal reserved lane', async () => {
+  const hold = deferred(),
+    v = syntheticVideo();
+  let holding = false;
+  const f = await fixture({
+    videoTarget: () => v.target,
+    query: () => (holding ? hold.promise : undefined),
+  });
+  try {
+    const s = await metadataReady(f);
+    holding = true;
+    await f.call('refresh', { expectedRevision: 6 });
+    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+    assert.throws(() => f.facade.reserveVideo('private', -1));
+    assert.equal((await f.call('refresh', { expectedRevision: 7 })).code, 'BUSY');
+    hold.resolve();
+    await f.terminal();
+    const fresh = f.facade.snapshot();
+    const r = f.facade.reserveVideo(fresh.devices[0].deviceId, fresh.revision);
+    assert.equal((await f.call('refresh', { expectedRevision: 8 })).code, 'BUSY');
+    assert.equal(r.current(), true);
+    await r.stop();
+  } finally {
+    hold.resolve();
+    v.settle();
+    v.retire();
+    await f.cleanup();
+  }
+});
+
+test('video allocator revocation refuses outer reservation without constructing a consumer', async () => {
+  const v = syntheticVideo();
+  let f,
+    armed = false,
+    closing;
+  f = await fixture({
+    videoTarget: () => v.target,
+    id() {
+      if (armed) {
+        armed = false;
+        f.facade.revoke();
+        closing = f.facade.close();
+      }
+    },
+  });
+  try {
+    const s = await metadataReady(f);
+    armed = true;
+    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+    assert.equal(v.starts, 0);
+    assert.equal(await closing, 'RETIRED');
+  } finally {
     await f.cleanup();
   }
 });

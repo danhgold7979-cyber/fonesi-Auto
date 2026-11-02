@@ -22,9 +22,8 @@ source = source
   )
   .replace('const clock = Date.now.bind(Date);', 'const clock = ()=>1000;')
   .replace(/from '(\.\.?\/[^']+)'/g, (_m, p) => `from '${new URL(p, url).href}'`);
-const { createOwnedVideoConsumer: create } = await import(
-  `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
-);
+const { createOwnedVideoConsumer: create, createOwnedVideoMediaConsumer: createMedia } =
+  await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const deferred = () => {
   let resolve;
   const promise = new Promise((r) => {
@@ -217,4 +216,81 @@ test('genuine target revocation before first authority callback has no remote ha
   assert.equal(f.begin, 0);
   await c.stop();
   assert.equal(c.retired, true);
+});
+
+test('media consumer preserves captured original context and synchronous sink revocation', async () => {
+  const f = fixture();
+  let closed = 0,
+    captured;
+  const record = records.get(f.target),
+    begin = record.begin;
+  record.begin = (r, media) => {
+    captured = media;
+    return begin(r);
+  };
+  const c = createMedia(
+    f.target,
+    { admittedUtc: 500, deadlineUtc: 30500, videoId: '00000000-0000-0000-0000-000000000099' },
+    {
+      accept: async () => {},
+      close() {
+        closed++;
+      },
+    },
+  );
+  await tick();
+  assert.equal(f.request.deadlineUtc, 30500);
+  assert.equal(f.request.videoId, '00000000-0000-0000-0000-000000000099');
+  assert.ok(captured);
+  f.start.resolve(f.facts());
+  await c.started;
+  const stopped = c.stop();
+  try {
+    assert.equal(closed, 1);
+    assert.equal(f.stops, 1);
+    assert.equal(c.retired, false);
+  } finally {
+    f.stop.resolve({
+      ...f.facts(2),
+      state: 'CLOSED',
+      code: 'CLOSED',
+      launch: 'EXITED',
+      localRetired: true,
+      cleanup: 'CLEANED',
+    });
+    await stopped;
+  }
+  assert.equal(c.retired, true);
+  assert.equal(closed, 1);
+});
+test('media context does not extend admission, mint target authority, or invoke getters', () => {
+  const sink = { accept: async () => {}, close() {} };
+  let gets = 0;
+  assert.throws(() =>
+    createMedia(
+      fixture().target,
+      {
+        get admittedUtc() {
+          gets++;
+          return 1000;
+        },
+        deadlineUtc: 31000,
+        videoId: '00000000-0000-0000-0000-000000000099',
+      },
+      sink,
+    ),
+  );
+  assert.equal(gets, 0);
+  for (const c of [
+    { admittedUtc: 1000, deadlineUtc: 31001, videoId: '00000000-0000-0000-0000-000000000099' },
+    { admittedUtc: -0, deadlineUtc: 30000, videoId: '00000000-0000-0000-0000-000000000099' },
+  ])
+    assert.throws(() => createMedia(fixture().target, c, sink));
+  assert.throws(() =>
+    createMedia(
+      {},
+      { admittedUtc: 1000, deadlineUtc: 31000, videoId: '00000000-0000-0000-0000-000000000099' },
+      sink,
+    ),
+  );
 });

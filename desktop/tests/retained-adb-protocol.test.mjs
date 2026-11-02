@@ -169,7 +169,7 @@ test('VERSION_ONLY gate and synchronous exact reservation precede ordinary worke
 });
 test('writer flush and all actual worker joins remain required before sole clean return; timeouts never cancel', () => {
   before(
-    source,
+    source.slice(source.indexOf('void WriteLoop()'), source.indexOf('internal RunResult Run()')),
     'output.Write(frame.bytes, 0, frame.bytes.Length); output.Flush();',
     'outstanding--;',
   );
@@ -185,7 +185,7 @@ test('writer flush and all actual worker joins remain required before sole clean
   assert.match(fixture, /p.reserves==2&&p.retires==2/);
   assert.match(
     source,
-    /Done\(reader\) && \(readPending == null \|\| readPending.IsCompleted\) && Done\(writer\) && workers && native && outstanding == 0 && queue.Count == 0 && !writeFailed/,
+    /Done\(reader\) && \(readPending == null \|\| readPending.IsCompleted\) && Done\(writer\) && workers && native && outstanding == 0 && queue.Count == 0 && mediaFrame==null && !writeFailed/,
   );
   assert.match(source, /new RunResult\(eof && failure == null/);
   assert.match(
@@ -196,7 +196,12 @@ test('writer flush and all actual worker joins remain required before sole clean
     source,
     /OperationMilliseconds = 30000, RetirementMilliseconds = 10000, CloseMilliseconds = 120000/,
   );
-  assert.doesNotMatch(source, /Thread\.Abort|\.Interrupt\(|\.Cancel\(|\.Dispose\(/);
+  // Media credit cancellation is not worker cancellation or native retirement.
+  const withoutMediaCancellation = source.replaceAll('media.Cancel()', 'media.CREDIT_CANCEL()');
+  assert.doesNotMatch(
+    withoutMediaCancellation,
+    /Thread\.Abort|\.Interrupt\(|\.Cancel\(|\.Dispose\(/,
+  );
 });
 test('future managed fixture exercises real reader with only memory streams and exact fake attempt identity', () => {
   assert.match(fixture, /RetainedAdbProtocol\.Run\(i,o,Session,p/);

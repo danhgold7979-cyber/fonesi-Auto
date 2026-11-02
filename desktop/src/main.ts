@@ -1,3 +1,4 @@
+import { installVideoStreamBridge } from './video-stream-bridge.ts';
 import { installHostResourceBridge } from './host-resource-bridge.ts';
 import {
   createHostResourceSampler,
@@ -90,6 +91,7 @@ import {
 } from './main/window-policy.js';
 
 // Legacy public reads plus the separately bounded nonsecret preference capability.
+let videoStreamBridge: ReturnType<typeof installVideoStreamBridge> | undefined;
 let hostResourceSampler: HostResourceSampler | undefined;
 let hostResourceBridge: ReturnType<typeof installHostResourceBridge> | undefined;
 let bridge: ReturnType<typeof installFoundationBridge> | undefined;
@@ -135,6 +137,9 @@ function cleanup(): boolean {
   closing = true;
   if (backupTimer !== undefined) clearInterval(backupTimer);
   const disposed = disposeResources([
+    () => {
+      void videoStreamBridge?.close();
+    },
     () => hostResourceBridge?.dispose(),
     () => discoverySessionService?.revoke(),
     () => discoveryBridge?.dispose(),
@@ -645,6 +650,12 @@ try {
           bridge.admitCleanup,
           () => discoverySessionService,
         );
+        videoStreamBridge = installVideoStreamBridge(
+          ipcMain,
+          bridge.admitPreferences,
+          bridge.admitCleanup,
+          () => discoverySessionService ?? null,
+        );
         inputBridge = installInputInteractionBridge(
           ipcMain,
           bridge.admitPreferences,
@@ -776,6 +787,7 @@ try {
           );
         }
         const view = bridge.attach(window, () => {
+          void videoStreamBridge?.close();
           discoverySessionService?.revoke();
           void hostResourceSampler?.close();
         });
@@ -814,6 +826,7 @@ try {
     stop: () => {
       closing = true;
       discoverySessionService?.revoke();
+      void videoStreamBridge?.close();
       hostResourceBridge?.dispose();
       discoveryBridge?.dispose();
       inputBridge?.dispose();
@@ -830,6 +843,15 @@ try {
       return cleanupComplete;
     },
     flush: async () => {
+      try {
+        if ((await videoStreamBridge?.close()) === false) {
+          cleanupComplete = false;
+          console.error('VIDEO_UNRETIRED');
+        }
+      } catch {
+        cleanupComplete = false;
+        console.error('VIDEO_UNRETIRED');
+      }
       try {
         await hostResourceSampler?.close();
         await platformToolsLifecycle.stop();

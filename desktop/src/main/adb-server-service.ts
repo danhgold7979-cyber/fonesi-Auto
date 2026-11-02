@@ -4,6 +4,7 @@ import {
   snapshotVideo,
   preparingVideo,
   type VideoSnapshot,
+  type VideoMediaSink,
   type VideoTransportSession,
 } from './video-contract.ts';
 import { inspectFleetActiveInputIntent, type OwnedFleetActiveIntent } from './fleet-service.ts';
@@ -107,7 +108,11 @@ type OwnedProviderRecord = Readonly<{
   finalCurrent(): boolean;
   localBusy(): boolean;
   videoAvailable(): boolean;
-  beginVideo(binding: OwnedRegistryVideoBinding, request: unknown): VideoTransportSession;
+  beginVideo(
+    binding: OwnedRegistryVideoBinding,
+    request: unknown,
+    media?: VideoMediaSink,
+  ): VideoTransportSession;
   beginMetadata(request: OwnedMetadataRequest): MetadataQueryHandle;
   beginInput(request: OwnedInputRequest): InputQueryHandle;
   begin(
@@ -728,6 +733,7 @@ export function createAdbServerService(
     function beginVideo(
       bindingTicket: OwnedRegistryVideoBinding,
       raw: unknown,
+      media?: VideoMediaSink,
     ): VideoTransportSession {
       if (videoReserved || active || closed || discoveryRevoked) throw Error('VIDEO_REJECTED');
       videoReserved = true;
@@ -789,6 +795,11 @@ export function createAdbServerService(
             latest = result.value;
             return latest;
           });
+          try {
+            media?.close();
+          } catch {
+            /* Cleanup remains mandatory. */
+          }
           // Publish the idempotent latch before callbacks, then synchronously
           // propagate cancellation to the final adapter handoff fence.
           try {
@@ -817,7 +828,9 @@ export function createAdbServerService(
           currentEpoch(true);
           if (!binding.finalCurrent()) throw Error('VIDEO_REJECTED');
           handed = true;
-          const facts = snapshotVideo(await factory.startVideo(grant, request, bindingTicket));
+          const facts = snapshotVideo(
+            await factory.startVideo(grant, request, bindingTicket, media),
+          );
           if (!facts) throw Error('VIDEO_REJECTED');
           latest = facts;
           resolveStart(facts);

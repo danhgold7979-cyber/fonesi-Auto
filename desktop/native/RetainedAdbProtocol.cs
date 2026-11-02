@@ -22,8 +22,8 @@ namespace Fonesi.Development.Server
         static readonly Regex DiscoveryPattern = new Regex("\\A\\{\"version\":2,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"DISCOVER\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
         static readonly Regex MetadataPattern = new Regex("\\A\\{\"version\":3,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"METADATA\",\"field\":\"(MODEL|MANUFACTURER|OS|SDK|LOCALE|RESOLUTION|DENSITY|BATTERY|STORAGE)\",\"transportId\":\"([1-9][0-9]{0,19})\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
         static readonly Regex InputPattern = new Regex("\\A\\{\"version\":4,\"sessionId\":\"([0-9a-f-]{36})\",\"requestId\":([1-9][0-9]{0,15}),\"attemptId\":\"([0-9a-f-]{36})\",\"operation\":\"INPUT\",\"action\":\"(HOME|BACK|ENTER|ESCAPE|DPAD_UP|DPAD_DOWN|DPAD_LEFT|DPAD_RIGHT|DPAD_CENTER)\",\"transportId\":\"([1-9][0-9]{0,19})\",\"deadlineUtc\":([1-9][0-9]{0,15})\\}\\n\\z", RegexOptions.CultureInvariant);
-        static readonly Regex VideoStartPattern = new Regex(@"\A\{""version"":5,""requestId"":([1-9][0-9]{0,15}),""sessionId"":""([0-9a-f-]{36})"",""attemptId"":""([0-9a-f-]{36})"",""kind"":""VIDEO_START"",""videoId"":""([0-9a-f-]{36})"",""transportId"":""([1-9][0-9]{0,19})"",""hostEpoch"":([1-9][0-9]{0,15}),""deadlineUtc"":([1-9][0-9]{0,15}),""artifactId"":""([0-9a-f]{64})"",""scid"":(0|[1-9][0-9]{0,9}),""nonceHex"":""([0-9a-f]{64})""\}\n\z", RegexOptions.CultureInvariant);
-        static readonly Regex VideoControlPattern = new Regex(@"\A\{""version"":5,""requestId"":([1-9][0-9]{0,15}),""sessionId"":""([0-9a-f-]{36})"",""attemptId"":""([0-9a-f-]{36})"",""kind"":""(VIDEO_STATUS|VIDEO_STOP)"",""videoId"":""([0-9a-f-]{36})""\}\n\z", RegexOptions.CultureInvariant);
+        static readonly Regex VideoStartPattern = new Regex(@"\A\{""version"":(?:5|6),""requestId"":([1-9][0-9]{0,15}),""sessionId"":""([0-9a-f-]{36})"",""attemptId"":""([0-9a-f-]{36})"",""kind"":""VIDEO_START"",""videoId"":""([0-9a-f-]{36})"",""transportId"":""([1-9][0-9]{0,19})"",""hostEpoch"":([1-9][0-9]{0,15}),""deadlineUtc"":([1-9][0-9]{0,15}),""artifactId"":""([0-9a-f]{64})"",""scid"":(0|[1-9][0-9]{0,9}),""nonceHex"":""([0-9a-f]{64})""\}\n\z", RegexOptions.CultureInvariant);
+        static readonly Regex VideoControlPattern = new Regex(@"\A\{""version"":(?:5|6),""requestId"":([1-9][0-9]{0,15}),""sessionId"":""([0-9a-f-]{36})"",""attemptId"":""([0-9a-f-]{36})"",""kind"":""(VIDEO_STATUS|VIDEO_STOP)"",""videoId"":""([0-9a-f-]{36})""\}\n\z", RegexOptions.CultureInvariant);
         static readonly string[] Errors = { "ADMISSION_REJECTED", "BINARY_CHANGED", "PROFILE_REJECTED", "ENDPOINT_REJECTED", "BUSY", "CLOSED", "NATIVE_FAILED", "UNRETIRED" };
         public interface IProvider
         {
@@ -42,7 +42,9 @@ namespace Fonesi.Development.Server
             IDictionary<string,object> VideoStatus(object attempt,string videoId);
             IDictionary<string,object> VideoStop(object attempt,string videoId);
         }
-        public sealed class NativeProvider : IProvider, IVideoProvider
+        public interface IVideoMediaProvider : IVideoProvider
+        { IDictionary<string,object> VideoStartMedia(object attempt,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex,VideoMedia media); IDictionary<string,object> VideoStopMedia(object attempt,string videoId,Stopwatch budget); }
+        public sealed class NativeProvider : IProvider, IVideoMediaProvider
         {
             readonly IsolatedAdbServer.RetainedProvider provider;
             public NativeProvider(IsolatedAdbServer.RetainedProvider provider)
@@ -63,8 +65,12 @@ namespace Fonesi.Development.Server
             {return provider.Input(attempt as IsolatedAdbServer.RetainedProvider.Attempt,transportId,action,deadlineUtc).Snapshot();}
             public IDictionary<string,object> VideoStart(object attempt,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex)
             {return provider.VideoStart(attempt as IsolatedAdbServer.RetainedProvider.Attempt,attemptId,videoId,transportId,hostEpoch,deadlineUtc,artifactId,scid,nonceHex);}
+            public IDictionary<string,object> VideoStartMedia(object attempt,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex,VideoMedia media)
+            {return provider.VideoStartMedia(attempt as IsolatedAdbServer.RetainedProvider.Attempt,attemptId,videoId,transportId,hostEpoch,deadlineUtc,artifactId,scid,nonceHex,media);}
             public IDictionary<string,object> VideoStatus(object attempt,string videoId)
             {return provider.VideoStatus(attempt as IsolatedAdbServer.RetainedProvider.Attempt,videoId);}
+            public IDictionary<string,object> VideoStopMedia(object attempt,string videoId,Stopwatch budget)
+            {return provider.VideoStopMedia(attempt as IsolatedAdbServer.RetainedProvider.Attempt,videoId,budget);}
             public IDictionary<string,object> VideoStop(object attempt,string videoId)
             {return provider.VideoStop(attempt as IsolatedAdbServer.RetainedProvider.Attempt,videoId);}
             public IDictionary<string, object> Retire(object attempt)
@@ -87,8 +93,8 @@ namespace Fonesi.Development.Server
             {SessionId=session;RequestId=request;AttemptId=attempt;Operation="METADATA";Field=field;TransportId=transportId;Version=3;DeadlineUtc=deadline;AdmittedUtc=admitted;}
             internal Request(string session,long request,string attempt,string action,string transportId,long deadline,long admitted,bool input)
             {SessionId=session;RequestId=request;AttemptId=attempt;Operation="INPUT";Action=action;TransportId=transportId;Version=4;DeadlineUtc=deadline;AdmittedUtc=admitted;}
-            internal Request(string session,long request,string attempt,string operation,string video,string transport,long epoch,long deadline,string artifact,int scid,string nonce,long admitted)
-            {SessionId=session;RequestId=request;AttemptId=attempt;Operation=operation;VideoId=video;TransportId=transport;HostEpoch=epoch;DeadlineUtc=deadline;ArtifactId=artifact;Scid=scid;NonceHex=nonce;AdmittedUtc=admitted;Version=5;}
+            internal Request(string session,long request,string attempt,string operation,string video,string transport,long epoch,long deadline,string artifact,int scid,string nonce,long admitted,int version=5)
+            {SessionId=session;RequestId=request;AttemptId=attempt;Operation=operation;VideoId=video;TransportId=transport;HostEpoch=epoch;DeadlineUtc=deadline;ArtifactId=artifact;Scid=scid;NonceHex=nonce;AdmittedUtc=admitted;Version=version;}
 
         }
         public static Request Parse(byte[] frame, string sessionId, long previousRequestId)
@@ -100,8 +106,8 @@ namespace Fonesi.Development.Server
             if(vs.Success||vc.Success){Match v=vs.Success?vs:vc;long epoch=0;int scid=0;long now=(DateTime.UtcNow.Ticks-621355968000000000L)/10000;
                 if(v.Groups[2].Value!=sessionId||!Uuid.IsMatch(v.Groups[3].Value)||!Int64.TryParse(v.Groups[1].Value,NumberStyles.None,CultureInfo.InvariantCulture,out request)||request<=previousRequestId||request>SafeInteger)return null;
                 if(vs.Success){if(!Uuid.IsMatch(v.Groups[4].Value)||!IsolatedAdbServer.RetainedProvider.MetadataTransport(v.Groups[5].Value)||!Int64.TryParse(v.Groups[6].Value,out epoch)||epoch>SafeInteger||!Int64.TryParse(v.Groups[7].Value,out deadline)||deadline>8640000000000000L||deadline<=now||deadline-now>30000||!Int32.TryParse(v.Groups[9].Value,out scid)||scid<0)return null;
-                    return new Request(sessionId,request,v.Groups[3].Value,"VIDEO_START",v.Groups[4].Value,v.Groups[5].Value,epoch,deadline,v.Groups[8].Value,scid,v.Groups[10].Value,now);}
-                if(!Uuid.IsMatch(v.Groups[5].Value))return null;return new Request(sessionId,request,v.Groups[3].Value,v.Groups[4].Value,v.Groups[5].Value,null,0,0,null,0,null,now);
+                    return new Request(sessionId,request,v.Groups[3].Value,"VIDEO_START",v.Groups[4].Value,v.Groups[5].Value,epoch,deadline,v.Groups[8].Value,scid,v.Groups[10].Value,now,text.StartsWith("{\"version\":6,",StringComparison.Ordinal)?6:5);}
+                if(!Uuid.IsMatch(v.Groups[5].Value))return null;return new Request(sessionId,request,v.Groups[3].Value,v.Groups[4].Value,v.Groups[5].Value,null,0,0,null,0,null,now,text.StartsWith("{\"version\":6,",StringComparison.Ordinal)?6:5);
             }
             Match input=InputPattern.Match(text);
             if(input.Success){
@@ -133,6 +139,49 @@ namespace Fonesi.Development.Server
                 !Int64.TryParse(m.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out request) || request <= previousRequestId || request > SafeInteger) return null;
             return new Request(sessionId, request, m.Groups[3].Value, m.Groups[4].Value);
         }
+        static readonly Regex CreditPattern=new Regex(@"\A\{""version"":6,""sessionId"":""([0-9a-f-]{36})"",""attemptId"":""([0-9a-f-]{36})"",""kind"":""VIDEO_CREDIT"",""videoId"":""([0-9a-f-]{36})"",""creditId"":([1-9][0-9]{0,15})\}\n\z",RegexOptions.CultureInvariant);
+        internal static bool ParseCredit(byte[] frame,string session,out string attempt,out string video,out long credit)
+        {
+            attempt=null;video=null;credit=0;if(frame==null||frame.Length>FrameLimit)return false;
+            foreach(byte b in frame)if(b>127||b==13)return false;
+            Match m=CreditPattern.Match(Encoding.ASCII.GetString(frame));
+            if(!m.Success||m.Groups[1].Value!=session||!Uuid.IsMatch(m.Groups[2].Value)||!Uuid.IsMatch(m.Groups[3].Value)||!Int64.TryParse(m.Groups[4].Value,NumberStyles.None,CultureInfo.InvariantCulture,out credit)||credit>SafeInteger)return false;
+            attempt=m.Groups[2].Value;video=m.Groups[3].Value;return true;
+        }
+        // Only Reader creates this fixed media handoff. No public constructor/producer registration.
+        public sealed class VideoMedia
+        {
+            readonly object sync=new object();readonly string session,attempt,video;
+            readonly Action<byte[],VideoMedia,long,Func<int>> enqueue;
+            long next=1,flight;bool initial,ack,flushed,stopped,failed,startFinished;Action stopOwner;
+            internal VideoMedia(string session,string attempt,string video,Action<byte[],VideoMedia,long,Func<int>> enqueue)
+            {if(!Uuid.IsMatch(session??"")||!Uuid.IsMatch(attempt??"")||!Uuid.IsMatch(video??"")||enqueue==null)throw new IOException("ADMISSION_REJECTED");this.session=session;this.attempt=attempt;this.video=video;this.enqueue=enqueue;}
+            internal bool Matches(string sessionId,string attemptId,string videoId){return session==sessionId&&attempt==attemptId&&video==videoId;}
+            internal bool Stopped {get{lock(sync)return stopped;}}
+            internal void BindStop(Action action){bool cancel;lock(sync){if(stopOwner!=null)throw new IOException("PROTOCOL_FAILED");stopOwner=action;cancel=stopped;Monitor.PulseAll(sync);}if(cancel)action();}
+            internal void StartFinished(){lock(sync){startFinished=true;Monitor.PulseAll(sync);}}
+            internal bool OwnerReady {get{lock(sync)return stopOwner!=null;}}
+            internal bool StartDone {get{lock(sync)return startFinished;}}
+            internal void Cancel(){Action action;lock(sync){if(stopped)return;stopped=true;action=stopOwner;Monitor.PulseAll(sync);}if(action!=null)action();}
+            internal bool Credit(long value)
+            {lock(sync){if(stopped||failed)return false;if(!initial){if(value!=1)return false;initial=true;Monitor.PulseAll(sync);return true;}
+                if(flight==0||flight>=SafeInteger||value!=flight+1||ack)return false;ack=true;Advance();Monitor.PulseAll(sync);return true;}}
+            void Advance(){if(flight!=0&&flushed&&ack){next=flight+1;flight=0;flushed=false;ack=false;}}
+            internal void Written(long credit,bool success)
+            {lock(sync){if(flight!=credit||flushed){failed=true;stopped=true;}else if(!success){failed=true;stopped=true;}else{flushed=true;Advance();}Monitor.PulseAll(sync);}}
+            static void Big(byte[] b,int offset,int value){b[offset]=(byte)(value>>24);b[offset+1]=(byte)(value>>16);b[offset+2]=(byte)(value>>8);b[offset+3]=(byte)value;}
+            internal void Emit(long geometry,long config,long packet,string kind,long? pts,int total,int offset,int width,int height,byte[] payload,int count,Func<int> remaining)
+            {
+                if(geometry<1||geometry>SafeInteger||config<0||config>SafeInteger||packet<0||packet>SafeInteger||Array.IndexOf(new[]{"SESSION","CONFIG","KEY","DELTA"},kind)<0||width<1||height<1||width>4096||height>4096||(long)width*height>8388608||count<0||count>32768||payload==null||count>payload.Length||total<0||total>8388608||offset<0||offset>total||count>total-offset)throw new IOException("PROTOCOL_FAILED");
+                if(kind=="SESSION"?(config!=0||packet!=0||pts!=null||total!=0||offset!=0||count!=0):(packet<1||config<1||total<1||offset>=total||count<1||count!=Math.Min(32768,total-offset)||(kind=="CONFIG"?(pts!=null||total>65536):(pts==null||pts<0||pts>SafeInteger))))throw new IOException("PROTOCOL_FAILED");
+                long credit;for(;;){remaining();lock(sync){if(stopped||failed)throw new IOException("CLOSED");if(initial&&flight==0){if(next>=SafeInteger)throw new IOException("PROTOCOL_FAILED");credit=next;flight=credit;flushed=false;ack=false;break;}Monitor.Wait(sync,5);}}
+                string header="{\"version\":1,\"sessionId\":\""+session+"\",\"attemptId\":\""+attempt+"\",\"videoId\":\""+video+"\",\"creditId\":"+credit.ToString(CultureInfo.InvariantCulture)+",\"geometryId\":"+geometry.ToString(CultureInfo.InvariantCulture)+",\"configId\":"+config.ToString(CultureInfo.InvariantCulture)+",\"packetId\":"+packet.ToString(CultureInfo.InvariantCulture)+",\"kind\":\""+kind+"\",\"ptsUs\":"+(pts.HasValue?pts.Value.ToString(CultureInfo.InvariantCulture):"null")+",\"totalBytes\":"+total.ToString(CultureInfo.InvariantCulture)+",\"offset\":"+offset.ToString(CultureInfo.InvariantCulture)+",\"width\":"+width.ToString(CultureInfo.InvariantCulture)+",\"height\":"+height.ToString(CultureInfo.InvariantCulture)+"}";
+                byte[] h=Encoding.ASCII.GetBytes(header);if(h.Length>1024)throw new IOException("PROTOCOL_FAILED");byte[] record=new byte[16+h.Length+count];Encoding.ASCII.GetBytes("AVMED01",0,7,record,1);Big(record,8,h.Length);Big(record,12,count);Buffer.BlockCopy(h,0,record,16,h.Length);Buffer.BlockCopy(payload,0,record,16+h.Length,count);
+                try{enqueue(record,this,credit,remaining);}catch{Written(credit,false);throw;}
+                // Scratch/record ownership lasts through actual writer completion; ACK alone never releases it.
+                for(;;){remaining();lock(sync){if(failed||stopped)throw new IOException("CLOSED");if(flight!=credit||flushed)return;Monitor.Wait(sync,5);}}
+            }
+        }
         public sealed class RunResult
         {
             public readonly bool Clean;
@@ -145,14 +194,15 @@ namespace Fonesi.Development.Server
             internal Thread ordinary, cleanup, videoCleanup;
             internal bool terminal, cleanupIssued, retiring, publicationStarted, live;
             internal int healthCalls, discoveryCalls, queryRetirementGeneration, videoCalls; internal string videoId;
-            internal int frames;
+            internal int frames; internal int videoVersion; internal VideoMedia media;
             internal long ordinaryStarted, cleanupStarted, videoCleanupStarted;
             internal Attempt(string id, object token) { this.id = id; this.token = token; }
         }
         sealed class Frame
         {
-            internal readonly byte[] bytes; internal readonly Attempt attempt;
-            internal Frame(byte[] bytes, Attempt attempt) { this.bytes = bytes; this.attempt = attempt; }
+            internal readonly byte[] bytes; internal readonly Attempt attempt; internal readonly VideoMedia media; internal readonly long credit;
+            internal Frame(byte[] bytes, Attempt attempt) : this(bytes,attempt,null,0) {}
+            internal Frame(byte[] bytes,Attempt attempt,VideoMedia media,long credit){this.bytes=bytes;this.attempt=attempt;this.media=media;this.credit=credit;}
         }
         sealed class Facts
         {
@@ -321,7 +371,7 @@ namespace Fonesi.Development.Server
             readonly string session;
             readonly IProvider provider;
             readonly Func<bool> parentAlive;
-            readonly Queue<Frame> queue = new Queue<Frame>();
+            readonly Queue<Frame> queue = new Queue<Frame>(); Frame mediaFrame;
             readonly HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
             readonly Stopwatch elapsed = Stopwatch.StartNew();
             Thread reader, writer;
@@ -329,7 +379,7 @@ namespace Fonesi.Development.Server
             Request deferred, deferredRetire;
             long deferredStarted;
             Attempt current;
-            bool stopping, eof, reserving, writeFailed;
+            bool stopping, eof, reserving, writeFailed, writingMedia;
             string failure;
             long closeStarted = -1, writeStarted = -1, lastRequest;
             int outstanding;
@@ -337,15 +387,19 @@ namespace Fonesi.Development.Server
             { this.server = operationSet == "SERVER_ONLY"; this.input = input; this.output = output; this.session = session; this.provider = provider; this.parentAlive = parentAlive; this.diagnostics = diagnostics; }
             void Stop(string code)
             {
-                lock (gate) { stopping = true; if (code != null && failure == null) failure = code; if (closeStarted < 0) closeStarted = elapsed.ElapsedMilliseconds; Monitor.PulseAll(gate); }
+                lock (gate) { CancelMedia(current); stopping = true; if (code != null && failure == null) failure = code; if (closeStarted < 0) closeStarted = elapsed.ElapsedMilliseconds; Monitor.PulseAll(gate); }
             }
+            void CancelMedia(Attempt attempt)
+            {if(attempt==null||attempt.media==null)return;attempt.media.Cancel();if(mediaFrame!=null&&mediaFrame.attempt==attempt){Frame discarded=mediaFrame;mediaFrame=null;outstanding--;attempt.frames--;discarded.media.Written(discarded.credit,false);}Monitor.PulseAll(gate);}
+            void EnqueueMedia(Attempt attempt,byte[] bytes,VideoMedia media,long credit,Func<int> remaining)
+            {for(;;){remaining();lock(gate){if(stopping||attempt.retiring||media.Stopped||writeFailed)throw new IOException("CLOSED");if(outstanding==0&&mediaFrame==null){outstanding++;attempt.frames++;mediaFrame=new Frame(bytes,attempt,media,credit);Monitor.PulseAll(gate);return;}Monitor.Wait(gate,5);}}}
             static bool Done(Thread thread) { return thread == null || ((thread.ThreadState & System.Threading.ThreadState.Unstarted) == 0 && thread.Join(0)); }
             bool Available(Attempt attempt) { return outstanding == 0 && (attempt == null || (attempt.terminal && Done(attempt.ordinary) && Done(attempt.cleanup) && Done(attempt.videoCleanup) && attempt.frames == 0)); }
             void Enqueue(Request request, Attempt attempt, Facts facts)
             {
                 string raw = "{\"version\":" + request.Version.ToString(CultureInfo.InvariantCulture) + ",\"sessionId\":\"" + session + "\",\"requestId\":" + request.RequestId.ToString(CultureInfo.InvariantCulture) +
                     ",\"attemptId\":\"" + request.AttemptId + "\",\"operation\":\"" + request.Operation + "\",\"result\":" + facts.json + "}\n";
-                if(request.Version==5)raw="{\"version\":5,\"requestId\":"+request.RequestId.ToString(CultureInfo.InvariantCulture)+",\"sessionId\":\""+session+"\",\"attemptId\":\""+request.AttemptId+"\",\"kind\":\""+request.Operation+"\",\"result\":"+facts.json+"}\n";
+                if(request.Version>=5)raw="{\"version\":"+request.Version.ToString(CultureInfo.InvariantCulture)+",\"requestId\":"+request.RequestId.ToString(CultureInfo.InvariantCulture)+",\"sessionId\":\""+session+"\",\"attemptId\":\""+request.AttemptId+"\",\"kind\":\""+request.Operation+"\",\"result\":"+facts.json+"}\n";
                 byte[] bytes = Encoding.ASCII.GetBytes(raw);
                 lock (gate) {
                     if (bytes.Length > FrameLimit || outstanding >= OutputLimit || writeFailed) { Stop("OUTPUT_FAILED"); return; }
@@ -354,7 +408,7 @@ namespace Fonesi.Development.Server
             }
             void Worker(Attempt attempt, Request request, bool cleanup, int cleanupGeneration = 0)
             {
-                if(!cleanup&&request.Version==5){VideoWorker(attempt,request);return;}
+                if(!cleanup&&request.Version>=5){VideoWorker(attempt,request);return;}
                 if(!cleanup&&(request.Operation=="DISCOVER"||request.Operation=="METADATA"||request.Operation=="INPUT")) { DiscoveryWorker(attempt,request);return; }
                 Facts facts;
                 try { Progress(ProgressSlot.PROVIDER_ENTERED); facts = Snapshot(cleanup ? provider.Retire(attempt.token) : !server ? provider.Version(attempt.token) : request.Operation == "START" ? provider.StartForeground(attempt.token) : provider.Health(attempt.token), server, cleanup ? "RETIRE" : request.Operation); }
@@ -376,18 +430,20 @@ namespace Fonesi.Development.Server
             void VideoWorker(Attempt attempt,Request request)
             {
                 try{IVideoProvider p=provider as IVideoProvider;if(p==null)throw new InvalidDataException();IDictionary<string,object> result;
-                    if(request.Operation=="VIDEO_START"){long effective;if(!request.DiscoveryDeadline(out effective))throw new IOException("DEADLINE_EXCEEDED");result=p.VideoStart(attempt.token,request.AttemptId,request.VideoId,request.TransportId,request.HostEpoch,effective,request.ArtifactId,request.Scid,request.NonceHex);}
+                    if(request.Operation=="VIDEO_START"){long effective;if(!request.DiscoveryDeadline(out effective))throw new IOException("DEADLINE_EXCEEDED");result=request.Version==6?((IVideoMediaProvider)p).VideoStartMedia(attempt.token,request.AttemptId,request.VideoId,request.TransportId,request.HostEpoch,effective,request.ArtifactId,request.Scid,request.NonceHex,attempt.media):p.VideoStart(attempt.token,request.AttemptId,request.VideoId,request.TransportId,request.HostEpoch,effective,request.ArtifactId,request.Scid,request.NonceHex);}
+                    else if(request.Version==6&&request.Operation=="VIDEO_STOP"){Stopwatch wait=Stopwatch.StartNew();while(!attempt.media.OwnerReady&&!attempt.media.StartDone&&wait.ElapsedMilliseconds<RetirementMilliseconds)Thread.Sleep(1);if(!attempt.media.OwnerReady||wait.ElapsedMilliseconds>=RetirementMilliseconds)throw new IOException("UNRETIRED");result=((IVideoMediaProvider)p).VideoStopMedia(attempt.token,request.VideoId,wait);}
                     else result=request.Operation=="VIDEO_STOP"?p.VideoStop(attempt.token,request.VideoId):p.VideoStatus(attempt.token,request.VideoId);
                     Facts facts=VideoSnapshot(result,request);if(facts.queryUnknown)lock(gate){attempt.queryRetirementGeneration++;attempt.terminal=false;attempt.cleanupIssued=false;}
                     Enqueue(request,attempt,facts);if(facts.queryUnknown)Stop("PROVIDER_FAILED");
                 }catch{lock(gate){attempt.queryRetirementGeneration++;attempt.terminal=false;attempt.cleanupIssued=false;}Stop("PROVIDER_FAILED");}
+                finally{if(request.Version==6&&request.Operation=="VIDEO_START")attempt.media.StartFinished();}
                 lock(gate){Monitor.PulseAll(gate);}
             }
             void Cleanup(Attempt attempt, Request request)
             {
                 lock (gate) {
                     if (!Done(attempt.cleanup) || (request == null && attempt.cleanupIssued)) { if (request != null) Stop("PROTOCOL_FAILED"); return; }
-                    attempt.cleanupIssued = true; attempt.retiring = true; attempt.cleanupStarted = elapsed.ElapsedMilliseconds;
+                    CancelMedia(attempt); attempt.cleanupIssued = true; attempt.retiring = true; attempt.cleanupStarted = elapsed.ElapsedMilliseconds;
                     int cleanupGeneration=attempt.queryRetirementGeneration;
                     attempt.cleanup = new Thread(delegate() { Worker(attempt, request, true, cleanupGeneration); }); attempt.cleanup.IsBackground = true; attempt.cleanup.Start();
                 }
@@ -469,14 +525,14 @@ namespace Fonesi.Development.Server
                             // Cleanup effects do not wait for output capacity or ordinary completion.
                             Cleanup(attempt, request); return;
                         }
-                        if(request.Version==5){
-                            if(!(provider is IVideoProvider)||attempt.terminal){Stop("PROTOCOL_FAILED");return;}
+                        if(request.Version>=5){
+                            if(!(provider is IVideoProvider)||(request.Version==6&&!(provider is IVideoMediaProvider))||attempt.terminal){Stop("PROTOCOL_FAILED");return;}
                             if(request.Operation=="VIDEO_STOP"){
-                                if(attempt.videoId!=request.VideoId||!Done(attempt.videoCleanup)){Stop("PROTOCOL_FAILED");return;}
-                                attempt.videoCleanupStarted=elapsed.ElapsedMilliseconds;attempt.videoCleanup=new Thread(delegate(){VideoWorker(attempt,request);});attempt.videoCleanup.IsBackground=true;attempt.videoCleanup.Start();return;
+                                if(attempt.videoId!=request.VideoId||attempt.videoVersion!=request.Version||!Done(attempt.videoCleanup)){Stop("PROTOCOL_FAILED");return;}
+                                CancelMedia(attempt);attempt.videoCleanupStarted=elapsed.ElapsedMilliseconds;attempt.videoCleanup=new Thread(delegate(){VideoWorker(attempt,request);});attempt.videoCleanup.IsBackground=true;attempt.videoCleanup.Start();return;
                             }
-                            if(attempt.retiring||!attempt.live||!Done(attempt.ordinary)||!Done(attempt.cleanup)||!Done(attempt.videoCleanup)||outstanding!=0||attempt.frames!=0||attempt.videoCalls>=128){Stop("PROVIDER_FAILED");return;}
-                            if(request.Operation=="VIDEO_START"){if(attempt.videoId!=null){Stop("PROTOCOL_FAILED");return;}attempt.videoId=request.VideoId;}else if(attempt.videoId!=request.VideoId){Stop("PROTOCOL_FAILED");return;}
+                            if(attempt.retiring||!attempt.live||!Done(attempt.ordinary)||!Done(attempt.cleanup)||!Done(attempt.videoCleanup)||(request.Version==6?outstanding>1||outstanding==1&&mediaFrame==null&&!writingMedia:outstanding!=0||attempt.frames!=0)||attempt.videoCalls>=128){Stop("PROVIDER_FAILED");return;}
+                            if(request.Operation=="VIDEO_START"){if(attempt.videoId!=null){Stop("PROTOCOL_FAILED");return;}attempt.videoId=request.VideoId;attempt.videoVersion=request.Version;if(request.Version==6)attempt.media=new VideoMedia(session,request.AttemptId,request.VideoId,delegate(byte[] b,VideoMedia m,long c,Func<int> r){EnqueueMedia(attempt,b,m,c,r);});}else if(attempt.videoId!=request.VideoId||attempt.videoVersion!=request.Version){Stop("PROTOCOL_FAILED");return;}
                             attempt.videoCalls++;attempt.ordinaryStarted=elapsed.ElapsedMilliseconds;attempt.ordinary=new Thread(delegate(){VideoWorker(attempt,request);});attempt.ordinary.IsBackground=true;attempt.ordinary.Start();return;
                         }
                         if (attempt.retiring || attempt.terminal) { Stop("PROTOCOL_FAILED"); return; }
@@ -515,6 +571,10 @@ namespace Fonesi.Development.Server
                         buffer[count++] = (byte)next;
                         if (next != 10) continue;
                         byte[] frame = new byte[count]; Buffer.BlockCopy(buffer, 0, frame, 0, count); count = 0;
+                        string creditAttempt,creditVideo;long credit;
+                        if(ParseCredit(frame,session,out creditAttempt,out creditVideo,out credit)){
+                            lock(gate){if(!server||current==null||current.id!=creditAttempt||current.videoId!=creditVideo||current.media==null||current.retiring||!current.media.Credit(credit)){Stop("PROTOCOL_FAILED");return;}}continue;
+                        }
                         Request request = Parse(frame, session, lastRequest);
                         if (request == null) { Stop("FRAME_FAILED"); return; }
                         lastRequest = request.RequestId; Dispatch(request);
@@ -527,15 +587,15 @@ namespace Fonesi.Development.Server
                     for (;;) {
                         Frame frame;
                         lock (gate) {
-                            while (queue.Count == 0) {
+                            while (queue.Count == 0 && mediaFrame==null) {
                                 if (stopping && !reserving && (current == null || (Done(current.ordinary) && Done(current.cleanup) && Done(current.videoCleanup)))) return;
                                 Monitor.Wait(gate, 10);
                             }
-                            frame = queue.Dequeue(); writeStarted = elapsed.ElapsedMilliseconds;
+                            if(queue.Count>0)frame=queue.Dequeue();else{frame=mediaFrame;mediaFrame=null;} writeStarted = elapsed.ElapsedMilliseconds;writingMedia=frame.media!=null;
                             if (frame.attempt != null) frame.attempt.publicationStarted = true;
                         }
                         Progress(ProgressSlot.RESPONSE_WRITE); output.Write(frame.bytes, 0, frame.bytes.Length); output.Flush(); Progress(ProgressSlot.RESPONSE_FLUSH);
-                        lock (gate) { writeStarted = -1; outstanding--; if (frame.attempt != null) frame.attempt.frames--; Monitor.PulseAll(gate); }
+                        lock (gate) { writeStarted = -1; writingMedia=false; outstanding--; if (frame.attempt != null) frame.attempt.frames--; if(frame.media!=null)frame.media.Written(frame.credit,true); Monitor.PulseAll(gate); }
                     }
                 } catch { lock (gate) { writeFailed = true; } Stop("OUTPUT_FAILED"); }
             }
@@ -557,7 +617,7 @@ namespace Fonesi.Development.Server
                         if (stopping && current != null && !current.terminal && !current.cleanupIssued) Cleanup(current, null);
                         bool workers = !reserving && (current == null || (Done(current.ordinary) && Done(current.cleanup) && Done(current.videoCleanup)));
                         bool native = current == null || current.terminal;
-                        if (stopping && Done(reader) && (readPending == null || readPending.IsCompleted) && Done(writer) && workers && native && outstanding == 0 && queue.Count == 0 && !writeFailed)
+                        if (stopping && Done(reader) && (readPending == null || readPending.IsCompleted) && Done(writer) && workers && native && outstanding == 0 && queue.Count == 0 && mediaFrame==null && !writeFailed)
                             return new RunResult(eof && failure == null, failure ?? (eof ? "CLOSED" : "INPUT_FAILED"));
                         if (stopping && closeStarted >= 0 && now - closeStarted >= CloseMilliseconds) return new RunResult(false, "UNRETIRED");
                     }

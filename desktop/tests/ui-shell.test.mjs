@@ -1358,3 +1358,35 @@ test('host Read belongs to the live measured panel session and stale close reope
   currentRead();
   assert.equal(reads, 2);
 });
+test('explicit video controls are siblings of ACTIVE tile and old Start Stop handlers cannot retarget', () => {
+  let starts = 0,
+    stops = 0;
+  const m = mount({
+    snapshot: eligibleFixture,
+    selection: { selectedDeviceIds: ['test-1'], activeDeviceId: null },
+    video: {
+      view: { deviceId: 'test-1', generation: 0, state: 'STARTING' },
+      available: true,
+      canStart: () => true,
+      onStart: () => starts++,
+      onStop: () => stops++,
+      canvasRef() {},
+    },
+  });
+  m.render();
+  m.effects();
+  const tree = m.render();
+  const start = m.all((n) => n.props?.['aria-label'] === 'Start video Synthetic phone', tree)[0];
+  const stop = m.all((n) => n.props?.['aria-label'] === 'Stop video Synthetic phone', tree)[0];
+  assert.ok(start && stop);
+  assert.equal(starts, 0);
+  const tiles = m.all((n) => n.props?.className?.startsWith('wall-screen'), tree);
+  assert.equal(walk(tiles[0], (n) => n !== tiles[0] && n.type === 'button').length, 0);
+  start.props.onClick();
+  assert.equal(starts, 1);
+  m.render();
+  start.props.onClick();
+  stop.props.onClick();
+  assert.equal(starts, 1);
+  assert.equal(stops, 0);
+});
