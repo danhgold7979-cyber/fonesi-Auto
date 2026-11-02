@@ -174,6 +174,80 @@ function validateCandidate(value) {
 function parseCandidate(stdout) {
   return parseFramed(stdout, validateCandidate);
 }
+function validateProduction(value) {
+  record(value, [
+    'version',
+    'kind',
+    'hostZone',
+    'hostOffsetMinutes',
+    'hostResolvedZone',
+    'observation',
+    'candidate',
+    'production',
+  ]);
+  const index = HOST_ZONES.indexOf(value.hostZone);
+  if (
+    value.version !== 2 ||
+    value.kind !== 'SCHEDULE_PRODUCTION_RESULT' ||
+    index < 0 ||
+    value.hostOffsetMinutes !== [0, 480, -540][index] ||
+    value.hostResolvedZone !== value.hostZone
+  )
+    fail();
+  validateObservation(value.observation);
+  const versions = {
+    electron: '45.1.0',
+    node: '24.22.1',
+    v8: '15.6.75.19-electron.0',
+    icu: '78.2',
+    cldr: '48.0',
+    tz: '2026e',
+    unicode: '17.0',
+  };
+  if (JSON.stringify(value.observation.versions) !== JSON.stringify(versions)) fail();
+  for (const key of ['candidate', 'production']) {
+    const proof = value[key];
+    record(proof, ['runtime', 'corpus']);
+    const candidate = key === 'candidate';
+    const expected = {
+      version: 1,
+      source: 'TEMPORAL_POLYFILL_INTL',
+      runtimeKind: candidate ? 'ELECTRON_CANDIDATE' : 'ELECTRON',
+      nodeVersion: '24.22.1',
+      electronVersion: '45.1.0',
+      v8Version: '15.6.75.19-electron.0',
+      icuVersion: '78.2',
+      cldrVersion: '48.0',
+      tzVersion: '2026e',
+      unicodeVersion: '17.0',
+      polyfillVersion: '0.5.1',
+      jsbiVersion: '4.3.2',
+      profileId: candidate
+        ? 'ELECTRON_4510_ICU782_2026E_CANDIDATE_V1'
+        : 'ELECTRON_4510_ICU782_2026E_1970_2099_V1',
+      profileSha256: candidate
+        ? 'abbffc0a0eaa71b70f7f1316d08f98612ebb3ac50f5f1eeee422b8a13d4498d9'
+        : 'a17146a19f2e736b011a85b0bf507308c8e3a771e0ce664e211997483a755898',
+      policy: 'GAP_SKIP_OVERLAP_EARLIER_V1',
+    };
+    record(proof.runtime, Object.keys(expected));
+    if (JSON.stringify(proof.runtime) !== JSON.stringify(expected)) fail();
+    record(proof.corpus, ['version', 'kind', 'cases', 'checks', 'semanticSha256']);
+    if (
+      proof.corpus.version !== 1 ||
+      proof.corpus.kind !== 'SCHEDULE_CANDIDATE_CORPUS' ||
+      JSON.stringify(proof.corpus.cases) !== JSON.stringify(CORPUS_CASES) ||
+      proof.corpus.checks !== 4284 ||
+      !/^[0-9a-f]{64}$/.test(proof.corpus.semanticSha256)
+    )
+      fail();
+  }
+  if (JSON.stringify(value.candidate.corpus) !== JSON.stringify(value.production.corpus)) fail();
+  return value;
+}
+function parseProduction(stdout) {
+  return parseFramed(stdout, validateProduction);
+}
 function assertOverridesAbsent(env, execArgv) {
   if (!Array.isArray(execArgv) || execArgv.length) fail();
   for (const key of Object.keys(env)) {
@@ -225,6 +299,8 @@ module.exports = {
   HOST_ZONES,
   CORPUS_CASES,
   validateCandidate,
+  validateProduction,
+  parseProduction,
   parseCandidate,
   VERSION_KEYS,
   record,

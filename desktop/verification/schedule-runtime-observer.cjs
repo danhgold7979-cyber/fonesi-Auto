@@ -8,7 +8,7 @@ const {
   record,
   capture,
   HOST_ZONES,
-  validateCandidate,
+  validateProduction,
   CORPUS_CASES,
 } = require('./schedule-runtime-contract.cjs');
 const reject = () => {
@@ -122,20 +122,22 @@ try {
     process.env.TZ = c.corpus.hostZone;
     const hostOffsetMinutes = new Date('2024-01-01T12:00:00Z').getTimezoneOffset();
     const hostResolvedZone = new Intl.DateTimeFormat('en-US').resolvedOptions().timeZone;
-    const production = require('./production.cjs').captureTimezoneRuntime();
-    if (production.ok !== false || production.code !== 'DATA_VERSION_MISMATCH') reject();
-    const candidate = require('./candidate.cjs');
-    const runtime = candidate.captureTimezoneRuntime();
-    if (!runtime.ok || runtime.runtime.runtimeKind !== 'ELECTRON_CANDIDATE') reject();
-    result = validateCandidate({
-      version: 1,
-      kind: 'SCHEDULE_CANDIDATE_RESULT',
+    const productionApi = require('./production.cjs');
+    const productionRuntime = productionApi.captureTimezoneRuntime();
+    if (!productionRuntime.ok || productionRuntime.runtime.runtimeKind !== 'ELECTRON') reject();
+    const candidateApi = require('./candidate.cjs');
+    const candidateRuntime = candidateApi.captureTimezoneRuntime();
+    if (!candidateRuntime.ok || candidateRuntime.runtime.runtimeKind !== 'ELECTRON_CANDIDATE')
+      reject();
+    result = validateProduction({
+      version: 2,
+      kind: 'SCHEDULE_PRODUCTION_RESULT',
       hostZone: c.corpus.hostZone,
       hostOffsetMinutes,
       hostResolvedZone,
       observation: result,
-      productionRefusal: production.code,
-      corpus: candidate.runCorpus(),
+      candidate: { runtime: candidateRuntime.runtime, corpus: candidateApi.runCorpus() },
+      production: { runtime: productionRuntime.runtime, corpus: productionApi.runCorpus() },
     });
   }
   const raw = JSON.stringify(result);

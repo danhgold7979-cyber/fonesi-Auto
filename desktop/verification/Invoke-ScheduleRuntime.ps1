@@ -149,8 +149,8 @@ try {
  $stage='PUBLIC'
  if(Test-Path -LiteralPath $public){throw 'SCHEDULE_PUBLIC_EXISTS'}
  [void][IO.Directory]::CreateDirectory($public)
- Write-New (Join-Path $public 'schedule-candidate-campaign.json') $report 32768
- Write-Output 'SCHEDULE_CANDIDATE_CORPUS_NOT_ADMITTED'
+ Write-New (Join-Path $public 'schedule-production-campaign.json') $report 32768
+ Write-Output 'SCHEDULE_PRODUCTION_CORPUS_VERIFIED'
 } catch {
  # Preserve any uncertain or partially staged run; never print private exception data.
  if($stage -cin @('HOST','OWNER','SOURCE','HELPER','NODE','INSTALL','PROFILE','STAGE','OBSERVER','VALIDATE','REPORT','CLEANUP','PUBLIC','BUILD','CAMPAIGN')){Write-Output ('SCHEDULE_FAILURE_STAGE_'+$stage)}

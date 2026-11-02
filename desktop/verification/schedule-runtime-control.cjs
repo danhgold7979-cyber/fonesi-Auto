@@ -8,7 +8,7 @@ const {
   record,
   canonical,
   parseObservation,
-  parseCandidate,
+  parseProduction,
   HOST_ZONES,
   assertOverridesAbsent,
 } = require('./schedule-runtime-contract.cjs');
@@ -336,7 +336,7 @@ function validateCapture(value, corpus = false) {
     fail();
   phase = 'CAPTURE_FRAMING';
   captureFacts = describeCaptureFraming(value.stdout);
-  return corpus ? parseCandidate(value.stdout) : parseObservation(value.stdout);
+  return corpus ? parseProduction(value.stdout) : parseObservation(value.stdout);
 }
 // PowerShell capture is transport JSON, unlike canonical owned state and observer stdout.
 // Flat fixed-schema grammar rejects duplicate decoded keys before normalization.
@@ -475,7 +475,7 @@ function validate(root) {
   if (!exe) fail();
   const report = {
     version: 1,
-    kind: state.corpus ? 'SCHEDULE_CANDIDATE_RUN_REPORT' : 'SCHEDULE_RUNTIME_OBSERVATION_REPORT',
+    kind: state.corpus ? 'SCHEDULE_PRODUCTION_RUN_REPORT' : 'SCHEDULE_RUNTIME_OBSERVATION_REPORT',
     source: state.source,
     runtime: {
       electronPackage: '45.1.0',
@@ -490,7 +490,7 @@ function validate(root) {
     },
     process: { exitCode: 0, retirement: 'CONFIRMED', captureComplete: true },
     observation,
-    disposition: state.corpus ? 'CANDIDATE_NOT_ADMITTED' : 'OBSERVED_NOT_ADMITTED',
+    disposition: state.corpus ? 'PRODUCTION_PROFILE_VERIFIED' : 'OBSERVED_NOT_ADMITTED',
   };
   phase = 'REPORT';
   write(path.join(root, 'report.json'), report, 32768);
@@ -518,9 +518,9 @@ function campaign(root) {
     ]);
     if (
       value.version !== 1 ||
-      value.kind !== 'SCHEDULE_CANDIDATE_RUN_REPORT' ||
+      value.kind !== 'SCHEDULE_PRODUCTION_RUN_REPORT' ||
       !equal(value.source, source) ||
-      value.disposition !== 'CANDIDATE_NOT_ADMITTED' ||
+      value.disposition !== 'PRODUCTION_PROFILE_VERIFIED' ||
       !equal(value.process, { exitCode: 0, retirement: 'CONFIRMED', captureComplete: true })
     )
       fail();
@@ -547,12 +547,15 @@ function campaign(root) {
       fail();
     const expected = corpusBuild(HOST_ZONES[index]);
     if (!equal(value.verificationPackage.corpus, expected)) fail();
-    const result = require('./schedule-runtime-contract.cjs').validateCandidate(value.observation);
+    const result = require('./schedule-runtime-contract.cjs').validateProduction(value.observation);
     if (result.hostZone !== HOST_ZONES[index]) fail();
-    if (index && (!equal(runtime, value.runtime) || semantic !== result.corpus.semanticSha256))
+    if (
+      index &&
+      (!equal(runtime, value.runtime) || semantic !== result.production.corpus.semanticSha256)
+    )
       fail();
     runtime = value.runtime;
-    semantic = result.corpus.semanticSha256;
+    semantic = result.production.corpus.semanticSha256;
     bundles = {
       candidateSha256: expected.candidateSha256,
       productionSha256: expected.productionSha256,
@@ -563,7 +566,7 @@ function campaign(root) {
     path.join(root, 'report.json'),
     {
       version: 1,
-      kind: 'SCHEDULE_CANDIDATE_CAMPAIGN_REPORT',
+      kind: 'SCHEDULE_PRODUCTION_CAMPAIGN_REPORT',
       source,
       runtime,
       bundles,
@@ -572,7 +575,7 @@ function campaign(root) {
         process: v.process,
         result: v.observation,
       })),
-      disposition: 'CANDIDATE_NOT_ADMITTED',
+      disposition: 'PRODUCTION_PROFILE_VERIFIED',
     },
     32768,
   );

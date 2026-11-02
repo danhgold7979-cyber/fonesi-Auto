@@ -279,7 +279,7 @@ test('manual or explicit-marker exact-branch workflow retains only closed report
   );
   assert.match(
     workflow,
-    /path: desktop\/\.schedule-runtime-public\/schedule-candidate-campaign\.json/,
+    /path: desktop\/\.schedule-runtime-public\/schedule-production-campaign\.json/,
   );
   assert.match(workflow, /retention-days: 14/);
   assert.match(workflow, /if-no-files-found: error/);
@@ -291,7 +291,7 @@ test('wrapper preserves owned job bounds and cannot publish until validated clea
   assert.match(source, /Invoke-OwnedChild \$exe \(\[string\[\]\]@\(\)\) 30000 @\{\}/);
   assert.ok(
     source.indexOf('Remove-VerifiedOwnedRun $owner $allRetired') <
-      source.indexOf("Write-New (Join-Path $public 'schedule-candidate-campaign.json')"),
+      source.indexOf("Write-New (Join-Path $public 'schedule-production-campaign.json')"),
   );
   assert.match(source, /New-OwnedProfile \$owner 'source'/);
   assert.doesNotMatch(source, /--no-sandbox|ELECTRON_RUN_AS_NODE|Remove-Item|Invoke-Expression/);
@@ -513,7 +513,7 @@ function controllerFixture(root, corpus = null) {
     'SCHEDULE_RUNTIME_STAGED',
   );
   const raw = receipt();
-  if (corpus) raw.stdout = JSON.stringify(candidateResult(corpus.zone)) + '\n';
+  if (corpus) raw.stdout = JSON.stringify(productionResult(corpus.zone)) + '\n';
   const { stdout, stderr, ...rest } = raw;
   fs.writeFileSync(
     path.join(run, 'capture.json'),
@@ -811,6 +811,40 @@ function candidateResult(zone = 'UTC') {
     },
   };
 }
+function productionResult(zone = 'UTC') {
+  const previous = candidateResult(zone);
+  const witness = (candidate) => ({
+    version: 1,
+    source: 'TEMPORAL_POLYFILL_INTL',
+    runtimeKind: candidate ? 'ELECTRON_CANDIDATE' : 'ELECTRON',
+    nodeVersion: '24.22.1',
+    electronVersion: '45.1.0',
+    v8Version: '15.6.75.19-electron.0',
+    icuVersion: '78.2',
+    cldrVersion: '48.0',
+    tzVersion: '2026e',
+    unicodeVersion: '17.0',
+    polyfillVersion: '0.5.1',
+    jsbiVersion: '4.3.2',
+    profileId: candidate
+      ? 'ELECTRON_4510_ICU782_2026E_CANDIDATE_V1'
+      : 'ELECTRON_4510_ICU782_2026E_1970_2099_V1',
+    profileSha256: candidate
+      ? 'abbffc0a0eaa71b70f7f1316d08f98612ebb3ac50f5f1eeee422b8a13d4498d9'
+      : 'a17146a19f2e736b011a85b0bf507308c8e3a771e0ce664e211997483a755898',
+    policy: 'GAP_SKIP_OVERLAP_EARLIER_V1',
+  });
+  return {
+    version: 2,
+    kind: 'SCHEDULE_PRODUCTION_RESULT',
+    hostZone: zone,
+    hostOffsetMinutes: previous.hostOffsetMinutes,
+    hostResolvedZone: zone,
+    observation: previous.observation,
+    candidate: { runtime: witness(true), corpus: clone(previous.corpus) },
+    production: { runtime: witness(false), corpus: clone(previous.corpus) },
+  };
+}
 test('actual pinned dual-bundle closure exercises fixed corpus on Node without claiming Electron evidence', async () => {
   const built = await compileTestCorpus();
   assert.equal(built.files.length, 2);
@@ -823,37 +857,40 @@ test('actual pinned dual-bundle closure exercises fixed corpus on Node without c
   assert.match(build, /__SCHEDULE_ELECTRON_CANDIDATE__: 'false'/);
   assert.doesNotMatch(build, /__SCHEDULE_ELECTRON_CANDIDATE__: 'true'/);
 });
-test('synthetic tuple matrix proves bundle isolation and rejects every unreviewed field, not native proof', async () => {
+test('synthetic tuple matrix proves distinct exact production and candidate profiles and rejects every unreviewed field, not native proof', async () => {
   const built = await compileTestCorpus(),
     base = { versions: candidateVersions(), env: {}, execArgv: [], platform: 'win32', arch: 'x64' };
-  assert.deepEqual(loadCorpusBytes(built.files[1].bytes, base).captureTimezoneRuntime(), {
-    ok: false,
-    code: 'DATA_VERSION_MISMATCH',
-  });
+  assert.equal(
+    loadCorpusBytes(built.files[1].bytes, base).captureTimezoneRuntime().runtime.runtimeKind,
+    'ELECTRON',
+  );
   const exact = loadCorpusBytes(built.files[0].bytes, base).captureTimezoneRuntime();
   assert.equal(exact.ok, true);
   assert.equal(exact.runtime.runtimeKind, 'ELECTRON_CANDIDATE');
   for (const field of Object.keys(base.versions)) {
     const changed = { ...base, versions: { ...base.versions, [field]: 'unreviewed' } };
-    assert.deepEqual(loadCorpusBytes(built.files[0].bytes, changed).captureTimezoneRuntime(), {
-      ok: false,
-      code: 'DATA_VERSION_MISMATCH',
-    });
+    for (const file of built.files)
+      assert.deepEqual(loadCorpusBytes(file.bytes, changed).captureTimezoneRuntime(), {
+        ok: false,
+        code: 'DATA_VERSION_MISMATCH',
+      });
   }
   for (const field of Object.keys(base.versions)) {
     const missing = { ...base, versions: { ...base.versions } };
     delete missing.versions[field];
-    assert.equal(loadCorpusBytes(built.files[0].bytes, missing).captureTimezoneRuntime().ok, false);
+    for (const file of built.files)
+      assert.equal(loadCorpusBytes(file.bytes, missing).captureTimezoneRuntime().ok, false);
   }
   for (const patch of [
     { platform: 'linux' },
     { arch: 'arm64' },
     { env: { NODE_ICU_DATA: 'override' } },
   ])
-    assert.equal(
-      loadCorpusBytes(built.files[0].bytes, { ...base, ...patch }).captureTimezoneRuntime().ok,
-      false,
-    );
+    for (const file of built.files)
+      assert.equal(
+        loadCorpusBytes(file.bytes, { ...base, ...patch }).captureTimezoneRuntime().ok,
+        false,
+      );
 });
 test('closed candidate schema requires exact tuple, all host witnesses, cases and production refusal', () => {
   const {
@@ -902,11 +939,11 @@ test('sequential owned campaign wrapper cannot publish partial unretired or uncl
   );
   assert.ok(
     source.indexOf('Remove-VerifiedOwnedRun $owner $allChildrenRetired') <
-      source.indexOf("Write-New (Join-Path $public 'schedule-candidate-campaign.json')"),
+      source.indexOf("Write-New (Join-Path $public 'schedule-production-campaign.json')"),
   );
   assert.doesNotMatch(source, /Start-Job|Start-Process|Task\.Run|--no-sandbox/);
 });
-test('actual candidate stage validate and three-report campaign compose filesystem custody with synthetic Git/runtime only', async () => {
+test('actual production stage validate and three-report campaign compose filesystem custody with synthetic Git/runtime only', async () => {
   const built = await compileTestCorpus();
   temporary((root) => {
     const contexts = require('./schedule-runtime-contract.cjs').HOST_ZONES.map((zone, i) =>
@@ -924,16 +961,20 @@ test('actual candidate stage validate and three-report campaign compose filesyst
     assert.equal(context.api.campaign(run), 'SCHEDULE_CORPUS_CAMPAIGN_VALIDATED');
     const report = JSON.parse(fs.readFileSync(path.join(run, 'report.json'), 'utf8'));
     assert.equal(report.runs.length, 3);
-    assert.equal(report.disposition, 'CANDIDATE_NOT_ADMITTED');
+    assert.equal(report.disposition, 'PRODUCTION_PROFILE_VERIFIED');
     fs.unlinkSync(path.join(run, 'report.json'));
     for (const change of [
       (r) => r.pop(),
       (r) => r.reverse(),
-      (r) => (r[1].observation.corpus.semanticSha256 = 'b'.repeat(64)),
+      (r) => (r[1].observation.production.corpus.semanticSha256 = 'b'.repeat(64)),
+      (r) => {
+        r[1].observation.production.corpus.semanticSha256 = 'b'.repeat(64);
+        r[1].observation.candidate.corpus.semanticSha256 = 'b'.repeat(64);
+      },
       (r) => (r[0].process.retirement = 'UNKNOWN'),
       (r) => (r[2].source.head = 'c'.repeat(40)),
       (r) => (r[2].verificationPackage.corpus.candidateSha256 = 'd'.repeat(64)),
-      (r) => (r[0].observation.productionRefusal = 'PASS'),
+      (r) => (r[0].observation.production.runtime.runtimeKind = 'NODE'),
     ]) {
       const altered = clone(reports);
       change(altered);
@@ -965,7 +1006,7 @@ test('candidate stage and validation reject changed bundle manifest source and i
       assert.equal(fs.existsSync(path.join(c.run, 'report.json')), false);
     });
 });
-test('actual observer candidate composition runs real bundles with synthetic Electron app/process facts, not native evidence', async () => {
+test('actual observer production and candidate composition runs real bundles with synthetic Electron app/process facts, not native evidence', async () => {
   const built = await compileTestCorpus(),
     { createHash } = require('node:crypto');
   const prior = process.env.TZ;
@@ -989,11 +1030,12 @@ test('actual observer candidate composition runs real bundles with synthetic Ele
         fs.writeFileSync(path.join(appRoot, 'control.json'), JSON.stringify(control));
       });
       assert.deepEqual(result.exits, [0]);
-      const out = require('./schedule-runtime-contract.cjs').parseCandidate(
+      const out = require('./schedule-runtime-contract.cjs').parseProduction(
         result.output.find((x) => x.fd === 1).raw,
       );
-      assert.equal(out.corpus.checks, 4284);
-      assert.equal(out.productionRefusal, 'DATA_VERSION_MISMATCH');
+      assert.equal(out.production.corpus.checks, 4284);
+      assert.equal(out.production.runtime.runtimeKind, 'ELECTRON');
+      assert.equal(out.candidate.runtime.runtimeKind, 'ELECTRON_CANDIDATE');
     });
   } finally {
     if (prior === undefined) delete process.env.TZ;
@@ -1013,3 +1055,37 @@ test('observer refuses success after local elapsed deadline even if synchronous 
       false,
     );
   }));
+
+test('production profile result requires both full matching corpora and distinct exact runtime witnesses', async () => {
+  const {
+    validateProduction,
+    parseProduction,
+    HOST_ZONES,
+  } = require('./schedule-runtime-contract.cjs');
+  for (const zone of HOST_ZONES) {
+    const value = productionResult(zone);
+    assert.deepEqual(parseProduction('\n' + JSON.stringify(value) + '\n'), value);
+  }
+  assert.throws(() => validateProduction(candidateResult()));
+  for (const mutate of [
+    (v) => delete v.production,
+    (v) => (v.production.runtime.runtimeKind = 'ELECTRON_CANDIDATE'),
+    (v) => (v.production.runtime.profileSha256 = 'a'.repeat(64)),
+    (v) => v.production.corpus.checks--,
+    (v) => (v.production.corpus.semanticSha256 = 'b'.repeat(64)),
+    (v) => (v.candidate.corpus.cases = []),
+    (v) => (v.production.extra = true),
+    (v) => v.hostOffsetMinutes++,
+  ]) {
+    const value = productionResult();
+    mutate(value);
+    assert.throws(() => validateProduction(value));
+  }
+  const built = await compileTestCorpus(),
+    node = loadCorpusBytes(built.files[1].bytes).captureTimezoneRuntime();
+  assert.equal(node.runtime.runtimeKind, 'NODE');
+  assert.equal(
+    node.runtime.profileSha256,
+    '756745d496179becae8332c5d8925e3518f7840203845e3e9ebc019d0b9617db',
+  );
+});

@@ -21,6 +21,9 @@ const EXPECTED = Object.freeze({
   tz: '2026e',
   unicode: '17.0',
 });
+// Exact source-owned tuple: independently audited Windows candidate campaign41489671719.
+// No report/env/request can install another profile; unobserved tuples still refuse.
+const ELECTRON_PROFILE = 'ELECTRON_4510_ICU782_2026E_1970_2099_V1';
 const CANDIDATE_PROFILE = 'ELECTRON_4510_ICU782_2026E_CANDIDATE_V1';
 const CANDIDATE_EXPECTED = Object.freeze({
   node: '24.22.1',
@@ -30,16 +33,18 @@ const CANDIDATE_EXPECTED = Object.freeze({
   tz: '2026e',
   unicode: '17.0',
 });
-const candidate = CANDIDATE_BUILD && versions.electron !== undefined;
-const EXPECTED_RUNTIME = candidate ? CANDIDATE_EXPECTED : EXPECTED;
+const electronRuntime = versions.electron !== undefined;
+const candidate = CANDIDATE_BUILD && electronRuntime;
+const PROFILE_ID = electronRuntime ? (candidate ? CANDIDATE_PROFILE : ELECTRON_PROFILE) : PROFILE;
+const EXPECTED_RUNTIME = electronRuntime ? CANDIDATE_EXPECTED : EXPECTED;
 const PROFILE_SHA = createHash('sha256')
   .update(
     JSON.stringify({
       version: 1,
-      profile: candidate ? CANDIDATE_PROFILE : PROFILE,
+      profile: PROFILE_ID,
       policy: POLICY,
       runtime: EXPECTED_RUNTIME,
-      electron: candidate ? '45.1.0' : null,
+      electron: electronRuntime ? '45.1.0' : null,
       temporal: '0.5.1',
       jsbi: '4.3.2',
       alias: [DEFAULT_SCHEDULE_ZONE, 'Asia/Saigon'],
@@ -67,7 +72,7 @@ export type ZoneCode =
 export type TimezoneRuntimeV1 = Readonly<{
   version: 1;
   source: 'TEMPORAL_POLYFILL_INTL';
-  runtimeKind: 'NODE' | 'ELECTRON_CANDIDATE';
+  runtimeKind: 'NODE' | 'ELECTRON' | 'ELECTRON_CANDIDATE';
   nodeVersion: string;
   electronVersion: string | null;
   v8Version: string;
@@ -165,7 +170,7 @@ function runtimeFields() {
   if (typeof Format !== 'function' || typeof supported !== 'function')
     refuse('RUNTIME_UNAVAILABLE');
   if (
-    (candidate
+    (electronRuntime
       ? versions.electron !== '45.1.0' || platform !== 'win32' || arch !== 'x64'
       : versions.electron !== undefined) ||
     Object.entries(EXPECTED_RUNTIME).some(([k, v]) => versions[k] !== v)
@@ -174,9 +179,9 @@ function runtimeFields() {
   return Object.freeze({
     version: 1,
     source: 'TEMPORAL_POLYFILL_INTL',
-    runtimeKind: candidate ? 'ELECTRON_CANDIDATE' : 'NODE',
+    runtimeKind: electronRuntime ? (candidate ? 'ELECTRON_CANDIDATE' : 'ELECTRON') : 'NODE',
     nodeVersion: versions.node,
-    electronVersion: candidate ? (versions.electron as string) : null,
+    electronVersion: electronRuntime ? (versions.electron as string) : null,
     v8Version: versions.v8,
     icuVersion: versions.icu as string,
     cldrVersion: versions.cldr as string,
@@ -184,7 +189,7 @@ function runtimeFields() {
     unicodeVersion: versions.unicode as string,
     polyfillVersion: '0.5.1',
     jsbiVersion: '4.3.2',
-    profileId: candidate ? CANDIDATE_PROFILE : PROFILE,
+    profileId: PROFILE_ID,
     profileSha256: PROFILE_SHA,
     policy: POLICY,
   } as const);

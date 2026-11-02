@@ -52,3 +52,39 @@ Final frozen aggregate1752/1752 +DESKTOP_SOURCE_CHECK_PASS. Independent clean-en
 combined harness/zone/gap/graph87/87 PASS and final source/custody/corpus CLEAR.
 Diff-checkPASS. Actual candidate host campaign not yet run at this source commit;
 publication is the meaningful reviewed Windows verification milestone, not admission.
+
+## Actual Windows candidate campaign PASS
+
+[Run41489671719](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41489671719),
+job125429074926, completed SUCCESS at publicb606a2b004700b4a0ab1243f5f7b88c83c59c7d1
+(local80be92d29c06a40f7d8a2a60c50ff61c2ac69ec1), tree
+7cb1a65ddf399c42a27fe4610d62eefc1b3f3cb1. Windows1752/1752 source PASS17:19:32UTC;
+SCHEDULE_CANDIDATE_CORPUS_NOT_ADMITTED17:19:54UTC, campaign upload PASS.
+
+Artifact13163841577 ZIP2805B SHA256
+`7211f59ca776c7bec65547cc750a81ff7db3d1560fe5375a63efac270ea0f08c`
+matches GitHub. Sole closed canonical JSON14385B retained as
+`P7-candidate-campaign-41489671719.json`, SHA256
+`73e12b46886f51ebfae7017cf4729a745a6595b2e9c09ba86237e778d67e8dbd`.
+All20 source digests match exact source tree/checkout bytes with the previously
+explained YAML LF→CRLF exception. Authoring rebuild of both bundles and manifest
+reproduces hosted digests exactly; runtime exe/inventory match prior observed
+45.1.0 executable and inventory. Actual host witnesses UTC/Los_Angeles/Tokyo show
+0/480/-540 offset minutes and exact default zone names. All3 fixed corpora passed
+4284 assertions each, semantic SHA256
+`3323159f15b7d5affb618dd5947876578accfce7e06fa2df54290a0841f0bec3`.
+Each result confirms exit0, whole-process retirement and complete capture. All3
+production-false bundles returned DATA_VERSION_MISMATCH, proving not admitted.
+Public campaign report was emitted only after3 run-root and campaign-root cleanup.
+
+This proves actual isolated candidate behavior on the owned Windows runner, not
+production tuple admission, application UI/save/queue/dispatch, or physical-device
+acceptance. Prior observation failures and later observation success remain linked;
+none are erased. Independent report audit and narrow next source admission entry
+are required; no automatic capability promotion or new ledger/acceptance credit.
+
+Independent actual artifact audit completed CLEAR at17:29UTC: exact retained14385B
+and SHA256, source20 digests with YAML checkout caveat, all3host facts and retirement,
+and independently rebuilt dualbundle+manifest digests verified. The narrow production
+entry was then independently reviewed and coordinator-adopted17:30UTC. This closes
+the audit prerequisite above without promoting the historical candidate report.
