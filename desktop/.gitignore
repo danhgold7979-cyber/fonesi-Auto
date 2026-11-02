@@ -23,3 +23,7 @@ build/
 
 # Private fleet/UI development run; only validated outputs are published.
 .fleet-ui-runtime/
+
+# Owned scheduler verification package/profile/captures; only validated report may be published.
+/.schedule-runtime/
+/.schedule-runtime-public/

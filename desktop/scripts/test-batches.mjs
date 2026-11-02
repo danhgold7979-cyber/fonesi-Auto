@@ -175,6 +175,7 @@ export const TEST_FILES = Object.freeze([
   'verification/retained-rollback-control.test.cjs',
   'verification/retained-rollback-main-probe.test.cjs',
   'verification/retained-rollback-workflow.test.cjs',
+  'verification/schedule-runtime-contract.test.cjs',
   'verification/settings-contract.test.cjs',
   'verification/settings-recovery-contract.test.cjs',
   'verification/ui-contract.test.cjs',

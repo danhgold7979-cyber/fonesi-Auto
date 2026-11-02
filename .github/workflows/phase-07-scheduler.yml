@@ -1,0 +1,45 @@
+name: Phase 07 scheduler source and explicit runtime observation
+on:
+  workflow_dispatch:
+    inputs:
+      observe_runtime:
+        description: 'Observe exact disposable packaged Electron tuple and fixed Intl cases; no product admission or device use'
+        required: false
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  scheduler-observation:
+    if: github.ref == 'refs/heads/phase-07'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Scripts-disabled restore and full source verification
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Dedicated observation-only package
+        if: inputs.observe_runtime == true
+        run: |
+          & ./desktop/verification/Invoke-ScheduleRuntime.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain only closed public observation report
+        if: success() && inputs.observe_runtime == true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: schedule-runtime-observation
+          path: desktop/.schedule-runtime-public/schedule-runtime-observation.json
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: true
