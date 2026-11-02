@@ -13,6 +13,22 @@ function PlainFile([string]$file,[long]$limit){
  $i=Get-Item -LiteralPath $file -Force
  if($i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $i.Length -lt 1 -or $i.Length -gt $limit -or $i.FullName -cne [IO.Path]::GetFullPath($file)){throw 'FILE_REJECTED'}
 }
+# Fixed win22 image layout; link metadata is checked, never used to choose a target.
+function Assert-PlainAncestors([string]$directory){
+ $current=$directory
+ while($null -ne $current){Assert-PlainDirectory $current;$parent=[IO.Directory]::GetParent($current);$current=if($null -eq $parent){$null}else{$parent.FullName}}
+}
+function Assert-SdkLabel([string]$label){
+ $alias='C:\Android\android-sdk';$physical='C:\Program Files (x86)\Android\android-sdk'
+ if($label -cne $alias -and $label -cne $physical){throw 'SDK_PROFILE_REJECTED'}
+ if($label -ceq $alias){
+  Assert-PlainAncestors 'C:\Android'
+  $link=Get-Item -LiteralPath $alias -Force -ErrorAction Stop
+  if(-not $link.PSIsContainer -or -not ($link.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $link.LinkType -cne 'SymbolicLink'){throw 'SDK_PROFILE_REJECTED'}
+  $targets=@($link.Target)
+  if($targets.Count -ne 1 -or $targets[0] -isnot [string] -or $targets[0] -cne $physical){throw 'SDK_PROFILE_REJECTED'}
+ }
+}
 function ReadText([string]$file,[int]$limit){
  PlainFile $file $limit
  $s=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
@@ -96,9 +112,9 @@ try{
  if(-not $ArchivePath){$phase='ACQUIRE';Python $controller @('acquire',$root) 'DERIVED_PAIR_CONTROL_PASS';$ArchivePath=Join-Path $root 'upstream.tar.gz'}
  $phase='TOOLS'
  $toolsStep='JDK_ROOT';$jdk=[IO.Path]::GetFullPath([string]$original['JAVA_HOME_17_X64']);Assert-PlainDirectory $jdk
- $toolsStep='SDK_ROOT';$sdk=[IO.Path]::GetFullPath([string]$original['ANDROID_HOME']);Assert-PlainDirectory $sdk
+ $toolsStep='SDK_ROOT';Assert-SdkLabel ([string]$original['ANDROID_HOME']);$sdk='C:\Program Files (x86)\Android\android-sdk';Assert-PlainAncestors $sdk
  $toolsStep='SDK_CONSISTENCY'
- if($original.Contains('ANDROID_SDK_ROOT') -and [IO.Path]::GetFullPath([string]$original['ANDROID_SDK_ROOT']) -cne $sdk){throw 'SDK_ROOT_MISMATCH'}
+ if($original.Contains('ANDROID_SDK_ROOT')){Assert-SdkLabel ([string]$original['ANDROID_SDK_ROOT'])}
  $toolsStep='PLATFORM_ROOT';$platform=Join-Path $sdk 'platforms/android-36';Assert-PlainDirectory $platform
  $toolsStep='BUILD_TOOLS_ROOT';$buildTools=Join-Path $sdk 'build-tools/36.0.0';Assert-PlainDirectory $buildTools
  $toolsStep='FRAMEWORK_ROOT';$framework=Join-Path $windows 'Microsoft.NET/Framework64/v4.0.30319';Assert-PlainDirectory $framework

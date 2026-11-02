@@ -325,10 +325,7 @@ test('tools diagnostics identify only one closed source substep without exposing
       'JDK_ROOT',
       "$jdk=[IO.Path]::GetFullPath([string]$original['JAVA_HOME_17_X64']);Assert-PlainDirectory $jdk",
     ],
-    [
-      'SDK_ROOT',
-      "$sdk=[IO.Path]::GetFullPath([string]$original['ANDROID_HOME']);Assert-PlainDirectory $sdk",
-    ],
+    ['SDK_ROOT', "Assert-SdkLabel ([string]$original['ANDROID_HOME'])"],
     ['SDK_CONSISTENCY', "if($original.Contains('ANDROID_SDK_ROOT')"],
     [
       'PLATFORM_ROOT',
@@ -355,4 +352,50 @@ test('tools diagnostics identify only one closed source substep without exposing
     source,
     /Write-Output[^\n]*(?:\$_|Exception|\.Message|\$jdk|\$sdk|\$release|\$context)/,
   );
+});
+
+// Static predicate/mutation witnesses, not execution of Windows filesystem admission.
+test('win22 SDK uses only fixed physical authority and checks documented alias metadata', () => {
+  const start = source.indexOf('function Assert-PlainAncestors(');
+  const end = source.indexOf('function ReadText(');
+  const profile = source.slice(start, end);
+  const required = [
+    "$alias='C:\\Android\\android-sdk';$physical='C:\\Program Files (x86)\\Android\\android-sdk'",
+    "if($label -cne $alias -and $label -cne $physical){throw 'SDK_PROFILE_REJECTED'}",
+    'if($label -ceq $alias){',
+    "Assert-PlainAncestors 'C:\\Android'",
+    '$link=Get-Item -LiteralPath $alias -Force -ErrorAction Stop',
+    '-not $link.PSIsContainer',
+    '-not ($link.Attributes -band [IO.FileAttributes]::ReparsePoint)',
+    "$link.LinkType -cne 'SymbolicLink'",
+    '$targets=@($link.Target)',
+    '$targets.Count -ne 1',
+    '$targets[0] -isnot [string]',
+    '$targets[0] -cne $physical',
+    'Assert-PlainDirectory $current',
+    '$parent=[IO.Directory]::GetParent($current)',
+    '$current=if($null -eq $parent){$null}else{$parent.FullName}',
+  ];
+  const exactProfile = (text) => required.every((part) => text.includes(part));
+  assert.equal(exactProfile(profile), true);
+  for (const part of required) {
+    assert.equal(exactProfile(profile.replace(part, 'MUTATED')), false, part);
+  }
+  assert.ok(
+    source.includes(
+      "$sdk='C:\\Program Files (x86)\\Android\\android-sdk';Assert-PlainAncestors $sdk",
+    ),
+  );
+  assert.ok(
+    source.includes(
+      "if($original.Contains('ANDROID_SDK_ROOT')){Assert-SdkLabel ([string]$original['ANDROID_SDK_ROOT'])}",
+    ),
+  );
+  assert.doesNotMatch(
+    profile,
+    /Resolve-Path|ResolveLinkTarget|Set-Item|New-Item|GetFullPath|\$physical=\$|\$sdk=\$targets/,
+  );
+  const controller = fs.readFileSync(path.join(__dirname, 'derived_pair_build.py'), 'utf8');
+  assert.ok(controller.includes('for parent in path.parents:'));
+  assert.ok(controller.includes("parent.is_symlink() or getattr(ps,'st_file_attributes',0)&0x400"));
 });

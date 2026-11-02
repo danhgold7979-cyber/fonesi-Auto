@@ -92,3 +92,10 @@ Independent source-entry review cleared the fixed command/supervision contract a
 ### Fixed tool-admission diagnostic amendment
 
 When the pre-compiler TOOLS boundary refuses, report only the last source-assigned step from this exact closed set: `JDK_ROOT`, `SDK_ROOT`, `SDK_CONSISTENCY`, `PLATFORM_ROOT`, `BUILD_TOOLS_ROOT`, `FRAMEWORK_ROOT`, `JDK_METADATA`, `PLATFORM_METADATA`, `BUILD_TOOLS_METADATA`, `COMPILER_METADATA`, `IMAGE`, `SOURCE_IDS`, `CONTEXT`. Each is assigned immediately before the corresponding existing predicate; the workflow accepts only the exact prefixed marker. It reveals neither paths/values nor raw exception text and does not turn an unobserved cause into a missing-tool claim. All tool admission and no-install requirements remain unchanged.
+
+
+### Named Windows2022 SDK installation profile
+
+Admit only image family `win22` and the fixed physical installation root `C:\Program Files (x86)\Android\android-sdk`; the sole documented configuration alias is `C:\Android\android-sdk`. Saved ANDROID_HOME and optional ANDROID_SDK_ROOT must each use one of those exact canonical spellings. If either uses the alias, inspect only its metadata and require exactly one SymbolicLink target equal to the fixed physical literal. Never traverse the alias or use its target to choose a path. All actual tool reads and commands derive from the fixed physical literal, after root and ancestor no-reparse admission, followed by unchanged complete inventory/hash/version checks. Foreign/absent/malformed or retargeted configuration and linked physical ancestry refuse; no resolver, fallback, directory/link mutation or installation is permitted. The existing30000 command-length bound remains unchanged despite longer physical paths. This source profile is explained by the official runner installer, not proof of the rejected hosted filesystem type.
+
+Primary explanatory source: [official runner installer, immutable Git blob853fa25e01caf81ac86ed3b333c9fe3048c52f7e](https://api.github.com/repos/actions/runner-images/git/blobs/853fa25e01caf81ac86ed3b333c9fe3048c52f7e),9,813 bytes. It is not asserted to be the failed image's installed source identity.
