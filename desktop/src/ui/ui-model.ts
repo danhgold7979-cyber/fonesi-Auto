@@ -53,6 +53,7 @@ export const DOMAIN_ACTIONS = [
 export type DomainAction = (typeof DOMAIN_ACTIONS)[number];
 export type UiDevice = Readonly<{
   id: string;
+  generation: number;
   name: string;
   serial: string;
   status:

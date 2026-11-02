@@ -7,6 +7,7 @@ const devices = Object.freeze(
   [1, 2, 3].map((n) =>
     Object.freeze({
       id: `DEMO-DEVICE-${n}`,
+      generation: 0, // Explicit synthetic fixture, never a main Fleet generation.
       name: `DEMO Điện thoại giả lập ${n}`,
       serial: `DEMO-SERIAL-${n}`,
       status: 'OFFLINE' as const,

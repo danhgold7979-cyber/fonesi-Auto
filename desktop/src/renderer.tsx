@@ -764,6 +764,7 @@ function Diagnostic() {
             ...emptyRows,
             devices: fleet.devices.map((device) => ({
               id: device.deviceId,
+              generation: device.generation,
               name: device.label,
               serial: '—',
               status: device.state,

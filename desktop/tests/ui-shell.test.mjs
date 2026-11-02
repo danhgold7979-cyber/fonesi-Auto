@@ -23,6 +23,7 @@ const fixture = {
   devices: [
     {
       id: 'test-1',
+      generation: 0,
       name: 'Synthetic phone',
       serial: 'fixture',
       status: 'OFFLINE',
@@ -106,7 +107,7 @@ function mount(extra = {}) {
     useEffect(effect, deps) {
       const key = cursor++;
       const old = current.get(key);
-      if (!old || deps.some((value, i) => !Object.is(value, old.deps[i]))) {
+      if (!old || !deps || deps.some((value, i) => !Object.is(value, old.deps?.[i]))) {
         const slot = { deps, cleanup: old?.cleanup };
         current.set(key, slot);
         pending.push(() => {
@@ -214,6 +215,7 @@ function mount(extra = {}) {
   const wheelListeners = new Set();
   const surface = new Element();
   surface.clientWidth = 510;
+  surface.clientHeight = 600;
   surface.addEventListener = (name, listener, options) => {
     assert.equal(name, 'wheel');
     assert.equal(options.passive, false);
@@ -269,8 +271,18 @@ function mount(extra = {}) {
     },
   };
 }
+const eligibleFixture = {
+  ...fixture,
+  devices: fixture.devices.map((row) => ({ ...row, status: 'DEVICE' })),
+};
+function selectSyntheticFixture(m) {
+  m.find('wall-device-picker').props.onClick();
+  m.all((n) => n.type === 'input' && n.props.type === 'checkbox')[0].props.onChange();
+  m.find('wall-device-picker').props.onClick();
+}
 test('six actual shell tabs share selected-device context and preserve focus across page navigation', () => {
-  const m = mount({ snapshot: fixture });
+  const m = mount({ snapshot: eligibleFixture });
+  selectSyntheticFixture(m);
   assert.deepEqual(
     m.all((n) => n.type === 'button' && n.props['data-page']).map((n) => n.props['data-page']),
     model.PAGES.map((p) => p.key),
@@ -445,7 +457,7 @@ test('native Ctrl wheel accumulates locally without settings IPC; ordinary scrol
 
 test('local zoom focus, overlay, editable, and viewport fences preserve unavailable tiles', () => {
   const m = mount({ snapshot: fixture });
-  m.find('workspace').props.children.props.onFocusDevice('test-1');
+  selectSyntheticFixture(m);
   m.render();
   m.effects();
   const event = {
@@ -511,7 +523,8 @@ test('local width survives unrelated preferences/theme, but stored baseline rese
 });
 
 test('workflow catalogue selection enters setup with shared context and rejects unknown identifiers', () => {
-  const m = mount({ snapshot: fixture });
+  const m = mount({ snapshot: eligibleFixture });
+  selectSyntheticFixture(m);
   m.find('workspace').props.children.props.onNavigate('workflows', 'test-1');
   let content = m.find('workspace').props.children;
   assert.equal(content.type, 'WorkflowsPage');
@@ -575,18 +588,19 @@ test('global help shortcut does not stack over an actual local shared modal and 
 });
 
 test('all-phone context clears active device while retaining selected dock devices without persistence', () => {
-  const m = mount({ snapshot: fixture });
+  const m = mount({ snapshot: eligibleFixture });
+  selectSyntheticFixture(m);
   m.find('workspace').props.children.props.onNavigate('calendar', 'test-1');
   let content = m.find('workspace').props.children;
   assert.equal(content.props.selectedDeviceId, 'test-1');
   assert.equal(m.all((n) => n.props?.className?.startsWith('wall-screen')).length, 1);
-  content.props.onFocusDevice('');
+  m.find('workspace').props.children.props.onFocusDevice('');
   content = m.find('workspace').props.children;
   assert.equal(content.type, 'CalendarPage');
   assert.equal(content.props.selectedDeviceId, '');
   assert.equal(m.all((n) => n.props?.className?.startsWith('wall-screen')).length, 1);
   assert.match(
-    m.all((n) => n.props?.title === 'Lưới toàn bộ điện thoại')[0].props.className,
+    m.all((n) => n.props?.title === 'Lưới điện thoại đã chọn')[0].props.className,
     /active/,
   );
   m.find('wall-device-picker').props.onClick();
@@ -654,7 +668,7 @@ test('main-observed selection and active focus await confirmed props without imp
   const requests = [];
   const empty = { selectedDeviceIds: [], activeDeviceId: null, groups: [] };
   const m = mount({
-    snapshot: { ...fixture, provenance: 'MAIN_OBSERVED' },
+    snapshot: { ...eligibleFixture, provenance: 'MAIN_OBSERVED' },
     selection: empty,
     onSelection: (selection) => requests.push(selection),
     selectionPending: false,
@@ -673,13 +687,14 @@ test('main-observed selection and active focus await confirmed props without imp
     m.all((n) => n.type === 'input' && n.props.type === 'checkbox')[0].props.checked,
     true,
   );
+  m.find('wall-device-picker').props.onClick();
   m.find('workspace').props.children.props.onFocusDevice('test-1');
   assert.equal(m.find('workspace').props.children.props.selectedDeviceId, '');
   assert.deepEqual(Array.from(requests[1].selectedDeviceIds), ['test-1']);
   assert.equal(requests[1].activeDeviceId, 'test-1');
   m.props.selection = { ...empty, selectedDeviceIds: [], activeDeviceId: 'test-1' };
   assert.equal(m.find('workspace').props.children.props.selectedDeviceId, 'test-1');
-  assert.equal(m.all((n) => n.props?.className?.startsWith('wall-screen')).length, 0);
+  assert.equal(m.all((n) => n.props?.className?.startsWith('wall-screen')).length, 1);
   m.props.selectionBlocked = true;
   m.find('workspace').props.children.props.onFocusDevice('');
   assert.equal(requests.length, 2);
@@ -722,4 +737,184 @@ test('observer reclamps actual dock footprint and single/all grids use the fixed
   assert.match(css, /\.tile-footprint\{width:var\(--tileW,150px\);height:var\(--tileH,325px\)/);
   assert.match(css, /--screenW:150px;width:150px;height:325px;padding:0;border:0/);
   assert.match(css, /transform:scale\(var\(--tileScale,1\)\);transform-origin:top left/);
+});
+
+// Actual transformed UiShell with labelled synthetic Fleet props, not native/rendered proof.
+function focusFixture() {
+  const snapshot = {
+    ...fixture,
+    provenance: 'MAIN_OBSERVED',
+    devices: ['a', 'b', 'c'].map((id, index) => ({
+      ...fixture.devices[0],
+      id,
+      name: `Synthetic ${id}`,
+      generation: index + 1,
+      status: 'DEVICE',
+    })),
+  };
+  const requests = [];
+  const m = mount({
+    snapshot,
+    selection: { selectedDeviceIds: ['a', 'b'], activeDeviceId: 'a', groups: [] },
+    onSelection: (next) => requests.push(next),
+    selectionPending: false,
+    selectionBlocked: false,
+  });
+  m.render();
+  m.effects();
+  const tiles = () => m.all((node) => node.props?.className?.startsWith('wall-screen'));
+  const focus = (id) => m.find('workspace').props.children.props.onFocusDevice(id);
+  const grid = () =>
+    m
+      .all((node) => node.type === 'button' && node.props.title?.includes('Lưới'))[0]
+      .props.onClick();
+  return { m, requests, tiles, focus, grid };
+}
+test('visual tuple focus is independent of delayed denied ACTIVE and selected grid', () => {
+  const { m, requests, tiles, focus, grid } = focusFixture();
+  assert.equal(tiles().length, 2);
+  const b = tiles()[1];
+  b.props.onClick();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].activeDeviceId, 'b');
+  m.props.selectionPending = true;
+  b.props.onDoubleClick();
+  assert.equal(requests.length, 1);
+  assert.equal(tiles().length, 1);
+  assert.match(JSON.stringify(tiles()[0]), /Synthetic b/);
+  assert.doesNotMatch(tiles()[0].props.className, /active/);
+  assert.equal(m.find('workspace').props.children.props.selectedDeviceId, 'a');
+  m.props.selectionPending = false;
+  focus('c');
+  assert.equal(requests.length, 2);
+  assert.deepEqual(Array.from(requests[1].selectedDeviceIds), ['a', 'b']);
+  assert.match(JSON.stringify(tiles()[0]), /Synthetic c/);
+  m.props.selection = { selectedDeviceIds: [], activeDeviceId: 'b', groups: [] };
+  assert.match(JSON.stringify(tiles()[0]), /Synthetic c/);
+  assert.equal(m.find('workspace').props.children.props.selectedDeviceId, 'b');
+  grid();
+  assert.equal(tiles().length, 0);
+  assert.deepEqual(m.dimensions, []);
+});
+test('focus record is idempotent and restores current-clamped manual baseline without target restoration', () => {
+  const { m, focus, tiles, grid, requests } = focusFixture();
+  m.find('wall-size').props.onChange({ currentTarget: { value: '210' } });
+  focus('a');
+  assert.equal(m.find('wall-size').props.value, 265);
+  m.find('wall-size').props.onChange({ currentTarget: { value: '230' } });
+  focus('a');
+  assert.equal(m.find('wall-size').props.value, 230);
+  focus('b');
+  m.props.tileWidth = 190;
+  m.render();
+  m.effects();
+  m.props.selection = { selectedDeviceIds: ['b'], activeDeviceId: 'c', groups: [] };
+  const before = requests.length;
+  tiles()[0].props.onDoubleClick();
+  assert.equal(requests.length, before);
+  assert.equal(m.find('wall-size').props.value, 190);
+  assert.equal(tiles().length, 1);
+  assert.match(JSON.stringify(tiles()[0]), /Synthetic b/);
+  focus('a');
+  m.surface.clientWidth = 160;
+  m.observers[0].callback();
+  grid();
+  assert.equal(m.find('wall-size').props.value, 136);
+  assert.equal(m.find('workspace').props.children.props.selectedDeviceId, 'c');
+  assert.deepEqual(m.dimensions, []);
+});
+test('persistent fit recomputes on resize but manual zoom only clamps and saved fit recomputes on exit', () => {
+  const { m, focus, grid } = focusFixture();
+  m.find('wall-fit').props.onClick();
+  assert.equal(m.find('wall-size').props.value, 120);
+  m.surface.clientWidth = 300;
+  m.observers[0].callback();
+  assert.equal(m.find('wall-size').props.value, 137);
+  focus('a');
+  assert.equal(m.find('wall-size').props.value, 265);
+  m.surface.clientHeight = 200;
+  m.observers[0].callback();
+  assert.equal(m.find('wall-size').props.value, 81);
+  m.find('wall-size').props.onChange({ currentTarget: { value: '100' } });
+  m.surface.clientHeight = 600;
+  m.observers[0].callback();
+  assert.equal(m.find('wall-size').props.value, 100);
+  m.props.tileWidth = 400;
+  m.render();
+  m.effects();
+  assert.equal(m.find('wall-size').props.value, 100);
+  grid();
+  assert.equal(m.find('wall-size').props.value, 137);
+  assert.deepEqual(m.dimensions, []);
+});
+test('render-time tuple loss never renders replacement as focused and stale tile handlers cannot revive it', () => {
+  for (const change of [
+    'generation',
+    'missing',
+    'OFFLINE',
+    'UNAUTHORIZED',
+    'DISCONNECTED',
+    'UNKNOWN',
+    'CONFLICT',
+    'notReady',
+  ]) {
+    const { m, focus, tiles } = focusFixture();
+    m.find('wall-size').props.onChange({ currentTarget: { value: '200' } });
+    focus('a');
+    const old = tiles()[0];
+    let devices = m.props.snapshot.devices.map((row) => ({ ...row }));
+    if (change === 'generation') devices[0].generation++;
+    else if (change === 'missing') devices = devices.slice(1);
+    else if (change !== 'notReady') devices[0].status = change;
+    m.props.snapshot = {
+      ...m.props.snapshot,
+      devices,
+      ...(change === 'notReady' ? { status: 'UNAVAILABLE' } : {}),
+    };
+    const tree = m.render();
+    assert.doesNotMatch(m.find('screens-grid', tree).props.className, /single/, change);
+    old.props.onDoubleClick();
+    assert.doesNotMatch(m.find('screens-grid').props.className, /single/, change);
+    m.effects();
+    assert.equal(m.find('wall-size').props.value, 200, change);
+    assert.deepEqual(m.dimensions, []);
+  }
+});
+test('visual focus has no first-row fallback and rejects overlays focus loss invalid generation and disposed handlers', () => {
+  const { m, focus, tiles, requests } = focusFixture();
+  m.props.selection = { ...m.props.selection, activeDeviceId: null };
+  const one = () =>
+    m.all((node) => node.type === 'button' && node.props.title === 'Chỉ một điện thoại')[0];
+  assert.equal(one().props.disabled, true);
+  one().props.onClick();
+  assert.doesNotMatch(m.find('screens-grid').props.className, /single/);
+  for (const block of ['hidden', 'blur', 'dialog', 'picker']) {
+    if (block === 'hidden') m.document.hidden = true;
+    if (block === 'blur') m.document.focused = false;
+    if (block === 'dialog') m.document.activeDialog = {};
+    if (block === 'picker') m.find('wall-device-picker').props.onClick();
+    const before = requests.length;
+    tiles()[0].props.onDoubleClick();
+    assert.doesNotMatch(m.find('screens-grid').props.className, /single/, block);
+    assert.equal(requests.length, before);
+    if (block === 'picker') m.find('wall-device-picker').props.onClick();
+    m.document.hidden = false;
+    m.document.focused = true;
+    m.document.activeDialog = null;
+  }
+  for (const generation of [undefined, -0, -1, NaN, Infinity]) {
+    m.props.snapshot = {
+      ...m.props.snapshot,
+      devices: m.props.snapshot.devices.map((row) =>
+        row.id === 'a' ? { ...row, generation } : row,
+      ),
+    };
+    focus('a');
+    assert.doesNotMatch(m.find('screens-grid').props.className, /single/);
+  }
+  const stale = tiles()[1].props.onDoubleClick;
+  m.dispose();
+  stale();
+  assert.doesNotMatch(m.find('screens-grid').props.className, /single/);
+  assert.deepEqual(m.dimensions, []);
 });

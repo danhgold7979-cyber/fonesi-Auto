@@ -16,3 +16,20 @@ export function wheelTileZoom(current: number, delta: number, viewportWidth: num
     viewportWidth,
   );
 }
+/** Fit only the existing unavailable tile footprint, never Android dimensions. */
+export function fitTileZoom(
+  current: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  focused: boolean,
+): number {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return clampTileZoom(current, 0);
+  if (focused && (!Number.isFinite(viewportHeight) || viewportHeight <= 0))
+    return clampTileZoom(current, viewportWidth);
+  const innerWidth = Math.max(0, viewportWidth - 24);
+  const columns = Math.min(4, Math.max(1, Math.floor(innerWidth / 120)));
+  const raw = focused
+    ? Math.floor(Math.min(innerWidth, (Math.max(0, viewportHeight - 24) * 150) / 325))
+    : Math.floor((innerWidth - (columns - 1) * 2) / columns);
+  return clampTileZoom(raw, viewportWidth);
+}

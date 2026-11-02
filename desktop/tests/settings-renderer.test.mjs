@@ -435,7 +435,50 @@ test('fleet hydrates once independently of preferences and exposes only main-obs
   assert.equal(shell.snapshot.provenance, 'MAIN_OBSERVED');
   assert.equal(shell.snapshot.devices[0].serial, '—');
   assert.equal(shell.snapshot.devices[0].name, 'Device 0001');
+  assert.equal(shell.snapshot.devices[0].generation, 1);
   assert.equal(shell.selection.selectedDeviceIds.length, 0);
+});
+test('Fleet generation is copied unchanged and malformed generations never enter UI rows', async () => {
+  // Synthetic bridge responses traverse the actual Fleet parser and renderer projection.
+  const original = fleetContract.fleetSuccess('f1', 'OBSERVED', fleetState(), 'AVAILABLE');
+  for (const generation of [0, 7, Number.MAX_SAFE_INTEGER]) {
+    const raw = original.replace('"generation":1', `"generation":${generation}`);
+    const m = mount(
+      { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+      1600,
+      { read: async () => raw },
+    );
+    m.render();
+    m.effects();
+    await flush();
+    const snapshot = m.render().props.snapshot;
+    assert.equal(snapshot.status, 'READY');
+    assert.equal(snapshot.devices[0].generation, generation);
+    assert.equal(snapshot.provenance, 'MAIN_OBSERVED');
+  }
+  for (const replacement of [
+    '',
+    '"generation":-0,',
+    '"generation":-1,',
+    '"generation":1.5,',
+    '"generation":9007199254740992,',
+    '"generation":"1",',
+    '"generation":null,',
+  ]) {
+    const raw = original.replace('"generation":1,', replacement);
+    assert.notEqual(raw, original);
+    const m = mount(
+      { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+      1600,
+      { read: async () => raw },
+    );
+    m.render();
+    m.effects();
+    await flush();
+    const snapshot = m.render().props.snapshot;
+    assert.equal(snapshot.status, 'ERROR');
+    assert.equal(snapshot.devices.length, 0);
+  }
 });
 test('fleet selection remains confirmed-only, guards immediate double submit and requires explicit read after timeout', async () => {
   let reads = 0,

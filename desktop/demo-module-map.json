@@ -152,7 +152,8 @@
         "./tile-zoom.js": {
           "clampTileZoom": "value",
           "wheelTileZoom": "value",
-          "tileZoomLimit": "value"
+          "tileZoomLimit": "value",
+          "fitTileZoom": "value"
         }
       }
     },

@@ -9,7 +9,7 @@ import {
   type UiSnapshot,
   type UiSelection,
 } from './ui-model.js';
-import { clampTileZoom, wheelTileZoom, tileZoomLimit } from './tile-zoom.js';
+import { clampTileZoom, wheelTileZoom, tileZoomLimit, fitTileZoom } from './tile-zoom.js';
 import { Icon, SocialIcon, UnavailableButton, EmptyPanel, UiModal } from './ui-shared.tsx';
 import { OverviewPage, AccountsPage, TrackingPage } from './primary-pages.tsx';
 import { SetupPage, CalendarPage, WorkflowsPage, WORKFLOW_LABELS } from './work-pages.tsx';
@@ -121,6 +121,27 @@ const QUICK = [
   ['power', 'Màn hình nguồn'],
   ['terminal', 'Lệnh ADB'],
 ] as const;
+type VisualFocus = Readonly<{ deviceId: string; generation: number }>;
+type DisplaySizing = 'manual' | 'fit';
+type WallDisplay = Readonly<{
+  focus: VisualFocus | null;
+  restore: Readonly<{ width: number; sizing: DisplaySizing }> | null;
+  width: number;
+  sizing: DisplaySizing;
+}>;
+function focusRow(snapshot: UiSnapshot, target: VisualFocus | null) {
+  if (!target || snapshot.status !== 'READY') return null;
+  const rows = snapshot.devices.filter((row) => row.id === target.deviceId);
+  const row = rows.length === 1 ? rows[0] : undefined;
+  return row &&
+    row.status === 'DEVICE' &&
+    Number.isSafeInteger(row.generation) &&
+    row.generation >= 0 &&
+    !Object.is(row.generation, -0) &&
+    row.generation === target.generation
+    ? row
+    : null;
+}
 export function UiShell(p: ShellProps) {
   const supplied = p.snapshot ?? unavailableSnapshot;
   const snapshot: UiSnapshot =
@@ -165,19 +186,94 @@ export function UiShell(p: ShellProps) {
       });
     else setLocalActive(next);
   };
-  const [view, setView] = useState<'all' | 'one'>('all');
-  const [draftDock, setDraftDock] = useState<number | null>(null),
-    [draftTile, setDraftTile] = useState<number | null>(null);
+  const [display, setDisplay] = useState<WallDisplay>({
+    focus: null,
+    restore: null,
+    width: clampTileZoom(p.tileWidth, p.dockWidth),
+    sizing: 'manual',
+  });
+  const displayRef = useRef(display);
+  const [draftDock, setDraftDock] = useState<number | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null),
     pickerButton = useRef<HTMLButtonElement>(null);
   const dragging = useRef(false),
     currentDock = useRef(p.dockWidth);
   const blocked = p.pending || !p.ready || p.reconcile;
   const surfaceRef = useRef<HTMLElement>(null);
-  const tileRef = useRef(clampTileZoom(p.tileWidth, p.dockWidth));
   const localBlocked = !p.ready || modal !== null || picker || performance;
-  const tile = draftTile ?? clampTileZoom(p.tileWidth, p.dockWidth),
-    dock = draftDock ?? p.dockWidth;
+  const dock = draftDock ?? p.dockWidth;
+  const lifetime = useRef(true);
+  const renderToken = {};
+  const latest = useRef({ snapshot, localBlocked, renderToken });
+  latest.current = { snapshot, localBlocked, renderToken };
+  const width = () => surfaceRef.current?.clientWidth ?? 0;
+  const height = () => surfaceRef.current?.clientHeight ?? 0;
+  const resolved = focusRow(snapshot, display.focus);
+  const view = resolved ? 'one' : 'all';
+  const restoreDisplay = (value: WallDisplay): WallDisplay => {
+    const saved = value.restore ?? { width: value.width, sizing: value.sizing };
+    return {
+      focus: null,
+      restore: null,
+      sizing: saved.sizing,
+      width:
+        saved.sizing === 'fit'
+          ? fitTileZoom(saved.width, width(), height(), false)
+          : clampTileZoom(saved.width, width()),
+    };
+  };
+  const effectiveDisplay = display.focus && !resolved ? restoreDisplay(display) : display;
+  const tile = effectiveDisplay.width;
+  const putDisplay = (next: WallDisplay) => {
+    displayRef.current = next;
+    setDisplay(next);
+  };
+  const displayActions = useRef({ putDisplay, restoreDisplay });
+  displayActions.current = { putDisplay, restoreDisplay };
+  const allowed = () =>
+    lifetime.current &&
+    latest.current.renderToken === renderToken &&
+    !latest.current.localBlocked &&
+    document.hasFocus() &&
+    !document.hidden &&
+    document.querySelector('[role="dialog"]') === null;
+  const leaveFocus = () => {
+    if (!allowed()) return;
+    putDisplay(restoreDisplay(displayRef.current));
+  };
+  const enterFocus = (target: VisualFocus, toggle = false) => {
+    if (!allowed() || !focusRow(latest.current.snapshot, target)) return;
+    const current = displayRef.current;
+    const valid = focusRow(latest.current.snapshot, current.focus);
+    if (
+      valid &&
+      current.focus?.deviceId === target.deviceId &&
+      current.focus.generation === target.generation
+    ) {
+      if (toggle) putDisplay(restoreDisplay(current));
+      return;
+    }
+    const baseline = current.focus && !valid ? restoreDisplay(current) : current;
+    putDisplay({
+      focus: target,
+      restore: baseline.restore ?? {
+        width: baseline.width,
+        sizing: baseline.sizing,
+      },
+      sizing: 'fit',
+      width: fitTileZoom(baseline.width, width(), height(), true),
+    });
+  };
+  useEffect(() => {
+    lifetime.current = true;
+    return () => {
+      lifetime.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (displayRef.current.focus && !focusRow(latest.current.snapshot, displayRef.current.focus))
+      displayActions.current.putDisplay(displayActions.current.restoreDisplay(displayRef.current));
+  });
   useEffect(() => {
     document.documentElement.dataset.theme = p.theme === 'DARK' ? 'dark' : 'light';
   }, [p.theme]);
@@ -220,16 +316,20 @@ export function UiShell(p: ShellProps) {
     }
   }, [p.pending]);
   const focusDevice = (id: string) => {
+    if (!allowed()) return;
     if (id === '') {
       setActive('');
-      setView('all');
+      leaveFocus();
       return;
     }
-    if (!snapshot.devices.some((d) => d.id === id)) return;
+    const rows = latest.current.snapshot.devices.filter((row) => row.id === id);
+    if (rows.length !== 1) return;
+    const row = rows[0];
+    if (!row) return;
+    const target = { deviceId: id, generation: row.generation };
+    if (!focusRow(latest.current.snapshot, target)) return;
     setActive(id);
-    if (!mainOwned)
-      setLocalSelected((current) => (current.includes(id) ? current : [...current, id]));
-    setView('one');
+    enterFocus(target);
   };
   const navigate = (next: PageKey, deviceId?: string) => {
     if (deviceId) focusDevice(deviceId);
@@ -271,30 +371,76 @@ export function UiShell(p: ShellProps) {
     );
   const viewport = () => surfaceRef.current?.clientWidth || dock;
   const zoom = (value: number) => {
-    if (localBlocked) return;
-    const next = clampTileZoom(value, viewport());
-    tileRef.current = next;
-    setDraftTile(next);
+    if (!allowed()) return;
+    const current = displayRef.current;
+    const base =
+      current.focus && !focusRow(latest.current.snapshot, current.focus)
+        ? restoreDisplay(current)
+        : current;
+    putDisplay({ ...base, sizing: 'manual', width: clampTileZoom(value, viewport()) });
+  };
+  const fit = () => {
+    if (!allowed()) return;
+    const current = displayRef.current;
+    const base =
+      current.focus && !focusRow(latest.current.snapshot, current.focus)
+        ? restoreDisplay(current)
+        : current;
+    putDisplay({
+      ...base,
+      sizing: 'fit',
+      width: fitTileZoom(base.width, width(), height(), base.focus !== null),
+    });
   };
   useEffect(() => {
-    const next = clampTileZoom(p.tileWidth, surfaceRef.current?.clientWidth || 0);
-    tileRef.current = next;
-    setDraftTile(next);
+    const current = displayRef.current;
+    const next = clampTileZoom(p.tileWidth, surfaceRef.current?.clientWidth ?? 0);
+    if (current.focus && focusRow(latest.current.snapshot, current.focus)) {
+      displayActions.current.putDisplay({
+        ...current,
+        width: clampTileZoom(current.width, surfaceRef.current?.clientWidth ?? 0),
+        restore:
+          current.restore?.sizing === 'manual'
+            ? { ...current.restore, width: next }
+            : current.restore,
+      });
+    } else
+      displayActions.current.putDisplay({
+        focus: null,
+        restore: null,
+        width: next,
+        sizing: 'manual',
+      });
   }, [p.tileWidth]);
+  const resizeCurrent = useRef(() => {});
+  resizeCurrent.current = () => {
+    if (!lifetime.current) return;
+    const current = displayRef.current;
+    const base =
+      current.focus && !focusRow(latest.current.snapshot, current.focus)
+        ? restoreDisplay(current)
+        : current;
+    putDisplay({
+      ...base,
+      width:
+        base.sizing === 'fit'
+          ? fitTileZoom(base.width, width(), height(), base.focus !== null)
+          : clampTileZoom(base.width, viewport()),
+    });
+  };
   useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface) return;
     let live = true;
     const resize = () => {
-      if (!live) return;
-      const next = clampTileZoom(tileRef.current, surface.clientWidth || dock);
-      tileRef.current = next;
-      setDraftTile(next);
+      if (live && lifetime.current && surfaceRef.current === surface) resizeCurrent.current();
     };
     const wheel = (event: WheelEvent) => {
       if (
         !live ||
-        localBlocked ||
+        !lifetime.current ||
+        surfaceRef.current !== surface ||
+        latest.current.localBlocked ||
         !event.ctrlKey ||
         !document.hasFocus() ||
         document.hidden ||
@@ -308,9 +454,16 @@ export function UiShell(p: ShellProps) {
         return;
       event.preventDefault();
       event.stopPropagation();
-      const next = wheelTileZoom(tileRef.current, event.deltaY, surface.clientWidth || dock);
-      tileRef.current = next;
-      setDraftTile(next);
+      const current = displayRef.current;
+      const base =
+        current.focus && !focusRow(latest.current.snapshot, current.focus)
+          ? displayActions.current.restoreDisplay(current)
+          : current;
+      displayActions.current.putDisplay({
+        ...base,
+        sizing: 'manual',
+        width: wheelTileZoom(base.width, event.deltaY, surface.clientWidth || dock),
+      });
     };
     surface.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener('resize', resize);
@@ -323,7 +476,7 @@ export function UiShell(p: ShellProps) {
       window.removeEventListener('resize', resize);
       observer?.disconnect();
     };
-  }, [localBlocked, dock]);
+  }, [dock]);
   const devices = snapshot.devices.filter((d) =>
     `${d.id} ${d.name} ${d.serial}`
       .toLocaleLowerCase('vi-VN')
@@ -606,8 +759,9 @@ export function UiShell(p: ShellProps) {
               <button
                 className={`tinybtn ${view === 'all' ? 'active' : ''}`}
                 type="button"
-                title="Lưới toàn bộ điện thoại"
-                onClick={() => setView('all')}
+                title="Lưới điện thoại đã chọn"
+                disabled={localBlocked}
+                onClick={leaveFocus}
               >
                 <Icon name="grid-3x3" />
               </button>
@@ -615,7 +769,18 @@ export function UiShell(p: ShellProps) {
                 className={`tinybtn ${view === 'one' ? 'active' : ''}`}
                 type="button"
                 title="Chỉ một điện thoại"
-                onClick={() => setView('one')}
+                disabled={
+                  localBlocked ||
+                  !snapshot.devices.some(
+                    (row) =>
+                      row.id === active &&
+                      focusRow(snapshot, { deviceId: row.id, generation: row.generation }),
+                  )
+                }
+                onClick={() => {
+                  const row = snapshot.devices.find((entry) => entry.id === active);
+                  if (row) enterFocus({ deviceId: row.id, generation: row.generation });
+                }}
               >
                 <Icon name="square" />
               </button>
@@ -625,7 +790,7 @@ export function UiShell(p: ShellProps) {
                 type="button"
                 title="Khớp kích thước với panel"
                 disabled={localBlocked}
-                onClick={() => zoom(tileZoomLimit(viewport()))}
+                onClick={fit}
               >
                 <Icon name="maximize" />
               </button>
@@ -639,7 +804,7 @@ export function UiShell(p: ShellProps) {
                 type="button"
                 title="Thu nhỏ"
                 disabled={localBlocked}
-                onClick={() => zoom(tileRef.current - 10)}
+                onClick={() => zoom(displayRef.current.width - 10)}
               >
                 <Icon name="minus" />
               </button>
@@ -664,7 +829,7 @@ export function UiShell(p: ShellProps) {
                 type="button"
                 title="Phóng to"
                 disabled={localBlocked}
-                onClick={() => zoom(tileRef.current + 10)}
+                onClick={() => zoom(displayRef.current.width + 10)}
               >
                 <Icon name="plus" />
               </button>
@@ -680,17 +845,19 @@ export function UiShell(p: ShellProps) {
             <div className="dot-grid">
               <div className={`screens-grid ${view === 'one' ? 'single' : ''}`} id="screens-grid">
                 {snapshot.devices
-                  .filter((d) => selected.includes(d.id) && (view === 'all' || d.id === active))
+                  .filter((d) => (resolved ? d === resolved : selected.includes(d.id)))
                   .map((d, index) => (
                     <div className="tile-footprint" key={d.id}>
                       <button
                         type="button"
                         className={`wall-screen ${d.id === active ? 'active' : ''}`}
-                        onClick={() => setActive(d.id)}
-                        onDoubleClick={() => {
-                          setActive(d.id);
-                          setView('one');
+                        aria-label={`${d.name} · ${d.id === active ? 'ACTIVE đã xác nhận' : 'không phải ACTIVE'}${resolved === d ? ' · đang xem' : ''}`}
+                        onClick={() => {
+                          if (allowed()) setActive(d.id);
                         }}
+                        onDoubleClick={() =>
+                          enterFocus({ deviceId: d.id, generation: d.generation }, true)
+                        }
                       >
                         <div className="android-view">
                           <span className="screen-order">{index + 1}</span>
@@ -701,7 +868,7 @@ export function UiShell(p: ShellProps) {
                     </div>
                   ))}
               </div>
-              {selected.length === 0 ? (
+              {!resolved && !snapshot.devices.some((row) => selected.includes(row.id)) ? (
                 <EmptyPanel
                   title="Chưa chọn điện thoại"
                   detail="Thiết bị và stream chưa khả dụng. Không hiển thị màn hình Android giả."
@@ -747,7 +914,9 @@ export function UiShell(p: ShellProps) {
               ))}
             </div>
             <div className="wall-foot">
-              {selected.length} ô đã chọn · Ctrl + con lăn: cỡ khung · Nháy đúp:1 máy
+              {selected.length} ô đã chọn · Đang xem: {resolved?.name ?? 'lưới đã chọn'} · ACTIVE đã
+              xác nhận: {snapshot.devices.find((row) => row.id === active)?.name ?? 'chưa có'} ·
+              Ctrl + con lăn: cỡ khung · Nháy đúp: mở/đóng xem một máy
             </div>
           </div>
         </aside>
