@@ -36,7 +36,7 @@ export function inventory() {
   const files = [];
   let entries = 0;
   function walk(path, depth) {
-    if (++entries > 542 || depth > 12) throw new Error('INVENTORY_LIMIT');
+    if (++entries > 544 || depth > 12) throw new Error('INVENTORY_LIMIT');
     const stat = lstatSync(path);
     if (stat.isSymbolicLink()) throw new Error('INVENTORY_LINK');
     if (stat.isDirectory()) {

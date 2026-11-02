@@ -1,8 +1,8 @@
 # Phase Status — Fonesi-Auto
 
-**Phase07 — Scheduler and queue:** source5/47=10.6%, integrated5/47=10.6%, technical acceptance0/13. Exactly P7-02.A/B N→I: +2/47 (+4.26 percentage points) each versus6.4%/6.4%; fixed47-cell denominator unchanged. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
+**Phase07 — Scheduler and queue:** source6/47=12.8%, integrated6/47=12.8%, technical acceptance0/13. Exactly P7-04.A N→I: +1/47 (+2.13 percentage points) each versus10.6%; fixed47-cell denominator unchanged. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
 
-**Current local Phase07 milestone:** explicit supported-zone resolution now composes the actual civil model with pinned Temporal0.5.1/JSBI4.3.2, preserving gap-skip/earlier-overlap, planned ordinals, runtime attribution and immutable UTC results. Actual14 resolver cases and stitched integrated source checks pass; original failures/recoveries remain recorded. [Evidence](evidence/P7-02-timezone-resolution-2026-11-02.md). No Electron, persistence, queue, UI or dispatch activation. Sole local `phase-07`; no remote publication or task acceptance claimed. **Stop reason / required action:** none; this bounded source milestone is complete, later scheduler integration retains its actual dependencies.
+**Current local Phase07 milestone:** resolved below-30-minute advisory composes the actual civil/timezone resolver, preserves intent and skipped-gap facts, handles elapsed UTC across midnight/DST, and truthfully qualifies truncated previews. Independent source review CLEAR; targeted12/12 and final uninterrupted source aggregate1718/1718 PASS. Earlier failures and recoveries remain recorded in [evidence](evidence/P7-04-gap-advisory-2026-11-02.md). No Electron, persistence, queue, UI or dispatch activation; P7-04.B remains unimplemented. Sole local `phase-07`; no remote publication or task acceptance claimed. **Stop reason / required action:** none for this source milestone; next functional entry requires its own reviewed integration scope.
 
 ## Inherited Phase03 history at branch base
 
