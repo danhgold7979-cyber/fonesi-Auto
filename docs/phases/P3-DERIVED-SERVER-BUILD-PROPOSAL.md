@@ -87,3 +87,8 @@ One fixed acquisition/materialization controller, one Windows paired-build wrapp
 ## Source-entry review record
 
 Independent source-entry review cleared the fixed command/supervision contract at SHA256 `e9ee46986bf982b43d28864a59bfb00ea58fe5c2d825406fd54d9fa2e21e112e` (04:50 UTC). The subsequent §5a clarification preserves bounded static CLI metadata validation and the unchanged exact public schema, without claiming a reported assembly name/version. Final implemented runner, hashes and tests require one coherent review before any compile-only campaign.
+
+
+### Fixed tool-admission diagnostic amendment
+
+When the pre-compiler TOOLS boundary refuses, report only the last source-assigned step from this exact closed set: `JDK_ROOT`, `SDK_ROOT`, `SDK_CONSISTENCY`, `PLATFORM_ROOT`, `BUILD_TOOLS_ROOT`, `FRAMEWORK_ROOT`, `JDK_METADATA`, `PLATFORM_METADATA`, `BUILD_TOOLS_METADATA`, `COMPILER_METADATA`, `IMAGE`, `SOURCE_IDS`, `CONTEXT`. Each is assigned immediately before the corresponding existing predicate; the workflow accepts only the exact prefixed marker. It reveals neither paths/values nor raw exception text and does not turn an unobserved cause into a missing-tool claim. All tool admission and no-install requirements remain unchanged.

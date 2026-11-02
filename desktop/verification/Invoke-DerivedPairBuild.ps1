@@ -8,7 +8,7 @@ $controller=Join-Path $PSScriptRoot 'derived_pair_build.py'
 $validator=Join-Path $PSScriptRoot 'validate_derived_pair_build.py'
 $original=[Environment]::GetEnvironmentVariables('Process')
 $clock=[Diagnostics.Stopwatch]::StartNew()
-$owner=$null;$baseOwner=$null;$allRetired=$true;$prepared=$false;$staged=$false;$published=$false;$failure=$null;$phase='ADMISSION'
+$owner=$null;$baseOwner=$null;$allRetired=$true;$prepared=$false;$staged=$false;$published=$false;$failure=$null;$phase='ADMISSION';$toolsStep=$null
 function PlainFile([string]$file,[long]$limit){
  $i=Get-Item -LiteralPath $file -Force
  if($i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $i.Length -lt 1 -or $i.Length -gt $limit -or $i.FullName -cne [IO.Path]::GetFullPath($file)){throw 'FILE_REJECTED'}
@@ -95,24 +95,34 @@ try{
  $owner=[pscustomobject]@{Parent=$tempParent;Path=$root;Token=[guid]::NewGuid().ToString()};WriteNew (Join-Path $root '.owner') $owner.Token 36;Assert-OwnedRun $owner
  if(-not $ArchivePath){$phase='ACQUIRE';Python $controller @('acquire',$root) 'DERIVED_PAIR_CONTROL_PASS';$ArchivePath=Join-Path $root 'upstream.tar.gz'}
  $phase='TOOLS'
- $jdk=[IO.Path]::GetFullPath([string]$original['JAVA_HOME_17_X64']);$sdk=[IO.Path]::GetFullPath([string]$original['ANDROID_HOME'])
+ $toolsStep='JDK_ROOT';$jdk=[IO.Path]::GetFullPath([string]$original['JAVA_HOME_17_X64']);Assert-PlainDirectory $jdk
+ $toolsStep='SDK_ROOT';$sdk=[IO.Path]::GetFullPath([string]$original['ANDROID_HOME']);Assert-PlainDirectory $sdk
+ $toolsStep='SDK_CONSISTENCY'
  if($original.Contains('ANDROID_SDK_ROOT') -and [IO.Path]::GetFullPath([string]$original['ANDROID_SDK_ROOT']) -cne $sdk){throw 'SDK_ROOT_MISMATCH'}
- $platform=Join-Path $sdk 'platforms/android-36';$buildTools=Join-Path $sdk 'build-tools/36.0.0';$framework=Join-Path $windows 'Microsoft.NET/Framework64/v4.0.30319'
- foreach($dir in @($jdk,$sdk,$platform,$buildTools,$framework)){Assert-PlainDirectory $dir}
+ $toolsStep='PLATFORM_ROOT';$platform=Join-Path $sdk 'platforms/android-36';Assert-PlainDirectory $platform
+ $toolsStep='BUILD_TOOLS_ROOT';$buildTools=Join-Path $sdk 'build-tools/36.0.0';Assert-PlainDirectory $buildTools
+ $toolsStep='FRAMEWORK_ROOT';$framework=Join-Path $windows 'Microsoft.NET/Framework64/v4.0.30319';Assert-PlainDirectory $framework
+ $toolsStep='JDK_METADATA'
  $release=ReadText (Join-Path $jdk 'release') 65536
  $jdkVersion=Property $release 'JAVA_VERSION' '\A17(?:[.0-9A-Za-z+_-]*)\z'
  $implementor=Property $release 'IMPLEMENTOR' '\A[\x20-\x7e]{1,128}\z'
  $vendor=if($implementor -cmatch 'Microsoft'){'MICROSOFT'}elseif($implementor -cmatch 'Adoptium|Temurin'){'TEMURIN'}elseif($implementor -cmatch 'Oracle'){'ORACLE'}else{'OTHER'}
+ $toolsStep='PLATFORM_METADATA'
  $platformProperties=ReadText (Join-Path $platform 'source.properties') 65536
  if((Property $platformProperties 'AndroidVersion.ApiLevel' '\A[0-9]+\z') -cne '36'){throw 'PLATFORM_REJECTED'}
  $platformRevision=Property $platformProperties 'Pkg.Revision' '\A[0-9A-Za-z.+_-]{1,64}\z'
+ $toolsStep='BUILD_TOOLS_METADATA'
  $buildVersion=Property (ReadText (Join-Path $buildTools 'source.properties') 65536) 'Pkg.Revision' '\A36\.0\.0\z'
+ $toolsStep='COMPILER_METADATA'
  $csc=Join-Path $framework 'csc.exe';PlainFile $csc 8388608
  $compilerInfo=[Diagnostics.FileVersionInfo]::GetVersionInfo($csc)
  $compilerVersion=('{0}.{1}.{2}.{3}' -f $compilerInfo.FileMajorPart,$compilerInfo.FileMinorPart,$compilerInfo.FileBuildPart,$compilerInfo.FilePrivatePart)
  if($compilerVersion -cnotmatch '\A[0-9]+(?:\.[0-9]+){1,3}\z'){throw 'COMPILER_VERSION_REJECTED'}
+ $toolsStep='IMAGE'
  if($original['ImageOS'] -cne 'win22' -or $original['ImageVersion'] -cnotmatch '\A[0-9.]{1,58}\z'){throw 'RUNNER_IMAGE_REJECTED'}
+ $toolsStep='SOURCE_IDS'
  foreach($key in @('FONESI_AUTO_SOURCE_COMMIT','FONESI_AUTO_SOURCE_TREE')){if($original[$key] -cnotmatch '\A[0-9a-f]{40}\z'){throw 'SOURCE_ID_REJECTED'}}
+ $toolsStep='CONTEXT'
  $context=[ordered]@{version=1;autoCommit=$original['FONESI_AUTO_SOURCE_COMMIT'];autoTree=$original['FONESI_AUTO_SOURCE_TREE'];runnerImage=('win22/'+$original['ImageVersion']);jdkRoot=$jdk;platformRoot=$platform;buildToolsRoot=$buildTools;frameworkRoot=$framework;jdkVersion=$jdkVersion;jdkVendor=$vendor;platformRevision=$platformRevision;buildToolsVersion=$buildVersion;consumerCompilerVersion=$compilerVersion}
  $contextFile=Join-Path $base 'context.json';JsonNew $contextFile $context
  $executables=@{aidlClipboard=(Join-Path $buildTools 'aidl.exe');aidlDisplay=(Join-Path $buildTools 'aidl.exe');javac=(Join-Path $jdk 'bin/javac.exe');d8=(Join-Path $jdk 'bin/java.exe');consumerCsc=$csc}
@@ -130,6 +140,7 @@ try{
  }
 }catch{
  $failure=if(-not $allRetired){'UNRETIRED'}elseif($phase -ceq 'TOOLS'){'TOOLS_UNAVAILABLE'}elseif($phase -ceq 'COMPILE'){'COMPILE_FAILED'}elseif($phase -cin @('PLAN','VERIFY')){'SOURCE_REJECTED'}elseif($phase -cin @('PREPARE','ACQUIRE')){'SOURCE_REJECTED'}else{'INTERNAL_FAILURE'}
+ if($phase -ceq 'TOOLS' -and $toolsStep -cin @('JDK_ROOT','SDK_ROOT','SDK_CONSISTENCY','PLATFORM_ROOT','BUILD_TOOLS_ROOT','FRAMEWORK_ROOT','JDK_METADATA','PLATFORM_METADATA','BUILD_TOOLS_METADATA','COMPILER_METADATA','IMAGE','SOURCE_IDS','CONTEXT')){Write-Output ('DERIVED_PAIR_TOOLS_'+$toolsStep)}
  Write-Output ('DERIVED_PAIR_STAGE_'+$phase)
 }
 try{

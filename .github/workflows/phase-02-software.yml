@@ -1199,7 +1199,7 @@ jobs:
           try {
             $lines=@(& ./desktop/verification/Invoke-DerivedPairBuild.ps1 -PythonPath $env:FOUNDATION_PYTHON_EXE)
             $code=$LASTEXITCODE
-            foreach($line in $lines){if([string]$line -cmatch '^DERIVED_PAIR_(STAGE_[A-Z]+|VALIDATION_(WRITTEN|PASS|FAIL))$'){Write-Output ([string]$line)}}
+            foreach($line in $lines){if([string]$line -cmatch '^DERIVED_PAIR_(STAGE_[A-Z]+|TOOLS_(JDK_ROOT|SDK_ROOT|SDK_CONSISTENCY|PLATFORM_ROOT|BUILD_TOOLS_ROOT|FRAMEWORK_ROOT|JDK_METADATA|PLATFORM_METADATA|BUILD_TOOLS_METADATA|COMPILER_METADATA|IMAGE|SOURCE_IDS|CONTEXT)|VALIDATION_(WRITTEN|PASS|FAIL))$'){Write-Output ([string]$line)}}
             if(@($lines | Where-Object {$_ -ceq 'DERIVED_PAIR_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
             if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'DERIVED_PAIR_VALIDATION_PASS'}).Count -ne 1){exit 1}
           } catch { Write-Output 'DERIVED_PAIR_RUNNER_FAILED'; exit 1 }

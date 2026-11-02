@@ -273,3 +273,86 @@ test('paired workflow refuses binary, broad, unvalidated uploads and unbound sou
     assert.equal(validPairWorkflow(workflow.replace(from, to)), false, from);
   }
 });
+
+test('tools diagnostics identify only one closed source substep without exposing values or changing admission', () => {
+  const steps = [
+    'JDK_ROOT',
+    'SDK_ROOT',
+    'SDK_CONSISTENCY',
+    'PLATFORM_ROOT',
+    'BUILD_TOOLS_ROOT',
+    'FRAMEWORK_ROOT',
+    'JDK_METADATA',
+    'PLATFORM_METADATA',
+    'BUILD_TOOLS_METADATA',
+    'COMPILER_METADATA',
+    'IMAGE',
+    'SOURCE_IDS',
+    'CONTEXT',
+  ];
+  const filter = workflow.match(/-cmatch '(\^DERIVED_PAIR_\(STAGE_[^'\n]+)'/)?.[1];
+  assert.ok(filter);
+  const admitted = new RegExp(filter);
+  for (const step of steps) assert.equal(admitted.test(`DERIVED_PAIR_TOOLS_${step}`), true);
+  for (const rejected of [
+    'DERIVED_PAIR_TOOLS_UNKNOWN',
+    'DERIVED_PAIR_TOOLS_JDK_ROOT C:\\private-canary',
+    'DERIVED_PAIR_TOOLS_/private/canary',
+    'Exception: private-canary',
+    'DERIVED_PAIR_TOOLS_JDK_ROOT_private-canary',
+  ]) {
+    assert.equal(admitted.test(rejected), false);
+  }
+  const tools = source.slice(
+    source.indexOf(" $phase='TOOLS'"),
+    source.indexOf(" $phase='PREPARE'"),
+  );
+  assert.deepEqual(
+    [...tools.matchAll(/\$toolsStep='([A-Z_]+)'/g)].map((m) => m[1]),
+    steps,
+  );
+  const marker =
+    "if($phase -ceq 'TOOLS' -and $toolsStep -cin @(" +
+    steps.map((s) => `'${s}'`).join(',') +
+    ")){Write-Output ('DERIVED_PAIR_TOOLS_'+$toolsStep)}";
+  assert.ok(source.includes(marker));
+  assert.equal(
+    (source.match(/Write-Output \('DERIVED_PAIR_TOOLS_'\+\$toolsStep\)/g) || []).length,
+    1,
+  );
+  for (const [step, check] of [
+    [
+      'JDK_ROOT',
+      "$jdk=[IO.Path]::GetFullPath([string]$original['JAVA_HOME_17_X64']);Assert-PlainDirectory $jdk",
+    ],
+    [
+      'SDK_ROOT',
+      "$sdk=[IO.Path]::GetFullPath([string]$original['ANDROID_HOME']);Assert-PlainDirectory $sdk",
+    ],
+    ['SDK_CONSISTENCY', "if($original.Contains('ANDROID_SDK_ROOT')"],
+    [
+      'PLATFORM_ROOT',
+      "$platform=Join-Path $sdk 'platforms/android-36';Assert-PlainDirectory $platform",
+    ],
+    [
+      'BUILD_TOOLS_ROOT',
+      "$buildTools=Join-Path $sdk 'build-tools/36.0.0';Assert-PlainDirectory $buildTools",
+    ],
+    [
+      'FRAMEWORK_ROOT',
+      "$framework=Join-Path $windows 'Microsoft.NET/Framework64/v4.0.30319';Assert-PlainDirectory $framework",
+    ],
+    ['JDK_METADATA', "$release=ReadText (Join-Path $jdk 'release')"],
+    ['PLATFORM_METADATA', '$platformProperties=ReadText'],
+    ['BUILD_TOOLS_METADATA', '$buildVersion=Property'],
+    ['COMPILER_METADATA', "$csc=Join-Path $framework 'csc.exe'"],
+    ['IMAGE', "if($original['ImageOS']"],
+    ['SOURCE_IDS', "foreach($key in @('FONESI_AUTO_SOURCE_COMMIT'"],
+    ['CONTEXT', '$context=[ordered]'],
+  ])
+    before(`$toolsStep='${step}'`, check, tools);
+  assert.doesNotMatch(
+    source,
+    /Write-Output[^\n]*(?:\$_|Exception|\.Message|\$jdk|\$sdk|\$release|\$context)/,
+  );
+});

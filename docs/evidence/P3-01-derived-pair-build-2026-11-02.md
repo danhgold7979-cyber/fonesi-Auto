@@ -80,15 +80,15 @@ The 23-file packet includes only the paths below. Caches, archive/source origina
 
 | Source / gate | SHA256 |
 |---|---|
-| `.github/workflows/phase-02-software.yml` | `4cf915a94a43ac7679540c9d467950f85fc6c1081e2b397fbc4a92ab9411561c` |
+| `.github/workflows/phase-02-software.yml` | `338754ea6c2191867c608434a58cd1f130afd0f8d94ce5fde3f7850b93b7b2e5` |
 | `desktop/scripts/quality-tool.mjs` | `ccff8a43620c7cea61d81b5c3ae0ea5e963431ae2e7b7fdd73975b5c500f663d` |
 | `desktop/scripts/test-batches.mjs` | `0489ff8d0afaa86a83bad671bc4a762a0343c4bf3b53c600804f985e8f511f63` |
 | `desktop/tests/phase-source-workflow.test.mjs` | `adc1451d3c81d4498be5f85f4ebad69dada3d39e18221b180ea1433befb63bb8` |
 | `desktop/tests/quality-tool.test.mjs` | `05110e6803d583a3574a3cc93d30c5e6c71f91f485dfb64e5029794296767bf5` |
 | `desktop/tests/retained-managed-fixture.test.mjs` | `a05176ed8fe84fc460d508fb01af5ded49814adb5e2e942124451d04298e09b8` |
 | `desktop/verification/retained-rollback-workflow.test.cjs` | `443ea0b8a972281774013755dfa1d6ca5b6c97dc79b60f9ba3c128fcd0238da6` |
-| `desktop/verification/Invoke-DerivedPairBuild.ps1` | `d28fc606114ebb628c32ed49260f4496e3bde2738910bb6b49dec391b41b482d` |
-| `desktop/verification/derived-pair-wrapper.test.cjs` | `ddfa9f072cd785734b4db9cf2883d58ba20406c12aadd2e3fa905d34fc148766` |
+| `desktop/verification/Invoke-DerivedPairBuild.ps1` | `036bb7cd91e81b3c98e8a9d9a5f37e0e5a07b566a770121f39d7ce5868b2fde2` |
+| `desktop/verification/derived-pair-wrapper.test.cjs` | `b74994366c3e7ba93ef4f06be9ad8d2eb84196844d898e5d97422edf1b2d3cf9` |
 | `desktop/verification/derived_pair_build.py` | `a94d8166adfc86eabd460464c79b380b386bdd1f89074a447d00e8bf571ee766` |
 | `desktop/verification/test_derived_pair_build.py` | `ab1e6867c2bdec12ef8530068a78c9e2510e5daeba472e59f49ded072fc65e14` |
 | `desktop/verification/test_validate_derived_pair_build.py` | `0eeebd9f8fe3ce4a5d97999f7c107f9805e0d4406ea32adef71533426708492e` |
@@ -149,3 +149,16 @@ The retained source log is89,687 bytes, SHA256 `8d0617152bd54a38d8f45db90f3c149c
 Before the first compiler execution, the [official Java17 manual](https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.html#advanced-serviceability-options-for-java) establishes that UsePerfData defaults on and its disabled option suppresses perfdata directory creation. Independently reviewed preventive command closure adds exactly `-J-XX:-UsePerfData` to javac and `-XX:-UsePerfData` to the D8 JVM, binding producer, publisher and command evidence. This is **not observed residue from the hosted installed binary**: all three compile jobs were skipped. Unknown residue still refuses cleanup, original absolute budgets are unchanged, and unsupported options fail without fallback. Tool installation, runtime output loading, retained deployable artifacts and device effects remain outside this campaign.
 
 Author affected validation for this corrective packet: controller2/2, publisher3/3 (including six absent/enabled/reordered-option subcases), and exact workflow/count4/4 PASS. The marker case separately passed1/1 before the option amendment. One new Python method yields measured discovery325 (no full325 local rerun); workflow preserves exact325 and no-skip predicates. Affected quality exits0 with two existing informational style suggestions, not errors/warnings. Initial author quality invocation supplied the wrong npm-version argument and refused RUNTIME_MISMATCH before checking files; corrected invocation uses the admitted11.9.0 value. The worker's initial wrong-directory unittest invocation failed import before cases; its corrected cwd run produced the stated3/3. No compiler output, runtime pair or additional implementation-cell credit is claimed. Independent exact ten-file corrective review is CLEAR at 05:43 UTC: all18 fingerprints, index/disk identity, links, exact325/no-skip predicates and bounded scope verified. The same source-dependent compile-only retry is recommended, with no additional task or implementation-cell credit.
+
+
+## Fourth hosted source PASS; first paired tool-admission refusal — 05:51 UTC
+
+Public `31e376a860b0046d947c91a9c782045f88e771e0` / local `75b35c8616c24711afbbd3b74ea2ada725f52661`, exact tree `ca518e020ad4645b526b9b7bb88cad3902963ad4`, CI41395854688/source job125116896933 establishes actual **1598/1598 desktop plus DESKTOP_SOURCE_CHECK_PASS, foundation109/109 with zero exclusions, Python325/OK under the exact no-skip gate**, and phase03/no-ADB markers. The retained90,312-byte source log SHA256 is `644f579f651e486b1b9f85a89c8d015b72228bcd5fa089c561cd0cccd9ab9b60`; independent audit confirms these emitted results, not echoed commands.
+
+The now-admitted paired job125117836658 passes source binding/PowerShell syntax, then emits `DERIVED_PAIR_STAGE_TOOLS` and `DERIVED_PAIR_VALIDATION_FAIL`, exit1. Its retained20,977-byte log SHA256 is `596b6fe9e0b5474a4617bb12771ae1992d885cd47f7b0c5ad1406ad13b0cc728`, independently audited. The wrapper's actual ordering places this refusal **before PREPARE and all five compiler stages**. The log does not expose the rejected tools predicate; neither a missing SDK nor a particular compiler/tool defect is established. The separate jobs API records sourceSUCCESS, pairedFAILURE, uploadSKIPPED and eleven other optional jobsSKIPPED. There is no WRITTEN report, output identity or compiler-success evidence. Diagnosis retains the exact closed prerequisites; no unchanged retry or speculative provisioning follows from this result.
+
+### Bounded tool-admission diagnostics
+
+Source inspection found no deterministic failing TOOLS expression; the original environment snapshot remains retained after process-environment clearing, so clearing alone is not an established cause. The exact image README linked by the runner log was unavailable (404), not a verified installed-tool inventory. The corrective change adds only a fixed private substep before each existing root/equality/metadata/image/source/context boundary and one closed allowlisted `DERIVED_PAIR_TOOLS_…` marker on that failure. Workflow forwards exactly those13 named alternatives; no path, actual tool value, raw exception or generic exception-text classification is published. Every original tool predicate, tool version, no-install rule, process budget and failure outcome remains unchanged. This is a diagnostic evidence improvement for the same bounded source-dependent attempt, not a claimed tool repair or permission to adopt unknown tools.
+
+Author diagnostic validation: wrapper source-static12/12 PASS (one additive case), including exact workflow marker acceptance for all13 names and refusal of unknown/path/raw canaries; affected shared quality PASS. These tests do not execute PowerShell or tool discovery. Expected desktop count becomes1599; actual current hosted total remains1598. Foundation109 and Python325 are unchanged. Independent exact six-file diagnostic review is CLEAR at05:54 UTC; all18 fingerprints, index/disk identity, unchanged admission and precise attribution verified. The same bounded source-dependent retry is supported.
