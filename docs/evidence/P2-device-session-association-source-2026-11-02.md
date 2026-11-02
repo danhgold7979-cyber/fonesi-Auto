@@ -1,6 +1,6 @@
 # P2-03 / P2-05 / P2-06 — bounded device-session association source
 
-**Reviewed source implementation — 2026-11-02 00:25 UTC.** This is a source-only, production-confirmation-disabled mechanism. It is not a physical identity result, cryptographic continuity proof, main/UI activation or new accepted task. P2 technical remains 1/13, overall 11/154, formal 0.
+**Hosted source PASS — 2026-11-02 00:33 UTC; independent terminal audit PASS at 00:34 UTC.** This is a source-only, production-confirmation-disabled mechanism. It is not a physical identity result, cryptographic continuity proof, main/UI activation or new accepted task. P2 technical remains 1/13, overall 11/154, formal 0.
 
 ## Original requirement and reviewed entry
 
@@ -74,7 +74,7 @@ Actual eligibility still requires an explicitly authorized Windows environment s
 
 ## Frozen implementation fingerprints
 
-SHA256 values bind source, not executed physical evidence. The graph grows from 111 to 112 modules solely for the receipt contract; registered tests remain the same 158 paths. Native C#, PowerShell/bootstrap, managed fixtures and managed input pins are unchanged. Hosted source results for this checkpoint are NOT_RUN until the corresponding publication/CI completes.
+SHA256 values bind source, not executed physical evidence. The graph grows from 111 to 112 modules solely for the receipt contract; registered tests remain the same 158 paths. Native C#, PowerShell/bootstrap, managed fixtures and managed input pins are unchanged. At source freeze, hosted results were NOT_RUN. The terminal source-only result below supersedes that pending status without changing any physical acceptance claim.
 
 - `desktop/src/main/association-receipt-contract.ts`: `8f50eea2d677e31e4f82a0377e75b5a7bfc10bd2ad9adc6dd1af9030f97a3104`
 - `desktop/src/main/adb-discovery-service.ts`: `cf4bb3a6cad01a537e60de49972216cc5a7996e6ca65ccba8c18b4a7485b6a5a`
@@ -90,3 +90,11 @@ SHA256 values bind source, not executed physical evidence. The graph grows from 
 - `docs/phases/P2-DEVICE-SESSION-ASSOCIATION-PROPOSAL.md`: `fac99af349e6c11a73f1b0b19be58776b0611a707b1dd94fe5fcb3947268e920`
 
 Independent closure verified all 12 recorded fingerprints against disk and staged bytes, exact changed paths/links, unchanged 158-file test inventory and the single 111→112 module addition. The reviewer read source and causal tests but did not rerun the suite or native work. This is source readiness, not physical association acceptance.
+
+## Actual hosted source result
+
+Public commit `b3252bb5c5bc48d5bc501d23855a4f6d30a6bff4` maps to local `c418ad5547a294d4966b157d610e57256373e610` and exact tree `29a3cf21243083358ae01deac2fb513db757296f`. [CI 41367384647](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41367384647), source job `125030330273`, completed SUCCESS. Actual source log records **1,478/1,478 desktop tests**, `DESKTOP_SOURCE_CHECK_PASS`, **109/109 foundation** with zero failures/cancellations/skips/todos, and **286 Python tests / OK** under the exact-count/no-skips gate. `SOURCE_HEAD` binds the public commit and `SOURCE_JOB_NO_ADB_EXECUTION` is explicit.
+
+The sole retained decoded source log is 81,869 UTF-8 bytes, SHA256 `9b463ab6578ee2c72f5e9d411a00e2541634c37df62d9b4ea9a7fedf0c42c128`. The parent observed ten optional jobs SKIPPED through terminal job metadata; that is separate from the source log, not inferred native evidence. Independent retained-log audit PASS at 00:34 UTC confirms exact bytes/hash, emitted counts, public head and local tree; no reviewer fetch or test rerun was performed. The original local failures and stitched attribution above remain historical and are not rewritten as uninterrupted local success.
+
+No current native/managed campaign was run: unchanged v6/51 proof remains exact-byte historical evidence. Confirmation is still unavailable in production; no main/UI association flow, user attestation, handset, server, metadata or input effect was observed. P2 technical remains 1/13, overall 11/154, formal 0.
