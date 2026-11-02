@@ -257,3 +257,9 @@ hr.wall-resizer{margin:0;border:0}
 .tile-footprint>.wall-screen{--screenW:150px;width:150px;height:325px;padding:0;border:0;position:absolute;left:0;top:0;transform:scale(var(--tileScale,1));transform-origin:top left}
 .tile-footprint>.wall-screen>.android-view{height:100%;width:100%}
 .screens-grid.single{grid-template-columns:var(--tileW,150px)}
+
+/* Local nonmodal performance panel: real-width measurement and bounded internal scroll. */
+.wall>.wallhead,.wall>.wall-controls,.wall>.wall-zoombar,.wall>.wall-bottom{flex-shrink:0}
+.performance-panel{box-sizing:border-box;min-height:0;overscroll-behavior:contain}
+.performance-panel[data-measuring="true"]{position:absolute;top:0;left:0;width:100%;visibility:hidden;pointer-events:none;max-height:none}
+.performance-panel .performance-head{position:sticky;top:0;z-index:1;background:var(--white)}

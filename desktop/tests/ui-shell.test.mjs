@@ -63,14 +63,23 @@ function mount(extra = {}) {
     },
   };
   class Element {
+    isConnected = true;
+    measuredHeight = 30;
+    marginTop = 0;
+    marginBottom = 0;
+    children = [];
+    getBoundingClientRect() {
+      return { height: this.measuredHeight };
+    }
     closest() {
       return null;
     }
     focus() {
       document.activeElement = this;
+      this.onFocus?.();
     }
     contains(other) {
-      return other === this;
+      return other === this || this.children.some((child) => child.contains(other));
     }
     querySelector() {
       return this.first;
@@ -81,6 +90,20 @@ function mount(extra = {}) {
   }
   const window = {
     innerWidth: 1600,
+    innerHeight: 1000,
+    getComputedStyle(element) {
+      return {
+        marginTop: `${element.marginTop}px`,
+        marginBottom: `${element.marginBottom}px`,
+        getPropertyValue(name) {
+          return name.startsWith('padding')
+            ? '10px'
+            : name === 'border-bottom-width'
+              ? '1px'
+              : '0px';
+        },
+      };
+    },
     addEventListener: (key, fn) => {
       if (!events.has(key)) events.set(key, new Set());
       events.get(key).add(fn);
@@ -225,9 +248,41 @@ function mount(extra = {}) {
     assert.equal(name, 'wheel');
     wheelListeners.delete(listener);
   };
+  const performanceNodes = Object.fromEntries(
+    [
+      'wall',
+      'wallhead',
+      'wall-controls',
+      'wall-zoombar',
+      'wall-bottom',
+      'wall-performance',
+      'wall-performance-panel',
+      'performance-head',
+      'performance-close',
+    ].map((name) => [name, new Element()]),
+  );
+  performanceNodes.wall.clientHeight = 1000;
+  performanceNodes.wall.clientWidth = 510;
+  for (const [name, value] of Object.entries({
+    wallhead: 80,
+    'wall-controls': 60,
+    'wall-zoombar': 40,
+    'wall-bottom': 180,
+  }))
+    performanceNodes[name].measuredHeight = value;
+  performanceNodes['wall-performance-panel'].children = [performanceNodes['performance-head']];
+  performanceNodes['performance-head'].children = [performanceNodes['performance-close']];
   const render = () => {
     const tree = renderComponent(module.exports.UiShell, props);
     walk(tree, (n) => n.props?.id === 'wall-surface')[0].props.ref.current = surface;
+    for (const node of walk(tree, (n) => !!n.props?.ref)) {
+      const name =
+        node.props.id ??
+        (node.props['aria-label'] === 'Đóng bảng hiệu năng'
+          ? 'performance-close'
+          : node.props.className?.split(' ')[0]);
+      if (performanceNodes[name]) node.props.ref.current = performanceNodes[name];
+    }
     return tree;
   };
   const find = (id, tree = render()) => walk(tree, (n) => n.props?.id === id)[0];
@@ -237,6 +292,7 @@ function mount(extra = {}) {
     props,
     dimensions,
     surface,
+    performanceNodes,
     wheelListeners,
     observers,
     wheel(event) {
@@ -255,6 +311,16 @@ function mount(extra = {}) {
     },
     emptyPanel(properties) {
       return shared.exports.EmptyPanel(properties);
+    },
+    setupPage(properties = {}) {
+      return renderComponent(work.exports.SetupPage, {
+        snapshot: fixture,
+        selectedDeviceId: '',
+        selectedWorkflowId: '',
+        onUnavailable() {},
+        onFocusDevice() {},
+        ...properties,
+      });
     },
     localModal(properties) {
       return renderComponent(shared.exports.UiModal, properties);
@@ -320,6 +386,8 @@ test('nonREADY and untrusted READY snapshots cannot populate shell rows or count
 test('performance expands an attached compact panel without global modal or shell inertness', () => {
   const m = mount();
   m.find('wall-performance').props.onClick();
+  assert.equal(m.find('wall-performance').props['aria-expanded'], false);
+  m.effects();
   assert.equal(m.find('wall-performance').props['aria-expanded'], true);
   assert.equal(m.find('shell').props.inert, false);
   assert.equal(m.modal(), null);
@@ -917,4 +985,306 @@ test('visual focus has no first-row fallback and rejects overlays focus loss inv
   stale();
   assert.doesNotMatch(m.find('screens-grid').props.className, /single/);
   assert.deepEqual(m.dimensions, []);
+});
+
+function openPerformance(m) {
+  m.render();
+  m.effects();
+  m.performanceNodes['wall-performance'].focus();
+  m.find('wall-performance').props.onClick();
+  const measuring = m.find('wall-performance-panel');
+  assert.equal(measuring.props.inert, true);
+  assert.equal(measuring.props['aria-hidden'], true);
+  assert.equal(m.find('wall-performance').props['aria-expanded'], false);
+  m.effects();
+  m.render();
+  m.effects();
+  return m.find('wall-performance-panel');
+}
+
+test('performance panel measures actual owned geometry before presentation and has nonmodal focus semantics', () => {
+  const m = mount();
+  const panel = openPerformance(m);
+  assert.equal(panel.props.style.maxHeight, '450px');
+  assert.equal(panel.props.inert, false);
+  assert.equal(panel.props['aria-hidden'], undefined);
+  assert.equal(m.find('wall-performance').props['aria-controls'], 'wall-performance-panel');
+  assert.equal(m.find('wall-performance').props['aria-expanded'], true);
+  assert.equal(m.document.activeElement, m.performanceNodes['performance-close']);
+  assert.equal(m.find('shell').props.inert, false);
+  assert.equal(panel.props['aria-modal'], undefined);
+  let prevented = 0,
+    stopped = 0;
+  const event = {
+    target: m.performanceNodes['performance-close'],
+    key: 'Tab',
+    preventDefault() {
+      prevented++;
+    },
+    stopPropagation() {
+      stopped++;
+    },
+  };
+  panel.props.onKeyDown(event);
+  assert.deepEqual([prevented, stopped], [0, 0]);
+  panel.props.onKeyDown({ ...event, key: 'Escape', target: new m.Element() });
+  assert.equal(m.find('wall-performance').props['aria-expanded'], true);
+  panel.props.onKeyDown({ ...event, key: 'Escape' });
+  assert.deepEqual([prevented, stopped], [1, 1]);
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  assert.equal(m.document.activeElement, m.performanceNodes['wall-performance']);
+});
+
+test('performance sessions cancel measuring and stale callbacks cannot close or focus a later open', () => {
+  const m = mount();
+  m.render();
+  m.effects();
+  m.performanceNodes['wall-performance'].focus();
+  m.find('wall-performance').props.onClick();
+  const pending = m.find('wall-performance-panel');
+  const pendingClose = m.all((n) => n.props?.['aria-label'] === 'Đóng bảng hiệu năng')[0];
+  m.find('wall-performance').props.onClick();
+  m.effects();
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  const second = openPerformance(m);
+  pendingClose.props.onClick();
+  pending.props.onKeyDown({
+    key: 'Escape',
+    target: m.performanceNodes['performance-close'],
+    preventDefault() {
+      throw Error('stale');
+    },
+    stopPropagation() {
+      throw Error('stale');
+    },
+  });
+  assert.equal(m.find('wall-performance').props['aria-expanded'], true);
+  const outside = new m.Element();
+  outside.focus();
+  m.all((n) => n.props?.['aria-label'] === 'Đóng bảng hiệu năng')[0].props.onClick();
+  assert.equal(m.document.activeElement, outside);
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  second.props.onWheel({
+    stopPropagation() {
+      throw Error('stale wheel');
+    },
+  });
+});
+
+test('performance delayed initial focus never steals outside focus or focus from hidden unfocused document', () => {
+  for (const condition of ['outside', 'hidden', 'blurred']) {
+    const m = mount();
+    m.render();
+    m.effects();
+    m.performanceNodes['wall-performance'].focus();
+    m.find('wall-performance').props.onClick();
+    m.render();
+    m.effects();
+    const outside = new m.Element();
+    if (condition === 'outside') outside.focus();
+    if (condition === 'hidden') m.document.hidden = true;
+    if (condition === 'blurred') m.document.focused = false;
+    const before = m.document.activeElement;
+    m.render();
+    m.effects();
+    assert.equal(m.document.activeElement, before, condition);
+    m.document.hidden = false;
+    m.document.focused = true;
+    m.props.theme = 'DARK';
+    m.render();
+    m.effects();
+    assert.equal(m.document.activeElement, before, 'not replayed');
+  }
+});
+
+test('performance and picker are exclusive; modal readiness and unmount close without restoration', () => {
+  const m = mount({ pending: true, reconcile: true });
+  openPerformance(m);
+  const oldPicker = m.find('wall-device-picker');
+  m.find('wall-device-picker').props.onClick();
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  assert.equal(m.find('wall-device-picker').props['aria-expanded'], true);
+  assert.equal(m.document.activeElement, m.performanceNodes['performance-close']);
+  openPerformance(m);
+  oldPicker.props.onClick();
+  assert.equal(m.find('wall-performance').props['aria-expanded'], true);
+  assert.equal(m.find('wall-device-picker').props['aria-expanded'], false);
+  m.find('help-top').props.onClick();
+  m.render();
+  m.effects();
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  const n = mount();
+  openPerformance(n);
+  const outside = new n.Element();
+  outside.focus();
+  n.props.ready = false;
+  n.render();
+  n.effects();
+  assert.equal(n.find('wall-performance-panel'), undefined);
+  assert.equal(n.document.activeElement, outside);
+  n.props.ready = true;
+  n.render();
+  n.effects();
+  assert.equal(n.find('wall-performance-panel'), undefined);
+  openPerformance(n);
+  const close = n.all((x) => x.props?.['aria-label'] === 'Đóng bảng hiệu năng')[0];
+  n.dispose();
+  close.props.onClick();
+  assert.equal(n.document.activeElement, n.performanceNodes['performance-close']);
+});
+
+test('performance resize reserves fixed sibling heights and rejects invalid or insufficient measurement without reopening', () => {
+  const m = mount();
+  openPerformance(m);
+  const observer = m.observers.find((o) => o.target === m.performanceNodes['wall-bottom']);
+  assert.ok(observer);
+  m.performanceNodes.wall.clientHeight = 700;
+  m.performanceNodes.wallhead.marginBottom = 5;
+  observer.callback();
+  assert.equal(m.find('wall-performance-panel').props.style.maxHeight, '205px');
+  m.window.innerHeight = 400;
+  observer.callback();
+  assert.equal(m.find('wall-performance-panel').props.style.maxHeight, '180px');
+  m.performanceNodes.wall.clientHeight = 500;
+  observer.callback();
+  m.render();
+  m.effects();
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  assert.equal(m.document.activeElement, m.performanceNodes['wall-performance']);
+  m.performanceNodes.wall.clientHeight = 1000;
+  observer.callback();
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  for (const value of [0, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const n = mount();
+    n.render();
+    n.effects();
+    n.performanceNodes.wall.clientWidth = value;
+    n.find('wall-performance').props.onClick();
+    n.render();
+    n.effects();
+    assert.equal(n.find('wall-performance-panel'), undefined);
+  }
+});
+
+test('performance wheel containment preserves native default and never reaches wall zoom or settings', () => {
+  const m = mount();
+  const panel = openPerformance(m);
+  const width = m.find('shell').props.style['--tileW'];
+  let stopped = 0;
+  for (const ctrlKey of [false, true])
+    panel.props.onWheel({
+      ctrlKey,
+      stopPropagation() {
+        stopped++;
+      },
+      preventDefault() {
+        throw Error('native default prevented');
+      },
+    });
+  assert.equal(stopped, 2);
+  assert.equal(m.find('shell').props.style['--tileW'], width);
+  assert.deepEqual(m.dimensions, []);
+  const css = readFileSync(new URL('../assets/v9.css', import.meta.url), 'utf8');
+  assert.match(css, /\.performance-panel\{[^}]*overscroll-behavior:contain/);
+  assert.match(
+    css,
+    /\.performance-panel\[data-measuring="true"\]\{[^}]*position:absolute[^}]*visibility:hidden[^}]*pointer-events:none/,
+  );
+  assert.match(
+    css,
+    /\.wall>\.wallhead,\.wall>\.wall-controls,\.wall>\.wall-zoombar,\.wall>\.wall-bottom\{flex-shrink:0\}/,
+  );
+});
+
+test('performance unknown sensors and disabled capabilities survive theme and resize without synthetic telemetry', () => {
+  const m = mount();
+  openPerformance(m);
+  const performanceNode = m.all(
+    (n) => typeof n.type === 'function' && n.type.name === 'Performance',
+  )[0];
+  const tree = performanceNode.type(performanceNode.props);
+  const serialized = JSON.stringify(tree);
+  assert.ok(serialized.includes('UNKNOWN · không có mẫu quan sát'));
+  assert.ok(serialized.includes('Yêu cầu / hiệu lực / đề xuất: UNAVAILABLE'));
+  assert.equal(
+    walk(tree, (n) => ['input', 'select'].includes(n.type) && !n.props.disabled).length,
+    0,
+  );
+  m.props.theme = 'DARK';
+  m.render();
+  m.effects();
+  assert.equal(m.document.documentElement.dataset.theme, 'dark');
+  assert.equal(m.find('wall-performance').props['aria-expanded'], true);
+  assert.deepEqual(m.dimensions, []);
+});
+
+test('actual SetupPage nested UiModal focus closes performance without restoration and fences native panel admission', () => {
+  const m = mount();
+  openPerformance(m);
+  let setup = m.setupPage();
+  walk(
+    setup,
+    (n) => n.type === 'button' && JSON.stringify(n.props.children).includes('Bộ nội dung'),
+  )[0].props.onClick();
+  setup = m.setupPage();
+  const nested = walk(setup, (n) => typeof n.type === 'function' && n.type.name === 'UiModal')[0];
+  assert.ok(nested);
+  const modal = m.localModal(nested.props);
+  const dialogNode = walk(modal, (n) => n.props?.role === 'dialog')[0];
+  const dialog = new m.Element(),
+    close = new m.Element();
+  dialog.first = close;
+  dialog.children = [close];
+  dialogNode.props.ref.current = dialog;
+  close.onFocus = () => m.find('shell').props.onFocusCapture({ target: close });
+  m.document.activeDialog = dialog;
+  m.effects();
+  assert.equal(m.document.activeElement, close);
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  m.find('wall-performance').props.onClick();
+  m.render();
+  m.effects();
+  assert.equal(m.find('wall-performance-panel'), undefined);
+  assert.equal(m.document.activeElement, close);
+  const n = mount();
+  n.render();
+  n.effects();
+  n.performanceNodes['wall-performance'].focus();
+  n.find('wall-performance').props.onClick();
+  n.render();
+  n.document.activeDialog = new n.Element();
+  n.effects();
+  assert.equal(n.find('wall-performance-panel'), undefined);
+});
+
+test('picker Escape retained before passive cleanup cannot steal performance session focus', () => {
+  const m = mount();
+  m.render();
+  m.effects();
+  m.find('wall-device-picker').props.onClick();
+  m.render();
+  m.effects();
+  const retained = [...(m.events.get('keydown') ?? [])];
+  const pickerButton = new m.Element();
+  m.find('wall-device-picker').props.ref.current = pickerButton;
+  let stolen = 0;
+  pickerButton.focus = () => {
+    stolen++;
+  };
+  m.performanceNodes['wall-performance'].focus();
+  m.find('wall-performance').props.onClick();
+  for (const callback of retained) callback({ key: 'Escape' });
+  assert.equal(stolen, 0);
+  assert.equal(m.document.activeElement, m.performanceNodes['wall-performance']);
+  m.render();
+  m.effects();
+  m.render();
+  m.effects();
+  assert.equal(m.document.activeElement, m.performanceNodes['performance-close']);
+  for (const callback of retained) callback({ key: 'Escape' });
+  assert.equal(stolen, 0);
+  assert.equal(m.find('wall-performance').props['aria-expanded'], true);
+  const css = readFileSync(new URL('../assets/v9.css', import.meta.url), 'utf8');
+  assert.match(css, /\.performance-panel \.performance-head\{position:sticky;top:0;/);
+  assert.doesNotMatch(css, /\.performance-panel \.performance-head\{[^}]*top:-/);
 });

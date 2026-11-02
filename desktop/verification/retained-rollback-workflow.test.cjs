@@ -11,7 +11,7 @@ const condition =
   "    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_rollback) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[retained-rollback]')))";
 function gate(value) {
   const s = value.replaceAll('\r\n', '\n');
-  assert.match(s, /assert s\.countTestCases\(\)==353; r=unittest\.TextTestRunner/);
+  assert.match(s, /assert s\.countTestCases\(\)==375; r=unittest\.TextTestRunner/);
   assert.match(s, /r\.wasSuccessful\(\) and not r\.skipped/);
   assert.match(
     s,
@@ -29,8 +29,8 @@ function gate(value) {
 test('historical four-stage campaign remains suspended pending current server input review under LF and CRLF', () => {
   for (const s of workflowEncodings(raw)) {
     gate(s);
-    for (const replacement of ['s.countTestCases()==289', 's.countTestCases()>=353']) {
-      const changed = s.replace('s.countTestCases()==353', replacement);
+    for (const replacement of ['s.countTestCases()==289', 's.countTestCases()>=375']) {
+      const changed = s.replace('s.countTestCases()==375', replacement);
       assert.notEqual(changed, s);
       assert.throws(() => gate(changed));
     }

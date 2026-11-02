@@ -21,6 +21,7 @@ const nativeNames = [
   'owned-video-managed-development',
   'derived-pair-compile-development',
   'derived-notice-evidence-development',
+  'derived-pair-retained-evidence-development',
 ];
 const marker = `          if ($env:GITHUB_REF -eq 'refs/heads/phase-03') {
             Write-Output 'PHASE03_SOFTWARE_ONLY'
@@ -51,7 +52,7 @@ function validate(rawSource) {
     'node foundation/scripts/verify-bootstrap.mjs $npmVersion',
     'npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache',
     'node foundation/scripts/check.mjs $npmVersion',
-    "discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==353;",
+    "discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==375;",
     'r.wasSuccessful() and not r.skipped',
     marker,
     "Write-Output 'SOURCE_JOB_NO_ADB_EXECUTION'",
@@ -96,10 +97,20 @@ function validate(rawSource) {
         source,
         / {6}run_notice_evidence:\n {8}description: [^\n]+\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
       );
+    } else if (jobs[i][1] === 'derived-pair-retained-evidence-development') {
+      assert.equal(
+        condition,
+        "github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_pair_retention == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[pair-retain]')))",
+      );
+      assert.match(body, / {4}needs: windows-software-only\n/);
+      assert.match(
+        source,
+        / {6}run_pair_retention:\n {8}description: [^\n]+\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
+      );
     } else assert.ok(condition.startsWith('false && '));
   }
 }
-test('phase03 reuses pinned source gates with only explicit managed-video, compile-pair and notice-evidence opt-ins on that branch', () => {
+test('phase03 reuses pinned source gates with only explicit managed-video, compile-pair, notice-evidence and retained-pair opt-ins on that branch', () => {
   for (const source of workflowEncodings(raw)) validate(source);
 });
 test('phase source workflow rejects branch, native authority, marker and gate drift under LF and CRLF', () => {
@@ -112,7 +123,21 @@ test('phase source workflow rejects branch, native authority, marker and gate dr
     const enabledPairInput = pairInput.replace('        default: false', '        default: true');
     const enabledPair = normalized.replace(pairInput, enabledPairInput);
     assert.equal(enabledPair.replace(enabledPairInput, pairInput), normalized);
+    const retentionInput = normalized.match(
+      / {6}run_pair_retention:\n(?: {8}[^\n]+\n)*? {8}default: false\n/,
+    )?.[0];
+    assert.ok(retentionInput);
     const mutants = [
+      normalized.replace(
+        retentionInput,
+        retentionInput.replace('        default: false', '        default: true'),
+      ),
+      normalized.replace('inputs.run_pair_retention == true', 'inputs.run_pair_retention != true'),
+      normalized.replace("'[pair-retain]'", "'[pair-build]'"),
+      normalized.replace(
+        '  derived-pair-retained-evidence-development:\n    needs: windows-software-only',
+        '  derived-pair-retained-evidence-development:\n    needs: nonexistent',
+      ),
       normalized.replace('branches: [phase-02, phase-03]', 'branches: [phase-02]'),
       normalized.replace('inputs.run_pair_build == true', 'inputs.run_pair_build != true'),
       normalized.replace(
@@ -140,7 +165,7 @@ test('phase source workflow rejects branch, native authority, marker and gate dr
         "if: true || ((github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui)",
       ),
       normalized.replace('PHASE03_SOFTWARE_ONLY', 'PHASE02_SOFTWARE_ONLY'),
-      normalized.replace('s.countTestCases()==353', 's.countTestCases()==289'),
+      normalized.replace('s.countTestCases()==375', 's.countTestCases()==289'),
       normalized.replace('r.wasSuccessful() and not r.skipped', 'r.wasSuccessful()'),
       normalized.replace('node desktop/scripts/check.mjs --restore', 'echo bypass'),
       normalized.replace("node-version: '24.22.1'", "node-version: 'latest'"),

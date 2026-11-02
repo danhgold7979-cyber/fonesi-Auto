@@ -185,7 +185,20 @@ The same 100 definitions remain fixed. Independent [P3-07 source and terminal ev
 | P3-07.C | N | I | Independent double-click visual focus, preserving selected set and separately confirmed ACTIVE |
 | P3-07.D | N | I | Render-time exact tuple loss, repeated focus/stale-handler fences and prior display restoration |
 
-**Current fixed ledger: N86 / S4 / I10. Source-covered 14/100 = 14.0%; integrated/software-tested 10/100 = 10.0%; each +4.0 percentage points versus §3.1 (10%/6%).** This is completion of four existing functional cells, not a denominator change or test-count increment. These overlap and are not added. All other cells retain the baseline plus §3.1 status. Actual app integration and controlled software tests do not establish rendered visual parity, decoded frames, physical qualification or full task acceptance; technical acceptance remains **0/19**. The old 1/19 whole-deliverable measure is historical and not the current reporting unit.
+**At the 08:02 checkpoint: N86 / S4 / I10. Source-covered 14/100 = 14.0%; integrated/software-tested 10/100 = 10.0%; each +4.0 percentage points versus §3.1 (10%/6%).** This is completion of four existing functional cells, not a denominator change or test-count increment. These overlap and are not added. All other cells retain the baseline plus §3.1 status. Actual app integration and controlled software tests do not establish rendered visual parity, decoded frames, physical qualification or full task acceptance; technical acceptance remains **0/19**. The old 1/19 whole-deliverable measure is historical and not the current reporting unit.
+
+## 3.3. Comparable LOCAL progress update — 2026-11-02 09:41 UTC
+
+Independent review credits [P3-12 local source/checks](../evidence/P3-12-local-performance-panel-source-2026-11-02.md) at local commit `129346cb23fc3efed338725fc35b5cef5bc442ae`, tree `731b06001cbfaca9b60e54f6c7ce509f1ce76f3b`. Actual app wiring and attributable software tests satisfy the unchanged I definition; hosted CI is not an extra prerequisite. This checkpoint is locally complete and held for the next meaningful publication under the owner's batching instruction. Latest actual hosted source remains1636/109/353, separate from the historical pre-correction1643 local aggregate and final10 affected/seven refresh stages/40 policy tests.
+
+| Cell | Prior | Current | LOCAL integrated software evidence |
+|---|---|---|---|
+| P3-12.A | N | I | Existing right-dock attached panel, unchanged six-tab/monitor structure, actual app wiring |
+| P3-12.B | N | I | Explicit open/close, measured dock/viewport fit and uncompressed sibling geometry, inherited theme |
+| P3-12.C | N | I | Same-session keyboard/focus, real nested modal, stale picker callback and wheel containment regressions |
+| P3-12.D | N | I | Truthful UNKNOWN/disabled status, safe hiding/reopening without profile or device effects |
+
+**Current fixed ledger: N82 / S4 / I14. Source-covered18/100 =18.0%; integrated/software-tested14/100 =14.0%; each +4.0 percentage points versus §3.2 (14%/10%).** No denominator or acceptance rule changed. Rendered visual/native-scroll qualification, P3-11 telemetry and physical/task acceptance remain open; technical acceptance stays0/19. No credit is assigned to pending retained-pair work or waiting/build duration. Record this with the combined milestone, not a standalone documentation push.
 
 ## 4. First baseline and honest deltas
 

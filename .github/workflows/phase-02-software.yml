@@ -2,6 +2,11 @@ name: Phase 02–03 software and gated development boundaries
 on:
   workflow_dispatch:
     inputs:
+      run_pair_retention:
+        description: 'Build and retain the exact reviewed pair and source evidence publicly for 14 days; no artifact execution or device operation'
+        required: false
+        type: boolean
+        default: false
       run_notice_evidence:
         description: 'Capture exact vendor notice text only; no pair compilation, binary retention or device operation'
         required: false
@@ -139,7 +144,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==353; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==375; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Explicit unavailable runtime and deferred hardware boundary
         run: |
@@ -1279,6 +1284,62 @@ jobs:
             desktop/.derived-notice-runtime/upload/NOTICE.txt
             desktop/.derived-notice-runtime/upload/source.properties
             desktop/.derived-notice-runtime/upload/receipt.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+  derived-pair-retained-evidence-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_pair_retention == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[pair-retain]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Bind exact source checkout and parse the fixed build entry
+        run: |
+          try {
+            $head=@(& git rev-parse HEAD); if($LASTEXITCODE -ne 0 -or $head.Count -ne 1){throw 'SOURCE_HEAD'}
+            $tree=@(& git rev-parse 'HEAD^{tree}'); if($LASTEXITCODE -ne 0 -or $tree.Count -ne 1){throw 'SOURCE_TREE'}
+            if($head[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $tree[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $head[0] -cne $env:GITHUB_SHA){throw 'SOURCE_BINDING'}
+            "FONESI_AUTO_SOURCE_COMMIT=$($head[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "FONESI_AUTO_SOURCE_TREE=$($tree[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-DerivedPairBuild.ps1'),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -ne 0){throw 'SYNTAX'}
+            Write-Output 'DERIVED_PAIR_SOURCE_BOUND'
+          } catch { Write-Output 'DERIVED_PAIR_SOURCE_REJECTED'; exit 1 }
+      - name: Build and retain only the exact pair and source evidence
+        id: pair_retention
+        run: |
+          try {
+            $lines=@(& ./desktop/verification/Invoke-DerivedPairBuild.ps1 -PythonPath $env:FOUNDATION_PYTHON_EXE -RetainEvidence)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^DERIVED_PAIR_(RETENTION_DIAG\|(COPY|VALIDATE|CLEANUP|PUBLISH)\|(OWNER|CONTEXT|SOURCE|BUILD|OUTPUT|GENERATED|NOTICE|COPY|READBACK|LAYOUT|CLEANUP|RECEIPT|PROMOTE)\|(PREDICATE|IDENTITY|HASH|BYTE_LIMIT|SCHEMA|IO_ACCESS|IO_NOT_FOUND|IO_OTHER|INTERNAL)|RETENTION_(WRITTEN|PASS|FAIL)|CONTROL_DIAG\|(ACQUIRE|PREPARE|PLAN|VERIFY|FINISH|CLEANUP|CLI)\|(ENTRY|OWNER|CONTEXT|ARCHIVE|PATCH|TOOLS_JDK17|TOOLS_ANDROID36|TOOLS_BUILD_TOOLS36|TOOLS_FRAMEWORK64|TOOLS_METADATA|MATERIALIZE_SOURCE|MATERIALIZE_CONSUMER|GENERATED_INPUTS|RUNNER_CLOSURE|ADMISSION_WRITE|LOAD_ADMISSION|REVALIDATE_SOURCE|PLAN_WRITE|PLAN_COMPARE|PROCESS_RECEIPTS|DEPENDENCIES|OUTPUT_INSPECT|OUTPUT_ZIP|DEX_HEADER|DEX_TABLES|DEX_NAME|DEX_NAMESPACE|PE_HEADER|PE_CLI|PE_METADATA|EVIDENCE_WRITE|REPORT_WRITE|CLOSED_LAYOUT|STAGING_BINDING|DELETE_FILES|DELETE_DIRS|ACQUIRE_FETCH|ACQUIRE_WRITE)\|(PREDICATE|CANONICAL_PATH|REPARSE|FILE_TYPE|LINK_COUNT|IDENTITY|BYTE_LIMIT|ENTRY_LIMIT|TOTAL_BYTES|NAME|COLLISION|HASH|SCHEMA|NO_CLOBBER|IO_ACCESS|IO_NOT_FOUND|IO_OTHER|ENCODING|ARCHIVE_FORMAT|INTERNAL)|SUPERVISOR_STATUS_(SUCCESS|EMPTY_OUTPUT|NONZERO_EXIT|TIMEOUT|ACCESS_DENIED|LAUNCH_FAILED|CAPTURE_FAILED|CLEANUP_FAILED)_EXIT_(NULL|PRESENT)_RETIRED_(TRUE|FALSE)_STDOUT_TRUNCATED_(TRUE|FALSE)_STDERR_TRUNCATED_(TRUE|FALSE)|DIAGNOSTIC_UNAVAILABLE|STAGE_[A-Z]+|TOOLS_(JDK_ROOT|SDK_ROOT|SDK_CONSISTENCY|PLATFORM_ROOT|BUILD_TOOLS_ROOT|FRAMEWORK_ROOT|JDK_METADATA|PLATFORM_METADATA|BUILD_TOOLS_METADATA|COMPILER_METADATA|IMAGE|SOURCE_IDS|CONTEXT)|VALIDATION_(WRITTEN|PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'DERIVED_PAIR_RETENTION_WRITTEN'}).Count -ne 1 -or @($lines | Where-Object {$_ -ceq 'DERIVED_PAIR_RETENTION_PASS'}).Count -ne 1){exit 1}
+            'passed=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } catch { Write-Output 'DERIVED_PAIR_RUNNER_FAILED'; exit 1 }
+      - name: Upload only the verified retained pair packet
+        if: success() && steps.pair_retention.outputs.passed == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: derived-pair-retained-evidence
+          path: desktop/.derived-pair-build-runtime/retained-upload/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14

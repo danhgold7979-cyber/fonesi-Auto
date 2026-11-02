@@ -28,6 +28,7 @@ export const TEST_FILES = Object.freeze([
   'tests/demo-renderer.test.mjs',
   'tests/demo-runtime.test.mjs',
   'tests/derived-notice-evidence.test.mjs',
+  'tests/derived-pair-retention.test.mjs',
   'tests/device-actor.test.mjs',
   'tests/device-diagnostics.test.mjs',
   'tests/device-fault-composition.test.mjs',
