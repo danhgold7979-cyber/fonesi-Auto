@@ -88,7 +88,7 @@ The 23-file packet includes only the paths below. Caches, archive/source origina
 | `desktop/tests/retained-managed-fixture.test.mjs` | `a05176ed8fe84fc460d508fb01af5ded49814adb5e2e942124451d04298e09b8` |
 | `desktop/verification/retained-rollback-workflow.test.cjs` | `7c7f4bce4ad867a5d72b3b2dd85f879fc82a8a65908eea360345b2352c16855c` |
 | `desktop/verification/Invoke-DerivedPairBuild.ps1` | `d28fc606114ebb628c32ed49260f4496e3bde2738910bb6b49dec391b41b482d` |
-| `desktop/verification/derived-pair-wrapper.test.cjs` | `da632c3f089b43336285771bba6292a86056b9e82554099825d5c9703eea1ebc` |
+| `desktop/verification/derived-pair-wrapper.test.cjs` | `ddfa9f072cd785734b4db9cf2883d58ba20406c12aadd2e3fa905d34fc148766` |
 | `desktop/verification/derived_pair_build.py` | `3fca5b84ad7192c7dc92005af9eef0cf0cfa59dd1433e01f792e71493b2ebb9f` |
 | `desktop/verification/test_derived_pair_build.py` | `d3eb7cce3f58078afb9dcede40525ea277d59f91f75cdcc0e50d251688d44508` |
 | `desktop/verification/test_validate_derived_pair_build.py` | `b7adbacc4403dff05ef730e85a92077aa1cf78020e57f71b67234afba6278f83` |
@@ -104,3 +104,17 @@ Final author refresh at 05:11 UTC: all seven existing graph, quality, main typec
 Whitespace attribution: cached whitespace checking passes for all source/docs except the exact hash-bound unified patch data, whose 14 lines consisting of a single context marker (` `) are required blank-line patch syntax. All 14 were checked as context-only markers; the independently reviewed patch hash is unchanged. No global whitespace rule was relaxed or patch bytes stripped.
 
 Independent final closure at 05:13 UTC is CLEAR for the exact 23-file packet, 18 fingerprints, links, additive test/Python inventory, seven refresh markers and fixed 100-cell reporting baseline. The recommendation covers one source-dependent compile-only campaign under standing engineering permission, not runtime pair admission, artifact retention or any device execution.
+
+
+## First hosted attempt — source fixture refusal, 05:18 UTC
+
+Public source `b2a7a78771537987a14f236fd26437c2309f045e` / local `4d1d59d59fe3aa2180321b04bc7a250b0f78d617` has exact tree `b91d935c018a109026ba5e9b21ae585cadf17a1a`. CI 41392997482 source job 125108227802 failed in desktop batch18: actual 60 cases, 58 passed, two failed at ordinals27/28, no cancellation/skip/todo. The log contains TESTS_FAILED, not a desktop/source PASS. Foundation/Python hosted stages did not run; the separate jobs API reports the paired compile-only job SKIPPED. **No Java or consumer compiler stage executed.**
+
+The retained source log is 19,464 bytes, SHA256 `e5aaec467322c069e88c1b3b40a3b2c0fb04c5c9a05734632f319920b0977d8e`; independent read-only audit confirms these exact bounded markers. Ordinal mapping identifies the new wrapper test's workflow-encoding positive and named-input mutation cases. Source inspection finds raw Windows CRLF can be converted to CRCRLF by an unnormalized LF→CRLF replacement, while the named-input regex expects LF. The hosted log does not expose a private assertion message; causal local reproduction/correction is attributed separately, not invented as observed Windows internals. No output/capture cap, production gate or compiler semantics is relaxed to repair a test fixture.
+
+
+The test-only CRLF checkout composition reproduced exactly those two named failures against the unchanged test. The correction reuses the existing `workflowEncodings` normalizer before mutation/variant generation, tests both LF and already-CRLF source, and explicitly refuses producing CRCRLF. Author results: normal checkout 11/11 PASS; synthetic CRLF checkout 11/11 PASS; shared quality check PASS with no diagnostics. These runs overlap the same 11 cases, not 22 distinct tests. A bounded static check of this packet's four changed workflow helpers confirms the remaining raw conversions already normalize LF first or use the shared helper. No new generic framework, compiler/source change, gate relaxation or capture-cap increase was made.
+
+Only the test and two evidence/status documents change in this corrective packet. Expected hosted counts stay1598/109/320; the actual previous host result remains FAILED and paired compilation remains NOT_RUN until the corrected run produces evidence.
+
+Independent exact three-file corrective review is CLEAR at 05:21 UTC, including index/disk identity, the unchanged production/compiler gate and the bounded static-normalization check. The same source-dependent compile-only retry is supported; no new scope or acceptance follows.

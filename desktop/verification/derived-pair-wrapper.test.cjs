@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { workflowEncodings } = require('./workflow-fixture.cjs');
 const source = fs.readFileSync(path.join(__dirname, 'Invoke-DerivedPairBuild.ps1'), 'utf8');
 function before(left, right, text = source) {
   const a = text.indexOf(left),
@@ -131,10 +132,11 @@ test('unchanged historical supervisor and owned helpers are pinned before use', 
   assert.match(native, /Path.GetDirectoryName\(executable\), ref startup/);
 });
 
-const workflow = fs.readFileSync(
+const workflowRaw = fs.readFileSync(
   path.join(__dirname, '../../.github/workflows/phase-02-software.yml'),
   'utf8',
 );
+const workflow = workflowEncodings(workflowRaw)[0];
 const pairGate =
   "github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_pair_build == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[pair-build]')))";
 function validPairWorkflow(raw) {
@@ -216,8 +218,15 @@ function validPairWorkflow(raw) {
   );
 }
 test('paired workflow is phase-03 opt-in, source-gated, parse-first and JSON-only, including CRLF', () => {
-  assert.equal(validPairWorkflow(workflow), true);
-  assert.equal(validPairWorkflow(workflow.replace(/\n/g, '\r\n')), true);
+  const expected = workflowEncodings(workflowRaw);
+  for (const checkout of expected) {
+    const variants = workflowEncodings(checkout);
+    assert.deepEqual(variants, expected);
+    for (const variant of variants) {
+      assert.equal(variant.includes('\r\r\n'), false);
+      assert.equal(validPairWorkflow(variant), true);
+    }
+  }
 });
 test('paired workflow refuses changed branch, default enablement, missing gate and disabled drift', () => {
   const input = workflow.match(
