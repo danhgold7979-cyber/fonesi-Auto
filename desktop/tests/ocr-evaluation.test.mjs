@@ -2,10 +2,11 @@
 // Actual OpenCV/OCR composition runs only with the exact explicit opt-in below.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { spawnSync } from 'node:child_process';
 import { transformSync } from 'esbuild';
@@ -171,9 +172,19 @@ function harness({
     (name) =>
       name === 'node:child_process'
         ? { spawn }
-        : name === './preprocess-worker.ts'
-          ? { createSuppliedPreprocessor: () => pre }
-          : require(name),
+        : name === 'node:fs'
+          ? {
+              ...require(name),
+              mkdtempSync(prefix) {
+                // Synthetic Linux-owner policy tests use an owned platform fixture root.
+                // The actual Linux admission/path contract remains unchanged.
+                assert.equal(prefix, '/tmp/auto-p4-ocr-job-');
+                return realpathSync.native(mkdtempSync(join(tmpdir(), 'auto-p4-ocr-fixture-')));
+              },
+            }
+          : name === './preprocess-worker.ts'
+            ? { createSuppliedPreprocessor: () => pre }
+            : require(name),
     module,
     module.exports,
     { now: () => now },
