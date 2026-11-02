@@ -546,7 +546,7 @@ def inspect_dex(data):
         if not 1<=count<=256 or off+count>=len(data) or data[off+count]!=0:fail('OUTPUT_REJECTED')
         try:name=data[off:off+count].decode('ascii')
         except UnicodeError:fail('OUTPUT_REJECTED')
-        if re.fullmatch(r'L(?:[A-Za-z_$][A-Za-z0-9_$]*/)*[A-Za-z_$][A-Za-z0-9_$]*;',name) is None:fail('OUTPUT_REJECTED')
+        if re.fullmatch(r'L[A-Za-z0-9_$-]+(?:/[A-Za-z0-9_$-]+)*;',name) is None:fail('OUTPUT_REJECTED')
         checkpoint('DEX_NAMESPACE')
         package=name[1:-1].rsplit('/',1)[0]
         if package not in PACKAGES:fail('OUTPUT_REJECTED')

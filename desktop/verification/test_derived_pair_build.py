@@ -17,11 +17,17 @@ import zlib
 import derived_pair_build as d
 
 
+DEX_GENERATED_NAMES=tuple('Lcom/genymobile/scrcpy/'+name+';' for name in ('Server-IA','Server$-CC','0Synthetic','Server$$ExternalSyntheticLambda0','Server$Nested-IA'))
+
+
 def dex_fixture(name='Lcom/genymobile/scrcpy/Server;'):
-    raw=bytearray(160+len(name)+2);raw[:8]=b'dex\n035\0'
+    encoded=name.encode('utf-8');length=len(name);uleb=bytearray()
+    while length>=128:uleb.append((length&127)|128);length>>=7
+    uleb.append(length)
+    raw=bytearray(160+len(uleb)+len(encoded)+1);raw[:8]=b'dex\n035\0'
     def u(off,value):struct.pack_into('<I',raw,off,value)
     u(32,len(raw));u(36,112);u(40,0x12345678);u(56,1);u(60,112);u(64,1);u(68,116);u(96,1);u(100,120)
-    u(112,160);u(116,0);u(120,0);raw[160]=len(name);raw[161:161+len(name)]=name.encode();raw[-1]=0
+    u(112,160);u(116,0);u(120,0);raw[160:160+len(uleb)]=uleb;raw[160+len(uleb):-1]=encoded;raw[-1]=0
     raw[12:32]=hashlib.sha1(raw[32:]).digest();u(8,zlib.adler32(raw[12:])&0xffffffff)
     return bytes(raw)
 
@@ -114,8 +120,20 @@ class DerivedPairBuildTests(unittest.TestCase):
 
     def test_actual_dex_checksum_descriptor_closure_and_mutations(self):
         good=dex_fixture();classes,ns=d.inspect_dex(good);self.assertEqual(classes,['Lcom/genymobile/scrcpy/Server;']);self.assertEqual(ns,[{'prefix':'com.genymobile.scrcpy','count':1}])
-        for bad in (good[:-1],good[:12]+b'X'+good[13:],dex_fixture('Lkotlin/Unit;'),dex_fixture('Lcom/genymobile/scrcpy/Bad-Name;')):
+        for bad in (good[:-1],good[:12]+b'X'+good[13:],dex_fixture('Lkotlin/Unit;'),dex_fixture('Lcom/genymobile/scrcpy/Bad.Name;')):
             with self.assertRaises(ValueError):d.inspect_dex(bad)
+
+    def test_ascii_dex_generated_names_and_closed_descriptor_boundaries(self):
+        prefix='Lcom/genymobile/scrcpy/'
+        for name in (*DEX_GENERATED_NAMES,prefix+'A'*(256-len(prefix)-1)+';'):
+            with self.subTest(name=name):self.assertEqual(d.inspect_dex(dex_fixture(name))[0],[name])
+        for tail in ('',';','Bad.Name;','Bad Name;','Bad:Name;','Bad[Name;','Bad\\Name;','/Name;','Name/;','Name','Name;;','Name;\n','Náme;','A'*(257-len(prefix)-1)+';'):
+            with self.subTest(tail=tail):
+                with self.assertRaises(ValueError):d.inspect_dex(dex_fixture(prefix+tail))
+        with self.assertRaises(ValueError):d.inspect_dex(dex_fixture('Lforeign/Server-IA;'))
+        broken=bytearray(dex_fixture(DEX_GENERATED_NAMES[0]));broken[-1]=1
+        broken[12:32]=hashlib.sha1(broken[32:]).digest();struct.pack_into('<I',broken,8,zlib.adler32(broken[12:])&0xffffffff)
+        with self.assertRaises(ValueError):d.inspect_dex(bytes(broken))
 
     def test_actual_pe_requires_amd64_dll_clr_and_bounded_metadata_not_magic_only(self):
         good=pe_fixture();self.assertEqual(d.inspect_pe(good),{'machine':34404,'optionalMagic':523})
@@ -352,7 +370,7 @@ class DerivedPairBuildTests(unittest.TestCase):
         self.assertEqual(report['failure'],'OUTPUT_REJECTED');self.assertEqual(output.getvalue(),'')
 
     def test_output_diagnostic_sites_preserve_closed_inspector_refusals(self):
-        cases=[('DEX_HEADER',lambda:d.inspect_dex(b'PRIVATE_CANARY')),('DEX_NAME',lambda:d.inspect_dex(dex_fixture('Lcom/genymobile/scrcpy/Bad-Name;'))),('DEX_NAMESPACE',lambda:d.inspect_dex(dex_fixture('Lforeign/Example;'))),('PE_HEADER',lambda:d.inspect_pe(b'PRIVATE_CANARY'))]
+        cases=[('DEX_HEADER',lambda:d.inspect_dex(b'PRIVATE_CANARY')),('DEX_NAME',lambda:d.inspect_dex(dex_fixture('Lcom/genymobile/scrcpy/Bad.Name;'))),('DEX_NAMESPACE',lambda:d.inspect_dex(dex_fixture('Lforeign/Example;'))),('PE_HEADER',lambda:d.inspect_pe(b'PRIVATE_CANARY'))]
         raw=bytearray(dex_fixture());struct.pack_into('<I',raw,96,0)
         raw[12:32]=hashlib.sha1(raw[32:]).digest();struct.pack_into('<I',raw,8,zlib.adler32(raw[12:])&0xffffffff)
         cases.append(('DEX_TABLES',lambda:d.inspect_dex(bytes(raw))))

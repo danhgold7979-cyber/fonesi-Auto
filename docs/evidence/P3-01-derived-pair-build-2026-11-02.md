@@ -80,19 +80,19 @@ The 23-file packet includes only the paths below. Caches, archive/source origina
 
 | Source / gate | SHA256 |
 |---|---|
-| `.github/workflows/phase-02-software.yml` | `cdd6fe7b74dc065c837c0e3f1e4bd4c0c8d535fcb3722f7a153c4baf56c6befb` |
+| `.github/workflows/phase-02-software.yml` | `934565de90bd9b10b94d3aea2f4d76bb049b50b1ac7fed3e0ba2794b020a3db6` |
 | `desktop/scripts/quality-tool.mjs` | `ccff8a43620c7cea61d81b5c3ae0ea5e963431ae2e7b7fdd73975b5c500f663d` |
 | `desktop/scripts/test-batches.mjs` | `0489ff8d0afaa86a83bad671bc4a762a0343c4bf3b53c600804f985e8f511f63` |
-| `desktop/tests/phase-source-workflow.test.mjs` | `dbd5d6f9cb80484066677922217b21d0b9a1f87904ebbe00eb0e32fa30f65616` |
+| `desktop/tests/phase-source-workflow.test.mjs` | `4ceb767da49a45acffeff1c01a91b4ebc473c67900e2bc46e5808b60f27ff8a0` |
 | `desktop/tests/quality-tool.test.mjs` | `05110e6803d583a3574a3cc93d30c5e6c71f91f485dfb64e5029794296767bf5` |
 | `desktop/tests/retained-managed-fixture.test.mjs` | `a05176ed8fe84fc460d508fb01af5ded49814adb5e2e942124451d04298e09b8` |
-| `desktop/verification/retained-rollback-workflow.test.cjs` | `7fbaf7984250f2973c6e134259afa8135c3313716b062f7b9dd4f53c671bcc7b` |
+| `desktop/verification/retained-rollback-workflow.test.cjs` | `2ced974a01bf43eac319114a7d9206057258aba6790da4c9f1f4c3cf28672c5b` |
 | `desktop/verification/Invoke-DerivedPairBuild.ps1` | `eb84ac52651d081860557a9bf8b79aa5c3855408fc6d71e4de7958a7481bd0f8` |
 | `desktop/verification/derived-pair-wrapper.test.cjs` | `fdaf656dfebc95252c558ab3dd328ee1c9d5bb60d255d098d60e3a5673be673c` |
-| `desktop/verification/derived_pair_build.py` | `91e5db7df43b0657e79dce324bfb5857815ce6abc097866f9e9b91e04ad1287f` |
-| `desktop/verification/test_derived_pair_build.py` | `b7fb4fbfa6a18023f687ef321c026e8f27625c71052b0af61d8ccd682769428b` |
-| `desktop/verification/test_validate_derived_pair_build.py` | `7347a1388d03b189dd40c0e66a32364de6c9296c32f4f71c353a4a5f6efbb03e` |
-| `desktop/verification/validate_derived_pair_build.py` | `4878d3e40e9219e3815a52ff20a31736cf8debd6c1a053c36fbaf13775bb5d0b` |
+| `desktop/verification/derived_pair_build.py` | `9bba5631261202e37c4c85d020a5e3479fafb3e5cd3a79a64e8cc69e508f1559` |
+| `desktop/verification/test_derived_pair_build.py` | `47ac6b383b0212f6b52c7cbd35092958f8f83f8dc5ad58e5b201a3cb905f9b8c` |
+| `desktop/verification/test_validate_derived_pair_build.py` | `a0daa627a1b271d206e5b8d8413dd1cd7f818cbf64bda689c6a4d5c713130ceb` |
+| `desktop/verification/validate_derived_pair_build.py` | `df2db6f6916b0072936d73c113f8c256e89f67658f8606b7fd2435a72150eb88` |
 | `desktop/video-source/README.md` | `71886a1b4a7a210757da499cebe7bbf55e860bd25cf28b51ceaef1fd0f535d42` |
 | `desktop/video-source/auto-video-nonce-v1.patch` | `caaadaecd4b559ef8f980e5eae84c47c9f7174a8d916f8fda05612fed7ff6f8c` |
 | `desktop/video-source/source-provenance.json` | `5903269dca4416213e4acb8be7cdf1c637147ed07a00dc9527684b4a8de574a6` |
@@ -234,3 +234,17 @@ The controller's FINISH path catches an output refusal and writes its truthful f
 The wrapper accepts the optional diagnostic plus CONTROL_PASS only for the exact FINISH controller invocation with actual retired exit0, untruncated streams, empty stderr and the complete bounded ASCII grammar. This identifies a handled refusal only; subsequent strict report staging remains the acceptance authority. Other success paths retain one-line PASS and nonzero failure handling is unchanged. Workflow forwards only the reviewed closed sites.
 
 Author targeted controller3/3 PASS includes two additive methods; wrapper2/2 affected static cases PASS includes one additive case. The wrapper's initial cross-file parity run failed while the controller still had the old enum; final coherent enum parity passed. One control-regex lint warning was corrected without changing the protocol predicate. These are synthetic controller/grammar and source-static guards, not PowerShell execution. Measured Python inventory is336; expected desktop1603, foundation109, while actual prior hosted evidence remains1602/109/334. Exact workflow/count cases also pass4/4. Independent exact ten-file source/runner/index review is CLEAR at07:02 UTC: all18 fingerprints and strict336/no-skip inventory verified, with unchanged admission and truthful handled-failure semantics. The same bounded retry is supported; no full local suite/compiler rerun or progress credit is claimed.
+
+
+## Tenth source PASS; actual DEX-name refusal — 07:12 UTC
+
+Public `cbe7d049deb1e54e7e335fb2dc7bc6e8555ba151` / local `ae9fef3092433a10263a14aa04b7b7c89d8ab807`, tree `538718b9d6b7f884ec2f38aada28da37e04523cf`, CI41403884433/source125141452482 establishes actual **1603/1603 desktop plus sourcePASS, foundation109 with zero exclusions, Python336/OK**. Retained92,742-byte source log SHA256 `06fdd018c7fc50ec12c259ee28e5350b9862f32125a54760d5f297c17161ca73` is independently audited. Paired job125142782081 emits actual `FINISH|DEX_NAME|PREDICATE`, followed by WRITTEN/FAIL. Retained24,267-byte build log SHA256 is `7b88309383d958211d17979f71bfd968d5188e97fc68a72d65e88a289e601935`.
+
+Artifact13122284025 is74,031 bytes/SHA256 `f701543dd2893d12f8fbfdb4fe3968fa6d58651f250b29833bc246e307f5a743`, with exactly four JSON files. Its1,861-byte/no-LF report SHA256 `1e66a6ec46f83ec6b8b87ef62e590fd28e4eafcf9d17033a418623b6d3dbb961` independently reconstructs through exact committed validation. All five compiler processes exit0, retired/untruncated; source/tools unchanged and directoryCleanuptrue. OUTPUT_REJECTED/outputInspectedfalse and null output identities remain. Eleven optional skips remain separately observed API facts. DEX_NAME covers several predicates; the actual rejected character or sole underlying cause is not retained or inferred.
+
+
+### Primary-backed ASCII DEX-name correction
+
+Independent review approved the finite [output descriptor correction](../phases/P3-DERIVED-SERVER-BUILD-PROPOSAL.md#output-dex-names-are-not-java-source-identifiers). The prior predicate used Java source identifier syntax, but the pinned DEX format permits hyphens and leading digits in SimpleNames. Only that output grammar is corrected in producer and publisher; input Java class paths and exact package, ASCII, length, terminator, checksum, version and allocation bounds remain unchanged. The observed diagnostic identifies the DEX_NAME boundary, not an actual hyphen, leading digit or sole failure cause. No raw deleted output or source-file SHA256 is invented; the pinned primary page/blob identity and inspected grammar are recorded. No moving-main R8 version is equated with the installed D8 tool.
+
+Author targeted controller3/3 and publisher3/3 PASS, including shared synthetic DEX/ZIP/PE bytes and rebound manifests. Three additive Python methods give measured discovery339; no full local339 rerun is claimed. Positive compiler-shaped names and leading digits are accepted within unchanged packages, while malformed delimiters, Unicode, unknown packages, missing terminators and duplicates remain refused; the length boundary accepts256 and refuses257. Only one output-grammar line changes in each producer/publisher; no input-path or version/cap change. Desktop expected remains1603 and foundation109; actual latest hosted Python remains336. Exact workflow/count cases pass4/4. Independent exact ten-file source/index review is CLEAR at07:17 UTC: all18 fingerprints and339/no-skip inventory verified, with unchanged remaining parser and input-path predicates. The same bounded retry is supported.

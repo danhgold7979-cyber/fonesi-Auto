@@ -188,7 +188,7 @@ def output_records(value):
     previous = None
     for name in classes:
         if (type(name) is not str or not 1 <= len(name) <= 256 or
-                not re.fullmatch(r'L[A-Za-z_$][A-Za-z0-9_$]*(?:/[A-Za-z_$][A-Za-z0-9_$]*)*;', name) or
+                not re.fullmatch(r'L[A-Za-z0-9_$-]+(?:/[A-Za-z0-9_$-]+)*;', name) or
                 (previous is not None and name <= previous)):
             reject()
         if name.lower() in folded: reject()

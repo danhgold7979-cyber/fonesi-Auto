@@ -236,6 +236,50 @@ class ValidatorTests(unittest.TestCase):
         r, m = fixture(); m['outputs.json']['dexNamespaces'][0]['count'] = 2
         with self.assertRaises(ValueError): v.validate_report(r, bind(r, m))
 
+    def test_generated_dex_ascii_names_share_actual_static_bytes_between_inspectors(self):
+        import io
+        import zipfile
+        from test_derived_pair_build import DEX_GENERATED_NAMES, dex_fixture, pe_fixture
+        from derived_pair_build import inspect_outputs
+        with tempfile.TemporaryDirectory(prefix='pair-dex-names-') as temp:
+            root = Path(temp).resolve()
+            (root/'output').mkdir(); (root/'evidence').mkdir()
+            dll = pe_fixture()
+            for folder in ('output', 'evidence'):
+                (root/folder/'RetainedVideoConsumer.dll').write_bytes(dll)
+            for name in DEX_GENERATED_NAMES:
+                with self.subTest(name=name):
+                    dex = dex_fixture(name)
+                    buffer = io.BytesIO()
+                    with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                        archive.writestr('classes.dex', dex)
+                    raw = buffer.getvalue()
+                    (root/'output/classes.zip').write_bytes(raw)
+                    (root/'evidence/server.jar').write_bytes(raw)
+                    output, _, _ = inspect_outputs(root)
+                    self.assertEqual(output['dexClasses'], [name])
+                    v.output_records(output)
+                    report = {'serverOutput': {'bytes':len(raw), 'sha256':v.sha(raw),
+                              'dexBytes':len(dex), 'dexSha256':v.sha(dex)},
+                              'consumerOutput': {'bytes':len(dll), 'sha256':v.sha(dll)}}
+                    v.check_output_bytes(root, report, {'outputs.json':v.canonical(output)})
+                    r, m = fixture(); m['outputs.json']['dexClasses'] = [name]
+                    self.assertTrue(v.validate_report(r, bind(r, m))['passed'])
+
+    def test_output_dex_name_correction_keeps_closed_manifest_refusals(self):
+        for name in ('Lcom/genymobile/scrcpy/;', 'Lcom/genymobile/scrcpy//Name;',
+                     'Lcom/genymobile/scrcpy/Name.withdot;', 'Lcom/genymobile/scrcpy/Name[;',
+                     'Lcom/genymobile/scrcpy/Name ;', 'Lcom/genymobile/scrcpy/Nameé;',
+                     'Lcom/genymobile/scrcpy/Name;\n', 'Lcom/genymobile/scrcpy/Name\x00;',
+                     'Lcom/genymobile/scrcpy/Name', 'Lunknown/0Synthetic;',
+                     'Lcom/genymobile/scrcpy/' + 'A'*256 + ';'):
+            with self.subTest(name=name):
+                r, m = fixture(); m['outputs.json']['dexClasses'] = [name]
+                with self.assertRaises(ValueError): v.validate_report(r, bind(r, m))
+        r, m = fixture()
+        m['outputs.json']['dexClasses'] *= 2
+        with self.assertRaises(ValueError): v.validate_report(r, bind(r, m))
+
     def test_failure_null_stages_are_preserved_and_cannot_be_promoted(self):
         r = failed()
         self.assertEqual(v.validate_report(r, {}), r)
