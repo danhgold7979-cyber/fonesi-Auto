@@ -131,6 +131,7 @@ export const TEST_FILES = Object.freeze([
   'tests/settings-renderer.test.mjs',
   'tests/settings-store.test.mjs',
   'tests/settings-window.test.mjs',
+  'tests/supplied-screen-stability.test.mjs',
   'tests/test-batches.test.mjs',
   'tests/test-diagnostics.test.mjs',
   'tests/tile-zoom.test.mjs',

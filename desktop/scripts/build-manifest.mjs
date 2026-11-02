@@ -129,6 +129,7 @@ export const inputs = [
   'src/main/input-contract.ts',
   'src/main/capture-contract.ts',
   'src/main/hierarchy-selector.ts',
+  'src/main/supplied-screen-stability.ts',
   'src/main/association-receipt-contract.ts',
   'src/main/durable-contract.ts',
   'src/main/durable-coordinator.ts',
