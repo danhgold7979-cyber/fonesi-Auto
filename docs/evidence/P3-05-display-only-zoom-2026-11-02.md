@@ -1,6 +1,6 @@
 # P3-05 — display-only whole-tile zoom source checkpoint
 
-**Source implementation CLEAR; local stitched validation PASS; final mechanical review CLEAR; hosted source result pending.**
+**Source implementation CLEAR; local stitched validation PASS; final mechanical review CLEAR; hosted source PASS.**
 
 ## Scope and dependency mapping
 
@@ -22,7 +22,7 @@ The UI author established 20 distinct affected cases through a 19/19 run and fin
 
 The parent integrated gate first stopped at the old graph120 bound before tests; the exact one-leaf addition changes it to121, with122 still rejected. The next attempt stopped at BUILD because the changed CSS no longer matched its old pinned STYLE_SHA256; only the exact asset digest was refreshed. The subsequent gate passed non-test stages and batches1–2, then batch3 reported69 tests/68 pass/1 failure. Diagnosis identified the demo runtime's closed DEMO_INPUTS list missing the new helper, while its build-manifest list already included it. The exact helper entry was added; demo-build then passed8/8. The remaining batches4–22 passed1253 tests, with no failures/skips. These are stitched/overlapping results, **not an uninterrupted final aggregate**.
 
-Final refresh passed all seven named stages: MODULE_GRAPH121, QUALITY, TYPECHECK, BUILD, DEMO_TYPECHECK, DEMO_BUILD and MANIFEST. Existing64KiB map/read/file caps are unchanged; the production graph adds one pure leaf120→121, and test inventory adds exactly two sorted paths167→169 with no removal. The next hosted desktop total is expected1557, not yet observed; foundation109/Python286 are unchanged expected gates. Existing P2 source1550/109/286 remains historical, not a result for this batch.
+Final refresh passed all seven named stages: MODULE_GRAPH121, QUALITY, TYPECHECK, BUILD, DEMO_TYPECHECK, DEMO_BUILD and MANIFEST. Existing64KiB map/read/file caps are unchanged; the production graph adds one pure leaf120→121, and test inventory adds exactly two sorted paths167→169 with no removal. At source freeze, the hosted desktop total was expected1557 and not yet observed; foundation109/Python286 were unchanged expected gates. The actual hosted result below now supersedes that estimate. Existing P2 source1550/109/286 remains historical, not a result for this batch.
 
 Retained local logs: `/tmp/p305-zoom-focused.log`, `/tmp/p305-zoom-targeted-final.log`, `/tmp/auto-p305-zoom-source-check.log`, `/tmp/auto-p305-zoom-source-check-final.log`, `/tmp/auto-p305-zoom-source-check-closure.log`, `/tmp/auto-p305-demo-diagnosis.log`, `/tmp/auto-p305-demo-fixed.log`, `/tmp/auto-p305-zoom-remainder.log`, `/tmp/auto-p305-zoom-build-refresh.log`. Independent implementation review is CLEAR at02:59 UTC; the reviewer did not rerun suites.
 
@@ -51,3 +51,9 @@ No actual video, decoder, Windows visual parity, device input or physical-device
 | `desktop/demo-module-map.json` | `423793f7eb7bf4c17e773be068ef894f932f51f8fdc37ce849a154f98167b85e` |
 
 Final exact21-file index/hash/link closure is independently CLEAR at03:04 UTC. All17 fingerprints matched disk/index; no source/test rerun was performed by the reviewer. The native paired-consumer contract remains excluded from this publication.
+
+## Actual hosted source result
+
+On 2026-11-02 at03:12 UTC, the coordinator observed source CI `41381350039` terminal SUCCESS for public `acaae17b0e8898406bc9af55c16845bcc128642a`, corresponding to local `d4798d343ebebab7240bc64e80c784e54882ad70` / exact tree `8b324ceb198db907398ec1b59a172e81d077215d`. Source job `125072648471` emitted actual `TESTS_PASS 1557/1557`, `DESKTOP_SOURCE_CHECK_PASS`, foundation109 passed with zero failures/cancellations/skips/todo, and Python286/OK under the exact count/no-skips runner. `PHASE03_SOFTWARE_ONLY` and `SOURCE_JOB_NO_ADB_EXECUTION` were actually emitted. All ten optional jobs were SKIPPED according to the separately inspected terminal GitHub API metadata.
+
+The single retained source log `/tmp/auto-p305-zoom-source-pass.log` is82,146 bytes, SHA256 `e0e3ee9ea52c1fc2afc108d53789ca39e8fdc817c71034cac1fa1c5cfd41bac3`. Independent retained-log audit is PASS at03:15 UTC; the reviewer performed no duplicate fetch or test rerun. This actual hosted result supersedes the earlier expected1557 total but does not rewrite the local stitched history. It establishes the source/build/test gate PASS at the exact published checkpoint, not rendered parity, live video, input or physical-device proof. Task acceptance remains0/19 for P3.
