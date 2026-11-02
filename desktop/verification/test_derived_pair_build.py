@@ -359,5 +359,47 @@ class DerivedPairBuildTests(unittest.TestCase):
         with patch.object(d.os,'fstat',side_effect=changed):
             with self.assertRaises(ValueError):d.digest_file(selected,256*1024**2)
 
+    def test_retired_first_compiler_failure_stages_and_cleans_fixed_empty_dirs(self):
+        import validate_derived_pair_build as v
+        base,old,c,state=self.prepared();root=base/('derived-pair-'+str(uuid.uuid4()));old.rename(root)
+        d.plan(root,'aidlClipboard')
+        receipt={'status':'NONZERO_EXIT','exitCode':1,'cleanupComplete':True,'stdoutTruncated':False,'stderrTruncated':False}
+        d.write_json(root/'private/process-aidlClipboard.json',receipt)
+        full,selected=d.packet();full=copy.deepcopy(full)
+        readme=next(r for r in full['files'] if r['path']=='README.md');readme.update(bytes=len(b'synthetic README'),sha256=d.sha(b'synthetic README'))
+        authority=(state['source']['upstream'],state['source']['effective'],state['source']['patchSha256'],readme)
+        staging=base/'staging';staging.mkdir();(staging/'.owner').write_text(str(uuid.uuid4()));(staging/'context.json').write_bytes(d.canonical(c))
+        # Synthetic sources/tools and process receipt only; production producer,
+        # publisher staging, byte binding and cleanup execute on actual owned files.
+        with patch.object(d,'packet',return_value=(full,selected)),patch.object(v,'authority',return_value=authority),patch.object(v,'base_path',return_value=staging),patch.object(tempfile,'gettempdir',return_value=str(base)):
+            report=d.finish(root,'COMPILE_FAILED')
+            self.assertEqual(report['failure'],'COMPILE_FAILED');self.assertIsNone(report['aidlDisplay'])
+            self.assertEqual(list((root/'classes').iterdir()),[]);self.assertEqual(list((root/'output').iterdir()),[])
+            v.stage(root)
+            unknown=root/'classes/unknown-empty';unknown.mkdir()
+            with self.assertRaises(ValueError):d.cleanup(root)
+            self.assertTrue(unknown.exists());unknown.rmdir()
+            self.assertTrue(d.cleanup(root))
+            self.assertEqual({p.name for p in root.iterdir()},{'.owner'})
+
+    def test_windows_token_suffix_paths_match_aidl_imports_without_switch_rewrite(self):
+        import ntpath
+        tokens={'SOURCE':r'C:\owned\source','GENERATED':r'C:\owned\generated','CLASSES':r'C:\owned\classes','BUILD_TOOLS36':r'C:\SDK\build-tools\36.0.0','OUTPUT':r'C:\owned\output','FRAMEWORK64':r'C:\Windows\Framework64'}
+        source='${SOURCE}/server/src/main/aidl/android/content/IOnPrimaryClipChangedListener.aidl'
+        imported='${SOURCE}/server/src/main/aidl'
+        old_source=source.replace('${SOURCE}/',tokens['SOURCE']+'\\')
+        old_import=imported.replace('${SOURCE}/',tokens['SOURCE']+'\\')+'\\'
+        self.assertNotEqual(old_source[:-len('android/content/IOnPrimaryClipChangedListener.aidl')],old_import)
+        with patch.object(d.os,'sep','\\'):
+            actual=d.expand_argument(source,tokens);base=d.expand_argument(imported,tokens)+'\\'
+            self.assertEqual(actual[:-len('android\\content\\IOnPrimaryClipChangedListener.aidl')],base)
+            self.assertEqual(actual,ntpath.join(base,'android','content','IOnPrimaryClipChangedListener.aidl'))
+            self.assertEqual(d.expand_argument('/target:library',tokens),'/target:library')
+            self.assertEqual(d.expand_argument('/out:${OUTPUT}/RetainedVideoConsumer.dll',tokens),'/out:C:\\owned\\output\\RetainedVideoConsumer.dll')
+            self.assertEqual(d.expand_argument('${BUILD_TOOLS36}/core-lambda-stubs.jar;${GENERATED}/',tokens),tokens['BUILD_TOOLS36']+'\\core-lambda-stubs.jar;'+tokens['GENERATED']+'\\')
+            self.assertEqual(d.expand_argument('${CLASSES}/com/genymobile/scrcpy/Server$Nested.class',tokens),tokens['CLASSES']+'\\com\\genymobile\\scrcpy\\Server$Nested.class')
+            for invalid in ('${UNKNOWN}/file','${SOURCE}','${SOURCE}/','${SOURCE}/../escape'):
+                with self.assertRaises(ValueError):d.expand_argument(invalid,tokens)
+
 
 if __name__=='__main__':unittest.main()

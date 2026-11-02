@@ -453,6 +453,20 @@ def quote_windows(value):
     return out+'\\'*(slashes*2)+'"'
 
 
+def expand_argument(argument,tokens):
+    # Only symbolic path components become native paths. Compiler switches and
+    # separators outside those components (including classpath ';') stay exact.
+    def path(match):
+        name,suffix=match.groups()
+        if name not in tokens:fail('COMPILE_FAILED','SCHEMA')
+        if suffix:relative(suffix)
+        elif name not in ('GENERATED','CLASSES'):fail('COMPILE_FAILED','SCHEMA')
+        return str(tokens[name])+os.sep+suffix.replace('/',os.sep)
+    result=re.sub(r'\$\{([A-Z0-9_]+)\}/([^;]*)',path,argument)
+    if '${' in result:fail('COMPILE_FAILED','SCHEMA')
+    return result
+
+
 def make_plan(root,stage,state):
     if stage not in STAGES:fail()
     root=Path(root);c=state['context'];tokens={'SOURCE':root/'source','GENERATED':root/'generated','CLASSES':root/'classes','OUTPUT':root/'output','PRIVATE':root/'private',**{ns:Path(c[k]) for ns,k in TOOL_KEYS.items()}}
@@ -475,10 +489,7 @@ def make_plan(root,stage,state):
         ns='FRAMEWORK64';exe='csc.exe';args=['/noconfig','/nostdlib+','/nologo','/target:library','/platform:x64','/optimize+','/out:'+t('OUTPUT','RetainedVideoConsumer.dll')]
         args += ['/reference:'+t('FRAMEWORK64',n) for n in ('mscorlib.dll','System.dll','System.Core.dll')]
         args += [t('SOURCE','consumer/'+n) for n in NATIVE];deadline=30000
-    def expand(arg):
-        for name,path in tokens.items():arg=arg.replace('${'+name+'}/',str(path)+os.sep)
-        return arg
-    actual=[expand(arg) for arg in args];executable=str(Path(c[TOOL_KEYS[ns]])/exe)
+    actual=[expand_argument(arg,tokens) for arg in args];executable=str(Path(c[TOOL_KEYS[ns]])/exe)
     if len(' '.join(quote_windows(x) for x in [executable,*actual]).encode('utf-16-le'))//2>30000:fail('COMPILE_FAILED')
     invocation={'executable':executable,'workingDirectory':str(Path(executable).parent),'arguments':actual}
     public={'stage':stage,'executable':{'namespace':ns,'path':exe},'workingDirectory':'EXECUTABLE_DIRECTORY','arguments':args,'actualInvocationSha256':sha(canonical(invocation))}
@@ -715,7 +726,8 @@ def cleanup(root):
     expected=parse(read(root/'private/cleanup-inventory.json',12*1024**2),12*1024**2)['files']
     actual=inventory(root,'ROOT',15000,96*1024**2,32*1024**2,True)
     if [r for r in actual if r['path']!='private/cleanup-inventory.json']!=expected:fail('CLEANUP_FAILED')
-    known_dirs={'.'}
+    # prepare creates these fixed owned directories even before any compiler output.
+    known_dirs={'.','source','generated','classes','output','private','evidence'}
     for r in actual:
         parts=r['path'].split('/')
         known_dirs.update('/'.join(parts[:i]) for i in range(1,len(parts)))

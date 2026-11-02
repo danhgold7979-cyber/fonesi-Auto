@@ -542,6 +542,21 @@ def validate_context(raw):
     return value
 
 
+def expand_argument(argument, roots):
+    # Only symbolic path spans are native paths; switches and separators are literal.
+    def replace(match):
+        name, suffix = match.groups()
+        if name not in roots or (not suffix and name not in ('GENERATED', 'CLASSES')):
+            reject()
+        if suffix:
+            path(suffix)
+        return str(roots[name]) + os.sep + suffix.replace('/', os.sep)
+    expanded = re.sub(r'\$\{([A-Z0-9_]+)\}/([^;]*)', replace, argument)
+    if '${' in expanded:
+        reject()
+    return expanded
+
+
 def check_invocations(root, context, report, manifests):
     commands = parse(manifests['commands.json'], 262144) if 'commands.json' in manifests else None
     for stage in STAGES:
@@ -562,11 +577,7 @@ def check_invocations(root, context, report, manifests):
             roots = {'JDK17': context['jdkRoot'], 'ANDROID36': context['platformRoot'],
                      'BUILD_TOOLS36': context['buildToolsRoot'], 'FRAMEWORK64': context['frameworkRoot'],
                      **{k.upper(): str(root / k) for k in ('source', 'generated', 'classes', 'output', 'private')}}
-            args = []
-            for argument in row['arguments']:
-                for key, location in roots.items():
-                    argument = argument.replace('${' + key + '}/', str(location) + os.sep)
-                args.append(argument)
+            args = [expand_argument(argument, roots) for argument in row['arguments']]
             executable = str(Path(roots[row['executable']['namespace']]) / row['executable']['path'])
             actual = {'executable': executable, 'workingDirectory': str(Path(executable).parent), 'arguments': args}
             if plan['executable'] != executable or plan['arguments'] != args or sha(canonical(actual)) != row['actualInvocationSha256']:

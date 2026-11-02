@@ -115,3 +115,10 @@ STEP is the last entered source checkpoint, not proof every sub-operation comple
 ### Exact Android platform input closure correction
 
 Observed PREPARE/TOOLS_ANDROID36/ENTRY_LIMIT establishes that the shared counter crossed10,000 during the previous broad platform scan; it does not establish an Android-only count. The fixed consumer paths use only `framework.aidl` for the AIDL preload and `android.jar` for javac bootclasspath/D8 classpath; `source.properties` supplies metadata parity. Those three files retain root/ancestor no-reparse, stable identity, size/hash and every before/after revalidation. The other tool roots remain full, with no cap increase. `toolsUnchanged` means the admitted three-file Android input closure plus those full roots, not the entire SDK/platform package. Android platform NOTICE/package.xml and unused resources are not inspected by this gate; their licensing/package closure remains unresolved and nothing is distributed.
+
+
+### Native token-path spelling and fixed empty-directory cleanup
+
+Expand only known `${NAMESPACE}/relative/path` tokens using native separators for all relative components, preserving literal flags (especially CSC `/switch` syntax), Windows classpath `;` boundaries and public symbolic arguments. Root paths remain the admitted exact roots, including spaces; unknown tokens refuse. Producer and publisher reconstruct identical private invocation bytes/hashes. This addresses the pinned Android16 AIDL exact original-filename-base/import-directory comparison, not a claim about unseen hosted compiler text.
+
+Failure cleanup permits exactly the same six fixed top-level owned children created by prepare, even when classes/output are empty, plus the two already-admitted empty JVM directories. The original closed-layout/unknown-directory refusal and owner/byte/identity fences remain; a failed compile is still failed.

@@ -141,6 +141,65 @@ class ValidatorTests(unittest.TestCase):
         r, m = fixture()
         self.assertTrue(v.validate_report(r, bind(r, m))['passed'])
 
+    def test_private_windows_token_expansion_preserves_literals_and_binds_native_bytes(self):
+        roots = {name: 'C:\\Build Root\\' + name for name in
+                 ('SOURCE', 'GENERATED', 'CLASSES', 'OUTPUT', 'PRIVATE', 'BUILD_TOOLS36', 'FRAMEWORK64')}
+        cases = {
+            '-I${SOURCE}/server/src/main/aidl': '-IC:\\Build Root\\SOURCE\\server\\src\\main\\aidl',
+            '${BUILD_TOOLS36}/core-lambda-stubs.jar;${GENERATED}/':
+                'C:\\Build Root\\BUILD_TOOLS36\\core-lambda-stubs.jar;C:\\Build Root\\GENERATED\\',
+            '${CLASSES}/com/genymobile/scrcpy/Server$Nested.class':
+                'C:\\Build Root\\CLASSES\\com\\genymobile\\scrcpy\\Server$Nested.class',
+            '/reference:${FRAMEWORK64}/System.Core.dll':
+                '/reference:C:\\Build Root\\FRAMEWORK64\\System.Core.dll',
+            '/out:${OUTPUT}/RetainedVideoConsumer.dll':
+                '/out:C:\\Build Root\\OUTPUT\\RetainedVideoConsumer.dll',
+            '-J-Duser.home=${PRIVATE}/java-home': '-J-Duser.home=C:\\Build Root\\PRIVATE\\java-home',
+            '/target:library': '/target:library',
+        }
+        with patch.object(v.os, 'sep', '\\'):
+            for symbolic, expected in cases.items():
+                with self.subTest(symbolic=symbolic):
+                    self.assertEqual(v.expand_argument(symbolic, roots), expected)
+            for invalid in ('${UNKNOWN}/x', '${SOURCE}', '${SOURCE}/../x', '${SOURCE}/',
+                            '${SOURCE}/a\\b', '${source}/x'):
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    v.expand_argument(invalid, roots)
+        actual = {'arguments': list(cases.values())}
+        mixed = {'arguments': [key.replace('${SOURCE}/', roots['SOURCE'] + '\\') for key in cases]}
+        self.assertNotEqual(v.sha(v.canonical(actual)), v.sha(v.canonical(mixed)))
+
+    def test_invocation_reconstruction_rejects_mixed_suffix_even_when_rehashed(self):
+        with tempfile.TemporaryDirectory(prefix='pair-invocation-') as temp:
+            root = Path(temp).resolve()
+            (root/'private').mkdir()
+            report, manifests = fixture()
+            for stage in v.STAGES[1:]:
+                report[stage] = None
+            row = manifests['commands.json']['stages'][0]
+            context = {key: str(root/key) for key in
+                       ('jdkRoot', 'platformRoot', 'buildToolsRoot', 'frameworkRoot')}
+            roots = {'SOURCE': str(root/'source'), 'GENERATED': str(root/'generated')}
+            executable = str(Path(context['buildToolsRoot'])/'aidl.exe')
+            with patch.object(v.os, 'sep', '\\'):
+                args = [v.expand_argument(arg, roots) for arg in row['arguments']]
+                actual = {'executable': executable, 'workingDirectory': str(Path(executable).parent),
+                          'arguments': args}
+                plan = {'version': 1, 'stage': v.STAGES[0], 'executable': executable,
+                        'arguments': args, 'deadlineMs': 30000, 'workingDirectory': 'EXECUTABLE_DIRECTORY'}
+                (root/'private/process-aidlClipboard.json').write_bytes(v.canonical(report[v.STAGES[0]]))
+                for mixed in (False, True):
+                    if mixed:
+                        args[-1] = args[-1].replace('server\\src\\main', 'server/src/main')
+                    row['actualInvocationSha256'] = v.sha(v.canonical(actual))
+                    (root/'private/plan-aidlClipboard.json').write_bytes(v.canonical(plan))
+                    raw = {'commands.json': v.canonical(manifests['commands.json'])}
+                    if mixed:
+                        with self.assertRaises(ValueError):
+                            v.check_invocations(root, context, report, raw)
+                    else:
+                        v.check_invocations(root, context, report, raw)
+
     def test_command_extra_processor_and_host_path_refuse(self):
         for extra in ('-processor', 'C:/private/extra.jar', '@private.args'):
             r, m = fixture(); m['commands.json']['stages'][2]['arguments'].append(extra)
