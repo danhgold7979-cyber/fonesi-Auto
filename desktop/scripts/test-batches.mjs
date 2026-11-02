@@ -70,6 +70,7 @@ export const TEST_FILES = Object.freeze([
   'tests/metadata-contract.test.mjs',
   'tests/metadata-query-contract.test.mjs',
   'tests/module-graph.test.mjs',
+  'tests/ocr-evaluation.test.mjs',
   'tests/owned-transport-metadata.test.mjs',
   'tests/owned-video-consumer.test.mjs',
   'tests/package-build.test.mjs',
