@@ -34,6 +34,7 @@ try{
  Require (Run $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-control.cjs'),'verify-runtime',$desktop,$env:GITHUB_SHA)) 120000) 'PERSISTENCE_RUNTIME_VERIFIED'
  $phase='DECODE';$p=Run $exe ([string[]]@((Join-Path $root 'probe.cjs'),$root)) 120000
  $report.process=[ordered]@{status=$p.Status;exitCode=$p.ExitCode;cleanupComplete=$p.CleanupComplete;stdoutTruncated=$p.StdoutTruncated;stderrTruncated=$p.StderrTruncated}
+ if(Retired $p){Control 'diagnostic'}
  Require $p 'VIDEO_DECODER_PROBE_PASS'
  Require (Run $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-control.cjs'),'verify-runtime',$desktop,$env:GITHUB_SHA)) 120000) 'PERSISTENCE_RUNTIME_VERIFIED'
  $phase='CONTROL';Control 'inspect'

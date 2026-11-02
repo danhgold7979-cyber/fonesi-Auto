@@ -105,3 +105,152 @@ export function validateVideoQualification(value) {
     value.portrait.width === 16
   );
 }
+
+export const VIDEO_DIAGNOSTIC_STAGES = Object.freeze([
+  'ADMISSION',
+  'READY',
+  'LOAD',
+  'START_BUTTON',
+  'PORT',
+  'LANDSCAPE_MEDIA',
+  'LANDSCAPE_OUTPUT',
+  'ROTATION',
+  'PORTRAIT_MEDIA',
+  'PORTRAIT_OUTPUT',
+  'STOP',
+  'STALE',
+  'CLOSE',
+]);
+export const VIDEO_DIAGNOSTIC_STATES = Object.freeze([
+  'UNOBSERVED',
+  'UNRECOGNIZED',
+  'STARTING',
+  'WAITING_KEY',
+  'DISPLAYING',
+  'DECODING',
+  'DECODE_FAILED / STOPPED',
+  'DECODER_UNAVAILABLE / STOPPED',
+  'DECODE_FAILED / STOPPING',
+  'DECODER_UNAVAILABLE / STOPPING',
+  'DECODE_FAILED / UNCERTAIN',
+  'DECODER_UNAVAILABLE / UNCERTAIN',
+  'STOPPING',
+  'STOPPED',
+  'DECODER_UNAVAILABLE',
+  'DECODE_FAILED',
+  'UNCERTAIN',
+]);
+export function validateVideoDiagnostic(v) {
+  return (
+    exact(v, ['version', 'scope', 'head', 'inputs', 'stage', 'rendererState', 'cases']) &&
+    v.version === 1 &&
+    v.scope === VIDEO_QUALIFICATION_SCOPE &&
+    typeof v.head === 'string' &&
+    /^[0-9a-f]{40}$/.test(v.head) &&
+    validInputs(v.inputs) &&
+    VIDEO_DIAGNOSTIC_STAGES.includes(v.stage) &&
+    VIDEO_DIAGNOSTIC_STATES.includes(v.rendererState) &&
+    exact(v.cases, VIDEO_QUALIFICATION_CASES) &&
+    VIDEO_QUALIFICATION_CASES.every((k) => typeof v.cases[k] === 'boolean')
+  );
+}
+function retiredProcess(p) {
+  return (
+    p !== null &&
+    p.cleanupComplete === true &&
+    p.exitCode !== null &&
+    ['SUCCESS', 'NONZERO_EXIT', 'EMPTY_OUTPUT'].includes(p.status)
+  );
+}
+export function validateVideoSupervisor(v) {
+  if (
+    !exact(v, [
+      'version',
+      'scope',
+      'head',
+      'process',
+      'directoryCleanup',
+      'cleanupFailure',
+      'passed',
+      'failure',
+    ]) ||
+    v.version !== 1 ||
+    v.scope !== VIDEO_QUALIFICATION_SCOPE ||
+    typeof v.head !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(v.head) ||
+    typeof v.directoryCleanup !== 'boolean' ||
+    typeof v.passed !== 'boolean' ||
+    ![null, 'CLEANUP_FAILED', 'RETIREMENT_UNCONFIRMED'].includes(v.cleanupFailure) ||
+    ![
+      null,
+      'PREPARE_FAILED',
+      'INSTALL_FAILED',
+      'CONTROL_FAILED',
+      'DECODE_FAILED',
+      'CLEANUP_FAILED',
+    ].includes(v.failure)
+  )
+    return false;
+  const p = v.process;
+  if (p !== null) {
+    if (
+      !exact(p, ['status', 'exitCode', 'cleanupComplete', 'stdoutTruncated', 'stderrTruncated']) ||
+      ![
+        'SUCCESS',
+        'NONZERO_EXIT',
+        'TIMEOUT',
+        'CAPTURE_FAILED',
+        'LAUNCH_FAILED',
+        'ACCESS_DENIED',
+        'CLEANUP_FAILED',
+        'EMPTY_OUTPUT',
+      ].includes(p.status) ||
+      !['cleanupComplete', 'stdoutTruncated', 'stderrTruncated'].every(
+        (k) => typeof p[k] === 'boolean',
+      ) ||
+      (p.exitCode !== null &&
+        (!Number.isInteger(p.exitCode) || p.exitCode < -2147483648 || p.exitCode > 2147483647))
+    )
+      return false;
+    if (
+      (['TIMEOUT', 'LAUNCH_FAILED', 'ACCESS_DENIED'].includes(p.status) && p.exitCode !== null) ||
+      (p.status === 'CLEANUP_FAILED' && p.cleanupComplete) ||
+      (['SUCCESS', 'EMPTY_OUTPUT'].includes(p.status) && p.exitCode !== 0) ||
+      (p.status === 'NONZERO_EXIT' && (p.exitCode === null || p.exitCode === 0))
+    )
+      return false;
+  }
+  if (v.directoryCleanup && p !== null && !retiredProcess(p)) return false;
+  if (v.passed)
+    return (
+      p?.status === 'SUCCESS' &&
+      p.exitCode === 0 &&
+      p.cleanupComplete &&
+      !p.stdoutTruncated &&
+      !p.stderrTruncated &&
+      v.directoryCleanup &&
+      v.cleanupFailure === null &&
+      v.failure === null
+    );
+  return v.failure !== null || v.cleanupFailure !== null;
+}
+export function validateVideoEvidence(v) {
+  if (
+    !exact(v, ['version', 'scope', 'head', 'supervisor', 'diagnostic', 'result']) ||
+    v.version !== 1 ||
+    v.scope !== VIDEO_QUALIFICATION_SCOPE ||
+    !validateVideoSupervisor(v.supervisor) ||
+    v.head !== v.supervisor.head
+  )
+    return false;
+  if (
+    v.diagnostic !== null &&
+    (!validateVideoDiagnostic(v.diagnostic) || v.diagnostic.head !== v.head)
+  )
+    return false;
+  if (v.result !== null && (!validateVideoQualification(v.result) || v.result.head !== v.head))
+    return false;
+  if ((v.diagnostic !== null || v.result !== null) && !retiredProcess(v.supervisor.process))
+    return false;
+  return !v.supervisor.passed || (v.result !== null && v.diagnostic === null);
+}

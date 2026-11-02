@@ -21,6 +21,9 @@ import {
   VIDEO_QUALIFICATION_INPUTS,
   validateVideoQualification,
   exact,
+  VIDEO_QUALIFICATION_SCOPE,
+  validateVideoDiagnostic,
+  validateVideoEvidence,
 } from './video-decoder-contract.mjs';
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export function plainDirectory(path) {
@@ -194,20 +197,75 @@ export function cleanup(root) {
     else unlinkSync(file);
   }
 }
+function optional(file) {
+  try {
+    return JSON.parse(readBounded(file, 16384));
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+export function diagnostic(root) {
+  const token = assertOwner(root);
+  verifyProbe();
+  const control = JSON.parse(readBounded(join(root, 'control.json'), 16384));
+  if (
+    control.token !== token ||
+    JSON.stringify(inputs()) !== JSON.stringify(control.inputs) ||
+    !verifyBuild(desktop)
+  )
+    throw Error('SOURCE_CHANGED');
+  const value = optional(join(root, 'failure.json'));
+  if (
+    value !== null &&
+    (!validateVideoDiagnostic(value) ||
+      value.head !== control.head ||
+      JSON.stringify(value.inputs) !== JSON.stringify(control.inputs))
+  )
+    throw Error('DIAGNOSTIC');
+  write(join(desktop, '.test-output/video-decoder-diagnostic.json'), value);
+}
+export function publish(head) {
+  if (typeof head !== 'string' || !/^[0-9a-f]{40}$/.test(head)) throw Error('HEAD');
+  const base = join(desktop, '.test-output');
+  const supervisor = JSON.parse(readBounded(join(base, 'video-decoder-supervisor.json'), 16384));
+  const diagnostic = optional(join(base, 'video-decoder-diagnostic.json'));
+  const result = optional(join(base, 'video-decoder-result.json'));
+  const value = {
+    version: 1,
+    scope: VIDEO_QUALIFICATION_SCOPE,
+    head,
+    supervisor,
+    diagnostic,
+    result,
+  };
+  if (!validateVideoEvidence(value)) throw Error('EVIDENCE');
+  for (const record of [diagnostic, result])
+    if (record !== null && JSON.stringify(record.inputs) !== JSON.stringify(inputs()))
+      throw Error('SOURCE_CHANGED');
+  write(join(base, 'video-decoder-evidence.json'), value);
+  return supervisor.passed;
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const [action, root, head] = process.argv.slice(2);
     if (
-      !['prepare', 'inspect', 'cleanup'].includes(action) ||
+      !['prepare', 'inspect', 'cleanup', 'diagnostic', 'publish'].includes(action) ||
       process.argv.length !== (action === 'prepare' ? 5 : 4)
     )
       throw Error();
-    if (action === 'prepare') prepare(resolve(root), head);
+    if (action === 'publish') {
+      const passed = publish(root);
+      console.log('VIDEO_DECODER_EVIDENCE_WRITTEN');
+      console.log(passed ? 'VIDEO_DECODER_EVIDENCE_PASS' : 'VIDEO_DECODER_EVIDENCE_FAIL');
+      if (!passed) process.exitCode = 1;
+    } else if (action === 'prepare') prepare(resolve(root), head);
     else if (action === 'inspect') {
       const result = inspect(resolve(root));
       write(join(desktop, '.test-output/video-decoder-result.json'), result);
-    } else cleanup(resolve(root));
-    console.log('VIDEO_DECODER_CONTROL_PASS');
+    } else if (action === 'diagnostic') diagnostic(resolve(root));
+    else cleanup(resolve(root));
+    if (action !== 'publish') console.log('VIDEO_DECODER_CONTROL_PASS');
   } catch {
     console.error('VIDEO_DECODER_CONTROL_FAIL');
     process.exitCode = 1;

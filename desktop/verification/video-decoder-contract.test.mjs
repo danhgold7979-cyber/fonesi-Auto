@@ -10,6 +10,10 @@ import {
   validateVideoQualification,
   exact,
   validPixels,
+  validateVideoDiagnostic,
+  validateVideoSupervisor,
+  validateVideoEvidence,
+  VIDEO_DIAGNOSTIC_STAGES,
 } from './video-decoder-contract.mjs';
 const valid = () => ({
   version: 1,
@@ -138,4 +142,114 @@ test('actual verification fleet response selects the synthetic tile required by 
   assert.equal(value.fleet.selection.activeDeviceId, DEVICE);
   assert.equal(value.fleet.devices.length, 1);
   assert.equal(value.fleet.devices[0].verification, 'VERIFIED');
+});
+
+const supervisor = () => ({
+  version: 1,
+  scope,
+  head: 'a'.repeat(40),
+  process: {
+    status: 'NONZERO_EXIT',
+    exitCode: 1,
+    cleanupComplete: true,
+    stdoutTruncated: false,
+    stderrTruncated: false,
+  },
+  directoryCleanup: true,
+  cleanupFailure: null,
+  passed: false,
+  failure: 'DECODE_FAILED',
+});
+test('failure diagnostics admit only fixed stages, states, cases and bound digests', () => {
+  const base = valid(),
+    d = {
+      version: 1,
+      scope,
+      head: base.head,
+      inputs: base.inputs,
+      stage: 'LANDSCAPE_OUTPUT',
+      rendererState: 'WAITING_KEY',
+      cases: base.cases,
+    };
+  for (const stage of VIDEO_DIAGNOSTIC_STAGES)
+    assert.equal(validateVideoDiagnostic({ ...d, stage }), true);
+  for (const patch of [
+    { stage: 'secret path' },
+    { rendererState: 'raw exception' },
+    { extra: 'private' },
+    { inputs: {} },
+    { head: 'b' },
+  ])
+    assert.equal(validateVideoDiagnostic({ ...d, ...patch }), false);
+  const bad = structuredClone(d);
+  bad.cases.displaying = 'true';
+  assert.equal(validateVideoDiagnostic(bad), false);
+});
+test('supervisor retains failures and rejects contradictory pass or process claims', () => {
+  const s = supervisor();
+  assert.equal(validateVideoSupervisor(s), true);
+  for (const patch of [
+    { passed: true },
+    { failure: null },
+    { private: 'secret' },
+    { process: { ...s.process, exitCode: 0 } },
+    { process: { ...s.process, status: 'SUCCESS' } },
+    { process: { ...s.process, cleanupComplete: 'true' } },
+  ])
+    assert.equal(validateVideoSupervisor({ ...s, ...patch }), false);
+  const success = {
+    ...s,
+    passed: true,
+    failure: null,
+    process: { ...s.process, status: 'SUCCESS', exitCode: 0 },
+  };
+  assert.equal(validateVideoSupervisor(success), true);
+  assert.equal(validateVideoSupervisor({ ...success, directoryCleanup: false }), false);
+});
+test('sanitized aggregate cannot promote failed or missing pixel evidence to pass', () => {
+  const s = supervisor(),
+    v = { version: 1, scope, head: s.head, supervisor: s, diagnostic: null, result: null };
+  assert.equal(validateVideoEvidence(v), true);
+  const result = valid(),
+    diagnostic = {
+      version: 1,
+      scope,
+      head: s.head,
+      inputs: result.inputs,
+      stage: 'LANDSCAPE_OUTPUT',
+      rendererState: 'DECODING',
+      cases: result.cases,
+    };
+  for (const process of [
+    null,
+    { ...s.process, cleanupComplete: false },
+    { ...s.process, status: 'TIMEOUT', exitCode: null },
+  ]) {
+    const uncertain = {
+      ...s,
+      process,
+      directoryCleanup: false,
+      cleanupFailure: 'RETIREMENT_UNCONFIRMED',
+    };
+    assert.equal(validateVideoEvidence({ ...v, supervisor: uncertain }), true);
+    assert.equal(validateVideoEvidence({ ...v, supervisor: uncertain, diagnostic }), false);
+    assert.equal(validateVideoEvidence({ ...v, supervisor: uncertain, result }), false);
+    if (process !== null)
+      assert.equal(validateVideoSupervisor({ ...uncertain, directoryCleanup: true }), false);
+  }
+
+  assert.equal(validateVideoEvidence({ ...v, private: 'path' }), false);
+  assert.equal(validateVideoEvidence({ ...v, head: 'b'.repeat(40) }), false);
+  const success = {
+    ...s,
+    passed: true,
+    failure: null,
+    process: { ...s.process, status: 'SUCCESS', exitCode: 0 },
+  };
+  assert.equal(validateVideoEvidence({ ...v, supervisor: success }), false);
+  assert.equal(validateVideoEvidence({ ...v, supervisor: success, result: valid() }), true);
+  assert.equal(
+    validateVideoEvidence({ ...v, result: { ...valid(), head: 'b'.repeat(40) } }),
+    false,
+  );
 });

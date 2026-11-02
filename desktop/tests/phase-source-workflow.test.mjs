@@ -85,7 +85,13 @@ function validate(rawSource) {
       );
       assert.ok(body.includes('node desktop/verification/build-video-decoder.mjs'));
       assert.ok(body.includes('& ./desktop/verification/Invoke-VideoDecoder.ps1'));
-      assert.ok(body.includes('if: success()'));
+      assert.ok(body.includes("if: always() && steps.decoder_evidence.outputs.written == 'true'"));
+      assert.ok(
+        body.includes(
+          'node desktop/verification/video-decoder-control.mjs publish $env:GITHUB_SHA',
+        ),
+      );
+      assert.ok(body.includes('path: desktop/.test-output/video-decoder-evidence.json'));
       assert.doesNotMatch(body, /Invoke-RetainedHost|fetch_platform_tools|adb\.exe|main\.cjs/);
     } else if (jobs[i][1] === 'owned-video-managed-development') {
       assert.equal(
@@ -159,6 +165,14 @@ test('phase source workflow rejects branch, native authority, marker and gate dr
     )?.[0];
     assert.ok(decoderInput);
     const mutants = [
+      normalized.replace(
+        "if: always() && steps.decoder_evidence.outputs.written == 'true'",
+        'if: always()',
+      ),
+      normalized.replace(
+        'path: desktop/.test-output/video-decoder-evidence.json',
+        'path: desktop/.test-output/**',
+      ),
       normalized.replace(decoderInput, decoderInput.replace('default: false', 'default: true')),
       normalized.replace('inputs.run_video_decoder == true', 'inputs.run_video_decoder != true'),
       normalized.replace("'[video-decoder]'", "'[video-managed]'"),

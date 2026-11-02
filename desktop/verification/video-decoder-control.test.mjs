@@ -20,6 +20,7 @@ import {
   assertOwner,
   cleanup,
   hash,
+  publish,
 } from './video-decoder-control.mjs';
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 function owned(run) {
@@ -106,5 +107,35 @@ test('streaming digest binds bytes beyond one buffer and refuses linked identity
     assert.throws(() => hash(file));
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('failure evidence publication is exclusive, closed-schema and does not mint PASS', () => {
+  const base = join(desktop, '.test-output');
+  mkdirSync(base, { recursive: true });
+  const files = ['video-decoder-supervisor.json', 'video-decoder-evidence.json'];
+  for (const f of files) assert.equal(existsSync(join(base, f)), false);
+  const head = 'a'.repeat(40),
+    value = {
+      version: 1,
+      scope: 'ELECTRON_H264_SYNTHETIC_TILE_ONLY',
+      head,
+      process: null,
+      directoryCleanup: false,
+      cleanupFailure: null,
+      passed: false,
+      failure: 'PREPARE_FAILED',
+    };
+  writeFileSync(join(base, files[0]), JSON.stringify(value), { flag: 'wx' });
+  try {
+    assert.throws(() => publish('b'.repeat(40)));
+    assert.equal(existsSync(join(base, files[1])), false);
+    assert.equal(publish(head), false);
+    const out = JSON.parse(readFileSync(join(base, files[1]), 'utf8'));
+    assert.equal(out.supervisor.passed, false);
+    assert.equal(out.result, null);
+    assert.throws(() => publish(head));
+  } finally {
+    for (const f of files) rmSync(join(base, f), { force: true });
   }
 });

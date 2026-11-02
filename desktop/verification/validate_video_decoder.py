@@ -32,6 +32,8 @@ IMPORTS = {
 # only to accommodate formatting; source changes require deliberate review.
 REQUIRED = {
     FILES[0]: (
+        "if(diagnosticBound)", "validateVideoDiagnostic(diagnostic)",
+        "join(root,'failure.json')", "rendererState=VIDEO_DIAGNOSTIC_STATES.includes(v?.state)",
         "process.platform!=='win32'", "process.arch!=='x64'",
         "process.versions.electron!=='45.1.0'", "process.versions.node!=='24.22.1'",
         "process.argv.length!==3", "setTimeout(fail,90000)",
@@ -51,6 +53,9 @@ REQUIRED = {
         "sha(plain(process.argv[1]))!==control.inputs.probe",
     ),
     FILES[1]: (
+        "if(!validateVideoEvidence(value))throwError('EVIDENCE')",
+        "join(base,'video-decoder-evidence.json')", "return supervisor.passed".replace(' ', ''),
+        "!validateVideoDiagnostic(value)", "value.head!==control.head",
         "s.isSymbolicLink()", "s.nlink!==1", "s.size>limit", "b.length!==s.size",
         "dirname(root)!==join(desktop,'.test-output')", "verifyProbe()",
         "!verifyBuild(desktop)", "runtime.head!==head", "runtime.electron!=='45.1.0'",
@@ -66,6 +71,7 @@ REQUIRED = {
         "result.metafile.inputs", "productionManifest:", "output:digest(result.outputFiles[0].contents)",
     ),
     FILES[3]: (
+        "if(Retired$p){Control'diagnostic'}",
         "Set-StrictMode-Version2.0", "Invoke-OwnedChild$exe$arguments$timeout@{}",
         "$p.CleanupComplete", "$null-ne$p.ExitCode", "$p.StdoutTruncated",
         "$p.StderrTruncated", "Assert-OwnedRun$owner", "Remove-VerifiedOwnedRun$owner$retired",
@@ -75,6 +81,10 @@ REQUIRED = {
         "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5",
     ),
     FILES[4]: (
+        "v.directoryCleanup&&p!==null&&!retiredProcess(p)",
+        "(v.diagnostic!==null||v.result!==null)&&!retiredProcess(v.supervisor.process)",
+        "!validateVideoSupervisor(v.supervisor)", "v.head!==v.supervisor.head",
+        "v.result!==null&&v.diagnostic===null", "v.failure!==null||v.cleanupFailure!==null",
         "ELECTRON_H264_SYNTHETIC_TILE_ONLY", "VIDEO_QUALIFICATION_CASES.every(k=>value.cases[k]===true)",
         "value.electron==='45.1.0'", "value.node==='24.22.1'",
         "validInputs(value.inputs)", "validPixels(value.landscape)", "validPixels(value.portrait)",

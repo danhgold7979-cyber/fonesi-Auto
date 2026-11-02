@@ -31,6 +31,8 @@ import {
   validInputs,
   validateVideoQualification,
   exact,
+  VIDEO_DIAGNOSTIC_STATES,
+  validateVideoDiagnostic,
 } from './video-decoder-contract.mjs';
 const ENTRY = 'auto-foundation://app/status.html',
   ORIGIN = 'auto-foundation://app';
@@ -99,6 +101,9 @@ let window,
   config = 0;
 const cases = Object.fromEntries(VIDEO_QUALIFICATION_CASES.map((k) => [k, false]));
 let control, landscape, portrait;
+let diagnosticBound = false,
+  stage = 'ADMISSION',
+  rendererState = 'UNOBSERVED';
 function fail() {
   if (done) return;
   done = true;
@@ -106,6 +111,21 @@ function fail() {
     bridge?.close();
     window?.destroy();
   } catch {}
+  if (diagnosticBound) {
+    try {
+      const diagnostic = {
+        version: 1,
+        scope: VIDEO_QUALIFICATION_SCOPE,
+        head: control.head,
+        inputs: control.inputs,
+        stage,
+        rendererState,
+        cases,
+      };
+      if (validateVideoDiagnostic(diagnostic))
+        writeFileSync(join(root, 'failure.json'), JSON.stringify(diagnostic), { flag: 'wx' });
+    } catch {}
+  }
   console.error('VIDEO_DECODER_PROBE_FAIL');
   app.exit(1);
 }
@@ -182,6 +202,7 @@ const canvasFacts = `(()=>{const c=document.querySelector('canvas[aria-label="Vi
 async function observe(fixture) {
   const f = await until(async () => {
     const v = await js(canvasFacts);
+    rendererState = VIDEO_DIAGNOSTIC_STATES.includes(v?.state) ? v.state : 'UNRECOGNIZED';
     return v?.state === 'DISPLAYING' && v.width === fixture.width && v.height === fixture.height
       ? v
       : null;
@@ -314,6 +335,8 @@ try {
     if (manifest.outputs[name] !== sha(b)) throw Error();
     assets[name] = b;
   }
+  diagnosticBound = true;
+  stage = 'READY';
   for (const name of ['user-data', 'session-data']) mkdirSync(join(root, name));
   app.setPath('userData', join(root, 'user-data'));
   app.setPath('sessionData', join(root, 'session-data'));
@@ -439,10 +462,12 @@ try {
           return fail();
         window.webContents.send('foundation:preferences:ready');
       });
+      stage = 'LOAD';
       await window.loadURL(ENTRY);
       cases.secureOrigin = await js(
         `location.href==='${ENTRY}'&&window.isSecureContext&&typeof VideoDecoder==='function'&&typeof EncodedVideoChunk==='function'`,
       );
+      stage = 'START_BUTTON';
       await until(() =>
         js(
           `(()=>{const b=document.querySelector('button[aria-label="Start video Device 0001"]');return !!b&&!b.disabled;})()`,
@@ -450,24 +475,36 @@ try {
       );
       cases.explicitStart = begins === 0;
       await js(`document.querySelector('button[aria-label="Start video Device 0001"]').click()`);
-      await until(() => sink);
+      stage = 'PORT';
+      await until(async () => {
+        if (sink) return sink;
+        const v = await js(canvasFacts);
+        rendererState = VIDEO_DIAGNOSTIC_STATES.includes(v?.state) ? v.state : 'UNRECOGNIZED';
+        return false;
+      });
       const wide = generateVideoDecoderFixture('LANDSCAPE'),
         tall = generateVideoDecoderFixture('PORTRAIT');
+      stage = 'LANDSCAPE_MEDIA';
       await send('SESSION', wide);
       await send('CONFIG', wide);
       await send('KEY', wide);
+      stage = 'LANDSCAPE_OUTPUT';
       landscape = await observe(wide);
       cases.landscapeDecoded = true;
       cases.landscapePlacement = true;
+      stage = 'ROTATION';
       await send('SESSION', tall);
       cases.rotationCleared = await js(canvasFacts).then(
         (f) => f?.clear === true && f.state !== 'DISPLAYING',
       );
+      stage = 'PORTRAIT_MEDIA';
       await send('CONFIG', tall);
       await send('KEY', tall);
+      stage = 'PORTRAIT_OUTPUT';
       portrait = await observe(tall);
       cases.portraitDecoded = true;
       cases.portraitPlacement = true;
+      stage = 'STOP';
       if (stops !== 0 || stopped) throw Error();
       await js(`document.querySelector('button[aria-label="Stop video Device 0001"]').click()`);
       await until(async () => {
@@ -476,6 +513,7 @@ try {
       });
       cases.stopCleared = true;
       cases.singleOwnerStop = stops === 1;
+      stage = 'STALE';
       // Late old-geometry media after explicit Stop cannot revive the cleared tile.
       let staleRefused = false;
       try {
@@ -504,6 +542,7 @@ try {
       const finalFacts = await js(canvasFacts);
       cases.staleRejected =
         staleRefused && finalFacts.clear && finalFacts.state === 'STOPPED' && stops === 1;
+      stage = 'CLOSE';
       if (!(await bridge.close())) throw Error();
       view.close();
       window.once('closed', () => {

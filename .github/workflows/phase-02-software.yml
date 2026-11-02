@@ -1160,14 +1160,21 @@ jobs:
         run: |
           & ./desktop/verification/Invoke-VideoDecoder.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Upload only validated synthetic result and bounded supervisor evidence
-        if: success()
+      - name: Strict sanitized qualification evidence on success or failure
+        id: decoder_evidence
+        if: always()
+        run: |
+          $lines=@(& node desktop/verification/video-decoder-control.mjs publish $env:GITHUB_SHA 2>&1)
+          $code=$LASTEXITCODE
+          foreach($line in $lines){if([string]$line -cmatch '^VIDEO_DECODER_(EVIDENCE_(WRITTEN|PASS|FAIL)|CONTROL_FAIL)$'){Write-Output ([string]$line)}}
+          if(@($lines|Where-Object {$_ -ceq 'VIDEO_DECODER_EVIDENCE_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+          if($code -ne 0){exit 1}
+      - name: Upload only closed-schema sanitized qualification evidence
+        if: always() && steps.decoder_evidence.outputs.written == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: synthetic-video-decoder-evidence
-          path: |
-            desktop/.test-output/video-decoder-result.json
-            desktop/.test-output/video-decoder-supervisor.json
+          path: desktop/.test-output/video-decoder-evidence.json
           if-no-files-found: error
           retention-days: 14
   owned-video-managed-development:
