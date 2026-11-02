@@ -248,8 +248,16 @@ function syntheticFactory(options = {}) {
               return c;
             },
           }
-        : n === 'node:fs' && options.fs
-          ? { ...require(n), ...options.fs }
+        : n === 'node:fs'
+          ? {
+              ...require(n),
+              mkdtempSync(prefix) {
+                // Only the synthetic admitted Linux owner uses this portable fixture seam.
+                assert.equal(prefix, '/tmp/auto-p4-preprocess-job-');
+                return realpathSync.native(mkdtempSync(join(tmpdir(), 'p4-preprocess-fixture-')));
+              },
+              ...options.fs,
+            }
           : require(n),
     mod,
     mod.exports,
