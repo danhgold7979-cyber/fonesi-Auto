@@ -11,7 +11,7 @@ Traceability: [canonical P3-01](PHASE-03-screen-wall-resources.md), [fixed subde
 - **F:** restore a separately verified prior compatible whole bundle, without adopting third-party installations or mixing component generations.
 - Runtime admission (P3-01.G), real Windows launch/phone proof, decoder/rendering and performance remain separate. The current headless pair is not a stock scrcpy client, visible preview or complete P3-02 implementation.
 
-The successful build retained nine JSON evidence files, not executable artifacts. Its owned cleanup deleted the build products. Therefore there are currently **measured artifact identities, but no retained executable pair available to install**. Neither hashes nor source manifests reconstruct those bytes. This proposal reuses the successful evidence as a reference; it does not require or perform a new build now.
+At source entry, the successful build retained nine JSON evidence files, not executable artifacts; its owned cleanup deleted the build products. That historical reference alone could not supply installable bytes. The later user-approved [retained evidence milestone](../evidence/P3-01-retained-pair-evidence-milestone-2026-11-02.md#actual-retained-milestone-pass--1028-utc) now preserves an exact fresh pair and source/evidence packet, independently audited at10:29. This does not itself resolve applicable notices, set packaging/runtime approval, or establish prior-bundle recovery.
 
 ## 2. Exact successful reference, not a runtime allowlist
 
@@ -141,3 +141,21 @@ The proposed implementable source slice is the exact optional build API, version
 The external receipt uses fixed `${zip}.receipt.json`, exclusively written only after actual promoted package and ZIP revalidation; only v2 extends the return with its receipt path. Failure after partial promotion returns no success and retains the actual evidence; no multi-file atomicity is claimed. Independent narrow review CLEAR at 08:19. The two source-test files add exactly two measured quality entries, 521→523; preserve the two-entry owned fixture allowance with bound525 and refusal526. One additive registered test path makes173→174; shared fixture imports register no tests. Existing package/file/manifest caps and runtime admission stay unchanged.
 
 The final v2 archive path uses one builder-private immutable capture of the validated complete file/directory inventory, including the package manifest’s own digest. The ZIP writer consumes those exact entries; the actual produced digest is bound to that capture and the final receipt repeats the same package/ZIP identity. A successor capture cannot adopt an older ZIP. The fixed sidecar is read as exactly65 bytes through bounded plain/single-link stable-file checks. These close the two consolidated implementation findings without adding a ZIP parser or changing v1 behavior.
+
+## 8. Actual retained candidate and truthful notice v2 — 2026-11-02 10:40 UTC
+
+The preceding source-entry null approval and notice v1 description are historical. The fresh [retained milestone](../evidence/P3-01-retained-pair-evidence-milestone-2026-11-02.md#actual-retained-milestone-pass--1028-utc) now supplies actual binaries/source/generated inputs/notices and independently audited provenance. Internal personal/employee use was explicitly selected; no external or open-source grant for Auto is invented. Exact installed-D8 template/source correspondence is a stated research limitation, not an original packaging prerequisite. Absence of a blanket generated-code exemption does not itself establish a prohibition.
+
+Notice-manifest v2 keeps every existing top-level field except version=2 and replaces each component's ambiguous `license` string with exact `licenseEvidence:{kind,declaredLicense,applicability}`. Historical version1/`license` form and every extra field or alternative combination refuse. The exact role matrix is:
+
+| Component | kind | declaredLicense | applicability |
+|---|---|---|---|
+| SERVER_UPSTREAM | DECLARED_SOURCE_NOTICE | Apache-2.0 | SOURCE_DECLARED |
+| SERVER_AIDL | DECLARED_SOURCE_NOTICE | Apache-2.0 | OUTPUT_APPLICABILITY_UNRESOLVED |
+| SERVER_GENERATED | SUPPLIED_TOOL_NOTICE | null | OUTPUT_APPLICABILITY_UNRESOLVED |
+| AUTO_PATCH | OWNER_USE_STATEMENT | null | OWNER_INTERNAL_USE_NO_EXTERNAL_GRANT |
+| AUTO_CONSUMER | OWNER_USE_STATEMENT | null | OWNER_INTERNAL_USE_NO_EXTERNAL_GRANT |
+
+The fixed23-file candidate includes exact retained payload/evidence, five source files matching current package inputs, unchanged upstream LICENSE and factual ATTRIBUTIONS followed by the entire supplied vendor NOTICE. Tool/library notices are not represented as a list of libraries proven bundled. Generated-output applicability remains explicitly unresolved; no licensing sufficiency or legal opinion is implied by the mapping.
+
+Independent actual candidate/source review is CLEAR for **integrity/provenance-only packaging approval** of pair SHA256 `934a9ff34a1b868fa56ddfc8a57d4eaba64d9d6305b6da05839566b90b366437`, notice SHA256 `305698d5f4623d7572c1c46a515a17d0984b35d26a82ae743ebeb71a04a0ebf6`, evidence SHA256 `7bd7125bf8f427cd10a2371f6a435b82c410bd4a0163b5626750049a7aa2a043`. The source-owned packaging pin now binds those exact hashes; unchanged production verifier passes the actual candidate. This does not set runtime TS/PowerShell pins, admit a launched application, close task-A applicability, create first-party legal terms or authorize a new full-application public release. Package v2 paths/caps/whole-package consistency remain unchanged. The [bounded actual package-only check](P3-RETAINED-PAIR-PACKAGE-CHECK.md) reuses the existing builder without pair recompilation or app/device execution.

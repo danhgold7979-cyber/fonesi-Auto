@@ -177,9 +177,14 @@ function inventory(root) {
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { files, directories, total };
 }
-// Packaging approval is distinct from the runtime pin and cannot be supplied by callers.
-// Only a separately reviewed retained-byte/notice campaign may replace this null.
-const RETAINED_PAIR_APPROVAL = null;
+// Packaging approval binds exact bytes/integrity/provenance only, not legal clearance,
+// task acceptance or runtime admission; callers cannot supply it.
+// Exact independently reviewed retained-byte/notice candidate; runtime pins remain separate.
+const RETAINED_PAIR_APPROVAL = {
+  pairManifestSha256: '934a9ff34a1b868fa56ddfc8a57d4eaba64d9d6305b6da05839566b90b366437',
+  noticeManifestSha256: '305698d5f4623d7572c1c46a515a17d0984b35d26a82ae743ebeb71a04a0ebf6',
+  evidenceManifestSha256: '7bd7125bf8f427cd10a2371f6a435b82c410bd4a0163b5626750049a7aa2a043',
+};
 const PAIR_SOURCES = Object.freeze(
   NATIVE.filter((name) => name !== 'PersistenceProcess.cs').map((name) => `app/native/${name}`),
 );
@@ -420,7 +425,7 @@ function pairContents(root) {
     'files',
   ]);
   if (
-    notice.version !== 1 ||
+    notice.version !== 2 ||
     notice.pairManifestSha256 !== result.pairManifestSha256 ||
     notice.sourceEvidenceSha256 !== pairSha(ev.get('source.json')) ||
     notice.dependenciesManifestSha256 !== pairSha(ev.get('dependencies.json'))
@@ -455,15 +460,18 @@ function pairContents(root) {
   if (!Array.isArray(notice.components) || notice.components.length !== roles.length) fail();
   for (let i = 0; i < roles.length; i++) {
     const component = notice.components[i];
-    keys(component, ['id', 'role', 'origin', 'license', 'noticeFiles']);
+    keys(component, ['id', 'role', 'origin', 'licenseEvidence', 'noticeFiles']);
+    if (component.id !== roles[i][0] || component.role !== roles[i][1]) fail();
+    keys(component.licenseEvidence, ['kind', 'declaredLicense', 'applicability']);
+    const expectedEvidence = [
+      ['DECLARED_SOURCE_NOTICE', 'Apache-2.0', 'SOURCE_DECLARED'],
+      ['DECLARED_SOURCE_NOTICE', 'Apache-2.0', 'OUTPUT_APPLICABILITY_UNRESOLVED'],
+      ['SUPPLIED_TOOL_NOTICE', null, 'OUTPUT_APPLICABILITY_UNRESOLVED'],
+      ['OWNER_USE_STATEMENT', null, 'OWNER_INTERNAL_USE_NO_EXTERNAL_GRANT'],
+      ['OWNER_USE_STATEMENT', null, 'OWNER_INTERNAL_USE_NO_EXTERNAL_GRANT'],
+    ][i];
     if (
-      component.id !== roles[i][0] ||
-      component.role !== roles[i][1] ||
-      typeof component.license !== 'string' ||
-      component.license.length < 1 ||
-      component.license.length > 64 ||
-      !/^[A-Za-z0-9.-]+$/.test(component.license) ||
-      component.license === 'UNRESOLVED'
+      JSON.stringify(Object.values(component.licenseEvidence)) !== JSON.stringify(expectedEvidence)
     )
       fail();
     keys(component.origin, ['sourceCommit', 'sourceHashes', 'toolHashes']);

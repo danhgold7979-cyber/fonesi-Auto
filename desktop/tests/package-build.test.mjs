@@ -1,6 +1,9 @@
 import test from 'node:test';
 import { transformSync } from 'esbuild';
-import { materializeRetainedPair } from './fixtures/retained-pair-package.mjs';
+import {
+  materializeRetainedPair,
+  APPROVED_SOURCE_SEAM,
+} from './fixtures/retained-pair-package.mjs';
 import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
@@ -233,8 +236,10 @@ test('ZIP CRC pre-pass rejects an injected changed read while preserving source 
 function syntheticPolicyPackage(packageRoot, approval = null) {
   const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const root = packageRoot;
-  const source = readFileSync(resolve(sourceRoot, 'launch/package-admission.cjs'), 'utf8').replace(
-    'const RETAINED_PAIR_APPROVAL = null;',
+  const original = readFileSync(resolve(sourceRoot, 'launch/package-admission.cjs'), 'utf8');
+  assert.equal(original.split(APPROVED_SOURCE_SEAM).length, 2);
+  const source = original.replace(
+    APPROVED_SOURCE_SEAM,
     `const RETAINED_PAIR_APPROVAL = ${JSON.stringify(approval)};`,
   );
   const pinFor = new Map([

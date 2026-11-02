@@ -22,7 +22,9 @@ function gate(raw) {
     text,
     /run_pair_retention:\n {8}description: '[^\n]+'\n {8}required: false\n {8}type: boolean\n {8}default: false/,
   );
-  const job = text.split('  derived-pair-retained-evidence-development:\n')[1];
+  const job = text
+    .split('  derived-pair-retained-evidence-development:\n')[1]
+    ?.split(/\n {2}[a-z][a-z0-9-]*:\n/)[0];
   assert.ok(job);
   assert.match(job, /needs: windows-software-only/);
   assert.match(
@@ -249,4 +251,21 @@ test('reconstructed receipt rows preserve note-property shape and checkpoints st
     /Write-Output \('DERIVED_PAIR_RETENTION_WRAPPER_'\+\$retentionWrapperStep\)/,
   );
   assert.doesNotMatch(source, /Write-Output.*Exception|Write-Output \$_/);
+});
+
+test('retention assertions stop at the next top-level job, not unrelated package prerequisites', () => {
+  const selected = gate(workflow);
+  assert.ok(!selected.includes('retained-pair-package-check-development:'));
+  assert.equal(
+    gate(`${workflow}\n  unrelated-source-check:\n    run: npm unsafe-synthetic\n`),
+    selected,
+  );
+  assert.throws(() =>
+    gate(
+      workflow.replace(
+        'name: derived-pair-retained-evidence',
+        'name: derived-pair-retained-evidence\n          synthetic: always()',
+      ),
+    ),
+  );
 });

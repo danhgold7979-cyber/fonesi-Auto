@@ -200,6 +200,12 @@ Independent review credits [P3-12 local source/checks](../evidence/P3-12-local-p
 
 **Current fixed ledger: N82 / S4 / I14. Source-covered18/100 =18.0%; integrated/software-tested14/100 =14.0%; each +4.0 percentage points versus §3.2 (14%/10%).** No denominator or acceptance rule changed. Rendered visual/native-scroll qualification, P3-11 telemetry and physical/task acceptance remain open; technical acceptance stays0/19. No credit is assigned to pending retained-pair work or waiting/build duration. Record this with the combined milestone, not a standalone documentation push.
 
+## 3.4. Existing source-credit correction — 2026-11-02 10:38 UTC
+
+Independent criterion audit confirms **P3-01.E N→S**, not I. Its complete named source behavior already exists: optional v2 builder/shared verifier, app-local server/consumer layout, exact source/DLL binding, captured package/ZIP inventory and external receipt, with attributable passing source/causal tests in the [package source evidence](../evidence/P3-01-retained-pair-package-source-2026-11-02.md). Actual approved whole-package output remains unestablished. Notice investigation and complete task-A/rights/runtime acceptance must not withhold E's SOURCE credit. The new retained pipeline [actual PASS](../evidence/P3-01-retained-pair-evidence-milestone-2026-11-02.md#actual-retained-milestone-pass--1028-utc) establishes evidence availability but is not, by itself, complete app-local packaging integration.
+
+**Current ledger: N81 / S5 / I14. Source coverage19/100=19.0% (+1.0 percentage point versus §3.3); integrated14/100=14.0% (unchanged); task acceptance0/19.** This is a disclosed correction of previously under-credited source work, not newly written code or a changed denominator. A remains N for its own applicable notice closure, F remains N for prior recovery; C/D already I, B/G already S. No other status changes.
+
 ## 4. First baseline and honest deltas
 
 The independently reviewed complete mapping and evidence overlay establish:

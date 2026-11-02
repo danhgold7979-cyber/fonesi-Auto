@@ -19,10 +19,19 @@ function owned(run) {
     fs.rmSync(root, { recursive: true });
   }
 }
-test('production approval is null; actual synthetic files need only explicit test source transformation', () =>
+test('production exact candidate pin refuses synthetic bytes; only explicit test transformation admits fixtures', () =>
   owned((root) => {
     const f = materializeRetainedPair(root);
     assert.throws(() => real.verifyRetainedPair(root), /PACKAGE_REJECTED/);
+    assert.throws(() => loadApprovedAdmission(null).verifyRetainedPair(root), /PACKAGE_REJECTED/);
+    assert.throws(
+      () =>
+        loadApprovedAdmission({
+          ...f.approval,
+          pairManifestSha256: '0'.repeat(64),
+        }).verifyRetainedPair(root),
+      /PACKAGE_REJECTED/,
+    );
     const admission = loadApprovedAdmission(f.approval);
     const result = admission.verifyRetainedPair(root);
     assert.equal(JSON.stringify(result), JSON.stringify(f.approval));
@@ -119,4 +128,48 @@ test('notice origin cannot invent a source or tool hash absent from retained evi
         ),
       /PACKAGE_REJECTED/,
     );
+  }));
+test('notice v2 accepts only fixed evidence applicability tuples, never old blanket license form', () =>
+  owned((root) => {
+    const f = materializeRetainedPair(root);
+    const file = path.join(root, 'app/video/notice-manifest.json');
+    const rejected = (mutate) => {
+      const notice = structuredClone(f.notice);
+      mutate(notice);
+      const raw = Buffer.from(JSON.stringify(notice));
+      fs.writeFileSync(file, raw);
+      assert.throws(
+        () =>
+          loadApprovedAdmission({
+            ...f.approval,
+            noticeManifestSha256: sha(raw),
+          }).verifyRetainedPair(root),
+        /PACKAGE_REJECTED/,
+      );
+    };
+    rejected((n) => {
+      n.version = 1;
+    });
+    rejected((n) => {
+      n.components[0].license = 'Apache-2.0';
+      delete n.components[0].licenseEvidence;
+    });
+    for (let index = 0; index < 5; index++) {
+      for (const [key, value] of [
+        ['kind', 'OTHER'],
+        ['declaredLicense', 'BSD-3-Clause'],
+        ['applicability', 'OUTPUT_CLEARED'],
+        ['extra', true],
+      ]) {
+        rejected((n) => {
+          n.components[index].licenseEvidence[key] = value;
+        });
+      }
+      rejected((n) => {
+        n.components[index].licenseEvidence = n.components[(index + 2) % 5].licenseEvidence;
+      });
+    }
+    fs.writeFileSync(file, JSON.stringify(f.notice));
+    assert.ok(loadApprovedAdmission(f.approval).verifyRetainedPair(root));
+    assert.throws(() => real.verifyRetainedPair(root), /PACKAGE_REJECTED/);
   }));

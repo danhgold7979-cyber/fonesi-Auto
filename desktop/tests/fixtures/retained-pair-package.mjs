@@ -8,9 +8,14 @@ import { createHash } from 'node:crypto';
 const require = createRequire(import.meta.url);
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const sha = (raw) => createHash('sha256').update(raw).digest('hex');
+export const APPROVED_SOURCE_SEAM = `const RETAINED_PAIR_APPROVAL = {
+  pairManifestSha256: '934a9ff34a1b868fa56ddfc8a57d4eaba64d9d6305b6da05839566b90b366437',
+  noticeManifestSha256: '305698d5f4623d7572c1c46a515a17d0984b35d26a82ae743ebeb71a04a0ebf6',
+  evidenceManifestSha256: '7bd7125bf8f427cd10a2371f6a435b82c410bd4a0163b5626750049a7aa2a043',
+};`;
 export function loadApprovedAdmission(approval) {
   let source = fs.readFileSync(path.join(desktop, 'launch/package-admission.cjs'), 'utf8');
-  const seam = 'const RETAINED_PAIR_APPROVAL = null;';
+  const seam = APPROVED_SOURCE_SEAM;
   if (source.split(seam).length !== 2) throw Error('SYNTHETIC_APPROVAL_SEAM_CHANGED');
   source = source.replace(seam, `const RETAINED_PAIR_APPROVAL = ${JSON.stringify(approval)};`);
   const module = { exports: {} };
@@ -135,7 +140,7 @@ export function materializeRetainedPair(root) {
     ['SERVER_GENERATED', 'GENERATED_CODE'],
     ['AUTO_PATCH', 'FIRST_PARTY_MODIFICATION'],
     ['AUTO_CONSUMER', 'FIRST_PARTY_COMPILED_CODE'],
-  ].map(([id, role]) => ({
+  ].map(([id, role], index) => ({
     id,
     role,
     origin: {
@@ -144,11 +149,26 @@ export function materializeRetainedPair(root) {
       toolHashes:
         id === 'SERVER_GENERATED' ? [{ path: 'BUILD_TOOLS36/lib/d8.jar', sha256: h }] : [],
     },
-    license: 'SYNTHETIC-TEST-ONLY',
+    // Synthetic policy tuple fixture, not a legal/provenance assertion.
+    licenseEvidence: {
+      kind:
+        index < 2
+          ? 'DECLARED_SOURCE_NOTICE'
+          : index === 2
+            ? 'SUPPLIED_TOOL_NOTICE'
+            : 'OWNER_USE_STATEMENT',
+      declaredLicense: index < 2 ? 'Apache-2.0' : null,
+      applicability:
+        index === 0
+          ? 'SOURCE_DECLARED'
+          : index < 3
+            ? 'OUTPUT_APPLICABILITY_UNRESOLVED'
+            : 'OWNER_INTERNAL_USE_NO_EXTERNAL_GRANT',
+    },
     noticeFiles: ['ATTRIBUTIONS.txt'],
   }));
   const notice = {
-    version: 1,
+    version: 2,
     pairManifestSha256: sha(pairRaw),
     sourceEvidenceSha256: sha(ev['source.json']),
     dependenciesManifestSha256: sha(ev['dependencies.json']),

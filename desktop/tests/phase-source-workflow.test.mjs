@@ -22,6 +22,7 @@ const nativeNames = [
   'derived-pair-compile-development',
   'derived-notice-evidence-development',
   'derived-pair-retained-evidence-development',
+  'retained-pair-package-check-development',
 ];
 const marker = `          if ($env:GITHUB_REF -eq 'refs/heads/phase-03') {
             Write-Output 'PHASE03_SOFTWARE_ONLY'
@@ -107,10 +108,21 @@ function validate(rawSource) {
         source,
         / {6}run_pair_retention:\n {8}description: [^\n]+\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
       );
+    } else if (jobs[i][1] === 'retained-pair-package-check-development') {
+      assert.equal(
+        condition,
+        "github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_pair_package_check == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[pair-package-check]')))",
+      );
+      assert.match(body, / {4}needs: windows-software-only\n/);
+      assert.match(body, / {4}permissions:\n {6}contents: read\n {6}actions: read\n/);
+      assert.match(
+        source,
+        / {6}run_pair_package_check:\n {8}description: [^\n]+\n {8}required: false\n {8}type: boolean\n {8}default: false\n/,
+      );
     } else assert.ok(condition.startsWith('false && '));
   }
 }
-test('phase03 reuses pinned source gates with only explicit managed-video, compile-pair, notice-evidence and retained-pair opt-ins on that branch', () => {
+test('phase03 reuses pinned source gates with only explicit managed-video, compile-pair, notice-evidence, retained-pair and package-check opt-ins on that branch', () => {
   for (const source of workflowEncodings(raw)) validate(source);
 });
 test('phase source workflow rejects branch, native authority, marker and gate drift under LF and CRLF', () => {
