@@ -2,6 +2,11 @@ name: Phase 02–03 software and gated development boundaries
 on:
   workflow_dispatch:
     inputs:
+      run_notice_evidence:
+        description: 'Capture exact vendor notice text only; no pair compilation, binary retention or device operation'
+        required: false
+        type: boolean
+        default: false
       run_pair_build:
         description: 'Compile and inspect the derived server and Windows consumer; never load, upload binaries or contact devices'
         required: false
@@ -134,7 +139,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==339; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==353; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Explicit unavailable runtime and deferred hardware boundary
         run: |
@@ -1209,6 +1214,71 @@ jobs:
         with:
           name: derived-video-pair-build-evidence
           path: desktop/.derived-pair-build-runtime/upload/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+  derived-notice-evidence-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_notice_evidence == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[notice-evidence]')))
+    runs-on: windows-2022
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Bind exact source checkout and parse the fixed notice entry
+        run: |
+          try {
+            $head=@(& git rev-parse HEAD); if($LASTEXITCODE -ne 0 -or $head.Count -ne 1){throw 'SOURCE_HEAD'}
+            $tree=@(& git rev-parse 'HEAD^{tree}'); if($LASTEXITCODE -ne 0 -or $tree.Count -ne 1){throw 'SOURCE_TREE'}
+            if($head[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $tree[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $head[0] -cne $env:GITHUB_SHA){throw 'SOURCE_BINDING'}
+            "FONESI_AUTO_SOURCE_COMMIT=$($head[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "FONESI_AUTO_SOURCE_TREE=$($tree[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-DerivedNoticeEvidence.ps1'),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -ne 0){throw 'SYNTAX'}
+            Write-Output 'DERIVED_NOTICE_SOURCE_BOUND'
+          } catch { Write-Output 'DERIVED_NOTICE_SOURCE_REJECTED'; exit 1 }
+      - name: Capture only the exact vendor notice evidence
+        id: notice_validation
+        run: |
+          try {
+            $lines=@(& ./desktop/verification/Invoke-DerivedNoticeEvidence.ps1 -PythonPath $env:FOUNDATION_PYTHON_EXE)
+            $code=$LASTEXITCODE
+            if($lines.Count -eq 1 -and $code -eq 0 -and $lines[0] -ceq 'DERIVED_NOTICE_EVIDENCE_PASS') {
+              Write-Output 'DERIVED_NOTICE_EVIDENCE_PASS'
+              'passed=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            } else {
+              foreach($line in $lines) {
+                if([string]$line -cmatch '^DERIVED_NOTICE_EVIDENCE_FAIL_(BASELINE_REJECTED|SDK_PROFILE_REJECTED|INPUT_REJECTED|TEXT_REJECTED|SOURCE_CHANGED|STAGING_FAILED|UNRETIRED|CLEANUP_FAILED|PUBLICATION_FAILED|INTERNAL_FAILURE)$') { Write-Output ([string]$line) }
+              }
+              Write-Output 'DERIVED_NOTICE_RUNNER_FAILED'; exit 1
+            }
+          } catch { Write-Output 'DERIVED_NOTICE_RUNNER_FAILED'; exit 1 }
+      - name: Upload only the exact checked notice text and receipt
+        if: success() && steps.notice_validation.outputs.passed == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: derived-notice-evidence
+          path: |
+            desktop/.derived-notice-runtime/upload/NOTICE.txt
+            desktop/.derived-notice-runtime/upload/source.properties
+            desktop/.derived-notice-runtime/upload/receipt.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
