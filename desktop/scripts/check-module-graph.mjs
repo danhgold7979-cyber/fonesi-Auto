@@ -147,7 +147,7 @@ export async function validateGraph(sources, map) {
   if (
     map.schemaVersion !== 1 ||
     !map.modules ||
-    Object.keys(map.modules).length > 126 ||
+    Object.keys(map.modules).length > 129 ||
     Object.keys(map.modules).length === 0
   )
     reject('MAP_INVALID');
@@ -289,14 +289,14 @@ export async function verifyRuntimeGraph(sources, map) {
 }
 export function readMap(path) {
   const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 65792) reject('MAP_INVALID');
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 67564) reject('MAP_INVALID');
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 export function inventory(sourceRoot) {
   const sources = {};
   let count = 0;
   function walk(path, name, depth) {
-    if (++count > 129 || depth > 8) reject('INVENTORY_LIMIT');
+    if (++count > 132 || depth > 8) reject('INVENTORY_LIMIT');
     const stat = lstatSync(path);
     if (stat.isSymbolicLink()) reject('SOURCE_LINK');
     if (stat.isDirectory()) {

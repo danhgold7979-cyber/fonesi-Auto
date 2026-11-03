@@ -61,6 +61,12 @@
   "preload.ts": {
    "role": "preload",
    "imports": {
+    "./schedule-draft-client.ts": {
+     "createScheduleDraftClient": "value"
+    },
+    "./schedule-draft-contract.ts": {
+     "SCHEDULE_DRAFT_CHANNEL": "value"
+    },
     "./input-interaction-client.js": {
      "createInputInteractionClient": "value"
     },
@@ -171,6 +177,9 @@
   "main.ts": {
    "role": "main",
    "imports": {
+    "./schedule-draft-bridge.ts": {
+     "installScheduleDraftBridge": "value"
+    },
     "./input-interaction-bridge.ts": {
      "installInputInteractionBridge": "value"
     },
@@ -2639,7 +2648,95 @@
    "role": "contract",
    "imports": {}
   },
-  "schedule-zone-contract.ts": {"role":"contract","imports":{"@js-temporal/polyfill":{"Temporal":"value"},"node:process":{"versions":"value","env":"value","execArgv":"value","platform":"value","arch":"value"},"node:crypto":{"createHash":"value"},"./schedule-civil-contract.js":{"previewCivilOccurrences":"value","CivilOccurrence":"type","PreviewCode":"type"}}},
-  "schedule-gap-contract.ts": {"role":"contract","imports":{"./schedule-zone-contract.js":{"resolveCivilPreview":"value","ZoneCode":"type","ZonePreviewResult":"type"}}}
+  "schedule-zone-contract.ts": {
+   "role": "contract",
+   "imports": {
+    "@js-temporal/polyfill": {
+     "Temporal": "value"
+    },
+    "node:process": {
+     "versions": "value",
+     "env": "value",
+     "execArgv": "value",
+     "platform": "value",
+     "arch": "value"
+    },
+    "node:crypto": {
+     "createHash": "value"
+    },
+    "./schedule-civil-contract.js": {
+     "previewCivilOccurrences": "value",
+     "CivilOccurrence": "type",
+     "PreviewCode": "type"
+    }
+   }
+  },
+  "schedule-gap-contract.ts": {
+   "role": "contract",
+   "imports": {
+    "./schedule-zone-contract.js": {
+     "resolveCivilPreview": "value",
+     "ZoneCode": "type",
+     "ZonePreviewResult": "type"
+    }
+   }
+  },
+  "schedule-draft-contract.ts": {
+   "role": "contract",
+   "imports": {
+    "./schedule-civil-contract.js": {
+     "previewCivilOccurrences": "value",
+     "snapshotCivilSchedule": "value",
+     "CivilScheduleV1": "type"
+    },
+    "./schedule-gap-contract.js": {
+     "UnboundGapPreviewResult": "type"
+    },
+    "./schedule-zone-contract.js": {
+     "ResolvedOccurrence": "type",
+     "TimezoneRuntimeV1": "type",
+     "ZoneCode": "type"
+    }
+   }
+  },
+  "schedule-draft-client.ts": {
+   "role": "client",
+   "imports": {
+    "./invocation-budget.ts": {
+     "createInvocationBudget": "value",
+     "InvocationBudget": "type"
+    },
+    "./schedule-draft-contract.ts": {
+     "snapshotScheduleDraftInput": "value",
+     "parseScheduleDraftRequest": "value",
+     "parseScheduleDraftResponse": "value",
+     "scheduleDraftError": "value",
+     "ScheduleDraftCode": "type"
+    }
+   }
+  },
+  "schedule-draft-bridge.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "electron": {
+     "IpcMain": "type",
+     "IpcMainInvokeEvent": "type"
+    },
+    "./view-session.ts": {
+     "Admission": "type"
+    },
+    "./schedule-gap-contract.ts": {
+     "evaluateUnboundScheduleGapPreview": "value"
+    },
+    "./schedule-draft-contract.ts": {
+     "SCHEDULE_DRAFT_CHANNEL": "value",
+     "SCHEDULE_DRAFT_CODES": "value",
+     "parseScheduleDraftRequest": "value",
+     "scheduleDraftError": "value",
+     "scheduleDraftSuccess": "value",
+     "ScheduleDraftCode": "type"
+    }
+   }
+  }
  }
 }

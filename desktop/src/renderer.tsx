@@ -26,6 +26,7 @@ import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
   interface Window {
+    scheduleDraft: Readonly<{ preview: (input: unknown) => Promise<string>; cancel: () => void }>;
     input: Readonly<{
       get: () => Promise<string>;
       press: (

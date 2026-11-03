@@ -270,6 +270,7 @@ test('manual or explicit-marker exact-branch workflow retains only closed report
     'utf8',
   );
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /branches: \[phase-07\]/);
   assert.match(workflow, /default: false/);
   assert.match(workflow, /github\.ref == 'refs\/heads\/phase-07'/);
   assert.match(workflow, /contents: read/);
@@ -576,11 +577,9 @@ test('only exact reviewed push paths and identical explicit opt-in predicates pe
   const paths = [...workflow.matchAll(/^ {6}- '([^']+)'$/gm)].map((m) => m[1]);
   assert.deepEqual(paths, [
     '.github/workflows/phase-07-scheduler.yml',
-    'desktop/verification/Invoke-ScheduleRuntime.ps1',
-    'desktop/verification/schedule-runtime-observer.cjs',
-    'desktop/verification/schedule-runtime-contract.cjs',
-    'desktop/verification/schedule-runtime-control.cjs',
-    'desktop/verification/schedule-runtime-contract.test.cjs',
+    'desktop/**',
+    'foundation/**',
+    'biome.json',
   ]);
   assert.match(workflow, /branches: \[phase-07\]/);
   const gate =
@@ -592,10 +591,23 @@ test('only exact reviewed push paths and identical explicit opt-in predicates pe
     (event === 'workflow_dispatch'
       ? input === true
       : event === 'push' &&
-        paths.includes(changed) &&
+        paths.some((path) =>
+          path.endsWith('/**') ? changed.startsWith(path.slice(0, -2)) : path === changed,
+        ) &&
         message.includes('[schedule-runtime-observe]'));
   for (const [event, input, message, branch, changed, want] of [
     ['push', false, 'ordinary', 'phase-07', paths[0], false],
+    ['push', false, 'ordinary', 'phase-07', 'desktop/src/schedule-draft-bridge.ts', false],
+    [
+      'push',
+      false,
+      '[schedule-runtime-observe]',
+      'phase-07',
+      'desktop/src/schedule-draft-bridge.ts',
+      true,
+    ],
+    ['push', false, '[schedule-runtime-observe]', 'phase-07', 'foundation/src/index.ts', true],
+    ['push', false, '[schedule-runtime-observe]', 'phase-07', 'biome.json', true],
     ['push', false, '[schedule-runtime-observe]', 'phase-03', paths[0], false],
     ['push', false, '[schedule-runtime-observe]', 'phase-07', 'docs/PHASE_STATUS.md', false],
     ['push', false, '[schedule-runtime-observe]', 'phase-07', paths[0], true],

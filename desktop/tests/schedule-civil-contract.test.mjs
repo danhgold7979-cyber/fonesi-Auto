@@ -426,7 +426,7 @@ test('actual module produces identical civil results under different host timezo
   });
   assert.equal(new Set(outputs).size, 1);
 });
-test('leaf has no effect imports or production activation', () => {
+test('civil leaf remains effect-free with only admitted zone and draft-contract consumers', () => {
   const source = readFileSync(
     new URL('../src/schedule-civil-contract.ts', import.meta.url),
     'utf8',
@@ -443,6 +443,7 @@ test('leaf has no effect imports or production activation', () => {
       else if (
         /\.[cm]?[jt]sx?$/.test(entry.name) &&
         entry.name !== 'schedule-zone-contract.ts' &&
+        entry.name !== 'schedule-draft-contract.ts' &&
         fileURLToPath(path) !==
           fileURLToPath(new URL('../src/schedule-civil-contract.ts', import.meta.url))
       )

@@ -2,7 +2,20 @@
 
 **Phase07 — Scheduler and queue:** source6/47=12.8%, integrated6/47=12.8%, technical acceptance0/13. Exactly P7-04.A N→I: +1/47 (+2.13 percentage points) each versus10.6%; fixed47-cell denominator unchanged. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
 
-**Current Phase07 continuation — 2026-11-03:** exact public production corpus
+**Current Phase07 continuation — 2026-11-03 21:42 UTC:** the read-only unsaved
+draft preview bridge is implemented, independently reviewed CLEAR and fully
+source-tested **1796/1796 PASS**. Explicit sandboxed preload calls reach the
+existing trusted main-view admission and real unbound civil/timezone/advisory
+evaluator. Closed request/result bounds, shared budget, cancellation/late-response
+handling and lifecycle cleanup are integrated. The connected Node test covers
+DST, truncation and revoked sessions; actual new IPC invocation in packaged
+Electron remains NOT_RUN. No UI editor, persistence, queue, dispatch or device
+activation; no new ledger credit. Scheduler source CI push coverage is repaired
+while explicit runtime observation gates remain unchanged.
+[Exact evidence and retained iterations](evidence/P7-draft-preview-bridge-2026-11-03.md).
+Main and other phase histories remain unchanged.
+
+**Previous Phase07 unbound API checkpoint — 2026-11-03:** exact public production corpus
 run41493281269 at3a7689e3 is independently audited CLEAR, with three host zones
 and matching4284-assertion production/candidate corpora. The next pure unbound
 draft API is implemented and independently CLEAR: local draft identity/revision

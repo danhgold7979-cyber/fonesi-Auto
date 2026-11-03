@@ -11,11 +11,9 @@ on:
     branches: [phase-07]
     paths:
       - '.github/workflows/phase-07-scheduler.yml'
-      - 'desktop/verification/Invoke-ScheduleRuntime.ps1'
-      - 'desktop/verification/schedule-runtime-observer.cjs'
-      - 'desktop/verification/schedule-runtime-contract.cjs'
-      - 'desktop/verification/schedule-runtime-control.cjs'
-      - 'desktop/verification/schedule-runtime-contract.test.cjs'
+      - 'desktop/**'
+      - 'foundation/**'
+      - 'biome.json'
 permissions:
   contents: read
 jobs:

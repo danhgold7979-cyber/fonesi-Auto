@@ -203,7 +203,7 @@ test('actual library cross-TZ subprocess results and explicit override refusal',
   assert.equal(p.status, 0);
   assert.equal(JSON.parse(p.stdout).code, 'RUNTIME_UNAVAILABLE');
 });
-test('source remains nonactivated and exact dependency versions/byte review precede imports', () => {
+test('resolver has no direct UI/preload import and exact dependency versions/byte review precede imports', () => {
   assert.doesNotMatch(source, /Temporal\.Now|setTimeout|node:fs|node:child_process/);
   for (const name of ['main.ts', 'preload.ts', 'renderer.tsx'])
     assert.ok(

@@ -22,7 +22,7 @@ import {
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
-import { transformSync } from 'esbuild';
+import { transformSync, buildSync } from 'esbuild';
 import { ApplicationLogger } from '../src/main/logging.ts';
 import { LogStore } from '../src/main/log-store.ts';
 import { encodeLogRecord } from '../src/log-contract.ts';
@@ -37,6 +37,20 @@ import * as diagnostic from '../src/ipc-diagnostic-contract.ts';
 import * as contract from '../src/settings-contract.ts';
 import * as fleetContract from '../src/fleet-contract.ts';
 import * as setupContract from '../src/platform-tools-setup-contract.ts';
+const loadDraftModule = async (name) => {
+  const result = buildSync({
+    entryPoints: [fileURLToPath(new URL(`../src/${name}.ts`, import.meta.url))],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    write: false,
+  });
+  return import(
+    `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`
+  );
+};
+const scheduleDraftClient = await loadDraftModule('schedule-draft-client');
+const scheduleDraftContract = await loadDraftModule('schedule-draft-contract');
 const id = 'abcdef00-0000-4000-8000-000000000001',
   utc = '2026-10-31T12:00:00.000Z';
 const fields = () => ({
@@ -164,6 +178,8 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
     events = [],
     invocations = [];
   const modules = {
+    './schedule-draft-client.ts': scheduleDraftClient,
+    './schedule-draft-contract.ts': scheduleDraftContract,
     './association-client.js': associationClient,
     './association-contract.js': associationContract,
     './input-interaction-client.js': inputClient,

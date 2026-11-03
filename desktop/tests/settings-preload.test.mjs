@@ -6,14 +6,29 @@ import * as runtimeVersion from '../src/runtime-version-client.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
-import { transformSync } from 'esbuild';
+import { transformSync, buildSync } from 'esbuild';
 import * as clients from '../src/preload-client.ts';
 import * as fleet from '../src/fleet-client.ts';
 import * as platformTools from '../src/platform-tools-setup-client.ts';
 import * as preferences from '../src/settings-client.ts';
 import * as budget from '../src/invocation-budget.ts';
 import * as diagnostic from '../src/ipc-diagnostic-contract.ts';
+const loadDraftModule = async (name) => {
+  const result = buildSync({
+    entryPoints: [fileURLToPath(new URL(`../src/${name}.ts`, import.meta.url))],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    write: false,
+  });
+  return import(
+    `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`
+  );
+};
+const scheduleDraftClient = await loadDraftModule('schedule-draft-client');
+const scheduleDraftContract = await loadDraftModule('schedule-draft-contract');
 const code = transformSync(readFileSync(new URL('../src/preload.ts', import.meta.url), 'utf8'), {
   loader: 'ts',
   format: 'cjs',
@@ -43,6 +58,8 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
             },
           },
         };
+      if (name === './schedule-draft-client.ts') return scheduleDraftClient;
+      if (name === './schedule-draft-contract.ts') return scheduleDraftContract;
       if (name === './preload-client.js') return clients;
       if (name === './settings-client.js') return preferences;
       if (name === './association-client.js') return associationClient;
@@ -67,7 +84,11 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'metadata',
     'platformTools',
     'preferences',
+    'scheduleDraft',
   ]);
+  assert.deepEqual(Object.keys(exposed.scheduleDraft).sort(), ['cancel', 'preview']);
+  assert.ok(Object.isFrozen(exposed.scheduleDraft));
+  assert.equal(JSON.parse(await exposed.scheduleDraft.preview(null)).code, 'INVALID_SHAPE');
   assert.deepEqual(Object.keys(exposed.foundation).sort(), ['health', 'settings']);
   assert.deepEqual(Object.keys(exposed.preferences).sort(), [
     'read',
@@ -103,14 +124,40 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   assert.ok(Object.isFrozen(exposed.preferences));
   assert.deepEqual([...readyListeners.keys()], ['foundation:preferences:ready']);
   readyListeners.get('foundation:preferences:ready')();
+  const draft = {
+    schedule: {
+      version: 1,
+      kind: 'CIVIL_RULE',
+      startDate: '2024-01-01',
+      endDate: null,
+      maxOccurrences: null,
+      rule: { kind: 'ONCE' },
+      postsPerActiveDay: 1,
+      slots: [{ id: '00000000-0000-4000-8000-000000000001', time: '09:00' }],
+    },
+    request: {
+      version: 1,
+      scope: {
+        kind: 'UNBOUND_DRAFT',
+        draftId: '00000000-0000-4000-8000-000000000002',
+        draftRevision: 0,
+      },
+      zone: 'UTC',
+      fromDate: '2024-01-01',
+      throughDate: '2024-01-01',
+      limit: 128,
+    },
+  };
   const pending = [
     exposed.foundation.health(),
     exposed.foundation.settings(),
-    ...Array.from({ length: 2 }, () => exposed.preferences.read()),
+    exposed.preferences.read(),
+    exposed.scheduleDraft.preview(draft),
     exposed.fleet.read(),
     exposed.metadata.get(),
     ...Array.from({ length: 1 }, () => exposed.platformTools.read()),
   ];
+  assert.equal(JSON.parse(await exposed.scheduleDraft.preview(draft)).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.preferences.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.fleet.read()).code, 'BUSY');
   assert.equal(JSON.parse(await exposed.metadata.get()).code, 'BUSY');
@@ -136,6 +183,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'foundation:platform-tools:v2',
     'foundation:preferences:v1',
     'foundation:request:v2',
+    'foundation:schedule-draft:v1',
   ]);
   assert.equal(listeners.length, 1);
   assert.equal(listeners[0][0], 'pagehide');
@@ -145,6 +193,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   for (const p of pending) assert.equal(JSON.parse(await p).code, 'SESSION_UNAVAILABLE');
   assert.equal(JSON.parse(await stop).outcome, 'OUTCOME_UNKNOWN');
   assert.equal(invocations.length, 8);
+  assert.equal(JSON.parse(await exposed.scheduleDraft.preview(draft)).code, 'SESSION_UNAVAILABLE');
   assert.equal(JSON.parse(await exposed.platformTools.read()).code, 'SESSION_UNAVAILABLE');
   assert.equal(JSON.parse(await exposed.platformTools.requestSetup(0)).code, 'SESSION_UNAVAILABLE');
 });

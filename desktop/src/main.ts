@@ -1,3 +1,4 @@
+import { installScheduleDraftBridge } from './schedule-draft-bridge.ts';
 import { installInputInteractionBridge } from './input-interaction-bridge.ts';
 import { installAssociationBridge } from './association-bridge.ts';
 import { installRuntimeVersionBridge } from './runtime-version-bridge.js';
@@ -86,6 +87,7 @@ import {
 
 // Legacy public reads plus the separately bounded nonsecret preference capability.
 let bridge: ReturnType<typeof installFoundationBridge> | undefined;
+let scheduleDraftBridge: ReturnType<typeof installScheduleDraftBridge> | undefined;
 let preferencesBridge: ReturnType<typeof installPreferencesBridge> | undefined;
 let settingsStore: SettingsStore | undefined;
 let fleetService: FleetService | undefined;
@@ -135,6 +137,7 @@ function cleanup(): boolean {
     () => platformToolsBridge?.dispose(),
     () => runtimeVersionBridge?.dispose(),
     () => fleetBridge?.dispose(),
+    () => scheduleDraftBridge?.dispose(),
     () => preferencesBridge?.dispose(),
     () => bridge?.dispose(),
     () => lifecycle?.dispose(),
@@ -363,6 +366,7 @@ try {
         stylesheet.toString('utf8'),
       );
       bridge = installFoundationBridge(ipcMain, logger);
+      scheduleDraftBridge = installScheduleDraftBridge(ipcMain, bridge.admitPreferences);
       const empty = emptyRegistry();
       let durableRegistry: ReturnType<typeof createRegistryStore> | undefined;
       if (persistence && persistenceEntry) {
@@ -803,6 +807,7 @@ try {
       platformToolsBridge?.dispose();
       runtimeVersionBridge?.dispose();
       fleetBridge?.dispose();
+      scheduleDraftBridge?.dispose();
       preferencesBridge?.dispose();
       bridge?.dispose();
       // Capture native geometry before any window destruction; await the same

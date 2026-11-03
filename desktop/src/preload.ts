@@ -1,3 +1,5 @@
+import { createScheduleDraftClient } from './schedule-draft-client.ts';
+import { SCHEDULE_DRAFT_CHANNEL } from './schedule-draft-contract.ts';
 import { createInputInteractionClient } from './input-interaction-client.js';
 import { createAssociationClient } from './association-client.js';
 import { createMetadataClient } from './metadata-client.js';
@@ -13,6 +15,12 @@ import { createSettingsClient, createSettingsReadiness } from './settings-client
 
 const budget = createInvocationBudget();
 const readiness = createSettingsReadiness();
+const scheduleDraft = createScheduleDraftClient(
+  (wire) => ipcRenderer.invoke(SCHEDULE_DRAFT_CHANNEL, wire),
+  budget,
+  undefined,
+  readiness,
+);
 const ready = () => readiness.signal();
 ipcRenderer.once('foundation:preferences:ready', ready);
 const client = createDiagnosticClient(
@@ -67,6 +75,13 @@ const input = createInputInteractionClient(
   budget,
   undefined,
   readiness,
+);
+contextBridge.exposeInMainWorld(
+  'scheduleDraft',
+  Object.freeze({
+    preview: (input: unknown) => scheduleDraft.preview(input),
+    cancel: () => scheduleDraft.cancel(),
+  }),
 );
 contextBridge.exposeInMainWorld(
   'input',
@@ -194,6 +209,7 @@ window.addEventListener(
   'pagehide',
   () => {
     ipcRenderer.removeListener('foundation:preferences:ready', ready);
+    scheduleDraft.dispose();
     readiness.dispose();
     client.dispose();
     preferences.dispose();
