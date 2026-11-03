@@ -56,6 +56,8 @@ export const inputs = [
   'package.json',
   'package-lock.json',
   'dependency-review.json',
+  'dependency-inventory.json',
+  'scripts/dependency-inventory.mjs',
   'tsconfig.json',
   'module-map.json',
   'scripts/check-module-graph.mjs',

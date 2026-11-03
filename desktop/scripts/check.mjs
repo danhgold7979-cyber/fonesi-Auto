@@ -117,6 +117,10 @@ try {
     );
   }
   stages.push(
+    [
+      'DEPENDENCY_INVENTORY',
+      () => run(['scripts/dependency-inventory.mjs', '--check', npmVersion]).ok,
+    ],
     ['MODULE_GRAPH', () => run(['scripts/check-module-graph.mjs', npmVersion]).ok],
     ['QUALITY', () => run(['scripts/quality-tool.mjs', '--inventory', npmVersion]).ok],
     [

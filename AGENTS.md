@@ -248,3 +248,12 @@ catalog on `phase-09`, plus closed tests/build/CI registration. It supplies no
 registry, dispatch fence, permission or certification and has no runtime consumers.
 Renderer/visual integration and all pilot/acceptance gates remain deferred/open.
 The coordinator limits active phases to Phase07 and Phase09, preserving Phase08.
+
+## Bounded P11-02 source entry — 2026-11-03 22:02 UTC
+
+The [reviewed npm inventory source entry](docs/phases/P11-DEPENDENCY-INVENTORY-SOURCE-ENTRY.md)
+permits only deterministic inventory/check tooling for the existing reviewed desktop
+npm lock closure on `phase-11`. It does not grant runtime, package-format, signing,
+release or device authority. Phase09 remains blocked/parked, Phase10 is not started
+due to absent metric-source contracts; only Phase07 and Phase11 are active.
+All phase acceptance, policy/hardware and P1-06 UNMET gates remain unchanged.
