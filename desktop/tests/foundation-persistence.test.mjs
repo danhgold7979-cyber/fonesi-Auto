@@ -1,0 +1,520 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  lstatSync,
+  realpathSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+} from 'node:fs';
+import { resolve, join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { deflateSync } from 'node:zlib';
+import { createDurableCoordinator } from '../src/main/durable-coordinator.ts';
+import { createRegistryStore } from '../src/main/registry-store.ts';
+import { CaptureStore } from '../src/main/capture-store.ts';
+import { FoundationDatabase } from '../src/main/foundation-database.ts';
+import { FoundationPersistence } from '../src/main/foundation-persistence.ts';
+import {
+  createPersistenceRoot,
+  acquirePersistenceLease,
+  writePersistenceFile,
+} from '../src/main/persistence-files.ts';
+const parent = fileURLToPath(new URL('../.test-output', import.meta.url));
+const keys = {
+  wrap: async (value) => Buffer.from(value),
+  unwrap: async (value) => ({ result: Buffer.from(value).toString(), shouldReEncrypt: false }),
+};
+async function fixture(run) {
+  try {
+    mkdirSync(parent);
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+  assert.equal(lstatSync(parent).isSymbolicLink(), false);
+  assert.equal(realpathSync(parent), resolve(parent));
+  const root = mkdtempSync(join(parent, 'persistence-')),
+    parentToken = randomUUID(),
+    storeId = randomUUID(),
+    ownerToken = randomUUID();
+  writeFileSync(join(root, '.owner'), parentToken);
+  const location = { root: join(root, `data-${storeId}`), parentToken };
+  await createPersistenceRoot(location, {
+    version: 1,
+    storeId,
+    kind: 'FRESH',
+    restoreReceiptId: null,
+  });
+  const lease = await acquirePersistenceLease(location, ownerToken);
+  let app;
+  try {
+    app = await FoundationPersistence.open(location, ownerToken, keys, true);
+    await run({ root, location, storeId, ownerToken, app });
+  } finally {
+    app?.close();
+    await lease.release();
+    assert.equal(lstatSync(root).isSymbolicLink(), false);
+    assert.equal(realpathSync(root), resolve(root));
+    rmSync(root, { recursive: true });
+  }
+}
+test('orchestrator refuses migration without separate durability evidence, then imports protected receipts and reopens', async () =>
+  fixture(async ({ root, location, storeId, ownerToken, app }) => {
+    const selected = join(root, 'selected');
+    mkdirSync(selected);
+    const receipt = await app.provision(selected, 1000);
+    await assert.rejects(app.initialize(1001), /KEY_DURABILITY_UNPROVEN/);
+    assert.deepEqual(await app.authenticateBootstrap(), receipt);
+    // Synthetic supervisor receipt tests admission only; NOT actual native restart proof.
+    await writePersistenceFile(
+      join(location.root, 'key-durability-proof.json'),
+      JSON.stringify({
+        version: 1,
+        storeId,
+        backupId: receipt.header.backupId,
+        locationId: receipt.header.locationId,
+        encryptedSha256: receipt.encryptedSha256,
+        state: 'ORDERLY_AND_ABRUPT_RECOVERED',
+      }),
+    );
+    await app.initialize(1002);
+    await assert.rejects(app.initialize(1002), /DATABASE_ALREADY_OPEN/);
+    assert.equal((await app.list()).length, 5);
+    assert.ok((await app.list()).every((row) => row.protected));
+    const manual = await app.backup(1003);
+    assert.equal(manual.header.reason, 'MANUAL');
+    const daily = await app.backup(1004, true);
+    assert.equal(daily.header.reason, 'DAILY');
+    assert.equal(await app.backup(1005, true), null);
+    app.close();
+    // Synthetic v2 per-store orderly proof is distinct from historical v1 crash proof.
+    writeFileSync(
+      join(location.root, 'key-durability-proof.json'),
+      JSON.stringify({
+        version: 2,
+        storeId,
+        backupId: receipt.header.backupId,
+        locationId: receipt.header.locationId,
+        encryptedSha256: receipt.encryptedSha256,
+        state: 'ORDERLY_REOPEN_AUTHENTICATED',
+        runtimeCertification: 'ELECTRON_45_1_0_WIN_X64_DPAPI_V1',
+      }),
+    );
+    const reopened = await FoundationPersistence.open(location, ownerToken, keys, false);
+    try {
+      await reopened.initialize(1006);
+      assert.equal(await reopened.backup(1007, true), null);
+      assert.equal((await reopened.list()).length, 7);
+    } finally {
+      reopened.close();
+    }
+  }));
+test('failed provider after existing backup does not substitute a newly created key', async () =>
+  fixture(async ({ root, location, ownerToken, app }) => {
+    const selected = join(root, 'selected');
+    mkdirSync(selected);
+    await app.provision(selected, 1000);
+    app.close();
+    const wrong = await FoundationPersistence.open(
+      location,
+      ownerToken,
+      {
+        ...keys,
+        unwrap: async () => {
+          throw new Error('unavailable');
+        },
+      },
+      false,
+    );
+    try {
+      await assert.rejects(wrong.authenticateBootstrap());
+      await assert.rejects(wrong.initialize(1001));
+    } finally {
+      wrong.close();
+    }
+  }));
+
+test('existing version1 active database migrates behind authenticated content witness without reset', async () =>
+  fixture(async ({ root, location, storeId, app }) => {
+    const selected = join(root, 'selected');
+    mkdirSync(selected);
+    const receipt = await app.provision(selected, 1000);
+    await writePersistenceFile(
+      join(location.root, 'key-durability-proof.json'),
+      JSON.stringify({
+        version: 1,
+        storeId,
+        backupId: receipt.header.backupId,
+        locationId: receipt.header.locationId,
+        encryptedSha256: receipt.encryptedSha256,
+        state: 'ORDERLY_AND_ABRUPT_RECOVERED',
+      }),
+    );
+    const previous = new FoundationDatabase(
+      join(location.root, 'staging', 'install.sqlite'),
+      storeId,
+    );
+    try {
+      await assert.rejects(
+        previous.migrate(async (version) => {
+          if (version === 1) throw new Error('STOP_AFTER_FIRST_COMMIT');
+          return app.backups.prerequisite(receipt);
+        }, 1001),
+        /STOP_AFTER_FIRST_COMMIT/,
+      );
+      assert.equal(previous.version, 1);
+      await previous.snapshot(join(location.root, 'active.sqlite'));
+    } finally {
+      previous.close();
+    }
+    await app.initialize(1002);
+    assert.equal((await app.list()).length, 5);
+    assert.ok((await app.list()).every((row) => row.protected));
+  }));
+
+test('corrupted final activation copy is never promoted', async () =>
+  fixture(async ({ root, location, storeId, app }) => {
+    const selected = join(root, 'selected');
+    mkdirSync(selected);
+    const receipt = await app.provision(selected, 1000);
+    await writePersistenceFile(
+      join(location.root, 'key-durability-proof.json'),
+      JSON.stringify({
+        version: 1,
+        storeId,
+        backupId: receipt.header.backupId,
+        locationId: receipt.header.locationId,
+        encryptedSha256: receipt.encryptedSha256,
+        state: 'ORDERLY_AND_ABRUPT_RECOVERED',
+      }),
+    );
+    const original = FoundationDatabase.prototype.snapshot;
+    FoundationDatabase.prototype.snapshot = async function (path) {
+      const result = await original.call(this, path);
+      if (path.includes('activation-')) writeFileSync(path, 'corrupt synthetic activation');
+      return result;
+    };
+    try {
+      await assert.rejects(app.initialize(1001));
+      assert.equal(existsSync(join(location.root, 'active.sqlite')), false);
+      assert.equal((await app.authenticateBootstrap()).header.backupId, receipt.header.backupId);
+    } finally {
+      FoundationDatabase.prototype.snapshot = original;
+    }
+  }));
+
+for (const snapshotVersion of [0, 1, 2, 3, 4, 5])
+  test(`restored schema${snapshotVersion} root stays quarantined after reopen/migration and automatic admission stays off`, async () =>
+    fixture(async ({ root, location, storeId, app }) => {
+      const selected = join(root, 'selected');
+      mkdirSync(selected);
+      const bootstrap = await app.provision(selected, 1000);
+      await writePersistenceFile(
+        join(location.root, 'key-durability-proof.json'),
+        JSON.stringify({
+          version: 1,
+          storeId,
+          backupId: bootstrap.header.backupId,
+          locationId: bootstrap.header.locationId,
+          encryptedSha256: bootstrap.encryptedSha256,
+          state: 'ORDERLY_AND_ABRUPT_RECOVERED',
+        }),
+      );
+      await app.initialize(1001);
+      const backup =
+        snapshotVersion === 0
+          ? bootstrap
+          : snapshotVersion === 5
+            ? await app.backup(1002)
+            : JSON.parse(readFileSync(join(location.root, 'migration-backups.json'), 'utf8')).find(
+                (receipt) => receipt.header.schemaVersion === snapshotVersion,
+              );
+      assert.equal(backup.header.schemaVersion, snapshotVersion);
+      const checkpoint = join(location.root, `key-checkpoint-${randomUUID()}.json`);
+      await writePersistenceFile(
+        checkpoint,
+        JSON.stringify({
+          os_crypt: {
+            encrypted_key: Buffer.from('DPAPIsynthetic-retained-key').toString('base64'),
+          },
+        }),
+      );
+      const restoreParent = join(root, 'restore-parent');
+      mkdirSync(restoreParent);
+      const restoredRoot = await app.restore(backup.header.backupId, restoreParent, checkpoint);
+      const restoredLocation = {
+          root: restoredRoot,
+          parentToken: readFileSync(join(dirname(restoredRoot), '.owner'), 'utf8'),
+        },
+        token = randomUUID(),
+        lease = await acquirePersistenceLease(restoredLocation, token);
+      let reopened;
+      try {
+        reopened = await FoundationPersistence.open(restoredLocation, token, keys, false);
+        await reopened.initialize(1003);
+        assert.equal(reopened.restored, true);
+        assert.throws(() => reopened.durableAdapter(), /DURABLE_RECOVERY_REQUIRED/);
+        assert.equal(await reopened.backup(1004, true), null);
+        reopened.close();
+        const database = new FoundationDatabase(join(restoredRoot, 'active.sqlite'), storeId, true);
+        try {
+          const q = database.connection.prepare('SELECT restore_quarantine FROM foundation_store');
+          try {
+            assert.equal(q.get().restore_quarantine, 1);
+          } finally {
+            q.close();
+          }
+        } finally {
+          database.close();
+        }
+      } finally {
+        reopened?.close();
+        await lease.release();
+      }
+    }));
+
+test('packaged persistence refuses backup and restore writes into its admitted application tree', async () =>
+  fixture(async ({ root, location, storeId, ownerToken, app }) => {
+    const { persistenceDataGuard } = await import('../src/main/persistence-entry.ts');
+    const packageRoot = join(root, 'package'),
+      inside = join(packageRoot, 'inside'),
+      outside = join(root, 'outside');
+    mkdirSync(packageRoot);
+    mkdirSync(inside);
+    mkdirSync(outside);
+    writeFileSync(join(packageRoot, 'payload'), 'immutable');
+    app.close();
+    const guarded = await FoundationPersistence.open(
+      location,
+      ownerToken,
+      keys,
+      false,
+      persistenceDataGuard(packageRoot),
+    );
+    try {
+      await assert.rejects(guarded.provision(inside, 1000), /PACKAGE_DATA_LOCATION_REJECTED/);
+      assert.equal(existsSync(join(location.root, 'staging/install.sqlite')), false);
+      const receipt = await guarded.provision(outside, 1001);
+      await writePersistenceFile(
+        join(location.root, 'key-durability-proof.json'),
+        JSON.stringify({
+          version: 1,
+          storeId,
+          backupId: receipt.header.backupId,
+          locationId: receipt.header.locationId,
+          encryptedSha256: receipt.encryptedSha256,
+          state: 'ORDERLY_AND_ABRUPT_RECOVERED',
+        }),
+      );
+      await guarded.initialize(1002);
+      const before = readFileSync(join(location.root, 'active.sqlite'));
+      await assert.rejects(guarded.selectLocation(inside, 1003), /PACKAGE_DATA_LOCATION_REJECTED/);
+      await assert.rejects(
+        guarded.restore(receipt.header.backupId, inside, 'not-used'),
+        /PACKAGE_DATA_LOCATION_REJECTED/,
+      );
+      assert.equal(readFileSync(join(packageRoot, 'payload'), 'utf8'), 'immutable');
+      assert.deepEqual((await import('node:fs')).readdirSync(inside), []);
+      assert.deepEqual(readFileSync(join(location.root, 'active.sqlite')), before);
+    } finally {
+      guarded.close();
+    }
+  }));
+
+function tinyPng() {
+  const chunk = (name, data) => {
+    const type = Buffer.from(name),
+      out = Buffer.alloc(data.length + 12);
+    out.writeUInt32BE(data.length);
+    type.copy(out, 4);
+    data.copy(out, 8);
+    let crc = 0xffffffff;
+    for (const byte of Buffer.concat([type, data])) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    out.writeUInt32BE((crc ^ 0xffffffff) >>> 0, data.length + 8);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1);
+  header.writeUInt32BE(1, 4);
+  header[8] = 8;
+  header[9] = 2;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.from([0, 1, 2, 3]))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+test('actual persistence adapter composes durable startup and PNG lifecycle; DB-only restore carries metadata without authority or payload', async () =>
+  fixture(async ({ root, location, storeId, ownerToken, app }) => {
+    assert.throws(() => app.durableAdapter(), /DURABLE_RECOVERY_REQUIRED/);
+    const selected = join(root, 'selected');
+    mkdirSync(selected);
+    const bootstrap = await app.provision(selected, 1000);
+    // Synthetic wrapping and supervisor proof only: no native key or live display claim.
+    await writePersistenceFile(
+      join(location.root, 'key-durability-proof.json'),
+      JSON.stringify({
+        version: 1,
+        storeId,
+        backupId: bootstrap.header.backupId,
+        locationId: bootstrap.header.locationId,
+        encryptedSha256: bootstrap.encryptedSha256,
+        state: 'ORDERLY_AND_ABRUPT_RECOVERED',
+      }),
+    );
+    await app.initialize(1001);
+    const adapter = app.durableAdapter();
+    let current = null;
+    const make = (db) => {
+      const coordinator = createDurableCoordinator({
+        db,
+        assertOwnedSync: () => {},
+        clock: () => 1100,
+        newId: randomUUID,
+        audit: async () => 'AVAILABLE',
+      });
+      const registry = createRegistryStore({
+        coordinator,
+        nextId: randomUUID,
+        quarantined: () => false,
+        assertOwnedSync: () => {},
+      });
+      const captures = new CaptureStore({
+        coordinator,
+        dataRoot: location.root,
+        storeId,
+        assertOwnedSync: () => {},
+        clock: () => 1100,
+        newId: randomUUID,
+        currentDisplay: () => ({ display: current, connected: current !== null }),
+      });
+      return { coordinator, registry, captures };
+    };
+    const first = make(adapter);
+    let receiptId, raw;
+    try {
+      assert.equal((await first.registry.startup()).ok, true);
+      assert.equal(
+        (
+          await first.registry.reconcile(adapter.readDurable().meta.revision, {
+            sequence: 1,
+            observedAtUtc: 1100,
+            source: 'SYNTHETIC_TEST',
+            rows: [{ serial: 'synthetic-display', transportId: '1', state: 'DEVICE' }],
+            proofs: [],
+          })
+        ).ok,
+        true,
+      );
+      const rows = adapter.readDurable(),
+        device = rows.devices[0],
+        binding = rows.bindings[0];
+      current = {
+        version: 1,
+        evidenceId: randomUUID(),
+        deviceId: device.device_id,
+        bindingId: binding.binding_id,
+        generation: device.generation,
+        serial: binding.serial,
+        displayId: 0,
+        width: 1,
+        height: 1,
+        rotation: 0,
+        orientationEpoch: device.display_profile_revision,
+        observedUtc: 1100,
+        validUntilUtc: 2100,
+        source: 'SYNTHETIC_TEST',
+      };
+      const reserved = await first.captures.reserve(rows.meta.revision, {
+        kind: 'PNG',
+        display: current,
+      });
+      assert.equal(reserved.ok, true, JSON.stringify(reserved));
+      receiptId = reserved.value;
+      raw = tinyPng();
+      const completed = await first.captures.complete(
+        adapter.readDurable().meta.revision,
+        receiptId,
+        raw,
+      );
+      assert.equal(completed.ok, true, JSON.stringify(completed));
+      assert.deepEqual(Buffer.from((await first.captures.read(receiptId)).data), raw);
+    } finally {
+      first.registry.close();
+      await first.coordinator.close();
+    }
+    const backup = await app.backup(1200);
+    assert.equal(backup.header.schemaVersion, 5);
+    app.close();
+    assert.throws(() => adapter.readDurable(), /DURABLE_RECOVERY_REQUIRED/);
+    assert.throws(() => adapter.commitDurable(0, {}, () => {}), /DURABLE_RECOVERY_REQUIRED/);
+    const reopened = await FoundationPersistence.open(location, ownerToken, keys, false);
+    try {
+      assert.throws(() => reopened.durableAdapter(), /DURABLE_RECOVERY_REQUIRED/);
+      await reopened.initialize(1201);
+      const nextAdapter = reopened.durableAdapter(),
+        next = make(nextAdapter);
+      try {
+        assert.equal(nextAdapter.readDurable().captures[0].state, 'VALIDATED');
+        assert.deepEqual(Buffer.from((await next.captures.read(receiptId)).data), raw);
+        current = null;
+        assert.equal((await next.registry.startup()).ok, true);
+        assert.equal(next.registry.snapshot().devices[0].verification, 'PROVISIONAL');
+        assert.equal(next.registry.snapshot().devices[0].state, 'DISCONNECTED');
+        assert.equal((await next.captures.read(receiptId)).ok, false);
+      } finally {
+        next.registry.close();
+        await next.coordinator.close();
+      }
+      const checkpoint = join(location.root, `key-checkpoint-${randomUUID()}.json`);
+      await writePersistenceFile(
+        checkpoint,
+        JSON.stringify({
+          os_crypt: {
+            encrypted_key: Buffer.from('DPAPIsynthetic-retained-key').toString('base64'),
+          },
+        }),
+      );
+      const restoreParent = join(root, 'restore-capture');
+      mkdirSync(restoreParent);
+      const restoredRoot = await reopened.restore(
+        backup.header.backupId,
+        restoreParent,
+        checkpoint,
+      );
+      const restoredLocation = {
+          root: restoredRoot,
+          parentToken: readFileSync(join(dirname(restoredRoot), '.owner'), 'utf8'),
+        },
+        token = randomUUID(),
+        lease = await acquirePersistenceLease(restoredLocation, token);
+      let restored;
+      try {
+        restored = await FoundationPersistence.open(restoredLocation, token, keys, false);
+        await restored.initialize(1202);
+        assert.throws(() => restored.durableAdapter(), /DURABLE_RECOVERY_REQUIRED/);
+        assert.equal(existsSync(join(restoredRoot, 'captures-v1')), false);
+        restored.close();
+        const db = new FoundationDatabase(join(restoredRoot, 'active.sqlite'), storeId, true);
+        try {
+          assert.equal(db.readDurable().captures[0].evidence_id, receiptId);
+        } finally {
+          db.close();
+        }
+      } finally {
+        restored?.close();
+        await lease.release();
+      }
+    } finally {
+      reopened.close();
+    }
+  }));

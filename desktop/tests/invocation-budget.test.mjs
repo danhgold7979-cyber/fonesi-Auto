@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createInvocationBudget, INVOCATION_LIMIT } from '../src/invocation-budget.ts';
+test('fixed eight unforgeable local leases release only their own count exactly once', () => {
+  const b = createInvocationBudget();
+  assert.equal(INVOCATION_LIMIT, 8);
+  assert.ok(Object.isFrozen(b));
+  const leases = Array.from({ length: 7 }, () => b.acquire());
+  assert.equal(b.acquire(), null);
+  const cleanup = b.acquireCleanup();
+  assert.ok(cleanup);
+  assert.equal(b.acquireCleanup(), null);
+  leases.push(cleanup);
+  assert.equal(b.outstanding(), 8);
+  assert.equal(b.acquire(), null);
+  for (const l of leases) assert.ok(Object.isFrozen(l));
+  leases[0].release();
+  leases[0].release();
+  assert.equal(b.outstanding(), 7);
+  const replacement = b.acquire();
+  assert.equal(b.outstanding(), 8);
+  for (const l of leases) l.release();
+  assert.equal(b.outstanding(), 1);
+  replacement.release();
+  replacement.release();
+  assert.equal(b.outstanding(), 0);
+  assert.equal(Object.keys(b).sort().join(','), 'acquire,acquireCleanup,outstanding');
+});

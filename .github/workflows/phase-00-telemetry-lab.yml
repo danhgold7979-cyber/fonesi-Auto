@@ -1,0 +1,79 @@
+name: Phase 0 hosted telemetry source lab
+on:
+  push:
+    branches: ['phase/**', 'phase-*']
+    paths:
+      - 'tools/phase-00/telemetry-lab/**'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - '.github/workflows/phase-00-telemetry-lab.yml'
+  pull_request:
+    paths:
+      - 'tools/phase-00/telemetry-lab/**'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - '.github/workflows/phase-00-telemetry-lab.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: phase-00-telemetry-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  telemetry-sources:
+    runs-on: windows-2022
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: tools/phase-00/telemetry-lab
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Require existing Python and record environment (no installation)
+        run: |
+          try {
+            $cache=Join-Path $env:RUNNER_TOOL_CACHE 'Python'
+            $candidate=Get-ChildItem -LiteralPath $cache -Directory -ErrorAction Stop |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'MISSING_PREINSTALLED_PYTHON' }
+            $exe=Join-Path $candidate.FullName 'x64/python.exe'
+            if (-not [IO.File]::Exists($exe)) { throw 'MISSING_PREINSTALLED_PYTHON' }
+            & $exe --version
+            if ($LASTEXITCODE -ne 0) { throw 'INVALID_PREINSTALLED_PYTHON' }
+            "TELEMETRY_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'PREINSTALLED_PYTHON_312_REQUIRED'; exit 1 }
+          $PSVersionTable.PSVersion.ToString()
+          [Environment]::OSVersion.Version.ToString()
+      - name: Parse PowerShell sources without running them
+        run: |
+          foreach ($file in @('TelemetrySources.psm1','Read-TelemetryWorker.ps1','Invoke-TelemetryLab.ps1','Test-TelemetrySamples.ps1')) {
+            $tokens=$null; $parseErrors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file),[ref]$tokens,[ref]$parseErrors)
+            if ($parseErrors.Count -ne 0) { Write-Output 'TELEMETRY_PARSE_FAILED'; exit 1 }
+          }
+          Write-Output 'TELEMETRY_PARSE_PASS'
+      - name: Pure schema and privacy regression tests
+        run: |
+          & $env:TELEMETRY_PYTHON_EXE -m unittest discover -s . -p 'test_*.py' -v
+      - name: Provider timestamp and value regressions
+        run: .\Test-TelemetrySamples.ps1
+      - name: Collect bounded local runner telemetry only
+        run: .\Invoke-TelemetryLab.ps1
+      - name: Independently validate and sanitize evidence
+        if: always()
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TELEMETRY_PYTHON_EXE)) { Write-Output 'PYTHON_UNAVAILABLE'; exit 1 }
+          & $env:TELEMETRY_PYTHON_EXE validate.py
+      - name: Retain only schema-approved evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: p0-06-hosted-telemetry-${{ github.sha }}
+          path: tools/phase-00/telemetry-lab/.lab-results/validated.json
+          retention-days: 7
+          if-no-files-found: warn
+      - name: State evidence limits
+        if: always()
+        run: |
+          'Hosted runner source experiment only. UNKNOWN remains unavailable, not zero/PASS. No target-host, GPU decode, stream capacity, production cadence or Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

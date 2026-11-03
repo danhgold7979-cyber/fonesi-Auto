@@ -1,0 +1,80 @@
+AUTO — RETAINED PAIR ATTRIBUTION RESEARCH CANDIDATE
+Not an approved package, runtime admission, release, legal opinion or selected external license.
+
+1. Exact evidence and upstream origin
+This text accompanies the newly retained server.jar (100170 bytes,
+SHA256 5a10e70d4827fd90e6e2907a382329391e4d1e8e3292529474df5acadfd9ae99)
+and RetainedVideoConsumer.dll (106496 bytes,
+SHA256 299a823d9f3d8085ba843bf215fe96e6a8105f0991bacfea85a1395d7243c940).
+Upstream scrcpy source commit: a60891aea193d92e7e5c3942700eca63f9d19a5f.
+APACHE-2.0.txt preserves the actual upstream LICENSE, including copyright
+2018 Genymobile and 2018–2026 Romain Vimont. It describes upstream material,
+not an automatic license for Auto modifications or the Auto consumer.
+Derived-source patch SHA256:
+caaadaecd4b559ef8f980e5eae84c47c9f7174a8d916f8fda05612fed7ff6f8c.
+The retained source archive, patch, provenance and build manifests bind source
+and output identities; they do not establish reproducibility or runtime safety.
+
+2. Original AIDL and actual generated intermediates
+The retained IOnPrimaryClipChangedListener.aidl carries an AOSP 2008 Apache-2.0
+header; IDisplayWindowListener.aidl carries an AOSP 2019 Apache-2.0 header.
+Their actual generated Java intermediates contain no copyright/license text.
+Their headers identify generated build intermediates, not hand-maintained source.
+Those exact intermediates remain in the evidence artifact; their build-machine
+paths are intentionally not repeated here. BuildConfig has no license header.
+The hidden IContentProvider.java stub has no individual copyright/license header;
+its identity and project-level provenance are retained, without claiming an
+independent source-file grant that was not observed.
+
+3. D8/R8 and generated code: attribution versus unresolved correspondence
+The build used the exact recorded tool hash for lib/d8.jar:
+4097ff9c46c185c6e7214da7fe9b1befb5adeea5cc9ca349270e0249904f9240.
+The full vendor NOTICE below identifies R8 non-library code under its stated
+3-Clause BSD text, plus separate compiler-library notices. Those library entries
+are NOT a list of libraries proven to be bundled into this server.
+The actual DEX defines 161 classes: 155 under com.genymobile.scrcpy, the
+IContentProvider stub and five IDisplayWindowListener classes. No Kotlin, Guava,
+Gson, ASM or R8-defined namespace is present; this does not exclude incorporated
+or inlined compiler-generated snippets. The actual companion Codec$-CC method
+corresponds to the upstream Codec interface static method. Five backport methods and the companion method
+are present, with these six exact DEX method references/signatures:
+Lcom/genymobile/scrcpy/Workarounds$$ExternalSyntheticBackport0; m(Ljava/lang/Throwable;Ljava/lang/Throwable;)V
+Lcom/genymobile/scrcpy/display/DisplayProperties$$ExternalSyntheticBackport0; m(Ljava/lang/Object;Ljava/lang/Object;)Z
+Lcom/genymobile/scrcpy/model/Codec$-CC; getMimeType(Landroid/media/MediaCodec;)Ljava/lang/String;
+Lcom/genymobile/scrcpy/util/LogUtils$$ExternalSyntheticBackport0; m(ZZ)I
+Lcom/genymobile/scrcpy/util/LogUtils$$ExternalSyntheticBackport1; m(Ljava/lang/Object;Ljava/lang/Object;Ljava/util/Comparator;)I
+Lcom/genymobile/scrcpy/video/CameraCapture$$ExternalSyntheticBackport0; m(II)I
+
+Upstream source calls identify Objects.equals in DisplayProperties.java:40,
+Boolean.compare and Objects.compare in LogUtils.java:264/269/274, and
+Integer.compare in CameraCapture.java:227/250. Workarounds.java:241 uses
+try-with-resources; its Throwable/Throwable backport signature is consistent
+with suppressed-exception support. These are source/signature correspondences,
+not a method-byte-for-byte match against the installed compiler templates.
+Exact installed-D8-source/template correspondence remains UNRESOLVED. No
+moving upstream branch is asserted identical to this hashed installed D8.
+The vendor NOTICE contains no explicit AIDL/D8-generated-output blanket grant
+or exemption. Its Protocol Buffer generated-code paragraph belongs to that
+component and is not applied to AIDL or D8 output. No legal sufficiency claim
+is made from absent headers, class names, or this conservative attribution.
+
+4. Auto-owned modifications and consumer: owner-use provenance
+The owner stated intended personal/internal use and sharing with employees,
+and expressly authorized this exact public GitHub artifact retention for 14 days
+and coordinator download for inspection. No external/open-source license has
+been declared for the Auto patch or consumer by this evidence. This records
+owner-use/destination provenance; it does not choose an OSI license, apply
+upstream Apache terms to Auto, or grant unapproved distribution/runtime/device
+operations. Candidate approval and runtime pair pins remain unset.
+
+5. Vendor tool notice, preserved verbatim
+The following complete 1063288-byte vendor NOTICE is retained without rewriting.
+SHA256: 2df581726e404bf9f5385107b650f6bf7800945348745ea54b7970d98e816b86.
+Relevant original line ranges: AIDL tool group 10883–11094; core-lambda-stubs
+15049–15400; D8/R8 non-library text 15401–15435; compiler libraries 15437 onward.
+The core-lambda notice contains GPLv2 and a conditional Classpath exception;
+this compile-only input is not thereby declared bundled server code.
+The vendor file also contains SDK agreement text. Reproducing it as evidence
+is not acceptance, installation authority or a legal conclusion.
+
+----- BEGIN EXACT VENDOR NOTICE BYTES -----

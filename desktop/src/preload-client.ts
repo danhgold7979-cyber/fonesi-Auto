@@ -1,0 +1,173 @@
+import { createInvocationBudget, type InvocationBudget } from './invocation-budget.ts';
+import { localDiagnosticError, validateDiagnosticResponse } from './ipc-diagnostic-contract.ts';
+import type { Method } from './ipc-contract.ts';
+import { errorResponse, RESPONSE_BYTES } from './ipc-contract.ts';
+export type Invoke = (wire: string) => Promise<unknown>;
+export type Timer = {
+  set: (callback: () => void, milliseconds: number) => unknown;
+  clear: (handle: unknown) => void;
+};
+const defaultTimer: Timer = {
+  set: (callback, milliseconds) => setTimeout(callback, milliseconds),
+  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+// Native invokes cannot be canceled. Timed-out calls keep their native occupancy
+// until settlement; disposal suppresses delivery, not hypothetical transport work.
+function createClient(invoke: Invoke, timer: Timer, version: 1 | 2, budget: InvocationBudget) {
+  const failure = version === 1 ? errorResponse : localDiagnosticError;
+  let disposed = false;
+  let nextId = 0;
+  const pending = new Set<{ dispose: () => void }>();
+  function call(method: Method): Promise<string> {
+    if (disposed) return Promise.resolve(failure('SESSION_UNAVAILABLE'));
+    if (pending.size >= 8) return Promise.resolve(failure('BUSY'));
+    if (!Number.isSafeInteger(nextId + 1)) return Promise.resolve(failure('INTERNAL_FAILURE'));
+    const lease = budget.acquire();
+    if (!lease) return Promise.resolve(failure('BUSY'));
+    const requestId = `r${++nextId}`;
+    return new Promise<string>((resolve) => {
+      let delivered = false;
+      let timerHandle: unknown;
+      const deliver = (value: string) => {
+        if (!delivered) {
+          delivered = true;
+          resolve(value);
+        }
+      };
+      const entry = {
+        dispose: () => {
+          timer.clear(timerHandle);
+          deliver(failure('SESSION_UNAVAILABLE'));
+        },
+      };
+      pending.add(entry);
+      timerHandle = timer.set(() => deliver(failure('TIMEOUT')), 2000);
+      let native: Promise<unknown>;
+      try {
+        native = invoke(JSON.stringify({ version, requestId, method }));
+      } catch {
+        native = Promise.reject(new Error('INVOKE_FAILED'));
+      }
+      native
+        .then(
+          (raw) => {
+            if (disposed || delivered) return;
+            if (
+              typeof raw !== 'string' ||
+              raw.length > RESPONSE_BYTES ||
+              new TextEncoder().encode(raw).byteLength > RESPONSE_BYTES
+            ) {
+              deliver(failure('INTERNAL_FAILURE'));
+              return;
+            }
+            if (version === 2) {
+              deliver(
+                validateDiagnosticResponse(raw, requestId, method) ?? failure('INTERNAL_FAILURE'),
+              );
+              return;
+            }
+            // Main emits the strict public contract; never forward arbitrary native data.
+            try {
+              const value: unknown = JSON.parse(raw);
+              if (value === null || typeof value !== 'object' || Array.isArray(value))
+                throw new Error('RESPONSE');
+              const response = value as Record<string, unknown>;
+              if (response.version !== 1 || typeof response.ok !== 'boolean')
+                throw new Error('RESPONSE');
+              if (response.ok) {
+                if (
+                  Object.keys(response).length !== 4 ||
+                  response.requestId !== requestId ||
+                  response.result === null ||
+                  typeof response.result !== 'object'
+                )
+                  throw new Error('RESPONSE');
+                const result = response.result as Record<string, unknown>;
+                const expected =
+                  method === 'health.get'
+                    ? { kind: 'health', status: 'READY', services: 'UNAVAILABLE' }
+                    : {
+                        kind: 'settings',
+                        revision: 0,
+                        persistence: 'NOT_PERSISTED',
+                        theme: 'LIGHT',
+                      };
+                if (
+                  Object.keys(result).length !== Object.keys(expected).length ||
+                  Object.entries(expected).some(([key, item]) => result[key] !== item)
+                )
+                  throw new Error('RESPONSE');
+                const canonical = JSON.stringify({
+                  version: 1,
+                  ok: true,
+                  requestId,
+                  result: expected,
+                });
+                if (raw !== canonical) throw new Error('NONCANONICAL_RESPONSE');
+                deliver(canonical);
+              } else {
+                const codes = [
+                  'INVALID_TRANSPORT',
+                  'PAYLOAD_TOO_LARGE',
+                  'INVALID_JSON',
+                  'INVALID_SHAPE',
+                  'UNSUPPORTED_VERSION',
+                  'UNKNOWN_METHOD',
+                  'UNTRUSTED_SENDER',
+                  'SESSION_UNAVAILABLE',
+                  'SESSION_REVOKED',
+                  'BUSY',
+                  'TIMEOUT',
+                  'INTERNAL_FAILURE',
+                ];
+                if (
+                  Object.keys(response).length !== 3 ||
+                  typeof response.code !== 'string' ||
+                  !codes.includes(response.code)
+                )
+                  throw new Error('RESPONSE');
+                const canonical = JSON.stringify({ version: 1, ok: false, code: response.code });
+                if (raw !== canonical) throw new Error('NONCANONICAL_RESPONSE');
+                deliver(canonical);
+              }
+            } catch {
+              deliver(failure('INTERNAL_FAILURE'));
+            }
+          },
+          () => {
+            if (!disposed) deliver(failure('INTERNAL_FAILURE'));
+          },
+        )
+        .finally(() => {
+          timer.clear(timerHandle);
+          pending.delete(entry);
+          lease.release();
+        });
+    });
+  }
+  return {
+    health: () => call('health.get'),
+    settings: () => call('settings.get'),
+    dispose: () => {
+      disposed = true;
+      for (const entry of pending) entry.dispose();
+    },
+    outstanding: () => pending.size,
+  };
+}
+
+export function createPublicClient(
+  invoke: Invoke,
+  timer: Timer = defaultTimer,
+  budget: InvocationBudget = createInvocationBudget(),
+) {
+  return createClient(invoke, timer, 1, budget);
+}
+export function createDiagnosticClient(
+  invoke: Invoke,
+  timer: Timer = defaultTimer,
+  budget: InvocationBudget = createInvocationBudget(),
+) {
+  return createClient(invoke, timer, 2, budget);
+}

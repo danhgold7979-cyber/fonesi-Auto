@@ -1,0 +1,1572 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
+import { EventEmitter } from 'node:events';
+import { ViewSession } from '../src/view-session.ts';
+import * as contract from '../src/video-stream-contract.ts';
+import * as presentationContract from '../src/video-presentation-contract.ts';
+import * as nativeContract from '../src/main/video-contract.ts';
+
+// Explicit source-only Electron/clock substitutions. The bridge body, real ViewSession and
+// wire contract execute unchanged. These are not Electron custom-origin or device proofs.
+const source = readFileSync(new URL('../src/video-stream-bridge.ts', import.meta.url), 'utf8');
+const javascript = stripTypeScriptTypes(source)
+  .replace(/import\s*\{[^}]+\}\s*from 'electron';/, '')
+  .replace(/import\s*\{[^}]+\}\s*from '\.\/video-stream-contract\.ts';/, '')
+  .replace(/import\s*\{[^}]+\}\s*from '\.\/main\/video-contract\.ts';/, '')
+  .replace(/import\s*\{[^}]+\}\s*from '\.\/video-presentation-contract\.ts';/, '')
+  .replace('export function installVideoStreamBridge', 'function installVideoStreamBridge');
+assert.equal(javascript.includes("from 'electron'"), false);
+const load = new Function(
+  'MessageChannelMain',
+  'contract',
+  'nativeContract',
+  'presentationContract',
+  'performance',
+  'Date',
+  'setTimeout',
+  'clearTimeout',
+  `const { VIDEO_STREAM_CHANNEL, VIDEO_PORT_CHANNEL, parseVideoStreamRequest, videoStreamResponse } = contract; const { snapshotVideoRecoveryResult } = nativeContract; const { snapshotVideoPresentationControl } = presentationContract;\n${javascript}\nreturn installVideoStreamBridge;`,
+);
+const DEVICE = '11111111-1111-4111-8111-111111111111';
+const VIDEO = '22222222-2222-4222-8222-222222222222';
+const SESSION = '33333333-3333-4333-8333-333333333333';
+const ATTEMPT = '44444444-4444-4444-8444-444444444444';
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
+function fixture(options = {}) {
+  let mono = 0,
+    utc = 1000,
+    timerId = 0,
+    requestNo = 0,
+    destroyed = false,
+    reservationCurrent = true;
+  const timers = new Map(),
+    handlers = new Map(),
+    channels = [],
+    deliveries = [],
+    fences = [],
+    envelopes = [],
+    listeners = new Set(),
+    epochs = new WeakMap();
+  let visibility = options.visibility ?? 'VISIBLE';
+  const started = deferred(),
+    drained = deferred();
+  let calls = 0,
+    begins = 0,
+    stops = 0,
+    sink = null;
+  class Port extends EventEmitter {
+    closed = false;
+    postMessage(value) {
+      if (this.closed) throw Error('CLOSED');
+      envelopes.push(value);
+      if (value.kind === 'PRESENTATION') {
+        fences.push(value);
+        options.onFence?.(value, f);
+        if (!options.holdFence) queueMicrotask(() => f.fenceAck(value.epoch));
+      } else {
+        const observation = value.kind === 'MEDIA' ? value.delivery : value;
+        deliveries.push(observation);
+        if (value.kind === 'MEDIA') epochs.set(observation, value.epoch);
+        options.onPost?.(observation, f);
+      }
+      queueMicrotask(() => {
+        if (!this.peer.closed) this.peer.emit('message', { data: value });
+      });
+    }
+    start() {}
+    close() {
+      if (this.closed) return;
+      options.onPortClose?.(this, f);
+      this.closed = true;
+      queueMicrotask(() => this.emit('close'));
+    }
+  }
+  class Channel {
+    constructor() {
+      this.port1 = new Port();
+      this.port2 = new Port();
+      this.port1.peer = this.port2;
+      this.port2.peer = this.port1;
+      channels.push(this);
+    }
+  }
+  const frame = {
+    url: 'auto-foundation://app/status.html',
+    postMessage(channel, value, ports) {
+      f.transfer = { channel, value, ports };
+      options.onTransfer?.(f);
+    },
+  };
+  const sender = { mainFrame: frame, isDestroyed: () => destroyed };
+  const event = { sender, senderFrame: frame };
+  const view = new ViewSession(sender, 'auto-foundation://app', frame.url);
+  const caller = (e) => ({
+    sender: e.sender,
+    isMainFrame: e.senderFrame === sender.mainFrame,
+    origin: 'auto-foundation://app',
+    url: e.senderFrame?.url,
+  });
+  view.beginMainLoad(frame.url);
+  assert.equal(view.finishInitial(caller(event)), true);
+  const reservation = {
+    videoId: VIDEO,
+    generation: 7,
+    deadlineUtc: 31000,
+    current: () => reservationCurrent,
+    begin(value) {
+      begins++;
+      sink = value;
+      options.onBegin?.(f);
+      return {
+        started: started.promise.then((value) =>
+          value === undefined
+            ? {
+                handoff: 'OWNED',
+                videoId: VIDEO,
+                videoOrdinal: 1,
+                refusal: null,
+                fresh: true,
+                snapshot: nativeContract.preparingVideo(VIDEO),
+              }
+            : value,
+        ),
+      };
+    },
+    stop() {
+      stops++;
+      return drained.promise;
+    },
+  };
+  const install = load(
+    Channel,
+    contract,
+    nativeContract,
+    presentationContract,
+    { now: () => mono },
+    { now: () => utc },
+    (callback, delay) => {
+      const id = ++timerId;
+      timers.set(id, { callback, at: mono + delay });
+      return id;
+    },
+    (id) => timers.delete(id),
+  );
+  const bridge = install(
+    {
+      handle: (name, handler) => handlers.set(name, handler),
+      removeHandler: (name) => handlers.delete(name),
+    },
+    (e) => view.admit(caller(e)),
+    (e) => view.admitCleanup(caller(e)),
+    () => ({
+      reserveVideo(deviceId, revision) {
+        calls++;
+        assert.equal(deviceId, DEVICE);
+        assert.equal(revision, 9);
+        options.onReserve?.(f);
+        return options.unavailable ? null : (options.reserve?.(calls, f) ?? reservation);
+      },
+    }),
+    () =>
+      options.noObserver
+        ? null
+        : {
+            read() {
+              options.onRead?.(f);
+              if (options.readThrows) throw Error('OBSERVATION');
+              return visibility;
+            },
+            subscribe(listener) {
+              listeners.add(listener);
+              options.onSubscribe?.(f);
+              return () => listeners.delete(listener);
+            },
+          },
+  );
+  const invoke = handlers.get(contract.VIDEO_STREAM_CHANNEL);
+  const f = {
+    bridge,
+    view,
+    sender,
+    frame,
+    event,
+    reservation,
+    timers,
+    channels,
+    deliveries,
+    fences,
+    envelopes,
+    listeners,
+    visibility(value) {
+      visibility = value;
+      for (const listener of listeners) listener();
+    },
+    fenceAck(epoch = fences.at(-1)?.epoch) {
+      f.message({ version: 2, videoId: VIDEO, kind: 'PRESENTATION_ACK', epoch });
+    },
+    started,
+    drained,
+    get calls() {
+      return calls;
+    },
+    get begins() {
+      return begins;
+    },
+    get stops() {
+      return stops;
+    },
+    get sink() {
+      return sink;
+    },
+    nextId() {
+      return `00000000-0000-4000-8000-${String(++requestNo).padStart(12, '0')}`;
+    },
+    async run(value, e = event, ...extra) {
+      return JSON.parse(await invoke(e, value, ...extra));
+    },
+    start(e = event) {
+      return f.run(
+        JSON.stringify({
+          version: 1,
+          requestId: f.nextId(),
+          kind: 'START',
+          deviceId: DEVICE,
+          expectedRegistryRevision: 9,
+        }),
+        e,
+      );
+    },
+    stop(e = event) {
+      return f.run(
+        JSON.stringify({ version: 1, requestId: f.nextId(), kind: 'STOP', videoId: VIDEO }),
+        e,
+      );
+    },
+    message(value) {
+      queueMicrotask(() => channels[0].port1.emit('message', { data: value }));
+    },
+    ready() {
+      f.message({ version: 2, videoId: VIDEO, kind: 'READY' });
+    },
+    ack(deliveryId = deliveries.at(-1)?.deliveryId) {
+      f.message({
+        version: 2,
+        videoId: VIDEO,
+        deliveryId,
+        epoch:
+          epochs.get(deliveries.find((d) => d.deliveryId === deliveryId)) ?? fences.at(-1)?.epoch,
+        kind: 'CONSUMED',
+      });
+    },
+    paint(delivery = deliveries.at(-1), patch = {}) {
+      f.message({
+        version: 2,
+        videoId: VIDEO,
+        kind: 'PAINTED',
+        epoch: epochs.get(delivery),
+        deliveryId: delivery.deliveryId,
+        geometryId: delivery.geometryId,
+        configId: delivery.configId,
+        packetId: delivery.packetId,
+        ptsUs: delivery.ptsUs,
+        width: delivery.width,
+        height: delivery.height,
+        ...patch,
+      });
+    },
+    advance(value) {
+      mono = value;
+      utc = 1000 + value;
+      for (const [id, timer] of [...timers])
+        if (timer.at <= mono) {
+          timers.delete(id);
+          timer.callback();
+        }
+    },
+    setWall(value) {
+      utc = value;
+    },
+    lose() {
+      reservationCurrent = false;
+    },
+    destroy() {
+      destroyed = true;
+    },
+    async close() {
+      drained.resolve(true);
+      started.resolve();
+      await bridge.close();
+      await flush();
+    },
+  };
+  return f;
+}
+function header(creditId, patch = {}) {
+  return Object.freeze({
+    version: 1,
+    sessionId: SESSION,
+    attemptId: ATTEMPT,
+    videoId: VIDEO,
+    creditId,
+    geometryId: 1,
+    configId: 0,
+    packetId: 0,
+    kind: 'SESSION',
+    ptsUs: null,
+    totalBytes: 0,
+    offset: 0,
+    width: 100,
+    height: 200,
+    ...patch,
+  });
+}
+async function ready(f) {
+  assert.equal((await f.start()).code, 'PENDING');
+  assert.equal(f.begins, 0);
+  f.ready();
+  await flush();
+  assert.equal(f.begins, 1);
+}
+async function deliver(f, h, bytes = new Uint8Array(h.totalBytes)) {
+  const pending = f.sink.accept(h, bytes);
+  await flush();
+  f.ack();
+  await pending;
+  await flush();
+  return f.deliveries.at(-1);
+}
+async function configured(f) {
+  await ready(f);
+  await deliver(f, header(1));
+  await deliver(
+    f,
+    header(2, { configId: 1, packetId: 1, kind: 'CONFIG', totalBytes: 1 }),
+    new Uint8Array([7]),
+  );
+}
+test('actual bridge rejects untrusted sender, wrong frame URL and malformed requests before reservation', async () => {
+  const f = fixture();
+  assert.equal((await f.start({ ...f.event, sender: {} })).code, 'CLOSED');
+  assert.equal((await f.start({ ...f.event, senderFrame: { url: f.frame.url } })).code, 'CLOSED');
+  assert.equal((await f.run('{}')).code, 'INVALID');
+  assert.equal(f.calls, 0);
+  assert.equal(f.view.outstanding, 0);
+  await f.close();
+  const wrong = fixture();
+  wrong.frame.url = 'auto-foundation://app/other.html';
+  assert.equal((await wrong.start()).code, 'CLOSED');
+  assert.equal(wrong.calls, 0);
+  await wrong.close();
+});
+test('PENDING transfers only the captured frame/port, releases IPC lease, and READY alone begins reservation', async () => {
+  const f = fixture();
+  const response = await f.start();
+  assert.equal(response.code, 'PENDING');
+  assert.equal(response.videoId, VIDEO);
+  assert.equal(f.view.outstanding, 0);
+  assert.equal(f.begins, 0);
+  assert.equal(f.transfer.channel, contract.VIDEO_PORT_CHANNEL);
+  assert.equal(f.transfer.ports[0], f.channels[0].port2);
+  assert.equal(f.transfer.value.generation, 7);
+  f.ready();
+  await flush();
+  assert.equal(f.begins, 1);
+  f.ready();
+  await flush();
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('SESSION packet zero uses independent delivery identities and held CONSUMED retains accept', async () => {
+  const f = fixture();
+  await ready(f);
+  let settled = false;
+  const first = f.sink.accept(header(1), new Uint8Array()).then(() => {
+    settled = true;
+  });
+  await flush();
+  assert.equal(settled, false);
+  assert.equal(f.deliveries[0].deliveryId, 1);
+  f.ack(1);
+  await first;
+  await deliver(f, header(2, { geometryId: 2 }));
+  assert.deepEqual(
+    f.deliveries.map((d) => [d.deliveryId, d.packetId, d.geometryId]),
+    [
+      [1, 0, 1],
+      [2, 0, 2],
+    ],
+  );
+  await f.close();
+});
+test('split chunks compose one exact packet and only complete payload delivery consumes a port ACK', async () => {
+  const f = fixture();
+  await configured(f);
+  const bytes = new Uint8Array(32769);
+  bytes[0] = 3;
+  bytes[32768] = 4;
+  const h = header(3, {
+    configId: 1,
+    packetId: 2,
+    kind: 'KEY',
+    ptsUs: 1,
+    totalBytes: bytes.length,
+  });
+  await f.sink.accept(h, bytes.slice(0, 32768));
+  assert.equal(f.deliveries.length, 2);
+  const pending = f.sink.accept(
+    header(4, { ...h, creditId: 4, offset: 32768 }),
+    bytes.slice(32768),
+  );
+  await flush();
+  assert.equal(f.deliveries.length, 3);
+  assert.deepEqual(f.deliveries[2].bytes, bytes);
+  f.ack();
+  await pending;
+  await f.close();
+});
+test('Stop immediately rejects held delivery but returns the actual held cleanup drain, never rearming', async () => {
+  const f = fixture();
+  await ready(f);
+  const rejected = assert.rejects(f.sink.accept(header(1), new Uint8Array()), /VIDEO_CLOSED/);
+  await flush();
+  const stopping = f.stop();
+  await flush();
+  assert.equal(f.stops, 1);
+  assert.equal(f.view.outstanding, 1);
+  await rejected;
+  let drained = false;
+  const closed = f.bridge.close().then((value) => {
+    drained = value;
+  });
+  await flush();
+  assert.equal(drained, false);
+  f.drained.resolve(true);
+  await closed;
+  assert.equal((await stopping).code, 'STOPPED');
+  assert.equal(f.view.outstanding, 0);
+  assert.equal(drained, true);
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('CONFIG and CONSUMED chatter cannot renew the original first-paint deadline', async () => {
+  const f = fixture();
+  await configured(f);
+  f.advance(29000);
+  await deliver(
+    f,
+    header(3, { configId: 2, packetId: 2, kind: 'CONFIG', totalBytes: 1 }),
+    new Uint8Array([8]),
+  );
+  f.advance(30000);
+  assert.equal(f.stops, 1);
+  assert.equal(f.begins, 1);
+  await f.close();
+});
+test('only an exact current issued media draw renews draw health; foreign geometry closes', async () => {
+  const f = fixture();
+  await configured(f);
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+    new Uint8Array([8]),
+  );
+  f.advance(10000);
+  f.paint(key);
+  await flush();
+  f.advance(30000);
+  assert.equal(f.stops, 0);
+  f.paint(key, { geometryId: 99 });
+  await flush();
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('late known paint after configuration replacement is historical and does not renew or close current session', async () => {
+  const f = fixture();
+  await configured(f);
+  const old = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+    new Uint8Array([8]),
+  );
+  await deliver(
+    f,
+    header(4, { configId: 2, packetId: 3, kind: 'CONFIG', totalBytes: 1 }),
+    new Uint8Array([9]),
+  );
+  f.advance(20000);
+  f.paint(old);
+  await flush();
+  assert.equal(f.stops, 0);
+  f.advance(30000);
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('port close and view revocation stop the same retained reservation without another begin', async () => {
+  for (const mode of ['port', 'view']) {
+    const f = fixture();
+    await ready(f);
+    if (mode === 'port') f.channels[0].port1.close();
+    else {
+      f.view.revoke();
+      f.message({ version: 2, videoId: VIDEO, kind: 'READY' });
+    }
+    await flush();
+    assert.equal(f.stops, 1);
+    assert.equal(f.begins, 1);
+    await f.close();
+  }
+});
+test('currentness lost synchronously during transfer or delivery prevents later admission/publication', async () => {
+  const transfer = fixture({ onTransfer: (f) => f.lose() });
+  assert.equal((await transfer.start()).code, 'PENDING');
+  assert.equal(transfer.stops, 1);
+  transfer.ready();
+  await flush();
+  assert.equal(transfer.begins, 0);
+  await transfer.close();
+  const delivery = fixture({ onPost: (_value, f) => f.lose() });
+  await ready(delivery);
+  await assert.rejects(delivery.sink.accept(header(1), new Uint8Array()), /VIDEO_CLOSED/);
+  assert.equal(delivery.stops, 1);
+  await delivery.close();
+});
+test('malformed/foreign ACK refuses and cleanup uses the cleanup admission without exhausting ordinary slots', async () => {
+  const f = fixture();
+  await ready(f);
+  const denied = assert.rejects(f.sink.accept(header(1), new Uint8Array()), /VIDEO_CLOSED/);
+  await flush();
+  f.ack(9);
+  await denied;
+  assert.equal(f.stops, 1);
+  assert.equal(f.view.outstanding, 0);
+  const stopping = f.stop();
+  await flush();
+  assert.equal(f.view.outstanding, 1);
+  f.drained.resolve(true);
+  assert.equal((await stopping).code, 'STOPPED');
+  assert.equal(f.view.outstanding, 0);
+  await f.close();
+});
+
+test('reservation callbacks cannot grant a fresh monotonic startup window when UTC does not advance', async () => {
+  const f = fixture({
+    onReserve: (value) => {
+      value.advance(20000);
+      value.setWall(1000);
+    },
+  });
+  assert.equal((await f.start()).code, 'PENDING');
+  f.ready();
+  await flush();
+  f.advance(30000);
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+
+test('already painted same-generation delivery is historical and cannot renew the draw deadline', async () => {
+  const f = fixture();
+  await configured(f);
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+    new Uint8Array([8]),
+  );
+  f.advance(10000);
+  f.paint(key);
+  await flush();
+  f.advance(35000);
+  f.paint(key);
+  await flush();
+  assert.equal(f.stops, 0);
+  f.advance(40000);
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+
+test('pre-key DELTAs drain without paint identities initially and after CONFIG or SESSION reset', async () => {
+  for (const mode of ['initial', 'config', 'session']) {
+    const f = fixture();
+    await configured(f);
+    let credit = 2,
+      packet = 1,
+      geometry = 1,
+      config = 1;
+    if (mode !== 'initial') {
+      const old = await deliver(
+        f,
+        header(++credit, {
+          configId: config,
+          packetId: ++packet,
+          kind: 'KEY',
+          ptsUs: 1,
+          totalBytes: 1,
+        }),
+      );
+      if (mode === 'session') {
+        geometry++;
+        await deliver(f, header(++credit, { geometryId: geometry }));
+      }
+      config++;
+      await deliver(
+        f,
+        header(++credit, {
+          geometryId: geometry,
+          configId: config,
+          packetId: ++packet,
+          kind: 'CONFIG',
+          totalBytes: 1,
+        }),
+      );
+      f.paint(old);
+      await flush();
+      assert.equal(f.stops, 0);
+    }
+    for (let n = 0; n < 4; n++) {
+      await deliver(
+        f,
+        header(++credit, {
+          geometryId: geometry,
+          configId: config,
+          packetId: ++packet,
+          kind: 'DELTA',
+          ptsUs: n + 2,
+          totalBytes: 1,
+        }),
+      );
+    }
+    const key = await deliver(
+      f,
+      header(++credit, {
+        geometryId: geometry,
+        configId: config,
+        packetId: ++packet,
+        kind: 'KEY',
+        ptsUs: 6,
+        totalBytes: 1,
+      }),
+    );
+    f.paint(key);
+    await flush();
+    assert.equal(f.stops, 0);
+    await f.close();
+  }
+});
+test('pre-key discarded DELTA cannot claim a paint', async () => {
+  const f = fixture();
+  await configured(f);
+  const delta = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'DELTA', ptsUs: 1, totalBytes: 1 }),
+  );
+  f.paint(delta);
+  await flush();
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+
+test('three unresolved media identities are bounded and a fourth cannot overwrite them', async () => {
+  const f = fixture();
+  await configured(f);
+  for (let n = 0; n < 3; n++)
+    await deliver(
+      f,
+      header(n + 3, {
+        configId: 1,
+        packetId: n + 2,
+        kind: n === 0 ? 'KEY' : 'DELTA',
+        ptsUs: n + 1,
+        totalBytes: 1,
+      }),
+    );
+  await assert.rejects(
+    f.sink.accept(
+      header(6, { configId: 1, packetId: 5, kind: 'DELTA', ptsUs: 4, totalBytes: 1 }),
+      new Uint8Array(1),
+    ),
+  );
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+
+test('old CONSUMED cannot retire a pending newer CONFIG or SESSION delivery', async () => {
+  for (const kind of ['CONFIG', 'SESSION']) {
+    const f = fixture();
+    await configured(f);
+    const pending = f.sink.accept(
+      header(
+        3,
+        kind === 'SESSION'
+          ? { geometryId: 2 }
+          : { configId: 2, packetId: 2, kind: 'CONFIG', totalBytes: 1 },
+      ),
+      new Uint8Array(kind === 'SESSION' ? 0 : 1),
+    );
+    const rejected = assert.rejects(pending, /VIDEO_CLOSED/);
+    await flush();
+    f.ack(2);
+    await rejected;
+    assert.equal(f.stops, 1);
+    await f.close();
+  }
+});
+
+test('fresh explicit attempt requires actual retirement; old Stop and port cannot retire new owner', async () => {
+  const secondId = '55555555-5555-4555-8555-555555555555';
+  const secondDrain = deferred();
+  let secondStops = 0;
+  const second = {
+    videoId: secondId,
+    generation: 7,
+    deadlineUtc: 31000,
+    current: () => true,
+    begin: () => ({ started: Promise.resolve() }),
+    stop() {
+      secondStops++;
+      return secondDrain.promise;
+    },
+  };
+  const f = fixture({ reserve: (n) => (n === 2 ? second : null) });
+  await ready(f);
+  const stopping = f.stop();
+  await flush();
+  assert.equal((await f.start()).code, 'BUSY');
+  assert.equal(f.calls, 1);
+  f.drained.resolve(true);
+  assert.equal((await stopping).code, 'STOPPED');
+  const next = await f.start();
+  assert.equal(next.code, 'PENDING');
+  assert.equal(next.videoId, secondId);
+  assert.equal(f.channels.length, 2);
+  assert.equal((await f.stop()).code, 'STOPPED');
+  assert.equal(f.stops, 1);
+  assert.equal(secondStops, 0);
+  f.message({ version: 2, videoId: VIDEO, kind: 'READY' });
+  await flush();
+  assert.equal(secondStops, 0);
+  let complete = false;
+  const closing = f.bridge.close().then((v) => {
+    complete = v;
+  });
+  await flush();
+  assert.equal(secondStops, 1);
+  assert.equal(complete, false);
+  secondDrain.resolve(true);
+  await closing;
+  assert.equal(complete, true);
+});
+test('uncertain old retirement denies replacement and duplicate identity cleanup stays retained', async () => {
+  const f = fixture();
+  await ready(f);
+  const stopped = f.stop();
+  f.drained.resolve(false);
+  assert.equal((await stopped).code, 'UNCERTAIN');
+  assert.equal((await f.start()).code, 'BUSY');
+  assert.equal(f.calls, 1);
+  assert.equal(await f.bridge.close(), false);
+  const rejectedDrain = deferred();
+  let duplicateStops = 0;
+  const g = fixture({
+    reserve: (n, r) =>
+      n === 2
+        ? {
+            ...r.reservation,
+            stop() {
+              duplicateStops++;
+              return rejectedDrain.promise;
+            },
+          }
+        : null,
+  });
+  await ready(g);
+  const clean = g.stop();
+  g.drained.resolve(true);
+  await clean;
+  assert.equal((await g.start()).code, 'UNAVAILABLE');
+  assert.equal(duplicateStops, 1);
+  assert.equal((await g.start()).code, 'UNAVAILABLE');
+  assert.equal(g.calls, 2);
+  let done = false;
+  const closed = g.bridge.close().then((v) => {
+    done = v;
+  });
+  await flush();
+  assert.equal(done, false);
+  rejectedDrain.resolve(true);
+  await closed;
+  assert.equal(done, true);
+});
+
+const refusal = (reason) => ({
+  handoff: 'NOT_STARTED',
+  videoId: VIDEO,
+  videoOrdinal: 1,
+  refusal: reason,
+  snapshot: null,
+  fresh: false,
+});
+test('recovery refusal survives lower media-close before START settlement and requires explicit Stop proof', async () => {
+  const f = fixture();
+  try {
+    await ready(f);
+    f.sink.close();
+    await flush();
+    assert.equal(f.channels[0].port1.closed, false);
+    f.started.resolve(refusal('BUSY'));
+    await flush();
+    assert.deepEqual(f.deliveries.at(-1), {
+      version: 2,
+      videoId: VIDEO,
+      kind: 'REFUSED',
+      reason: 'BUSY',
+    });
+    assert.equal(f.stops, 1);
+    assert.equal(f.channels[0].port1.closed, false);
+    f.drained.resolve(true);
+    await flush();
+    assert.equal(
+      (await f.start()).code,
+      'BUSY',
+      'lower proof alone cannot forget notification port',
+    );
+    assert.equal((await f.stop()).code, 'STOPPED');
+    assert.equal(f.channels[0].port1.closed, true);
+  } finally {
+    await f.close();
+  }
+});
+test('recovery quota survives abandoned notification and retains original deadline', async () => {
+  const f = fixture();
+  try {
+    await ready(f);
+    f.advance(20000);
+    f.started.resolve(refusal('QUOTA'));
+    await flush();
+    f.drained.resolve(true);
+    await flush();
+    assert.equal(f.channels[0].port1.closed, false);
+    f.advance(30000);
+    await flush();
+    assert.equal(f.channels[0].port1.closed, true);
+    assert.equal((await f.start()).code, 'UNAVAILABLE');
+    assert.equal((await f.stop()).code, 'STOPPED');
+  } finally {
+    await f.close();
+  }
+});
+test('refusal notification post failure cannot certify uncertain cleanup', async () => {
+  const f = fixture({
+    onPost(value) {
+      if (value.kind === 'REFUSED') throw Error('synthetic');
+    },
+  });
+  try {
+    await ready(f);
+    f.started.resolve(refusal('BUSY'));
+    await flush();
+    assert.equal(f.channels[0].port1.closed, true);
+    f.drained.resolve(false);
+    assert.equal((await f.stop()).code, 'UNCERTAIN');
+    assert.equal((await f.start()).code, 'BUSY');
+  } finally {
+    await f.close();
+  }
+});
+test('REFUSED DTO rejects foreign shape, accessors and unsupported reason', () => {
+  const value = { version: 2, videoId: VIDEO, kind: 'REFUSED', reason: 'BUSY' };
+  assert.deepEqual(contract.snapshotVideoRefusal(value), value);
+  for (const bad of [
+    { ...value, reason: 'PRIVATE' },
+    { ...value, extra: true },
+    { ...value, videoId: 'private' },
+    {
+      ...value,
+      get reason() {
+        throw Error();
+      },
+    },
+  ])
+    assert.equal(contract.snapshotVideoRefusal(bad), null);
+});
+
+test('late authentic quota after explicit Stop latches no new port notification or replacement', async () => {
+  const f = fixture();
+  try {
+    await ready(f);
+    const stopping = f.stop();
+    f.started.resolve(refusal('QUOTA'));
+    f.drained.resolve(true);
+    assert.equal((await stopping).code, 'STOPPED');
+    await flush();
+    assert.equal(
+      f.deliveries.some((v) => v.kind === 'REFUSED'),
+      false,
+    );
+    assert.equal((await f.start()).code, 'UNAVAILABLE');
+  } finally {
+    await f.close();
+  }
+});
+test('unclassified lower close rejects media while retaining only original negotiation deadline', async () => {
+  const f = fixture();
+  try {
+    await ready(f);
+    f.sink.close();
+    await assert.rejects(f.sink.accept(header(1)));
+    f.advance(30000);
+    await flush();
+    assert.equal(f.channels[0].port1.closed, true);
+    f.drained.resolve(false);
+    assert.equal((await f.stop()).code, 'UNCERTAIN');
+  } finally {
+    await f.close();
+  }
+});
+
+test('throwing local port close leaves Stop uncertain and replacement fenced despite clean lower proof', async () => {
+  const f = fixture({
+    onPortClose() {
+      throw Error('synthetic');
+    },
+  });
+  await ready(f);
+  f.drained.resolve(true);
+  assert.equal((await f.stop()).code, 'UNCERTAIN');
+  assert.equal((await f.start()).code, 'BUSY');
+  assert.equal(await f.bridge.close(), false);
+});
+test('synchronously reentrant port close cannot recurse or duplicate lower Stop', async () => {
+  let reentry,
+    closes = 0;
+  const f = fixture({
+    onPortClose(_port, owner) {
+      closes++;
+      reentry = owner.bridge.close();
+    },
+  });
+  try {
+    await ready(f);
+    f.drained.resolve(true);
+    assert.equal((await f.stop()).code, 'STOPPED');
+    assert.equal(await reentry, true);
+    assert.equal(closes, 1);
+    assert.equal(f.stops, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('failed transfer closes both still-owned handles even when the first close throws', async () => {
+  const closed = [];
+  const f = fixture({
+    onTransfer() {
+      throw Error('synthetic');
+    },
+    onPortClose(port, owner) {
+      closed.push(port);
+      if (port === owner.channels[0].port1) throw Error('synthetic');
+    },
+  });
+  f.drained.resolve(true);
+  assert.equal((await f.start()).code, 'FAILED');
+  assert.equal(closed.length, 2);
+  assert.equal(f.channels[0].port2.closed, true);
+  assert.equal((await f.stop()).code, 'UNCERTAIN');
+  assert.equal(await f.bridge.close(), false);
+});
+
+test('merged synthetic qualifier OWNED handoff reaches actual bridge media and proven explicit Stop', async () => {
+  const probe = readFileSync(
+    new URL('../verification/video-decoder-probe.mjs', import.meta.url),
+    'utf8',
+  );
+  const match = /started: Promise\.resolve\((\{[\s\S]*?\n\s+\})\),/.exec(probe);
+  assert.ok(match);
+  const result = new Function('VIDEO', 'preparingVideo', `return (${match[1]});`)(
+    VIDEO,
+    nativeContract.preparingVideo,
+  );
+  assert.equal(result.handoff, 'OWNED');
+  assert.equal(result.videoOrdinal, 1);
+  const f = fixture();
+  await configured(f);
+  f.started.resolve(result);
+  await flush();
+  assert.equal(f.stops, 0);
+  assert.equal(
+    f.deliveries.some((d) => d.kind === 'REFUSED'),
+    false,
+  );
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+    new Uint8Array([5]),
+  );
+  f.paint(key);
+  await flush();
+  const stopped = f.stop();
+  await flush();
+  assert.equal(f.stops, 1);
+  f.drained.resolve(true);
+  assert.equal((await stopped).code, 'STOPPED');
+  await assert.rejects(f.sink.accept(header(4)));
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+
+test('owned visibility admission rejects absent, hidden and unavailable observation before reservation and removes listeners', async () => {
+  for (const options of [
+    { noObserver: true },
+    { visibility: 'HIDDEN' },
+    { visibility: 'UNAVAILABLE' },
+    { readThrows: true },
+  ]) {
+    const f = fixture(options);
+    assert.equal((await f.start()).code, 'UNAVAILABLE');
+    assert.equal(f.calls, 0);
+    assert.equal(f.listeners.size, 0);
+    await f.close();
+  }
+});
+test('initial PRESENTATION fence must be acknowledged before begin and missing ACK keeps original expiry', async () => {
+  const f = fixture({ holdFence: true });
+  await f.start();
+  f.ready();
+  await flush();
+  assert.equal(f.fences.length, 1);
+  assert.equal(f.fences[0].epoch, 1);
+  assert.equal(f.fences[0].state, 'VISIBLE');
+  assert.equal(f.begins, 0);
+  f.visibility('HIDDEN');
+  f.advance(30000);
+  assert.equal(f.stops, 1);
+  assert.equal(f.listeners.size, 0);
+  await f.close();
+});
+test('hide drains more than three packets without paint slots, restore requires later key and keeps same reservation', async () => {
+  const f = fixture();
+  await configured(f);
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+  );
+  f.paint(key);
+  await flush();
+  f.advance(1000);
+  f.visibility('HIDDEN');
+  await flush();
+  for (let n = 3; n < 12; n++)
+    await deliver(
+      f,
+      header(n + 1, {
+        configId: 1,
+        packetId: n,
+        kind: n % 2 ? 'DELTA' : 'KEY',
+        ptsUs: n,
+        totalBytes: 1,
+      }),
+    );
+  assert.equal(f.stops, 0);
+  f.advance(100000);
+  f.visibility('VISIBLE');
+  await flush();
+  const restored = f.fences.at(-1);
+  assert.equal(restored.afterPacketId, 11);
+  assert.equal(restored.remainingMs, 29000);
+  await deliver(
+    f,
+    header(13, { configId: 1, packetId: 12, kind: 'DELTA', ptsUs: 12, totalBytes: 1 }),
+  );
+  const fresh = await deliver(
+    f,
+    header(14, { configId: 1, packetId: 13, kind: 'KEY', ptsUs: 13, totalBytes: 1 }),
+  );
+  f.paint(fresh);
+  await flush();
+  assert.equal(f.stops, 0);
+  assert.equal(f.calls, 1);
+  assert.equal(f.begins, 1);
+  f.advance(129999);
+  assert.equal(f.stops, 0);
+  f.advance(130000);
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('29 seconds visible followed by repeated hidden hints/toggles retains at most one second', async () => {
+  const f = fixture();
+  await configured(f);
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+  );
+  f.paint(key);
+  await flush();
+  f.advance(29000);
+  f.visibility('HIDDEN');
+  await flush();
+  f.advance(100000);
+  for (let n = 0; n < 5; n++) {
+    f.visibility('VISIBLE');
+    await flush();
+    f.message({ version: 2, videoId: VIDEO, kind: 'VISIBILITY_HINT' });
+    await flush();
+    assert.equal(f.fences.at(-1).remainingMs, 1000);
+    f.visibility('HIDDEN');
+    await flush();
+  }
+  f.paint(key);
+  await flush();
+  assert.equal(f.stops, 0);
+  f.visibility('VISIBLE');
+  await flush();
+  f.advance(101000);
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('hidden pending media CONSUMED has its original nonpausable operation deadline', async () => {
+  const f = fixture();
+  await configured(f);
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+  );
+  f.paint(key);
+  await flush();
+  f.advance(100);
+  const rejected = assert.rejects(
+    f.sink.accept(
+      header(4, { configId: 1, packetId: 3, kind: 'DELTA', ptsUs: 2, totalBytes: 1 }),
+      new Uint8Array(1),
+    ),
+    /VIDEO_CLOSED/,
+  );
+  await flush();
+  f.visibility('HIDDEN');
+  await flush();
+  f.advance(30099);
+  assert.equal(f.stops, 0);
+  f.advance(30100);
+  await rejected;
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('fence controls coalesce latest state, gate new media and use posted delivery frontier', async () => {
+  const f = fixture({ holdFence: true });
+  await f.start();
+  f.ready();
+  await flush();
+  f.fenceAck();
+  await flush();
+  assert.equal(f.begins, 1);
+  await deliver(f, header(1));
+  f.visibility('HIDDEN');
+  await flush();
+  const pending = f.sink.accept(
+    header(2, { configId: 1, packetId: 1, kind: 'CONFIG', totalBytes: 1 }),
+    new Uint8Array(1),
+  );
+  await flush();
+  f.visibility('VISIBLE');
+  f.visibility('HIDDEN');
+  f.visibility('VISIBLE');
+  await flush();
+  assert.equal(f.fences.length, 2);
+  assert.equal(f.deliveries.length, 1);
+  f.fenceAck();
+  await flush();
+  assert.equal(f.fences.length, 3);
+  assert.equal(f.fences.at(-1).state, 'VISIBLE');
+  assert.equal(f.fences.at(-1).afterDeliveryId, 1);
+  assert.equal(f.fences.at(-1).afterPacketId, 1);
+  assert.equal(f.deliveries.length, 1);
+  f.fenceAck();
+  await flush();
+  f.ack();
+  await pending;
+  assert.equal(f.deliveries.length, 2);
+  assert.equal(f.begins, 1);
+  await f.close();
+});
+test('partial key at restore frontier is consumed but cannot claim current paint', async () => {
+  const f = fixture();
+  await configured(f);
+  f.visibility('HIDDEN');
+  await flush();
+  const h = header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 32769 });
+  await f.sink.accept(h, new Uint8Array(32768));
+  f.visibility('VISIBLE');
+  await flush();
+  assert.equal(f.fences.at(-1).afterPacketId, 2);
+  const pending = f.sink.accept(header(4, { ...h, creditId: 4, offset: 32768 }), new Uint8Array(1));
+  await flush();
+  f.ack();
+  await pending;
+  f.paint();
+  await flush();
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('old pending CONSUMED releases exactly once across hidden epoch but duplicate fails closed', async () => {
+  const f = fixture();
+  await configured(f);
+  const pending = f.sink.accept(
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+    new Uint8Array(1),
+  );
+  await flush();
+  f.visibility('HIDDEN');
+  await flush();
+  f.ack();
+  await pending;
+  assert.equal(f.stops, 0);
+  f.ack();
+  await flush();
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('unavailable ownership, future or duplicate fence ACK and backward clock fail closed', async () => {
+  for (const reason of ['unavailable', 'future', 'duplicate', 'clock']) {
+    const f = fixture();
+    await ready(f);
+    if (reason === 'unavailable') f.visibility('UNAVAILABLE');
+    if (reason === 'future') f.fenceAck(20);
+    if (reason === 'duplicate') f.fenceAck(1);
+    if (reason === 'clock') {
+      f.advance(100);
+      f.message({ version: 2, videoId: VIDEO, kind: 'VISIBILITY_HINT' });
+      await flush();
+      f.advance(50);
+      f.message({ version: 2, videoId: VIDEO, kind: 'VISIBILITY_HINT' });
+    }
+    await flush();
+    assert.equal(f.stops, 1, reason);
+    assert.equal(f.listeners.size, 0);
+    await f.close();
+  }
+});
+
+// Run the production adapter body, replacing only the Electron window instance.
+const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const observerStart = mainSource.indexOf(
+  '(event) => {\n            const captured = platformToolsWindow;',
+);
+assert.ok(observerStart >= 0);
+const observerEnd = mainSource.indexOf('\n        );', observerStart);
+const observerExpression = mainSource.slice(observerStart, observerEnd).trim().replace(/,$/, '');
+const loadWindowAdapter =
+  new Function(`${stripTypeScriptTypes(`function factory() { return ${observerExpression}; }`)}
+return function rig(window) {
+  platformToolsWindow = window; lifecycle = {}; closing = false;
+  return { capture: factory(), replace(value) { platformToolsWindow = value; }, close() { closing = true; } };
+};
+var platformToolsWindow, lifecycle, closing;`)();
+function observerWindow() {
+  const win = new EventEmitter();
+  win.webContents = {};
+  win.destroyed = false;
+  win.visible = true;
+  win.minimized = false;
+  win.isDestroyed = () => win.destroyed;
+  win.isVisible = () => win.visible;
+  win.isMinimized = () => win.minimized;
+  return win;
+}
+test('production owned-window adapter captures identity, reads actual getters, ignores blur and removes every listener', () => {
+  const win = observerWindow(),
+    rig = loadWindowAdapter(win);
+  assert.equal(rig.capture({ sender: {} }), null);
+  const observation = rig.capture({ sender: win.webContents });
+  let events = 0;
+  const remove = observation.subscribe(() => events++);
+  assert.equal(observation.read(), 'VISIBLE');
+  win.emit('blur');
+  assert.equal(events, 0);
+  win.visible = false;
+  win.emit('show'); // Event names do not supply authority.
+  assert.equal(observation.read(), 'HIDDEN');
+  win.visible = true;
+  win.minimized = true;
+  win.emit('restore');
+  assert.equal(observation.read(), 'HIDDEN');
+  win.minimized = false;
+  win.emit('hide');
+  assert.equal(observation.read(), 'VISIBLE');
+  assert.equal(events, 3);
+  remove();
+  remove();
+  for (const event of ['hide', 'show', 'minimize', 'restore', 'closed'])
+    assert.equal(win.listenerCount(event), 0);
+  rig.replace(observerWindow());
+  assert.equal(observation.read(), 'UNAVAILABLE');
+});
+test('production observer invalidates destroyed/closing owners and propagates getter failure', () => {
+  for (const condition of ['destroyed', 'closing', 'getter']) {
+    const win = observerWindow(),
+      rig = loadWindowAdapter(win);
+    const observation = rig.capture({ sender: win.webContents });
+    if (condition === 'destroyed') win.destroyed = true;
+    if (condition === 'closing') rig.close();
+    if (condition === 'getter') {
+      win.isVisible = () => {
+        throw Error('GETTER');
+      };
+      assert.throws(() => observation.read(), /GETTER/);
+    } else assert.equal(observation.read(), 'UNAVAILABLE');
+  }
+});
+test('production observer rolls back partially installed listeners if subscription fails', () => {
+  const win = observerWindow(),
+    rig = loadWindowAdapter(win);
+  const original = win.on;
+  win.on = function (event, listener) {
+    if (event === 'minimize') throw Error('SUBSCRIBE');
+    return original.call(this, event, listener);
+  };
+  const observation = rig.capture({ sender: win.webContents });
+  assert.throws(() => observation.subscribe(() => {}), /SUBSCRIBE/);
+  for (const event of ['hide', 'show', 'minimize', 'restore', 'closed'])
+    assert.equal(win.listenerCount(event), 0, event);
+});
+
+const joinedConfig = Uint8Array.from([
+  0, 0, 0, 1, 103, 66, 0, 30, 244, 75, 32, 0, 0, 0, 1, 104, 206, 60, 128,
+]);
+const joinedKey = Uint8Array.from([0, 0, 0, 1, 101, 188]);
+const joinedDelta = Uint8Array.from([0, 0, 0, 1, 65, 240]);
+async function joinedFixture({ hideBeforeReady = false } = {}) {
+  const { createTileVideoDecoder } = await import('../src/video-decoder.ts');
+  const f = fixture({ holdFence: true });
+  assert.equal((await f.start()).code, 'PENDING');
+  let drawn = 0,
+    closedFrames = 0,
+    supportCalls = 0;
+  const codecs = [],
+    states = [],
+    consumed = [],
+    paints = [],
+    localTimers = new Map();
+  const decoder = createTileVideoDecoder(
+    {
+      videoId: VIDEO,
+      deviceId: DEVICE,
+      generation: 7,
+      deadlineUtc: 31000,
+      canvas: {
+        width: 0,
+        height: 0,
+        style: {},
+        getContext: () => ({
+          clearRect() {},
+          drawImage() {
+            drawn++;
+          },
+        }),
+      },
+      current: () => f.stops === 0,
+      onPresentationAck: (value) => f.message(value),
+      onConsumed: (value) => {
+        consumed.push(value);
+        f.message(value);
+      },
+      onPainted: (value) => {
+        paints.push(value);
+        f.message(value);
+      },
+      onState: (value) => states.push(value),
+    },
+    {
+      now: () => 0,
+      utc: () => 1000,
+      set: (fn, ms) => {
+        const token = {};
+        localTimers.set(token, { fn, ms });
+        return token;
+      },
+      clear: (token) => localTimers.delete(token),
+      supported: async () => {
+        supportCalls++;
+        return true;
+      },
+      chunk: (value) => value,
+      create(output) {
+        const codec = {
+          decodeQueueSize: 0,
+          chunks: [],
+          closed: false,
+          configure() {},
+          decode(value) {
+            this.chunks.push(value);
+          },
+          close() {
+            this.closed = true;
+          },
+          paint() {
+            const chunk = this.chunks.at(-1);
+            output({
+              timestamp: chunk.timestamp,
+              rotation: 0,
+              flip: false,
+              codedWidth: 32,
+              codedHeight: 32,
+              visibleRect: { x: 0, y: 0, width: 32, height: 32 },
+              displayWidth: 32,
+              displayHeight: 32,
+              close() {
+                closedFrames++;
+              },
+            });
+          },
+        };
+        codecs.push(codec);
+        return codec;
+      },
+    },
+  );
+  f.channels[0].port2.on('message', ({ data }) => {
+    if (data.kind === 'PRESENTATION') decoder.presentation(data);
+    else decoder.receive(data);
+  });
+  if (hideBeforeReady) f.visibility('HIDDEN');
+  f.ready();
+  await flush();
+  let credit = 0,
+    packetId = 0,
+    pts = 0;
+  return {
+    f,
+    decoder,
+    codecs,
+    states,
+    consumed,
+    paints,
+    get drawn() {
+      return drawn;
+    },
+    get closedFrames() {
+      return closedFrames;
+    },
+    get supportCalls() {
+      return supportCalls;
+    },
+    async send(kind) {
+      const bytes =
+        kind === 'SESSION'
+          ? new Uint8Array()
+          : kind === 'CONFIG'
+            ? joinedConfig
+            : kind === 'KEY'
+              ? joinedKey
+              : joinedDelta;
+      const h = header(++credit, {
+        width: 32,
+        height: 32,
+        kind,
+        configId: kind === 'SESSION' ? 0 : 1,
+        packetId: kind === 'SESSION' ? 0 : ++packetId,
+        ptsUs: kind === 'KEY' || kind === 'DELTA' ? ++pts : null,
+        totalBytes: bytes.length,
+      });
+      await f.sink.accept(h, bytes);
+      await flush();
+    },
+    async close() {
+      decoder.close();
+      await f.close();
+    },
+  };
+}
+test('joined actual bridge and decoder preserve session across hidden draining and fresh IDR resume', async () => {
+  const j = await joinedFixture();
+  try {
+    assert.equal(j.f.begins, 1);
+    await j.send('SESSION');
+    await j.send('CONFIG');
+    await j.send('KEY');
+    j.codecs.at(-1).paint();
+    await flush();
+    assert.equal(j.drawn, 1);
+    assert.equal(j.paints.length, 1);
+    j.f.visibility('HIDDEN');
+    await flush();
+    assert.equal(j.states.at(-1), 'PAUSED_HIDDEN');
+    const supports = j.supportCalls;
+    for (let i = 0; i < 12; i++) await j.send(i % 2 ? 'KEY' : 'DELTA');
+    assert.equal(j.supportCalls, supports);
+    assert.equal(j.decoder.accounting().hidden, 12);
+    assert.equal(j.decoder.accounting().outstanding, 0);
+    assert.equal(j.f.stops, 0);
+    j.f.visibility('VISIBLE');
+    await flush();
+    await j.send('DELTA');
+    assert.equal(j.drawn, 1);
+    await j.send('KEY');
+    j.codecs.at(-1).paint();
+    await flush();
+    assert.equal(j.drawn, 2);
+    assert.equal(j.closedFrames, 2);
+    assert.equal(j.paints.length, 2);
+    assert.equal(j.f.stops, 0);
+    assert.equal(j.f.calls, 1);
+    assert.equal(j.f.begins, 1);
+    assert.equal(new Set(j.consumed.map((v) => v.deliveryId)).size, j.consumed.length);
+  } finally {
+    await j.close();
+  }
+});
+test('joined decoder accepts hide after reservation before READY without losing the initial startup owner', async () => {
+  const j = await joinedFixture({ hideBeforeReady: true });
+  try {
+    assert.equal(j.states.includes('DECODE_FAILED'), false);
+    assert.equal(j.f.fences[0].state, 'VISIBLE');
+    assert.equal(j.f.fences.at(-1).state, 'HIDDEN');
+    assert.equal(j.states.at(-1), 'PAUSED_HIDDEN');
+    assert.equal(j.f.begins, 1);
+    j.f.advance(30000);
+    assert.equal(j.f.stops, 1);
+  } finally {
+    await j.close();
+  }
+});
+
+test('observer subscription/read race rejects hidden admission without reserving and cleans subscription', async () => {
+  const f = fixture({ onSubscribe: (owner) => owner.visibility('HIDDEN') });
+  try {
+    assert.equal((await f.start()).code, 'UNAVAILABLE');
+    assert.equal(f.calls, 0);
+    assert.equal(f.listeners.size, 0);
+  } finally {
+    await f.close();
+  }
+});
+test('production observer rechecks captured identity after visibility getters', () => {
+  const win = observerWindow(),
+    rig = loadWindowAdapter(win);
+  const observation = rig.capture({ sender: win.webContents });
+  win.isVisible = () => {
+    rig.replace(observerWindow());
+    return true;
+  };
+  assert.equal(observation.read(), 'UNAVAILABLE');
+});
+test('closed bridge owner ignores stale captured visibility callback after listener removal', async () => {
+  const f = fixture();
+  await ready(f);
+  const stale = [...f.listeners][0];
+  f.drained.resolve(true);
+  assert.equal((await f.stop()).code, 'STOPPED');
+  const before = f.fences.length;
+  stale();
+  await flush();
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.fences.length, before);
+  assert.equal(f.stops, 1);
+  await f.close();
+});

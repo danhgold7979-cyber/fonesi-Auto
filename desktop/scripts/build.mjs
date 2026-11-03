@@ -1,0 +1,165 @@
+import { verify } from './verify-dependencies.mjs';
+import { inventory, readMap, verifyRuntimeGraph } from './check-module-graph.mjs';
+import { createManifest, verifyBuild } from './build-manifest.mjs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  mkdirSync,
+  lstatSync,
+  realpathSync,
+  readFileSync,
+  writeFileSync,
+  copyFileSync,
+  unlinkSync,
+} from 'node:fs';
+import { createHash } from 'node:crypto';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+try {
+  const output = resolve(root, 'build');
+  try {
+    mkdirSync(output);
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+  if (
+    !lstatSync(output).isDirectory() ||
+    lstatSync(output).isSymbolicLink() ||
+    realpathSync(output) !== resolve(realpathSync(root), 'build')
+  )
+    throw new Error('OUTPUT_REJECTED');
+  const marker = resolve(output, '.verified-build.json');
+  if (exists(marker)) {
+    if (!lstatSync(marker).isFile() || lstatSync(marker).isSymbolicLink())
+      throw new Error('OUTPUT_REJECTED');
+    unlinkSync(marker);
+  }
+  verify(true, process.argv[2]);
+  await verifyRuntimeGraph(
+    inventory(resolve(root, 'src')),
+    readMap(resolve(root, 'module-map.json')),
+  );
+  const { build } = await import('esbuild'); // only after metadata/script/binary verification
+  const fixture = readFileSync(resolve(root, 'tests/fixtures/unavailable.html'));
+  const hash = createHash('sha256').update(fixture).digest('hex');
+  const policy = readFileSync(resolve(root, 'src/main/asset-policy.ts'), 'utf8');
+  if (!policy.includes(`ASSET_SHA256 = '${hash}'`)) throw new Error('FIXTURE_CHANGED');
+  const styleHash = createHash('sha256')
+    .update(readFileSync(resolve(root, 'assets/v9.css')))
+    .digest('hex');
+  if (!policy.includes(`STYLE_SHA256 = '${styleHash}'`)) throw new Error('STYLE_CHANGED');
+  const options = {
+    bundle: true,
+    platform: 'node',
+    target: 'node24',
+    format: 'cjs',
+    sourcemap: false,
+    logLevel: 'silent',
+    write: false,
+  };
+  const outputs = await build({
+    ...options,
+    entryPoints: [resolve(root, 'src/main.ts')],
+    external: ['electron'],
+  });
+  const pure = await build({
+    ...options,
+    entryPoints: [
+      resolve(root, 'src/main/adb-host-factory.ts'),
+      resolve(root, 'src/main/host-resource-worker.ts'),
+      resolve(root, 'src/main/asset-policy.ts'),
+      resolve(root, 'src/main/lifecycle.ts'),
+      resolve(root, 'src/main/profile-owner.ts'),
+      resolve(root, 'src/main/window-policy.ts'),
+      resolve(root, 'src/foundation-bridge.ts'),
+      resolve(root, 'src/ipc-contract.ts'),
+      resolve(root, 'src/log-contract.ts'),
+      resolve(root, 'src/main/log-store.ts'),
+      resolve(root, 'src/main/logging.ts'),
+      resolve(root, 'src/main/log-recovery.ts'),
+      resolve(root, 'src/main/foundation-persistence.ts'),
+      resolve(root, 'src/main/backup-key-profile.ts'),
+      resolve(root, 'src/main/persistence-files.ts'),
+      resolve(root, 'src/main/foundation-database.ts'),
+      resolve(root, 'src/main/backup-service.ts'),
+      resolve(root, 'src/main/persistence-native.ts'),
+      resolve(root, 'src/persistence-proof.ts'),
+      resolve(root, 'src/main/persistence-entry.ts'),
+      resolve(root, 'src/main/secret-store.ts'),
+      resolve(root, 'src/main/secret-provider.ts'),
+      resolve(root, 'src/secret-contract.ts'),
+      resolve(root, 'src/settings-contract.ts'),
+      resolve(root, 'src/fleet-contract.ts'),
+      resolve(root, 'src/fleet-bridge.ts'),
+      resolve(root, 'src/main/fleet-service.ts'),
+      resolve(root, 'src/preferences-bridge.ts'),
+      resolve(root, 'src/main/settings-store.ts'),
+      resolve(root, 'src/main/settings-window.ts'),
+    ],
+    outdir: output,
+  });
+  const preload = await build({
+    ...options,
+    entryPoints: [resolve(root, 'src/preload.ts')],
+    external: ['electron'],
+    outfile: resolve(output, 'preload.js'),
+  });
+  const renderer = await build({
+    ...options,
+    platform: 'browser',
+    target: 'chrome156',
+    format: 'iife',
+    entryPoints: [resolve(root, 'src/renderer.tsx')],
+    define: { 'process.env.NODE_ENV': '"production"' },
+    outfile: resolve(output, 'renderer.js'),
+  });
+  for (const item of [
+    ...outputs.outputFiles,
+    ...pure.outputFiles,
+    ...preload.outputFiles,
+    ...renderer.outputFiles,
+  ]) {
+    const base = item.path.split(/[\\/]/).at(-1);
+    const name =
+      item.path === '<stdout>'
+        ? 'main.cjs'
+        : base === 'renderer.js'
+          ? base
+          : base.replace(/\.js$/, '.cjs');
+    const file = resolve(output, name);
+    if (
+      item.contents.length > 8 * 1024 * 1024 ||
+      (exists(file) && (!lstatSync(file).isFile() || lstatSync(file).isSymbolicLink()))
+    )
+      throw new Error('OUTPUT_REJECTED');
+    writeFileSync(file, item.contents);
+  }
+  const asset = resolve(output, 'status.html');
+  if (exists(asset) && (!lstatSync(asset).isFile() || lstatSync(asset).isSymbolicLink()))
+    throw new Error('OUTPUT_REJECTED');
+  copyFileSync(resolve(root, 'tests/fixtures/unavailable.html'), asset);
+  const styleAsset = resolve(output, 'v9.css');
+  if (
+    exists(styleAsset) &&
+    (!lstatSync(styleAsset).isFile() || lstatSync(styleAsset).isSymbolicLink())
+  )
+    throw new Error('OUTPUT_REJECTED');
+  copyFileSync(resolve(root, 'assets/v9.css'), styleAsset);
+  writeFileSync(marker, JSON.stringify(createManifest(root)), { flag: 'wx' });
+  if (!verifyBuild(root)) {
+    unlinkSync(marker);
+    throw new Error('BUILD_MANIFEST_FAILED');
+  }
+  console.log('BUILD_VERIFIED');
+} catch {
+  console.log('BUILD_FAILED');
+  process.exitCode = 1;
+}
+function exists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}

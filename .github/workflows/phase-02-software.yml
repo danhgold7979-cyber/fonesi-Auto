@@ -1,0 +1,1555 @@
+name: Phase 02–03 software and gated development boundaries
+on:
+  workflow_dispatch:
+    inputs:
+      run_pair_package_check:
+        description: 'Build and verify an app-local package from the exact retained pair; no app launch or binary upload'
+        required: false
+        type: boolean
+        default: false
+      run_pair_retention:
+        description: 'Build and retain the exact reviewed pair and source evidence publicly for 14 days; no artifact execution or device operation'
+        required: false
+        type: boolean
+        default: false
+      run_notice_evidence:
+        description: 'Capture exact vendor notice text only; no pair compilation, binary retention or device operation'
+        required: false
+        type: boolean
+        default: false
+      run_pair_build:
+        description: 'Compile and inspect the derived server and Windows consumer; never load, upload binaries or contact devices'
+        required: false
+        type: boolean
+        default: false
+      run_video_decoder:
+        description: 'Actual sandboxed Electron decoder with authored synthetic pixels only; no native provider/device'
+        required: false
+        type: boolean
+        default: false
+      run_video_managed:
+        description: 'Compile five current sources and run 118 pure/fake managed groups; no live socket/server/device'
+        required: false
+        type: boolean
+        default: false
+      run_input_managed:
+        description: 'Compile current sources and run 51 pure/fake managed input groups; no live socket/server/device'
+        required: false
+        type: boolean
+        default: false
+      run_metadata_managed:
+        description: 'Compile current sources and run 39 pure/fake managed metadata groups; no live socket/server/device'
+        required: false
+        type: boolean
+        default: false
+      run_retained_rollback:
+        description: 'Reviewed four-launch retained runtime rollback with current ten-group managed proof; no server/device'
+        required: false
+        type: boolean
+        default: false
+      run_package_version:
+        description: 'Explicit reviewed packaged main Help VERSION development evidence'
+        required: false
+        default: false
+        type: boolean
+      run_main_version:
+        description: 'Reviewed actual main Help VERSION; historical managed evidence reused, no server/device'
+        required: false
+        type: boolean
+        default: false
+      run_retained_version:
+        description: 'Reviewed managed fixture and one private SOURCE VERSION/EOF campaign; no server/device'
+        required: false
+        type: boolean
+        default: false
+      run_retained_compile:
+        description: 'Compile retained helper library only; never load or invoke it'
+        required: false
+        type: boolean
+        default: false
+      run_adb_version:
+        description: 'Explicit reviewed version-only development check'
+        required: false
+        type: boolean
+        default: false
+      run_adb_server:
+        description: 'Explicit reviewed server check only in a newly eligible absent-profile environment'
+        required: false
+        type: boolean
+        default: false
+      run_fleet_ui:
+        description: 'Explicit reviewed source fleet/UI smoke without device effects'
+        required: false
+        type: boolean
+        default: false
+      run_recipient_setup:
+        description: 'Reviewed local-archive recipient setup with injected native answers; no ADB execution'
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [phase-02, phase-03]
+    paths:
+      - '.gitattributes'
+      - 'desktop/**'
+      - 'foundation/**'
+      - 'biome.json'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - 'tools/phase-00/desktop-stack-lab/package-lock.json'
+      - 'tools/phase-00/desktop-stack-lab/dependency-review.json'
+      - '.github/workflows/phase-02-software.yml'
+permissions:
+  contents: read
+jobs:
+  windows-software-only:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Read actual disk space with the bundled worker in an owned CI directory
+        if: github.ref == 'refs/heads/phase-03'
+        run: |
+          node desktop/scripts/check-host-disk.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile synthetic decoder verification entry without runtime execution
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          node desktop/verification/build-video-decoder.mjs ([string]$npmVersion).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_video_decoder.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens=$null; $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-VideoDecoder.ps1'),[ref]$tokens,[ref]$errors)
+          if (@($errors).Count -ne 0) { Write-Output 'VIDEO_DECODER_SYNTAX_FAIL'; exit 1 }
+      - name: Retained helper compile only without assembly execution
+        if: false && (github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_compile == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[retained-compile]'))))
+        run: |
+          node desktop/scripts/compile-retained-helper.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Named Windows development environment and foundation fixtures
+        run: |
+          Write-Output "WINDOWS_DEVELOPMENT_IMAGE=$env:ImageOS/$env:ImageVersion"
+          Write-Output "SOURCE_HEAD=$env:GITHUB_SHA"
+          node --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          Write-Output "ACTUAL_NPM=$npmVersion"
+          node foundation/scripts/verify-bootstrap.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node foundation/scripts/check.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Strict raw-schema synthetic tests
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==383; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Explicit unavailable runtime and deferred hardware boundary
+        run: |
+          if ($env:GITHUB_REF -eq 'refs/heads/phase-03') {
+            Write-Output 'PHASE03_SOFTWARE_ONLY'
+          } else {
+            Write-Output 'PHASE02_SOFTWARE_ONLY'
+          }
+          Write-Output 'PRODUCTION_ADB_BINARY_UNAVAILABLE'
+          Write-Output 'SOURCE_JOB_NO_ADB_EXECUTION'
+          Write-Output 'DEVICE_HARDWARE_NOT_RUN'
+          Write-Output 'P106_CROSS_USER_UNMET_NOT_RERUN'
+  owned-adb-version-development:
+    if: github.ref == 'refs/heads/phase-02' && github.event_name == 'workflow_dispatch' && (inputs.run_adb_version || inputs.run_adb_server)
+    needs: windows-software-only
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Download exact official candidate for development inspection only
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/fetch_platform_tools.py ([IO.Path]::GetFullPath('desktop'))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax-check bounded runner and control without execution
+        if: inputs.run_adb_version
+        run: |
+          node --check desktop/verification/platform-tools-version-control.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens=$null; $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-PlatformToolsVersion.ps1'),[ref]$tokens,[ref]$errors)
+          if (@($errors).Count -ne 0) { Write-Output 'P201_RUNNER_SYNTAX_FAILED'; exit 1 }
+      - name: Owned exact app-local version command only, no server or device operations
+        if: inputs.run_adb_version
+        run: |
+          try { & ./desktop/verification/Invoke-PlatformToolsVersion.ps1 }
+          catch { Write-Output 'P201_RUNNER_FAILED'; exit 1 }
+      - name: Strict fixed-field publication, never raw capture or candidate binaries
+        id: platform_tools_validation
+        if: always() && inputs.run_adb_version
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $out=[IO.Path]::GetFullPath('artifacts/platform-tools')
+            [void](New-Item -ItemType Directory -Path $out -ErrorAction Stop)
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_platform_tools.py publish ([IO.Path]::GetFullPath('desktop/.platform-tools-runtime/unvalidated.json')) (Join-Path $out 'validated.json') 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines) {
+              if ([string]$line -cmatch '^(PLATFORM_TOOLS_VALIDATION_WRITTEN|PLATFORM_TOOLS_HOSTED_PASS|PLATFORM_TOOLS_HOSTED_FAIL|PLATFORM_TOOLS_VALIDATION_REJECTED)$') { Write-Output ([string]$line) }
+            }
+            if (@($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_VALIDATION_WRITTEN'}).Count -eq 1) {
+              'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_HOSTED_PASS'}).Count -ne 1) { exit 1 }
+          } catch { Write-Output 'P201_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only fresh validated fixed-field evidence
+        if: always() && inputs.run_adb_version && steps.platform_tools_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: platform-tools-development-evidence
+          path: artifacts/platform-tools/validated.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Syntax-check isolated foreground server development boundary
+        if: inputs.run_adb_server
+        run: |
+          node --check desktop/verification/platform-tools-server-control.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach($name in @('Invoke-PlatformToolsServer.ps1','Test-PlatformToolsServer.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'P202_RUNNER_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Owned isolated foreground server and fixed host-version health only
+        if: inputs.run_adb_server
+        run: |
+          try { & ./desktop/verification/Invoke-PlatformToolsServer.ps1 }
+          catch { Write-Output 'P202_RUNNER_FAILED'; exit 1 }
+      - name: Strict server evidence publication, never profile keys or raw captures
+        id: platform_tools_server_validation
+        if: always() && inputs.run_adb_server
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $out=[IO.Path]::GetFullPath('artifacts/platform-tools-server')
+            [void](New-Item -ItemType Directory -Path $out -ErrorAction Stop)
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_platform_tools_server.py publish ([IO.Path]::GetFullPath('desktop/.platform-tools-server-runtime/unvalidated.json')) (Join-Path $out 'validated.json') 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines) {
+              if ([string]$line -cmatch '^(PLATFORM_TOOLS_SERVER_VALIDATION_WRITTEN|PLATFORM_TOOLS_SERVER_HOSTED_PASS|PLATFORM_TOOLS_SERVER_HOSTED_FAIL|PLATFORM_TOOLS_SERVER_VALIDATION_REJECTED)$') { Write-Output ([string]$line) }
+            }
+            if (@($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_SERVER_VALIDATION_WRITTEN'}).Count -eq 1) {
+              'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'PLATFORM_TOOLS_SERVER_HOSTED_PASS'}).Count -ne 1) { exit 1 }
+          } catch { Write-Output 'P202_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only fresh validated fixed-field server evidence
+        if: always() && inputs.run_adb_server && steps.platform_tools_server_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: platform-tools-server-development-evidence
+          path: artifacts/platform-tools-server/validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  # Schema4 source-only smoke is opt-in; historical schema3 evidence remains separately versioned.
+  owned-fleet-ui-development:
+    needs: windows-software-only
+    # Historical schema4 UI envelope is suspended until an exact schema5 campaign is reviewed.
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_fleet_ui) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[fleet-ui]')))
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned source fleet UI smoke with no ADB or device effects
+        run: |
+          try { & ./desktop/verification/Invoke-FleetUi.ps1 }
+          catch { Write-Output 'FLEET_UI_RUNNER_FAILED'; exit 1 }
+      - name: Strict fleet UI evidence and separately bound screenshots
+        id: fleet_validation
+        if: always()
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_fleet_ui.py publish 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines) {
+              if ([string]$line -cmatch '^(FLEET_UI_VALIDATION_WRITTEN|FLEET_UI_SCREENSHOTS_BOUND|FLEET_UI_VALIDATION_PASS|FLEET_UI_VALIDATION_FAIL|FLEET_UI_VALIDATION_INVALID)$') { Write-Output ([string]$line) }
+            }
+            if (@($lines | Where-Object {$_ -ceq 'FLEET_UI_VALIDATION_WRITTEN'}).Count -eq 1) {
+              'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if (@($lines | Where-Object {$_ -ceq 'FLEET_UI_SCREENSHOTS_BOUND'}).Count -eq 1) {
+              'images=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'FLEET_UI_VALIDATION_PASS'}).Count -ne 1) { exit 1 }
+          } catch { Write-Output 'FLEET_UI_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only validated fixed-field fleet evidence
+        if: always() && steps.fleet_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fleet-ui-development-evidence
+          path: desktop/.fleet-ui-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload only two fully bound fleet screenshots
+        if: always() && steps.fleet_validation.outputs.images == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fleet-ui-development-images
+          path: |
+            desktop/.fleet-ui-runtime/fleet-light.png
+            desktop/.fleet-ui-runtime/fleet-dark.png
+          if-no-files-found: error
+          retention-days: 14
+
+  # Recipient setup is separately opt-in; injected native answers are not genuine consent.
+  owned-recipient-setup-development:
+    needs: windows-software-only
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_recipient_setup) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[recipient-setup]')))
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Fetch exact official development archive once, never upload binaries
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/fetch_platform_tools.py ([IO.Path]::GetFullPath('desktop'))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned source recipient local-archive setup without executable or device effects
+        run: |
+          try { & ./desktop/verification/Invoke-RecipientSetup.ps1 }
+          catch { Write-Output 'RECIPIENT_SETUP_RUNNER_FAILED'; exit 1 }
+      - name: Strict recipient setup evidence and separately bound screenshots
+        id: recipient_setup_validation
+        if: always()
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_recipient_setup.py publish 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines) {
+              if ([string]$line -cmatch '^(RECIPIENT_SETUP_VALIDATION_WRITTEN|RECIPIENT_SETUP_SCREENSHOTS_BOUND|RECIPIENT_SETUP_VALIDATION_PASS|RECIPIENT_SETUP_VALIDATION_FAIL|RECIPIENT_SETUP_VALIDATION_INVALID)$') { Write-Output ([string]$line) }
+            }
+            if (@($lines | Where-Object {$_ -ceq 'RECIPIENT_SETUP_VALIDATION_WRITTEN'}).Count -eq 1) {
+              'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if (@($lines | Where-Object {$_ -ceq 'RECIPIENT_SETUP_SCREENSHOTS_BOUND'}).Count -eq 1) {
+              'images=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+            if ($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RECIPIENT_SETUP_VALIDATION_PASS'}).Count -ne 1) { exit 1 }
+          } catch { Write-Output 'RECIPIENT_SETUP_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only validated fixed-field recipient setup evidence
+        if: always() && steps.recipient_setup_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: recipient-setup-development-evidence
+          path: desktop/.recipient-setup-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload only two fully bound setup screenshots
+        if: always() && steps.recipient_setup_validation.outputs.images == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: recipient-setup-development-images
+          path: |
+            desktop/.recipient-setup-runtime/setup-light.png
+            desktop/.recipient-setup-runtime/setup-dark.png
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-retained-version-development:
+    needs: windows-software-only
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[retained-version]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check new fixed PowerShell campaign entries
+        run: |
+          foreach($name in @('Invoke-RetainedManagedFixture.ps1','Invoke-RetainedHostCheck.ps1','RetainedPipeEntry.ps1','../launch/Invoke-RetainedHost.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_CAMPAIGN_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Compile four production sources and run eight managed fixture groups
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& ./desktop/verification/Invoke-RetainedManagedFixture.ps1)
+            $code=$LASTEXITCODE
+            $bytes=[Text.Encoding]::UTF8.GetBytes(($lines -join "`n")+"`n")
+            if($bytes.Length -gt 16384){throw 'REPORT_LIMIT'}
+            $out=[IO.File]::Open((Join-Path $PWD 'desktop/.retained-managed-output.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+            try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_(STAGE_(ADMISSION|COMPILE|FIXTURE|CLEANUP)|FIXTURE_(PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_RUNNER_FAILED'; exit 1 }
+      - name: Strictly publish managed compilation and fixture evidence
+        id: retained_managed_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_host.py managed 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_PUBLICATION_FAILED'; exit 1 }
+      - name: Download one exact official candidate for the reviewed development prerequisite
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/fetch_platform_tools.py ([IO.Path]::GetFullPath('desktop'))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Actual owned SOURCE private VERSION and EOF retirement only
+        run: |
+          try { & ./desktop/verification/Invoke-RetainedHostCheck.ps1 }
+          catch { Write-Output 'RETAINED_HOST_RUNNER_FAILED'; exit 1 }
+      - name: Strict retained VERSION evidence publication
+        id: retained_host_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_host.py publish 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_HOST_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_HOST_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_HOST_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_HOST_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict fixed-field managed evidence
+        if: always() && steps.retained_managed_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-managed-development-evidence
+          path: desktop/retained-managed-validated.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload only strict fixed-field retained VERSION evidence
+        if: always() && steps.retained_host_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-version-development-evidence
+          path: desktop/.retained-host-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-main-version-development:
+    needs: windows-software-only
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_main_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[main-version]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check new fixed PowerShell campaign entries
+        run: |
+          foreach($name in @('Invoke-RetainedHostCheck.ps1','../launch/Invoke-RetainedHost.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_CAMPAIGN_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Download one exact official candidate for the reviewed development prerequisite
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/fetch_platform_tools.py ([IO.Path]::GetFullPath('desktop'))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Actual owned SOURCE main Help VERSION and audited retirement
+        run: |
+          try { & ./desktop/verification/Invoke-RetainedHostCheck.ps1 -MainVersion }
+          catch { Write-Output 'RETAINED_HOST_RUNNER_FAILED'; exit 1 }
+      - name: Strict actual main VERSION evidence publication
+        id: main_version_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_main_runtime_version.py publish 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^MAIN_RUNTIME_VERSION_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'MAIN_RUNTIME_VERSION_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'MAIN_RUNTIME_VERSION_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'MAIN_RUNTIME_VERSION_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict fixed-field actual main VERSION evidence
+        if: always() && steps.main_version_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: main-runtime-version-development-evidence
+          path: desktop/.retained-host-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-package-version-development:
+    needs: windows-software-only
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_package_version) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[package-version]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check new fixed PowerShell campaign entries
+        run: |
+          foreach($name in @('Invoke-RetainedHostCheck.ps1','../launch/Invoke-RetainedHost.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_CAMPAIGN_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Download one exact official candidate for the reviewed development prerequisite
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/fetch_platform_tools.py ([IO.Path]::GetFullPath('desktop'))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Bind current package build inputs without launching old package campaigns
+        run: |
+          try {
+            $base=Join-Path $pwd 'desktop/.package-build'
+            node -e "require('node:fs').mkdirSync(process.argv[1])" $base
+            if ($LASTEXITCODE -ne 0) { throw 'PACKAGE_BASE' }
+            $license=Join-Path $base 'node-LICENSE'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/nodejs/node/v24.22.1/LICENSE' -OutFile $license -MaximumRedirection 0
+            if ((Get-FileHash -LiteralPath $license -Algorithm SHA256).Hash.ToLowerInvariant() -cne '5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace') { throw 'PACKAGE_LICENSE' }
+            $npmVersion=(& npm --version)
+            if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1 -or $npmVersion -cnotmatch '\A[0-9]+\.[0-9]+\.[0-9]+\z') { throw 'PACKAGE_NPM' }
+            $tree=(& git rev-parse 'HEAD^{tree}')
+            if ($LASTEXITCODE -ne 0 -or @($tree).Count -ne 1 -or $tree -cnotmatch '\A[a-f0-9]{40}\z') { throw 'PACKAGE_TREE' }
+            "PACKAGE_NPM_VERSION=$npmVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "PACKAGE_SOURCE_TREE=$tree" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'PACKAGE_INPUTS_FAILED'; exit 1 }
+      - name: Actual owned PACKAGE main Help VERSION and audited retirement
+        run: |
+          try { & ./desktop/verification/Invoke-RetainedHostCheck.ps1 -PackageVersion }
+          catch { Write-Output 'RETAINED_HOST_RUNNER_FAILED'; exit 1 }
+      - name: Strict actual main VERSION evidence publication
+        id: package_version_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_package_runtime_version.py publish 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^PACKAGE_RUNTIME_VERSION_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'PACKAGE_RUNTIME_VERSION_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'PACKAGE_RUNTIME_VERSION_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'PACKAGE_RUNTIME_VERSION_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict fixed-field actual main VERSION evidence
+        if: always() && steps.package_version_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: package-runtime-version-development-evidence
+          path: desktop/.retained-host-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-retained-rollback-development:
+    needs: windows-software-only
+    if: false && ((github.event_name == 'workflow_dispatch' && inputs.run_retained_rollback) || (github.event_name == 'push' && github.ref == 'refs/heads/phase-02' && contains(github.event.head_commit.message, '[retained-rollback]')))
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check current fixed rollback campaign entries
+        run: |
+          foreach($name in @('Invoke-RetainedManagedFixture.ps1','Invoke-RetainedRollbackCheck.ps1','../launch/Invoke-RetainedHost.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_ROLLBACK_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Compile four production sources and run eight protocol and two selected-release managed groups
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& ./desktop/verification/Invoke-RetainedManagedFixture.ps1)
+            $code=$LASTEXITCODE
+            $bytes=[Text.Encoding]::UTF8.GetBytes(($lines -join "`n")+"`n")
+            if($bytes.Length -gt 16384){throw 'REPORT_LIMIT'}
+            $out=[IO.File]::Open((Join-Path $PWD 'desktop/.retained-managed-output.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+            try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_(STAGE_(ADMISSION|COMPILE|FIXTURE|CLEANUP)|FIXTURE_(PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_RUNNER_FAILED'; exit 1 }
+      - name: Strictly publish managed compilation and fixture evidence
+        id: retained_managed_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_host.py managed 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_PUBLICATION_FAILED'; exit 1 }
+      - name: Download two exact official archives without redirects or recipient activation
+        run: |
+          node desktop/verification/fetch-retained-archives.cjs ([IO.Path]::GetFullPath('desktop'))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Bind current package build inputs without launching old package campaigns
+        run: |
+          try {
+            $base=Join-Path $pwd 'desktop/.package-build'
+            node -e "require('node:fs').mkdirSync(process.argv[1])" $base
+            if ($LASTEXITCODE -ne 0) { throw 'PACKAGE_BASE' }
+            $license=Join-Path $base 'node-LICENSE'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/nodejs/node/v24.22.1/LICENSE' -OutFile $license -MaximumRedirection 0
+            if ((Get-FileHash -LiteralPath $license -Algorithm SHA256).Hash.ToLowerInvariant() -cne '5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace') { throw 'PACKAGE_LICENSE' }
+            $npmVersion=(& npm --version)
+            if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1 -or $npmVersion -cnotmatch '\A[0-9]+\.[0-9]+\.[0-9]+\z') { throw 'PACKAGE_NPM' }
+            $tree=(& git rev-parse 'HEAD^{tree}')
+            if ($LASTEXITCODE -ne 0 -or @($tree).Count -ne 1 -or $tree -cnotmatch '\A[a-f0-9]{40}\z') { throw 'PACKAGE_TREE' }
+            "PACKAGE_NPM_VERSION=$npmVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "PACKAGE_SOURCE_TREE=$tree" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'PACKAGE_INPUTS_FAILED'; exit 1 }
+      - name: Actual four-stage retained rollback and PACKAGE reopen
+        run: |
+          try { & ./desktop/verification/Invoke-RetainedRollbackCheck.ps1 }
+          catch { Write-Output 'RETAINED_ROLLBACK_RUNNER_FAILED'; exit 1 }
+      - name: Strict actual retained rollback evidence publication
+        id: retained_rollback_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_rollback.py publish 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_ROLLBACK_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_ROLLBACK_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_ROLLBACK_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_ROLLBACK_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict current ten-group managed evidence
+        if: always() && steps.retained_managed_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-rollback-managed-evidence
+          path: desktop/retained-managed-validated.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload only strict four-stage rollback evidence
+        if: always() && steps.retained_rollback_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-rollback-development-evidence
+          path: desktop/.retained-host-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-discovery-managed-development:
+    needs: windows-software-only
+    if: false && github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_discovery_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[discovery-managed]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check managed-only fixture entry
+        run: |
+          foreach($name in @('Invoke-RetainedManagedFixture.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_MANAGED_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Compile four production sources and run eight protocol, two selected-release, nine SESSION and eight in-memory discovery groups
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& ./desktop/verification/Invoke-RetainedManagedFixture.ps1)
+            $code=$LASTEXITCODE
+            $bytes=[Text.Encoding]::UTF8.GetBytes(($lines -join "`n")+"`n")
+            if($bytes.Length -gt 16384){throw 'REPORT_LIMIT'}
+            $out=[IO.File]::Open((Join-Path $PWD 'desktop/.retained-managed-output.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+            try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_(STAGE_(ADMISSION|COMPILE|FIXTURE|CLEANUP)|FIXTURE_(PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_RUNNER_FAILED'; exit 1 }
+      - name: Strictly publish managed compilation and fixture evidence
+        id: retained_managed_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_host.py managed-discovery 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict current twenty-seven-group managed evidence
+        if: always() && steps.retained_managed_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-discovery-managed-evidence
+          path: desktop/retained-managed-validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-metadata-managed-development:
+    needs: windows-software-only
+    if: false && github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_metadata_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[metadata-managed]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check managed-only fixture entry
+        run: |
+          foreach($name in @('Invoke-RetainedManagedFixture.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_MANAGED_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Compile four production sources and run eight protocol, two selected-release, nine SESSION and eight discovery and twelve in-memory metadata groups
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& ./desktop/verification/Invoke-RetainedManagedFixture.ps1)
+            $code=$LASTEXITCODE
+            $bytes=[Text.Encoding]::UTF8.GetBytes(($lines -join "`n")+"`n")
+            if($bytes.Length -gt 16384){throw 'REPORT_LIMIT'}
+            $out=[IO.File]::Open((Join-Path $PWD 'desktop/.retained-managed-output.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+            try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_(STAGE_(ADMISSION|COMPILE|FIXTURE|CLEANUP)|FIXTURE_(PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_RUNNER_FAILED'; exit 1 }
+      - name: Strictly publish managed compilation and fixture evidence
+        id: retained_managed_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_host.py managed-metadata 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict current thirty-nine-group managed evidence
+        if: always() && steps.retained_managed_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-metadata-managed-evidence
+          path: desktop/retained-managed-validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-input-managed-development:
+    needs: windows-software-only
+    if: false && github.ref == 'refs/heads/phase-02' && ((github.event_name == 'workflow_dispatch' && inputs.run_input_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[input-managed]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check managed-only fixture entry
+        run: |
+          foreach($name in @('Invoke-RetainedManagedFixture.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_MANAGED_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Compile four production sources and run eight protocol, two selected-release, nine SESSION and eight discovery and twelve metadata and twelve in-memory input groups
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& ./desktop/verification/Invoke-RetainedManagedFixture.ps1)
+            $code=$LASTEXITCODE
+            $bytes=[Text.Encoding]::UTF8.GetBytes(($lines -join "`n")+"`n")
+            if($bytes.Length -gt 16384){throw 'REPORT_LIMIT'}
+            $out=[IO.File]::Open((Join-Path $PWD 'desktop/.retained-managed-output.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+            try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_(STAGE_(ADMISSION|COMPILE|FIXTURE|CLEANUP)|FIXTURE_(PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_RUNNER_FAILED'; exit 1 }
+      - name: Strictly publish managed compilation and fixture evidence
+        id: retained_managed_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_host.py managed-input 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict current fifty-one-group managed evidence
+        if: always() && steps.retained_managed_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-input-managed-evidence
+          path: desktop/retained-managed-validated.json
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-video-decoder-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_video_decoder == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[video-decoder]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile exact reviewed verification bundle without runtime execution
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          node desktop/verification/build-video-decoder.mjs ([string]$npmVersion).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_video_decoder.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned synthetic-only actual decoder and portrait-landscape pixel qualification
+        run: |
+          & ./desktop/verification/Invoke-VideoDecoder.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Strict sanitized qualification evidence on success or failure
+        id: decoder_evidence
+        if: always()
+        run: |
+          $lines=@(& node desktop/verification/video-decoder-control.mjs publish $env:GITHUB_SHA 2>&1)
+          $code=$LASTEXITCODE
+          foreach($line in $lines){if([string]$line -cmatch '^VIDEO_DECODER_(EVIDENCE_(WRITTEN|PASS|FAIL)|CONTROL_FAIL)$'){Write-Output ([string]$line)}}
+          if(@($lines|Where-Object {$_ -ceq 'VIDEO_DECODER_EVIDENCE_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+          if($code -ne 0){exit 1}
+      - name: Upload only closed-schema sanitized qualification evidence
+        if: always() && steps.decoder_evidence.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: synthetic-video-decoder-evidence
+          path: desktop/.test-output/video-decoder-evidence.json
+          if-no-files-found: error
+          retention-days: 14
+  owned-video-managed-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_video_managed == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[video-managed]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Syntax check managed-only fixture entry
+        run: |
+          foreach($name in @('Invoke-RetainedManagedFixture.ps1')) {
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ('desktop/verification/'+$name)),[ref]$tokens,[ref]$errors)
+            if (@($errors).Count -ne 0) { Write-Output 'RETAINED_MANAGED_SYNTAX_FAILED'; exit 1 }
+          }
+      - name: Compile five production sources and run 74 historical and 18 pure or fake media groups
+        run: |
+          $ErrorActionPreference='Stop'
+          try {
+            $lines=@(& ./desktop/verification/Invoke-RetainedManagedFixture.ps1)
+            $code=$LASTEXITCODE
+            $bytes=[Text.Encoding]::UTF8.GetBytes(($lines -join "`n")+"`n")
+            if($bytes.Length -gt 16384){throw 'REPORT_LIMIT'}
+            $out=[IO.File]::Open((Join-Path $PWD 'desktop/.retained-managed-output.txt'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+            try{$out.Write($bytes,0,$bytes.Length);$out.Flush($true)}finally{$out.Dispose()}
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_(STAGE_(ADMISSION|COMPILE|FIXTURE|CLEANUP)|FIXTURE_(PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_RUNNER_FAILED'; exit 1 }
+      - name: Strictly publish managed compilation and fixture evidence
+        id: retained_managed_validation
+        if: always()
+        run: |
+          try {
+            $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_retained_host.py managed-video 2>&1)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_MANAGED_VALIDATION_(WRITTEN|PASS|FAIL|INVALID)$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'RETAINED_MANAGED_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'RETAINED_MANAGED_PUBLICATION_FAILED'; exit 1 }
+      - name: Upload only strict current ninety-two-group managed evidence
+        if: always() && steps.retained_managed_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-video-managed-evidence
+          path: desktop/retained-managed-validated.json
+          if-no-files-found: error
+          retention-days: 14
+  derived-pair-compile-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_pair_build == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[pair-build]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Bind exact source checkout and parse the fixed build entry
+        run: |
+          try {
+            $head=@(& git rev-parse HEAD); if($LASTEXITCODE -ne 0 -or $head.Count -ne 1){throw 'SOURCE_HEAD'}
+            $tree=@(& git rev-parse 'HEAD^{tree}'); if($LASTEXITCODE -ne 0 -or $tree.Count -ne 1){throw 'SOURCE_TREE'}
+            if($head[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $tree[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $head[0] -cne $env:GITHUB_SHA){throw 'SOURCE_BINDING'}
+            "FONESI_AUTO_SOURCE_COMMIT=$($head[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "FONESI_AUTO_SOURCE_TREE=$($tree[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-DerivedPairBuild.ps1'),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -ne 0){throw 'SYNTAX'}
+            Write-Output 'DERIVED_PAIR_SOURCE_BOUND'
+          } catch { Write-Output 'DERIVED_PAIR_SOURCE_REJECTED'; exit 1 }
+      - name: Compile and inspect only the fixed paired sources
+        id: pair_validation
+        run: |
+          try {
+            $lines=@(& ./desktop/verification/Invoke-DerivedPairBuild.ps1 -PythonPath $env:FOUNDATION_PYTHON_EXE)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^DERIVED_PAIR_(CONTROL_DIAG\|(ACQUIRE|PREPARE|PLAN|VERIFY|FINISH|CLEANUP|CLI)\|(ENTRY|OWNER|CONTEXT|ARCHIVE|PATCH|TOOLS_JDK17|TOOLS_ANDROID36|TOOLS_BUILD_TOOLS36|TOOLS_FRAMEWORK64|TOOLS_METADATA|MATERIALIZE_SOURCE|MATERIALIZE_CONSUMER|GENERATED_INPUTS|RUNNER_CLOSURE|ADMISSION_WRITE|LOAD_ADMISSION|REVALIDATE_SOURCE|PLAN_WRITE|PLAN_COMPARE|PROCESS_RECEIPTS|DEPENDENCIES|OUTPUT_INSPECT|OUTPUT_ZIP|DEX_HEADER|DEX_TABLES|DEX_NAME|DEX_NAMESPACE|PE_HEADER|PE_CLI|PE_METADATA|EVIDENCE_WRITE|REPORT_WRITE|CLOSED_LAYOUT|STAGING_BINDING|DELETE_FILES|DELETE_DIRS|ACQUIRE_FETCH|ACQUIRE_WRITE)\|(PREDICATE|CANONICAL_PATH|REPARSE|FILE_TYPE|LINK_COUNT|IDENTITY|BYTE_LIMIT|ENTRY_LIMIT|TOTAL_BYTES|NAME|COLLISION|HASH|SCHEMA|NO_CLOBBER|IO_ACCESS|IO_NOT_FOUND|IO_OTHER|ENCODING|ARCHIVE_FORMAT|INTERNAL)|SUPERVISOR_STATUS_(SUCCESS|EMPTY_OUTPUT|NONZERO_EXIT|TIMEOUT|ACCESS_DENIED|LAUNCH_FAILED|CAPTURE_FAILED|CLEANUP_FAILED)_EXIT_(NULL|PRESENT)_RETIRED_(TRUE|FALSE)_STDOUT_TRUNCATED_(TRUE|FALSE)_STDERR_TRUNCATED_(TRUE|FALSE)|DIAGNOSTIC_UNAVAILABLE|STAGE_[A-Z]+|TOOLS_(JDK_ROOT|SDK_ROOT|SDK_CONSISTENCY|PLATFORM_ROOT|BUILD_TOOLS_ROOT|FRAMEWORK_ROOT|JDK_METADATA|PLATFORM_METADATA|BUILD_TOOLS_METADATA|COMPILER_METADATA|IMAGE|SOURCE_IDS|CONTEXT)|VALIDATION_(WRITTEN|PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if(@($lines | Where-Object {$_ -ceq 'DERIVED_PAIR_VALIDATION_WRITTEN'}).Count -eq 1){'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'DERIVED_PAIR_VALIDATION_PASS'}).Count -ne 1){exit 1}
+          } catch { Write-Output 'DERIVED_PAIR_RUNNER_FAILED'; exit 1 }
+      - name: Upload only the strict JSON provenance and report
+        if: always() && steps.pair_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: derived-video-pair-build-evidence
+          path: desktop/.derived-pair-build-runtime/upload/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+  derived-notice-evidence-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_notice_evidence == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[notice-evidence]')))
+    runs-on: windows-2022
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Bind exact source checkout and parse the fixed notice entry
+        run: |
+          try {
+            $head=@(& git rev-parse HEAD); if($LASTEXITCODE -ne 0 -or $head.Count -ne 1){throw 'SOURCE_HEAD'}
+            $tree=@(& git rev-parse 'HEAD^{tree}'); if($LASTEXITCODE -ne 0 -or $tree.Count -ne 1){throw 'SOURCE_TREE'}
+            if($head[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $tree[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $head[0] -cne $env:GITHUB_SHA){throw 'SOURCE_BINDING'}
+            "FONESI_AUTO_SOURCE_COMMIT=$($head[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "FONESI_AUTO_SOURCE_TREE=$($tree[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-DerivedNoticeEvidence.ps1'),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -ne 0){throw 'SYNTAX'}
+            Write-Output 'DERIVED_NOTICE_SOURCE_BOUND'
+          } catch { Write-Output 'DERIVED_NOTICE_SOURCE_REJECTED'; exit 1 }
+      - name: Capture only the exact vendor notice evidence
+        id: notice_validation
+        run: |
+          try {
+            $lines=@(& ./desktop/verification/Invoke-DerivedNoticeEvidence.ps1 -PythonPath $env:FOUNDATION_PYTHON_EXE)
+            $code=$LASTEXITCODE
+            if($lines.Count -eq 1 -and $code -eq 0 -and $lines[0] -ceq 'DERIVED_NOTICE_EVIDENCE_PASS') {
+              Write-Output 'DERIVED_NOTICE_EVIDENCE_PASS'
+              'passed=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            } else {
+              foreach($line in $lines) {
+                if([string]$line -cmatch '^DERIVED_NOTICE_EVIDENCE_FAIL_(BASELINE_REJECTED|SDK_PROFILE_REJECTED|INPUT_REJECTED|TEXT_REJECTED|SOURCE_CHANGED|STAGING_FAILED|UNRETIRED|CLEANUP_FAILED|PUBLICATION_FAILED|INTERNAL_FAILURE)$') { Write-Output ([string]$line) }
+              }
+              Write-Output 'DERIVED_NOTICE_RUNNER_FAILED'; exit 1
+            }
+          } catch { Write-Output 'DERIVED_NOTICE_RUNNER_FAILED'; exit 1 }
+      - name: Upload only the exact checked notice text and receipt
+        if: success() && steps.notice_validation.outputs.passed == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: derived-notice-evidence
+          path: |
+            desktop/.derived-notice-runtime/upload/NOTICE.txt
+            desktop/.derived-notice-runtime/upload/source.properties
+            desktop/.derived-notice-runtime/upload/receipt.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+  derived-pair-retained-evidence-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_pair_retention == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[pair-retain]')))
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Bind exact source checkout and parse the fixed build entry
+        run: |
+          try {
+            $head=@(& git rev-parse HEAD); if($LASTEXITCODE -ne 0 -or $head.Count -ne 1){throw 'SOURCE_HEAD'}
+            $tree=@(& git rev-parse 'HEAD^{tree}'); if($LASTEXITCODE -ne 0 -or $tree.Count -ne 1){throw 'SOURCE_TREE'}
+            if($head[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $tree[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $head[0] -cne $env:GITHUB_SHA){throw 'SOURCE_BINDING'}
+            "FONESI_AUTO_SOURCE_COMMIT=$($head[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "FONESI_AUTO_SOURCE_TREE=$($tree[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $tokens=$null; $errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-DerivedPairBuild.ps1'),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -ne 0){throw 'SYNTAX'}
+            Write-Output 'DERIVED_PAIR_SOURCE_BOUND'
+          } catch { Write-Output 'DERIVED_PAIR_SOURCE_REJECTED'; exit 1 }
+      - name: Build and retain only the exact pair and source evidence
+        id: pair_retention
+        run: |
+          try {
+            $lines=@(& ./desktop/verification/Invoke-DerivedPairBuild.ps1 -PythonPath $env:FOUNDATION_PYTHON_EXE -RetainEvidence)
+            $code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^DERIVED_PAIR_(RETENTION_WRAPPER_(CAPTURE_REPORT|EXPECTED_RECEIPT|PUBLISH|ADMISSION|INVENTORY|RECEIPT|FILE_HASH|FINAL_BINDING)|RETENTION_DIAG\|(COPY|VALIDATE|CLEANUP|PUBLISH)\|(OWNER|CONTEXT|SOURCE|BUILD|OUTPUT|GENERATED|NOTICE|COPY|READBACK|LAYOUT|CLEANUP|RECEIPT|PROMOTE)\|(PREDICATE|IDENTITY|HASH|BYTE_LIMIT|SCHEMA|IO_ACCESS|IO_NOT_FOUND|IO_OTHER|INTERNAL)|RETENTION_(WRITTEN|PASS|FAIL)|CONTROL_DIAG\|(ACQUIRE|PREPARE|PLAN|VERIFY|FINISH|CLEANUP|CLI)\|(ENTRY|OWNER|CONTEXT|ARCHIVE|PATCH|TOOLS_JDK17|TOOLS_ANDROID36|TOOLS_BUILD_TOOLS36|TOOLS_FRAMEWORK64|TOOLS_METADATA|MATERIALIZE_SOURCE|MATERIALIZE_CONSUMER|GENERATED_INPUTS|RUNNER_CLOSURE|ADMISSION_WRITE|LOAD_ADMISSION|REVALIDATE_SOURCE|PLAN_WRITE|PLAN_COMPARE|PROCESS_RECEIPTS|DEPENDENCIES|OUTPUT_INSPECT|OUTPUT_ZIP|DEX_HEADER|DEX_TABLES|DEX_NAME|DEX_NAMESPACE|PE_HEADER|PE_CLI|PE_METADATA|EVIDENCE_WRITE|REPORT_WRITE|CLOSED_LAYOUT|STAGING_BINDING|DELETE_FILES|DELETE_DIRS|ACQUIRE_FETCH|ACQUIRE_WRITE)\|(PREDICATE|CANONICAL_PATH|REPARSE|FILE_TYPE|LINK_COUNT|IDENTITY|BYTE_LIMIT|ENTRY_LIMIT|TOTAL_BYTES|NAME|COLLISION|HASH|SCHEMA|NO_CLOBBER|IO_ACCESS|IO_NOT_FOUND|IO_OTHER|ENCODING|ARCHIVE_FORMAT|INTERNAL)|SUPERVISOR_STATUS_(SUCCESS|EMPTY_OUTPUT|NONZERO_EXIT|TIMEOUT|ACCESS_DENIED|LAUNCH_FAILED|CAPTURE_FAILED|CLEANUP_FAILED)_EXIT_(NULL|PRESENT)_RETIRED_(TRUE|FALSE)_STDOUT_TRUNCATED_(TRUE|FALSE)_STDERR_TRUNCATED_(TRUE|FALSE)|DIAGNOSTIC_UNAVAILABLE|STAGE_[A-Z]+|TOOLS_(JDK_ROOT|SDK_ROOT|SDK_CONSISTENCY|PLATFORM_ROOT|BUILD_TOOLS_ROOT|FRAMEWORK_ROOT|JDK_METADATA|PLATFORM_METADATA|BUILD_TOOLS_METADATA|COMPILER_METADATA|IMAGE|SOURCE_IDS|CONTEXT)|VALIDATION_(WRITTEN|PASS|FAIL))$'){Write-Output ([string]$line)}}
+            if($code -ne 0 -or @($lines | Where-Object {$_ -ceq 'DERIVED_PAIR_RETENTION_WRITTEN'}).Count -ne 1 -or @($lines | Where-Object {$_ -ceq 'DERIVED_PAIR_RETENTION_PASS'}).Count -ne 1){exit 1}
+            'passed=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } catch { Write-Output 'DERIVED_PAIR_RUNNER_FAILED'; exit 1 }
+      - name: Upload only the verified retained pair packet
+        if: success() && steps.pair_retention.outputs.passed == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: derived-pair-retained-evidence
+          path: desktop/.derived-pair-build-runtime/retained-upload/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+  retained-pair-package-check-development:
+    needs: windows-software-only
+    if: github.ref == 'refs/heads/phase-03' && ((github.event_name == 'workflow_dispatch' && inputs.run_pair_package_check == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[pair-package-check]')))
+    permissions:
+      contents: read
+      actions: read
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Refuse preexisting retained input
+        run: |
+          if(Test-Path -LiteralPath 'desktop/.retained-pair-package-input'){Write-Output 'RETAINED_PAIR_PACKAGE_INPUT_EXISTS';exit 1}
+      - name: Download only the approved retained public packet
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: danhgold7979-cyber/fonesi-Auto
+          run-id: '41427976617'
+          artifact-ids: '13132988023'
+          github-token: ${{ github.token }}
+          path: desktop/.retained-pair-package-input
+          merge-multiple: true
+      - name: Restore and build exact tested source without repeating the source suite
+        run: |
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          node desktop/scripts/verify-dependencies.mjs --metadata $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/verify-dependencies.mjs --installed $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/build.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Bind source and acquire only the exact Node license prerequisite
+        run: |
+          try {
+            $head=@(& git rev-parse HEAD);if($LASTEXITCODE -ne 0 -or $head.Count -ne 1){throw 'SOURCE'}
+            $tree=@(& git rev-parse 'HEAD^{tree}');if($LASTEXITCODE -ne 0 -or $tree.Count -ne 1){throw 'SOURCE'}
+            if($head[0] -cne $env:GITHUB_SHA -or $head[0] -cnotmatch '\A[0-9a-f]{40}\z' -or $tree[0] -cnotmatch '\A[0-9a-f]{40}\z'){throw 'SOURCE'}
+            "FONESI_AUTO_SOURCE_COMMIT=$($head[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "FONESI_AUTO_SOURCE_TREE=$($tree[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $npmVersion=@(& npm --version);if($LASTEXITCODE -ne 0 -or $npmVersion.Count -ne 1 -or $npmVersion[0] -cnotmatch '\A[0-9]+\.[0-9]+\.[0-9]+\z'){throw 'NPM'}
+            "PACKAGE_NPM_VERSION=$($npmVersion[0])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $tokens=$null;$errors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'desktop/verification/Invoke-RetainedPairPackage.ps1'),[ref]$tokens,[ref]$errors)
+            if(@($errors).Count -ne 0){throw 'SYNTAX'}
+            $request=[Net.HttpWebRequest]::Create('https://raw.githubusercontent.com/nodejs/node/v24.22.1/LICENSE')
+            $request.AllowAutoRedirect=$false;$request.Timeout=20000;$request.ReadWriteTimeout=20000
+            $response=$request.GetResponse()
+            try {
+              if([int]$response.StatusCode -ne 200 -or $response.ContentLength -gt 1048576){throw 'LICENSE'}
+              $input=$response.GetResponseStream();$output=[IO.File]::Open((Join-Path $PWD 'desktop/.retained-pair-package-node-LICENSE'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+              try {$buffer=New-Object byte[] 65536;$total=0;while(($count=$input.Read($buffer,0,$buffer.Length)) -gt 0){$total+=$count;if($total -gt 1048576){throw 'LICENSE'};$output.Write($buffer,0,$count)};$output.Flush($true)} finally {$output.Dispose();$input.Dispose()}
+            } finally {$response.Dispose()}
+            if((Get-FileHash -LiteralPath 'desktop/.retained-pair-package-node-LICENSE' -Algorithm SHA256).Hash -ine '5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace'){throw 'LICENSE'}
+          } catch {Write-Output 'RETAINED_PAIR_PACKAGE_PREREQUISITE_FAILED';exit 1}
+      - name: Build verify and clean the app-local package without launching
+        id: package_check
+        run: |
+          try {
+            $lines=@(& ./desktop/verification/Invoke-RetainedPairPackage.ps1);$code=$LASTEXITCODE
+            foreach($line in $lines){if([string]$line -cmatch '^RETAINED_PAIR_PACKAGE_(PASS|FAIL|STAGE_(ADMISSION|ARTIFACT|NODE_LICENSE|ELECTRON|ATTEST|CANDIDATE|BUILD|VERIFY|CLEANUP|REPORT)|CONTROL_(ADMISSION|ARTIFACT|CANDIDATE|BUILD|VERIFY|CLEANUP)|SUPERVISOR_(SUCCESS|EMPTY_OUTPUT|NONZERO_EXIT|TIMEOUT|ACCESS_DENIED|LAUNCH_FAILED|CAPTURE_FAILED|CLEANUP_FAILED)_EXIT_(NULL|PRESENT)_RETIRED_(TRUE|FALSE)_STDOUT_TRUNCATED_(TRUE|FALSE)_STDERR_TRUNCATED_(TRUE|FALSE))$'){Write-Output ([string]$line)}}
+            if($code -ne 0 -or $lines.Count -ne 1 -or $lines[0] -cne 'RETAINED_PAIR_PACKAGE_PASS'){throw 'WRAPPER'}
+            function Read-PackageReport {
+              $path=Join-Path $PWD 'desktop/.retained-pair-package-check/report.json'
+              $file=Get-Item -LiteralPath $path -Force
+              if($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $file.Length -lt 1 -or $file.Length -gt 8192){throw 'REPORT'}
+              $stream=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+              try {
+                $length=$stream.Length;if($length -lt 1 -or $length -gt 8192 -or $length -ne $file.Length){throw 'REPORT'}
+                $buffer=New-Object byte[] 8193;$count=0
+                while($count -lt $buffer.Length){$n=$stream.Read($buffer,$count,$buffer.Length-$count);if($n -eq 0){break};$count+=$n}
+                $after=Get-Item -LiteralPath $path -Force
+                if($count -ne $length -or $stream.Length -ne $length -or $after.PSIsContainer -or ($after.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $after.Length -ne $length){throw 'REPORT'}
+                return (New-Object Text.UTF8Encoding($false,$true)).GetString($buffer,0,$count)
+              } finally {$stream.Dispose()}
+            }
+            $raw=Read-PackageReport;$report=$raw|ConvertFrom-Json
+            if(($report|ConvertTo-Json -Depth 12 -Compress) -cne $raw -or (@($report.PSObject.Properties.Name)-join ',') -cne 'version,scope,sourceHead,sourceTree,retainedArtifactId,retainedRunId,retentionReceiptSha256,pairManifestSha256,noticeManifestSha256,evidenceManifestSha256,nodeSha256,electronManifestSha256,packageManifestSha256,packageFiles,packageBytes,archiveBytes,archiveSha256,externalReceiptSha256,processes,packageVerified,archiveBound,packageRootCleanup,passed'){throw 'REPORT'}
+            if($report.version -ne 1 -or $report.scope -cne 'RETAINED_PAIR_PACKAGE_BUILD_ONLY' -or $report.sourceHead -cne $env:GITHUB_SHA -or $report.sourceTree -cne $env:FONESI_AUTO_SOURCE_TREE -or $report.passed -isnot [bool] -or $report.passed -ne $true){throw 'REPORT'}
+            if($report.version -isnot [int] -or $report.retainedArtifactId -isnot [string] -or $report.retainedArtifactId -cne '13132988023' -or $report.retainedRunId -isnot [string] -or $report.retainedRunId -cne '41427976617'){throw 'REPORT'}
+            foreach($key in @('retentionReceiptSha256','pairManifestSha256','noticeManifestSha256','evidenceManifestSha256','nodeSha256','electronManifestSha256','packageManifestSha256','archiveSha256','externalReceiptSha256')){if($report.$key -isnot [string] -or $report.$key -cnotmatch '\A[0-9a-f]{64}\z'){throw 'REPORT'}}
+            $pins=@{retentionReceiptSha256='dc3e9888284b5512c4c5314890eff9591ae825db4029884bbed81c683a966e98';pairManifestSha256='934a9ff34a1b868fa56ddfc8a57d4eaba64d9d6305b6da05839566b90b366437';noticeManifestSha256='305698d5f4623d7572c1c46a515a17d0984b35d26a82ae743ebeb71a04a0ebf6';evidenceManifestSha256='7bd7125bf8f427cd10a2371f6a435b82c410bd4a0163b5626750049a7aa2a043';nodeSha256='d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5'}
+            foreach($key in $pins.Keys){if($report.$key -cne $pins[$key]){throw 'REPORT'}}
+            foreach($key in @('packageFiles','packageBytes','archiveBytes')){if(($report.$key -isnot [int] -and $report.$key -isnot [long]) -or $report.$key -le 0 -or $report.$key -gt 671088640){throw 'REPORT'}}
+            if($report.packageFiles -gt 511){throw 'REPORT'}
+            foreach($key in @('packageVerified','archiveBound','packageRootCleanup','passed')){if($report.$key -isnot [bool] -or $report.$key -ne $true){throw 'REPORT'}}
+            if((@($report.processes.PSObject.Properties.Name)-join ',') -cne 'PREPARE,ELECTRON,ATTEST,BUILD,CLEANUP'){throw 'REPORT'}
+            foreach($stage in @('PREPARE','ELECTRON','ATTEST','BUILD','CLEANUP')){
+              $process=$report.processes.$stage
+              if((@($process.PSObject.Properties.Name)-join ',') -cne 'stage,status,exitCode,retired,stdoutTruncated,stderrTruncated' -or $process.stage -cne $stage -or $process.status -cnotin @('SUCCESS','EMPTY_OUTPUT') -or $process.exitCode -isnot [int] -or $process.exitCode -ne 0 -or $process.retired -isnot [bool] -or $process.retired -ne $true -or $process.stdoutTruncated -isnot [bool] -or $process.stdoutTruncated -ne $false -or $process.stderrTruncated -isnot [bool] -or $process.stderrTruncated -ne $false){throw 'REPORT'}
+            }
+            if((Read-PackageReport) -cne $raw){throw 'REPORT'}
+            'passed=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } catch {Write-Output 'RETAINED_PAIR_PACKAGE_RUNNER_FAILED';exit 1}
+      - name: Upload only the build-only package JSON evidence
+        if: success() && steps.package_check.outputs.passed == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: retained-pair-package-check-evidence
+          path: desktop/.retained-pair-package-check/report.json
+          if-no-files-found: error
+          retention-days: 14
