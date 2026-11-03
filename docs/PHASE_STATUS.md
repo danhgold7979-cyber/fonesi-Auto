@@ -849,3 +849,7 @@ retains inherited-reference contrast and intentional empty-service differences.
 Coordinator accepts task-specific TECHNICAL_PASS: **8/11=72.7%,8/154=5.2%**, formal0.
 P1-06 cross-user UNMET, P1-10 launcher/reentry usability and formal hardware/release
 gates remain; no main merge. P1-09 contract planning is next, not source entry.
+
+### 2026-11-03 15:52 UTC — exact Phase1 context diagnostic outcome
+
+Reviewed Phase1 verification closure was published at f3dfad56b040897f108a6d1b0302e51b75ae2fbc (local7f1e22b7, exact treeaa8ea81c). [CI41667295104](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41667295104) completed FAILURE solely on the required cross-context proof: both source/package fixed LogonUser calls returned TOKEN_UNAVAILABLE_ACCESS_DENIED. All other collected key/READY/store/maintenance/restore/vault summaries passed, and owned directory cleanup completed. Source587/587 and Python159 passed; downstream launcher skipped, not newly passed. [Exact sanitized evidence and limitations](evidence/P1-06-logon-diagnostic-source-2026-11-03.md#actual-terminal-context-result--2026-11-03-1552-utc). Prior schema/predicate failures remain recorded separately. P1-06 remains UNMET,10/11 task-specific technical passes/formal0 unchanged. No unchanged retry or account/rights/security workaround; further progress requires a supported approved test context or reviewed two-context procedure.
