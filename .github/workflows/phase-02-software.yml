@@ -131,6 +131,11 @@ jobs:
         run: |
           node desktop/scripts/check.mjs --restore
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Read actual disk space with the bundled worker in an owned CI directory
+        if: github.ref == 'refs/heads/phase-03'
+        run: |
+          node desktop/scripts/check-host-disk.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile synthetic decoder verification entry without runtime execution
         run: |
           $npmVersion = (& npm --version)

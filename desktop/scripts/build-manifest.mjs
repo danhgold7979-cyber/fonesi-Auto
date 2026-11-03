@@ -54,6 +54,7 @@ export const inputs = [
   'native/RetainedAdbProtocol.cs',
   'native/RetainedHostAdmission.cs',
   'scripts/compile-retained-helper.mjs',
+  'scripts/check-host-disk.mjs',
   'package.json',
   'package-lock.json',
   'dependency-review.json',

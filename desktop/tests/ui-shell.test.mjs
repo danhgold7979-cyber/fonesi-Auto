@@ -1205,6 +1205,9 @@ test('performance unknown sensors and disabled capabilities survive theme and re
   const tree = performanceNode.type(performanceNode.props);
   const serialized = JSON.stringify(tree);
   assert.ok(serialized.includes('UNKNOWN · không có mẫu quan sát'));
+  assert.ok(serialized.includes('Đĩa trống'));
+  assert.ok(serialized.includes('Disk I/O'));
+  assert.ok(serialized.includes('UNAVAILABLE · chưa có adapter hỗ trợ'));
   assert.ok(serialized.includes('Yêu cầu / hiệu lực / đề xuất: UNAVAILABLE'));
   assert.equal(
     walk(tree, (n) => ['input', 'select'].includes(n.type) && !n.props.disabled).length,
@@ -1309,6 +1312,9 @@ test('host read content stays in explicit performance session and close requests
   const text = JSON.stringify(content);
   assert.ok(text.includes('UNKNOWN · không có mẫu quan sát'));
   assert.ok(text.includes('GPU'));
+  assert.ok(!text.includes('Đĩa trống'));
+  assert.ok(text.includes('Disk I/O'));
+  assert.ok(text.includes('UNAVAILABLE · chưa có adapter hỗ trợ'));
   const close = m.all((n) => n.props?.['aria-label'] === 'Đóng bảng hiệu năng')[0];
   close.props.onClick();
   close.props.onClick();
@@ -1324,6 +1330,7 @@ test('host Read belongs to the live measured panel session and stale close reope
     },
   });
   openPerformance(m);
+  assert.equal(m.find('host-resources-read').props.children, 'Đọc CPU/RAM và đĩa dữ liệu ứng dụng');
   const oldRead = m.find('host-resources-read').props.onClick;
   oldRead();
   assert.equal(reads, 1);

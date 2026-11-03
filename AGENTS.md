@@ -232,3 +232,15 @@ parallel work while P1-06 cross-user evidence remains UNMET; no formal dependenc
 Phase 0 waiver. Legacy IPC/old schema evidence remains; no secret/device/job service
 or V9 redesign. Scoped source/native review precedes publication/execution, and no
 unchanged identity acquisition is retried as part of settings CI.
+
+
+## P3-11.B disk-space source entry — 2026-11-03 22:36 UTC
+
+Coordinator assigned the independently CLEAR [owned data-volume scope](docs/phases/P3-DISK-SPACE-SOURCE-ENTRY.md)
+for phase-03 from 3b2ed174. Only Phase03 and Phase10 are active; Phase07 is closed
+and Phase11 parked. Main-owned read-only disk-space telemetry extends the explicit
+CPU/RAM sample with strict v2, null/error/freshness/privacy/retirement fences.
+No disk-I/O support, user-device use, hardware/task acceptance, main merge or
+legal/security waiver follows. Independent final review and exact-head tests
+precede phase-branch publication. Historical sequential rules remain for all
+other scope.

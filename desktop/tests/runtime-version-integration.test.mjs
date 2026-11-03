@@ -246,7 +246,10 @@ const code = transformSync(source('src/renderer.tsx'), {
   jsx: 'automatic',
 }).code;
 const flush = () => new Promise((r) => setImmediate(r));
-function mount(api, width = 1600, fleetApi = null, setupApi = null) {
+function mount(api, width = 1600, fleetApi = null, setupApi = null, hostApi = null) {
+  let monotonic = 0,
+    timerId = 0;
+  const timers = new Map();
   let component,
     cursor = 0;
   const slots = [];
@@ -255,6 +258,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
     events = new Map();
   const hostWindow = {
     innerWidth: width,
+    hostResources: hostApi,
     preferences: api,
     metadata: {
       get: async () =>
@@ -349,6 +353,13 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
       throw Error('UNKNOWN_MODULE');
     },
     window: hostWindow,
+    performance: { now: () => monotonic },
+    setTimeout: (callback, ms) => {
+      const id = ++timerId;
+      timers.set(id, { callback, at: monotonic + ms });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
     document: { getElementById: () => ({}) },
   });
   const render = () => {
@@ -367,6 +378,16 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
   return {
     render,
     find,
+    advance: (ms, fireTimers = true) => {
+      monotonic += ms;
+      if (fireTimers)
+        for (const [id, timer] of timers)
+          if (timer.at <= monotonic) {
+            timers.delete(id);
+            timer.callback();
+          }
+    },
+    timers,
     effects: () => {
       render();
       for (const effect of effects.splice(0)) cleanups.push(effect());
@@ -461,4 +482,182 @@ test('source lifecycle keeps cleanup lease distinct and closes setup/version/dis
   assert.equal(retained('.host-session'), true);
   assert.equal(retained('host-session-legacy'), true);
   assert.equal(retained('host-parent.json'), false);
+});
+
+// These fixtures run the actual transformed Diagnostic renderer and strict host parser.
+// The shell's measured-panel admission/close/reopen is covered in ui-shell.test.mjs.
+function diskRenderer() {
+  const pending = [];
+  let cancels = 0;
+  const m = mount(
+    { read: async () => contract.settingsError('SESSION_UNAVAILABLE', null, 'DEGRADED') },
+    1600,
+    null,
+    null,
+    {
+      sample: () => new Promise((resolve) => pending.push(resolve)),
+      cancel: async () => {
+        cancels++;
+        return hostContract.hostResourceResponse('h1', 'CANCELLED');
+      },
+    },
+  );
+  return { m, pending, cancels: () => cancels };
+}
+function diskSample(available = 512, total = 4096, code = 'OK', sequence = 1) {
+  return {
+    version: 2,
+    sequence,
+    startedUtc: 1000,
+    endedUtc: 2000,
+    intervalMs: 1000,
+    metrics: Object.fromEntries(
+      hostContract.HOST_METRICS.map((key) => [
+        key,
+        {
+          ...hostContract.HOST_METRIC_INFO[key],
+          value: key === 'availableDisk' ? available : key === 'totalDisk' ? total : 25,
+          code: key.endsWith('Disk') ? code : 'OK',
+        },
+      ]),
+    ),
+  };
+}
+function hostText(node) {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node !== 'object') return String(node);
+  if (Array.isArray(node)) return node.map(hostText).join('');
+  return hostText(node.props?.children);
+}
+function metricView(m, key) {
+  const host = m.render().props.hostResources;
+  const grid = host.props.children.find((n) => n?.props?.className === 'stat-grid');
+  return grid.props.children.find((n) => n.props['data-host-metric'] === key);
+}
+function deliverDisk(f, sample = diskSample(), remaining = 4000) {
+  f.pending.at(-1)(hostContract.hostResourceResponse('h1', 'OK', sample, remaining));
+}
+test('actual renderer shows app-volume disk bytes, true zero, null reason and independent CPU/RAM', async () => {
+  for (const [available, total, reason] of [
+    [512, 4096, 'OK'],
+    [0, 4096, 'OK'],
+    [null, null, 'DATA_VOLUME_UNAVAILABLE'],
+    [null, null, 'PROBE_FAILED'],
+    [null, null, 'COUNTER_INVALID'],
+  ]) {
+    const f = diskRenderer();
+    f.m.effects();
+    await flush();
+    assert.equal(f.pending.length, 0, 'mount never samples');
+    const initial = f.m.render().props.hostResources;
+    assert.equal(
+      initial.props['aria-label'],
+      'Host CPU, RAM and application data volume disk space',
+    );
+    assert.match(hostText(initial), /chỉ volume dữ liệu ứng dụng/);
+    assert.match(hostText(metricView(f.m, 'availableDisk')), /— BYTES.*UNKNOWN/);
+    f.m.render().props.onHostResourcesRead();
+    deliverDisk(f, diskSample(available, total, reason));
+    await flush();
+    for (const [key, value] of [
+      ['availableDisk', available],
+      ['totalDisk', total],
+    ]) {
+      const text = hostText(metricView(f.m, key));
+      assert.ok(text.includes(`${value ?? '—'} BYTES`));
+      assert.ok(text.includes(reason));
+      assert.match(text, /APP_DATA_VOLUME/);
+      assert.match(text, /NODE_FS_STATFS/);
+      assert.match(text, /captured sample/);
+    }
+    assert.match(hostText(metricView(f.m, 'hostCpu')), /25 PERCENT.*OK/);
+    assert.match(hostText(metricView(f.m, 'freeRam')), /25 BYTES.*OK/);
+    f.m.dispose();
+  }
+});
+test('actual disk renderer retains original timestamps and expires even before delayed timer dispatch', async () => {
+  const f = diskRenderer();
+  f.m.render().props.onHostResourcesRead();
+  f.m.advance(1200);
+  deliverDisk(f);
+  await flush();
+  const original = hostText(f.m.render().props.hostResources);
+  assert.match(original, /FRESH/);
+  assert.match(original, /1000–2000 UTC ms/);
+  assert.equal([...f.m.timers.values()][0].at, 4000, 'IPC transit cannot renew freshness');
+  f.m.advance(2800, false);
+  const stale = hostText(f.m.render().props.hostResources);
+  assert.match(stale, /STALE/);
+  assert.match(stale, /NOT CURRENT/);
+  assert.match(stale, /1000–2000 UTC ms/);
+  assert.match(hostText(metricView(f.m, 'availableDisk')), /512 BYTES/);
+  f.m.advance(0);
+  assert.match(hostText(f.m.render().props.hostResources), /STALE/);
+  f.m.dispose();
+});
+test('actual disk renderer repeat Read and close cancellation cannot publish late responses after reopen', async () => {
+  const f = diskRenderer();
+  f.m.effects();
+  await flush();
+  const first = f.m.render().props;
+  first.onHostResourcesRead();
+  first.onHostResourcesRead();
+  assert.equal(f.pending.length, 1);
+  assert.equal(f.m.render().props.hostResourcesReadDisabled, true);
+  first.onHostResourcesClose();
+  assert.equal(f.cancels(), 1);
+  const reopened = f.m.render().props;
+  assert.match(hostText(reopened.hostResources), /STALE/);
+  reopened.onHostResourcesRead();
+  assert.equal(f.pending.length, 1, 'unsettled old call still owns the lane');
+  deliverDisk(f, diskSample(999, 4096));
+  await flush();
+  assert.match(hostText(metricView(f.m, 'availableDisk')), /— BYTES/);
+  assert.equal(f.m.render().props.hostResourcesReadDisabled, false);
+  f.m.render().props.onHostResourcesRead();
+  assert.equal(f.pending.length, 2);
+  deliverDisk(f, diskSample(123, 4096, 'OK', 2));
+  await flush();
+  assert.match(hostText(metricView(f.m, 'availableDisk')), /123 BYTES/);
+  const timer = [...f.m.timers.values()][0].callback;
+  f.m.render().props.onHostResourcesClose();
+  assert.equal(f.m.timers.size, 0);
+  timer();
+  assert.match(hostText(f.m.render().props.hostResources), /STALE/);
+  assert.match(hostText(metricView(f.m, 'availableDisk')), /123 BYTES.*NOT CURRENT/);
+  f.m.render().props.onHostResourcesRead();
+  f.pending.at(-1)(hostContract.hostResourceResponse('h1', 'UNAVAILABLE'));
+  await flush();
+  assert.match(hostText(f.m.render().props.hostResources), /UNAVAILABLE/);
+  assert.match(hostText(metricView(f.m, 'availableDisk')), /123 BYTES.*NOT CURRENT/);
+  f.m.dispose();
+});
+
+test('actual disk renderer rejects obsolete samples and never makes expired-on-arrival bytes current', async () => {
+  for (const obsolete of [false, true]) {
+    const f = diskRenderer();
+    f.m.render().props.onHostResourcesRead();
+    f.m.advance(4000);
+    const sample = diskSample();
+    if (obsolete) sample.version = 1;
+    deliverDisk(f, sample);
+    await flush();
+    assert.equal(f.m.timers.size, 0);
+    assert.match(hostText(f.m.render().props.hostResources), obsolete ? /UNAVAILABLE/ : /STALE/);
+    assert.match(hostText(metricView(f.m, 'availableDisk')), obsolete ? /— BYTES/ : /512 BYTES/);
+    assert.match(hostText(metricView(f.m, 'availableDisk')), /NOT CURRENT/);
+    f.m.dispose();
+  }
+});
+test('actual disk renderer unmount cancels pending sampling and a late result creates no fresh timer', async () => {
+  const f = diskRenderer();
+  f.m.effects();
+  await flush();
+  f.m.render().props.onHostResourcesRead();
+  f.m.dispose();
+  assert.equal(f.cancels(), 1);
+  deliverDisk(f);
+  await flush();
+  assert.equal(f.m.timers.size, 0);
+  assert.match(hostText(metricView(f.m, 'availableDisk')), /— BYTES/);
 });

@@ -106,6 +106,7 @@ function Performance({
           'RAM',
           'GPU',
           'Đĩa trống',
+          'Disk I/O',
           'Mạng',
           'Stream / backlog',
           'Hàng đợi Vision',
@@ -113,14 +114,18 @@ function Performance({
         ]
           .filter(
             (label) =>
-              (!hostResources || (label !== 'CPU' && label !== 'RAM')) &&
+              (!hostResources || (label !== 'CPU' && label !== 'RAM' && label !== 'Đĩa trống')) &&
               (!previewAccounting || label !== 'Stream / backlog'),
           )
           .map((label) => (
             <div className="stat" key={label}>
               <span>{label}</span>
               <strong>—</strong>
-              <small>UNKNOWN · không có mẫu quan sát</small>
+              <small>
+                {label === 'Disk I/O'
+                  ? 'UNAVAILABLE · chưa có adapter hỗ trợ'
+                  : 'UNKNOWN · không có mẫu quan sát'}
+              </small>
             </div>
           ))}
       </div>
@@ -976,7 +981,7 @@ export function UiShell(p: ShellProps) {
                     hostRead.current.callback?.();
                   }}
                 >
-                  Đọc CPU/RAM máy chủ
+                  Đọc CPU/RAM và đĩa dữ liệu ứng dụng
                 </button>
               ) : null}
               {p.previewAccounting ? (

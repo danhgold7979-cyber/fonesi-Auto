@@ -1410,8 +1410,12 @@ function Diagnostic() {
       }}
       hostResourcesReadDisabled={hostPending || !window.hostResources}
       hostResources={
-        <section aria-label="Host CPU and RAM" id="host-resources">
+        <section
+          aria-label="Host CPU, RAM and application data volume disk space"
+          id="host-resources"
+        >
           <span role="status">{hostViewStatus} · MAIN_PROCESS không phải toàn bộ Auto</span>
+          <small>Đĩa: chỉ volume dữ liệu ứng dụng, không phải tất cả ổ đĩa máy chủ.</small>
           {hostSample ? (
             <small>
               Mẫu {hostSample.sequence} · {hostSample.startedUtc}–{hostSample.endedUtc} UTC ms ·{' '}
@@ -1420,9 +1424,14 @@ function Diagnostic() {
           ) : null}
           <div className="stat-grid">
             {HOST_METRICS.map((key) => (
-              <div className="stat" key={key}>
+              <div className="stat" key={key} data-host-metric={key}>
                 <span>
-                  {key} · {HOST_METRIC_INFO[key].scope}
+                  {key === 'availableDisk'
+                    ? 'Đĩa dữ liệu ứng dụng còn trống'
+                    : key === 'totalDisk'
+                      ? 'Tổng dung lượng volume dữ liệu ứng dụng'
+                      : key}{' '}
+                  · {HOST_METRIC_INFO[key].scope}
                 </span>
                 <strong>
                   {hostSample?.metrics[key].value ?? '—'} {HOST_METRIC_INFO[key].unit}

@@ -1,4 +1,4 @@
-export const HOST_RESOURCE_CHANNEL = 'foundation:host-resources:v1';
+export const HOST_RESOURCE_CHANNEL = 'foundation:host-resources:v2';
 export const HOST_RESOURCE_LIMIT = 8192;
 export const HOST_RESOURCE_FRESH_MS = 5000;
 export const HOST_RESOURCE_CODES = [
@@ -14,9 +14,17 @@ export const HOST_RESOURCE_CODES = [
 ] as const;
 export type HostResourceCode = (typeof HOST_RESOURCE_CODES)[number];
 export type HostResourceRequest =
-  | Readonly<{ version: 1; requestId: string; method: 'SAMPLE' }>
-  | Readonly<{ version: 1; requestId: string; method: 'CANCEL'; targetId: string }>;
-export const HOST_METRICS = ['hostCpu', 'mainCpu', 'totalRam', 'freeRam', 'mainRss'] as const;
+  | Readonly<{ version: 2; requestId: string; method: 'SAMPLE' }>
+  | Readonly<{ version: 2; requestId: string; method: 'CANCEL'; targetId: string }>;
+export const HOST_METRICS = [
+  'hostCpu',
+  'mainCpu',
+  'totalRam',
+  'freeRam',
+  'mainRss',
+  'availableDisk',
+  'totalDisk',
+] as const;
 export type HostMetricKey = (typeof HOST_METRICS)[number];
 export type HostMetric = Readonly<{
   unit: 'PERCENT' | 'BYTES';
@@ -25,13 +33,19 @@ export type HostMetric = Readonly<{
     | 'NODE_PROCESS_CPU_USAGE'
     | 'NODE_OS_TOTALMEM'
     | 'NODE_OS_FREEMEM'
-    | 'NODE_PROCESS_MEMORY_RSS';
-  scope: 'TOTAL_HOST' | 'MAIN_PROCESS';
+    | 'NODE_PROCESS_MEMORY_RSS'
+    | 'NODE_FS_STATFS';
+  scope: 'TOTAL_HOST' | 'MAIN_PROCESS' | 'APP_DATA_VOLUME';
   value: number | null;
-  code: 'OK' | 'COUNTER_INVALID' | 'PROBE_FAILED' | 'UNSUPPORTED_PLATFORM';
+  code:
+    | 'OK'
+    | 'COUNTER_INVALID'
+    | 'PROBE_FAILED'
+    | 'UNSUPPORTED_PLATFORM'
+    | 'DATA_VOLUME_UNAVAILABLE';
 }>;
 export type HostResourceSample = Readonly<{
-  version: 1;
+  version: 2;
   sequence: number;
   startedUtc: number;
   endedUtc: number;
@@ -44,9 +58,11 @@ export const HOST_METRIC_INFO = Object.freeze({
   totalRam: { unit: 'BYTES', source: 'NODE_OS_TOTALMEM', scope: 'TOTAL_HOST' },
   freeRam: { unit: 'BYTES', source: 'NODE_OS_FREEMEM', scope: 'TOTAL_HOST' },
   mainRss: { unit: 'BYTES', source: 'NODE_PROCESS_MEMORY_RSS', scope: 'MAIN_PROCESS' },
+  availableDisk: { unit: 'BYTES', source: 'NODE_FS_STATFS', scope: 'APP_DATA_VOLUME' },
+  totalDisk: { unit: 'BYTES', source: 'NODE_FS_STATFS', scope: 'APP_DATA_VOLUME' },
 } as const);
 export type HostResourceResponse = Readonly<{
-  version: 1;
+  version: 2;
   requestId: string | null;
   code: HostResourceCode;
   sample: HostResourceSample | null;
@@ -92,15 +108,15 @@ export function parseHostResourceRequest(raw: unknown): HostResourceRequest | nu
         ? ['targetId']
         : []),
     ]) ||
-    value.version !== 1 ||
+    value.version !== 2 ||
     !id(value.requestId)
   )
     return null;
   if (value.method === 'SAMPLE')
-    return Object.freeze({ version: 1, requestId: value.requestId, method: 'SAMPLE' });
+    return Object.freeze({ version: 2, requestId: value.requestId, method: 'SAMPLE' });
   if (value.method === 'CANCEL' && id(value.targetId))
     return Object.freeze({
-      version: 1,
+      version: 2,
       requestId: value.requestId,
       method: 'CANCEL',
       targetId: value.targetId,
@@ -111,7 +127,7 @@ export function parseHostResourceSample(raw: unknown): HostResourceSample | null
   const value = decode(raw);
   if (
     !exact(value, ['version', 'sequence', 'startedUtc', 'endedUtc', 'intervalMs', 'metrics']) ||
-    value.version !== 1 ||
+    value.version !== 2 ||
     !integer(value.sequence) ||
     value.sequence < 1 ||
     !integer(value.startedUtc) ||
@@ -129,9 +145,13 @@ export function parseHostResourceSample(raw: unknown): HostResourceSample | null
     const metric = value.metrics[key];
     if (
       !exact(metric, ['value', 'code', 'unit', 'source', 'scope']) ||
-      !['OK', 'COUNTER_INVALID', 'PROBE_FAILED', 'UNSUPPORTED_PLATFORM'].includes(
-        metric.code as string,
-      )
+      ![
+        'OK',
+        'COUNTER_INVALID',
+        'PROBE_FAILED',
+        'UNSUPPORTED_PLATFORM',
+        'DATA_VOLUME_UNAVAILABLE',
+      ].includes(metric.code as string)
     )
       return null;
     if (
@@ -140,6 +160,7 @@ export function parseHostResourceSample(raw: unknown): HostResourceSample | null
       metric.scope !== HOST_METRIC_INFO[key].scope
     )
       return null;
+    if (metric.code === 'DATA_VOLUME_UNAVAILABLE' && !key.endsWith('Disk')) return null;
     if (metric.code === 'OK') {
       if (
         typeof metric.value !== 'number' ||
@@ -162,8 +183,16 @@ export function parseHostResourceSample(raw: unknown): HostResourceSample | null
     metrics.freeRam.value > metrics.totalRam.value
   )
     return null;
+  if (
+    metrics.availableDisk.code !== metrics.totalDisk.code ||
+    (metrics.totalDisk.value !== null &&
+      (metrics.totalDisk.value <= 0 ||
+        metrics.availableDisk.value === null ||
+        metrics.availableDisk.value > metrics.totalDisk.value))
+  )
+    return null;
   return Object.freeze({
-    version: 1,
+    version: 2,
     sequence: value.sequence,
     startedUtc: value.startedUtc,
     endedUtc: value.endedUtc,
@@ -177,13 +206,13 @@ export function hostResourceResponse(
   sample: HostResourceSample | null = null,
   remainingFreshMs = 0,
 ): string {
-  return JSON.stringify({ version: 1, requestId, code, sample, remainingFreshMs });
+  return JSON.stringify({ version: 2, requestId, code, sample, remainingFreshMs });
 }
 export function parseHostResourceResponse(raw: unknown): HostResourceResponse | null {
   const value = decode(raw);
   if (
     !exact(value, ['version', 'requestId', 'code', 'sample', 'remainingFreshMs']) ||
-    value.version !== 1 ||
+    value.version !== 2 ||
     (value.requestId !== null && !id(value.requestId)) ||
     !HOST_RESOURCE_CODES.includes(value.code as HostResourceCode) ||
     typeof value.remainingFreshMs !== 'number' ||
@@ -197,7 +226,7 @@ export function parseHostResourceResponse(raw: unknown): HostResourceResponse | 
   if (value.code === 'OK' ? !sample : value.sample !== null || value.remainingFreshMs !== 0)
     return null;
   return Object.freeze({
-    version: 1,
+    version: 2,
     requestId: value.requestId as string | null,
     code: value.code as HostResourceCode,
     sample,

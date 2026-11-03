@@ -24,7 +24,7 @@ export function createHostResourceClient(
     const requestId = `h${++next}`;
     if (method === 'SAMPLE') active = requestId;
     const wire = JSON.stringify({
-      version: 1,
+      version: 2,
       requestId,
       method,
       ...(method === 'CANCEL' ? { targetId } : {}),

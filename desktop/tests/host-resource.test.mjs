@@ -1,14 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
 import { inputs, outputs, createManifest, verifyBuild } from '../scripts/build-manifest.mjs';
-import { calculateHostSample } from '../src/main/host-resource-worker.ts';
+import {
+  calculateHostSample,
+  calculateDiskSpace,
+  readDiskSpace,
+} from '../src/main/host-resource-worker.ts';
 import { createHostResourceSampler } from '../src/main/host-resource-sampler.ts';
 import { createHostResourceClient } from '../src/host-resource-client.ts';
 import { installHostResourceBridge } from '../src/host-resource-bridge.ts';
@@ -109,11 +113,11 @@ test('counter topology regression zero and invalid fields remain UNKNOWN, not fa
     assert.equal(calculateHostSample(first, { ...last, ...change }, 1), null);
 });
 test('closed bounded wires reject extra duplicate fields wrong tuples and injected objects without coercion', () => {
-  assert.ok(contract.parseHostResourceRequest('{"version":1,"requestId":"h1","method":"SAMPLE"}'));
+  assert.ok(contract.parseHostResourceRequest('{"version":2,"requestId":"h1","method":"SAMPLE"}'));
   for (const text of [
-    '{"version":1,"version":1,"requestId":"h1","method":"SAMPLE"}',
-    '{"version":1,"requestId":"h1","method":"SAMPLE","pid":1}',
-    '{"version":1,"requestId":"h65537","method":"SAMPLE"}',
+    '{"version":2,"version":2,"requestId":"h1","method":"SAMPLE"}',
+    '{"version":2,"requestId":"h1","method":"SAMPLE","pid":1}',
+    '{"version":2,"requestId":"h65537","method":"SAMPLE"}',
   ])
     assert.equal(contract.parseHostResourceRequest(text), null);
   let called = false;
@@ -333,7 +337,7 @@ test('actual bridge admits fixed sample/cancel only and releases each invocation
     },
   );
   assert.equal(
-    JSON.parse(await handler({ sender: owner }, '{"version":1,"requestId":"h1","method":"SAMPLE"}'))
+    JSON.parse(await handler({ sender: owner }, '{"version":2,"requestId":"h1","method":"SAMPLE"}'))
       .code,
     'UNAVAILABLE',
   );
@@ -341,14 +345,14 @@ test('actual bridge admits fixed sample/cancel only and releases each invocation
     JSON.parse(
       await handler(
         { sender: owner },
-        '{"version":1,"requestId":"h2","method":"CANCEL","targetId":"h1"}',
+        '{"version":2,"requestId":"h2","method":"CANCEL","targetId":"h1"}',
       ),
     ).code,
     'CANCELLED',
   );
   assert.equal(
     JSON.parse(
-      await handler({ sender: owner }, '{"version":1,"requestId":"h3","method":"SAMPLE"}', 1),
+      await handler({ sender: owner }, '{"version":2,"requestId":"h3","method":"SAMPLE"}', 1),
     ).code,
     'INVALID',
   );
@@ -459,4 +463,297 @@ test('fixed worker is really bundled and its exact bytes are bound by production
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test('disk counters use unprivileged available blocks and exact safe BigInt byte products', () => {
+  assert.deepEqual(calculateDiskSpace({ bsize: 4096n, blocks: 10n, bavail: 3n, bfree: 9n }), {
+    available: 12288,
+    total: 40960,
+    code: 'OK',
+  });
+  assert.deepEqual(
+    calculateDiskSpace({ bsize: 1n, blocks: BigInt(Number.MAX_SAFE_INTEGER), bavail: 0n }),
+    {
+      available: 0,
+      total: Number.MAX_SAFE_INTEGER,
+      code: 'OK',
+    },
+  );
+  for (const stats of [
+    null,
+    {},
+    { bsize: 1, blocks: 2n, bavail: 1n },
+    { bsize: 0n, blocks: 2n, bavail: 1n },
+    { bsize: 1n, blocks: 0n, bavail: 0n },
+    { bsize: 1n, blocks: 2n, bavail: -1n },
+    { bsize: 1n, blocks: 2n, bavail: 3n },
+    { bsize: 2n, blocks: BigInt(Number.MAX_SAFE_INTEGER), bavail: 0n },
+    { bsize: 1n << 100n, blocks: 1n, bavail: 1n },
+    { bsize: 1n, blocks: Infinity, bavail: 0n },
+  ]) {
+    assert.deepEqual(calculateDiskSpace(stats), {
+      available: null,
+      total: null,
+      code: 'COUNTER_INVALID',
+    });
+  }
+});
+test('disk unavailable and probe failure preserve independently valid CPU and RAM without private errors', () => {
+  for (const disk of [
+    readDiskSpace(null),
+    readDiskSpace('PRIVATE_CANARY'),
+    calculateDiskSpace({}),
+  ]) {
+    const result = calculateHostSample(first, { ...last, disk }, 1);
+    assert.equal(result.metrics.hostCpu.value, 20);
+    assert.equal(result.metrics.freeRam.value, 5000);
+    assert.equal(result.metrics.availableDisk.value, null);
+    assert.equal(result.metrics.availableDisk.code, disk.code);
+    const wire = JSON.stringify(result);
+    assert.ok(contract.parseHostResourceSample(wire));
+    assert.ok(!wire.includes('PRIVATE_CANARY'));
+  }
+});
+test('actual disposable directory disk probe rejects missing file and symlink paths without enumerating', () => {
+  const root = mkdtempSync(resolve(tmpdir(), 'host-disk-owned-'));
+  try {
+    const observed = readDiskSpace(root);
+    assert.equal(observed.code, 'OK');
+    assert.ok(
+      observed.total > 0 && observed.available >= 0 && observed.available <= observed.total,
+    );
+    assert.equal(readDiskSpace(resolve(root, 'absent')).code, 'PROBE_FAILED');
+    const file = resolve(root, 'file');
+    writeFileSync(file, 'SYNTHETIC');
+    assert.equal(readDiskSpace(file).code, 'PROBE_FAILED');
+    const alias = resolve(root, 'alias');
+    symlinkSync(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    assert.equal(readDiskSpace(alias).code, 'PROBE_FAILED');
+    assert.ok(!JSON.stringify(observed).includes(root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+test('v2 strictly rejects old and mixed versions, path selectors and invalid disk tuples', () => {
+  assert.equal(contract.HOST_RESOURCE_CHANNEL, 'foundation:host-resources:v2');
+  for (const request of [
+    { version: 1, requestId: 'h1', method: 'SAMPLE' },
+    { version: 2, requestId: 'h1', method: 'SAMPLE', path: 'PRIVATE_CANARY' },
+    { version: 2, requestId: 'h1', method: 'SAMPLE', dataRoot: null },
+  ])
+    assert.equal(contract.parseHostResourceRequest(JSON.stringify(request)), null);
+  const observed = calculateHostSample(
+    first,
+    { ...last, disk: calculateDiskSpace({ bsize: 1n, blocks: 10n, bavail: 0n }) },
+    1,
+  );
+  assert.equal(observed.metrics.availableDisk.value, 0);
+  assert.ok(contract.parseHostResourceSample(JSON.stringify(observed)));
+  assert.equal(contract.parseHostResourceSample(JSON.stringify({ ...observed, version: 1 })), null);
+  for (const change of [
+    { availableDisk: { ...observed.metrics.availableDisk, value: 11 } },
+    { totalDisk: { ...observed.metrics.totalDisk, value: 0 } },
+    { availableDisk: { ...observed.metrics.availableDisk, source: 'NODE_OS_FREEMEM' } },
+    {
+      availableDisk: {
+        ...observed.metrics.availableDisk,
+        code: 'DATA_VOLUME_UNAVAILABLE',
+        value: null,
+      },
+    },
+    { mainRss: { ...observed.metrics.mainRss, code: 'DATA_VOLUME_UNAVAILABLE', value: null } },
+    { totalDisk: { ...observed.metrics.totalDisk, path: 'PRIVATE_CANARY' } },
+  ])
+    assert.equal(
+      contract.parseHostResourceSample(
+        JSON.stringify({ ...observed, metrics: { ...observed.metrics, ...change } }),
+      ),
+      null,
+    );
+  const reply = JSON.parse(contract.hostResourceResponse('h1', 'OK', observed, 4000));
+  assert.equal(contract.parseHostResourceResponse(JSON.stringify({ ...reply, version: 1 })), null);
+  assert.equal(
+    contract.parseHostResourceResponse(
+      JSON.stringify({ ...reply, sample: { ...observed, version: 1 } }),
+    ),
+    null,
+  );
+});
+test('main-only root admission passes only to worker and ownership is checked again before publication', async () => {
+  const root = resolve(tmpdir(), 'PRIVATE_CANARY');
+  let owned = root,
+    checks = 0,
+    captured;
+  const worker = new FakeWorker();
+  const f = fixture({
+    dataRoot: () => {
+      checks++;
+      return owned;
+    },
+    spawn: (sequence, dataRoot) => {
+      captured = { sequence, dataRoot };
+      return worker;
+    },
+  });
+  const pending = f.service.sample('h1', f.owner, () => true);
+  assert.deepEqual(captured, { sequence: 1, dataRoot: root });
+  f.advance();
+  worker.emit('message', JSON.stringify(sample()));
+  owned = null;
+  worker.emit('exit', 0);
+  const wire = await pending;
+  assert.equal(JSON.parse(wire).code, 'WORKER_FAILED');
+  assert.equal(checks, 2);
+  assert.ok(!wire.includes(root));
+  assert.equal(f.service.retired, true);
+});
+test('absent root still samples CPU/RAM and revoked owner throws no path to renderer', async () => {
+  for (const throws of [false, true]) {
+    let spawns = 0;
+    const f = fixture({
+      dataRoot: () => {
+        if (throws) throw Error('PRIVATE_CANARY');
+        return null;
+      },
+      spawn: () => {
+        spawns++;
+        return f.worker;
+      },
+    });
+    const pending = f.service.sample('h1', f.owner, () => true);
+    if (!throws) {
+      f.advance();
+      f.message();
+      f.worker.emit('exit', 0);
+    }
+    const wire = await pending;
+    assert.equal(JSON.parse(wire).code, throws ? 'UNAVAILABLE' : 'OK');
+    assert.equal(spawns, throws ? 0 : 1);
+    assert.ok(!wire.includes('PRIVATE_CANARY'));
+  }
+});
+test('ownership callback elapsed time consumes admission deadline and captured freshness', async () => {
+  let spawns = 0;
+  const slow = fixture({
+    dataRoot: () => {
+      slow.advance(3000);
+      return null;
+    },
+    spawn: () => {
+      spawns++;
+      return slow.worker;
+    },
+  });
+  assert.equal(
+    JSON.parse(await slow.service.sample('h1', slow.owner, () => true)).code,
+    'DEADLINE',
+  );
+  assert.equal(spawns, 0);
+  for (const delay of [200, 2100]) {
+    let checks = 0;
+    const f = fixture({
+      dataRoot: () => {
+        if (++checks === 2) f.advance(1000 + delay);
+        return null;
+      },
+    });
+    const pending = f.service.sample('h1', f.owner, () => true);
+    f.advance();
+    f.message();
+    f.worker.emit('exit', 0);
+    const reply = JSON.parse(await pending);
+    assert.equal(reply.code, delay === 200 ? 'OK' : 'DEADLINE');
+    assert.equal(reply.remainingFreshMs, delay === 200 ? 3800 : 0);
+  }
+});
+test('final ownership reentry cannot publish after close and cancellation retains disk worker lane', async () => {
+  let checks = 0;
+  const f = fixture({
+    dataRoot: () => {
+      if (++checks === 2) void f.service.close();
+      return null;
+    },
+  });
+  const pending = f.service.sample('h1', f.owner, () => true);
+  f.advance();
+  f.message();
+  f.worker.emit('exit', 0);
+  assert.equal(JSON.parse(await pending).code, 'CLOSED');
+  const g = fixture({ dataRoot: () => resolve(tmpdir(), 'PRIVATE_CANARY') });
+  const cancelled = g.service.sample('h1', g.owner, () => true);
+  g.service.cancel('h1', g.owner);
+  assert.equal(JSON.parse(await cancelled).code, 'CANCELLED');
+  assert.equal(JSON.parse(await g.service.sample('h2', g.owner, () => true)).code, 'BUSY');
+  g.advance();
+  g.message();
+  g.worker.emit('exit', 0);
+  assert.equal(g.service.retired, true);
+});
+test('production root route comes from opened persistence with lease fences and no renderer path', () => {
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+  const scoped = main.slice(
+    main.indexOf('hostResourceSampler = createHostResourceSampler('),
+    main.indexOf('hostResourceBridge = installHostResourceBridge('),
+  );
+  assert.match(scoped, /assertPreparedPersistenceLease\(persistenceEntry\)/);
+  assert.match(scoped, /return persistence.root/);
+  assert.match(scoped, /if \(!persistence \|\| !persistenceEntry\) return null/);
+  assert.ok(!/getPath|process\.env|cwd/.test(scoped));
+  const worker = readFileSync(
+    new URL('../src/main/host-resource-worker.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(worker, /statfsSync\(root, \{ bigint: true \}\)/);
+  assert.ok(!/readdir|opendir|console\.|postMessage\(workerData/.test(worker));
+});
+
+test('first worker deadline subtracts slow main ownership admission instead of restarting three seconds', async () => {
+  const delays = [];
+  let fire;
+  const f = fixture({
+    dataRoot: () => {
+      f.advance(2000);
+      return null;
+    },
+    timer: {
+      set(fn, ms) {
+        fire = fn;
+        delays.push(ms);
+        return 1;
+      },
+      clear() {},
+    },
+  });
+  const pending = f.service.sample('h1', f.owner, () => true);
+  assert.deepEqual(delays, [1000]);
+  f.advance(3000);
+  fire();
+  assert.equal(JSON.parse(await pending).code, 'DEADLINE');
+  assert.equal(f.worker.stops, 1);
+  assert.equal(f.service.retired, false);
+  f.worker.emit('exit', 1);
+  assert.equal(f.service.retired, true);
+});
+
+test('Windows disk qualifier rejects caller arguments before creating or reading any directory', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const script = fileURLToPath(new URL('../scripts/check-host-disk.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [script, '--root=PRIVATE_CANARY'], {
+    shell: false,
+    encoding: 'utf8',
+    timeout: 30000,
+    maxBuffer: 65536,
+  });
+  assert.equal(result.status, 1);
+  assert.equal(result.signal, null);
+  assert.match(result.stdout, /HOST_DISK_WINDOWS_FAILED/);
+  assert.ok(!result.stdout.includes('RETIRED'));
+  assert.ok(!`${result.stdout}${result.stderr}`.includes('PRIVATE_CANARY'));
+  const source = readFileSync(script, 'utf8');
+  assert.ok(source.indexOf('!verifyBuild(root)') < source.indexOf('owned = mkdtempSync('));
+  assert.match(source, /15000/);
+  assert.match(source, /await sampler\?\.close\(\)/);
+  assert.match(source, /HOST_DISK_ELECTRON_RUNTIME_NOT_RUN/);
+  assert.ok(!source.includes('rmSync('));
+  assert.equal(inputs.filter((name) => name === 'scripts/check-host-disk.mjs').length, 1);
 });

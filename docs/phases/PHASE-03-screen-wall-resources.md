@@ -96,3 +96,12 @@ Risks: driver-specific counters → UNKNOWN; codec incompatibility → capabilit
 | 2026-10-30 | 1.0-draft | Normalized 19 tasks, DEC-019 safeguards, measured controls and evidence split | Draft only; product decision preserved |
 
 - 2026-10-30 / 1.1-draft: linked accepted C-06/C-07/C-13/C-15/C-17; version and benchmark gates remain open evidence work.
+
+
+## Bounded disk-space continuation — 2026-11-03
+
+The independently reviewed [P3-11.B source entry](P3-DISK-SPACE-SOURCE-ENTRY.md)
+adds the explicitly requested application-data-volume disk read only. See
+[actual evidence and remaining gates](../evidence/P3-11B-disk-space-source-2026-11-03.md).
+The original plan and fixed B definition remain unchanged: no disk-I/O support,
+whole-task/phase acceptance, user-device access or visual/runtime waiver follows.

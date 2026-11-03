@@ -1,3 +1,5 @@
+import { statfsSync, lstatSync, realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cpus, totalmem, freemem } from 'node:os';
 import { cpuUsage, memoryUsage } from 'node:process';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
@@ -7,6 +9,67 @@ import {
   type HostMetric,
   type HostResourceSample,
 } from '../host-resource-contract.ts';
+
+type DiskSpace = Readonly<{
+  available: number | null;
+  total: number | null;
+  code: HostMetric['code'];
+}>;
+const missingDisk = (code: HostMetric['code']): DiskSpace =>
+  Object.freeze({ available: null, total: null, code });
+export function calculateDiskSpace(stats: unknown): DiskSpace {
+  if (!stats || typeof stats !== 'object') return missingDisk('COUNTER_INVALID');
+  const { bsize, blocks, bavail } = stats as Record<string, unknown>;
+  if (
+    typeof bsize !== 'bigint' ||
+    typeof blocks !== 'bigint' ||
+    typeof bavail !== 'bigint' ||
+    bsize <= 0n ||
+    blocks <= 0n ||
+    bavail < 0n ||
+    bavail > blocks ||
+    bsize > BigInt(Number.MAX_SAFE_INTEGER) ||
+    blocks > BigInt(Number.MAX_SAFE_INTEGER)
+  )
+    return missingDisk('COUNTER_INVALID');
+  const available = bsize * bavail,
+    total = bsize * blocks;
+  if (available > BigInt(Number.MAX_SAFE_INTEGER) || total > BigInt(Number.MAX_SAFE_INTEGER))
+    return missingDisk('COUNTER_INVALID');
+  return Object.freeze({ available: Number(available), total: Number(total), code: 'OK' });
+}
+export function readDiskSpace(root: string | null): DiskSpace {
+  if (root === null) return missingDisk('DATA_VOLUME_UNAVAILABLE');
+  try {
+    if (
+      typeof root !== 'string' ||
+      root.length === 0 ||
+      root.length > 32767 ||
+      root !== resolve(root)
+    )
+      return missingDisk('PROBE_FAILED');
+    const before = lstatSync(root);
+    const real = realpathSync(root);
+    const equal =
+      process.platform === 'win32' ? real.toLowerCase() === root.toLowerCase() : real === root;
+    if (!before.isDirectory() || before.isSymbolicLink() || !equal)
+      return missingDisk('PROBE_FAILED');
+    const observed = calculateDiskSpace(statfsSync(root, { bigint: true }));
+    const after = lstatSync(root);
+    if (
+      !after.isDirectory() ||
+      after.isSymbolicLink() ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      realpathSync(root) !== real
+    )
+      return missingDisk('PROBE_FAILED');
+    return observed;
+  } catch {
+    return missingDisk('PROBE_FAILED');
+  }
+}
+
 type Counters = Readonly<{ model: string; times: readonly number[] }>;
 export type HostCounters = Readonly<{
   utc: number;
@@ -16,6 +79,7 @@ export type HostCounters = Readonly<{
   total: number | null;
   free: number | null;
   rss: number | null;
+  disk?: DiskSpace;
 }>;
 const valid = (n: number) => Number.isSafeInteger(n) && n >= 0 && !Object.is(n, -0);
 const unknown = (
@@ -141,13 +205,24 @@ export function calculateHostSample(
     last.total > 0 &&
     valid(last.free) &&
     last.free <= last.total;
+  const disk = last.disk ?? missingDisk('DATA_VOLUME_UNAVAILABLE');
   return Object.freeze({
-    version: 1,
+    version: 2,
     sequence,
     startedUtc: first.utc,
     endedUtc: last.utc,
     intervalMs,
     metrics: Object.freeze({
+      availableDisk: Object.freeze({
+        ...HOST_METRIC_INFO.availableDisk,
+        value: disk.available,
+        code: disk.code,
+      }),
+      totalDisk: Object.freeze({
+        ...HOST_METRIC_INFO.totalDisk,
+        value: disk.total,
+        code: disk.code,
+      }),
       hostCpu: Object.freeze({ ...HOST_METRIC_INFO.hostCpu, ...hostCpu }),
       mainCpu: Object.freeze({ ...HOST_METRIC_INFO.mainCpu, ...mainCpu }),
       totalRam: Object.freeze({
@@ -175,7 +250,9 @@ if (!isMainThread) {
     !port ||
     process.platform !== 'win32' ||
     !workerData ||
-    Object.keys(workerData).join(',') !== 'sequence' ||
+    Object.keys(workerData).join(',') !== 'sequence,dataRoot' ||
+    (workerData.dataRoot !== null &&
+      (typeof workerData.dataRoot !== 'string' || workerData.dataRoot.length > 32767)) ||
     !valid(workerData.sequence) ||
     workerData.sequence === 0
   )
@@ -187,7 +264,8 @@ if (!isMainThread) {
       setTimeout(finish, left);
       return;
     }
-    const sample = calculateHostSample(first, collect(), workerData.sequence);
+    const disk = readDiskSpace(workerData.dataRoot);
+    const sample = calculateHostSample(first, { ...collect(), disk }, workerData.sequence);
     if (!sample) throw new Error('HOST_RESOURCE_SAMPLE_INVALID');
     port.postMessage(JSON.stringify(sample));
     port.close();

@@ -1890,7 +1890,7 @@ test('late input STATUS cannot rearm after ACTIVE selection or Stop invalidation
 test('host CPU RAM explicit read renders immutable scope then expires without polling or fake unsupported data', async () => {
   let calls = 0;
   const sample = {
-    version: 1,
+    version: 2,
     sequence: 1,
     startedUtc: 1000,
     endedUtc: 2000,

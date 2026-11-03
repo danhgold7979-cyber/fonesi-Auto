@@ -377,7 +377,14 @@ try {
         stylesheet.toString('utf8'),
       );
       bridge = installFoundationBridge(ipcMain, logger);
-      hostResourceSampler = createHostResourceSampler();
+      hostResourceSampler = createHostResourceSampler({
+        dataRoot: () => {
+          if (closing || resourcesDisposed) throw new Error('OWNER_REVOKED');
+          if (!persistence || !persistenceEntry) return null;
+          assertPreparedPersistenceLease(persistenceEntry);
+          return persistence.root;
+        },
+      });
       hostResourceBridge = installHostResourceBridge(
         ipcMain,
         bridge.admitPreferences,
