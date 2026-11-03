@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { ScheduleDraftPanel } from './schedule-draft-panel.tsx';
 import type { PageProps, DomainAction } from './ui-model.js';
 import { NETWORKS, UI_IMPORT_ACTION, UI_EXPORT_ACTION } from './ui-model.js';
 import { Icon, SocialIcon, UnavailableButton, UiModal } from './ui-shared.tsx';
@@ -335,6 +336,7 @@ export function SetupPage({
   selectedDeviceId,
   onFocusDevice,
   selectedWorkflowId,
+  scheduleDraft,
 }: PageProps) {
   const chosen = WORKFLOW_LABELS.find((entry) => entry.id === selectedWorkflowId);
   const [network, setNetwork] = useState<string>(chosen?.network ?? 'facebook'),
@@ -342,12 +344,7 @@ export function SetupPage({
     [accountId, setAccountId] = useState(''),
     [target, setTarget] = useState(''),
     [comments, setComments] = useState(1),
-    [posts, setPosts] = useState(3),
-    [every, setEvery] = useState(1),
-    [date, setDate] = useState(today),
     [recursive, setRecursive] = useState(true),
-    [slots, setSlots] = useState(['08:00', '12:00', '19:00']),
-    [preview, setPreview] = useState(false),
     [packOpen, setPackOpen] = useState(false);
   const accounts = snapshot.accounts.filter(
     (a) => a.deviceId === selectedDeviceId && a.network.toLowerCase() === network,
@@ -355,11 +352,6 @@ export function SetupPage({
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const rows = snapshot.media,
     flows = WORKFLOW_LABELS.filter((w) => w.network === network && w.category === 'ĐĂNG');
-  const setPostCount = (value: number) => {
-    setPosts(value);
-    setSlots(Array.from({ length: value }, (_, i) => slots[i] ?? '08:00'));
-    setPreview(false);
-  };
   return (
     <>
       <Header
@@ -449,7 +441,6 @@ export function SetupPage({
                 setAccountId('');
                 setTarget('');
                 setWorkflow('');
-                setPreview(false);
               }}
             >
               <option value="">Chưa chọn điện thoại</option>
@@ -470,7 +461,6 @@ export function SetupPage({
                 setAccountId('');
                 setTarget('');
                 setWorkflow('');
-                setPreview(false);
               }}
             >
               {NETWORKS.map((n) => (
@@ -736,100 +726,23 @@ export function SetupPage({
           title="04 · Số bài/ngày và tần suất đăng"
           description="Số bài/ngày đăng tạo đúng số ô giờ. Hàng 2 ngày = cách 2 ngày đăng một lần; hàng 3 ngày = cách 3 ngày."
         />
-        <div className="formgrid">
-          <label className="field">
-            Số video / ngày đăng
-            <input
-              type="number"
-              min={1}
-              max={24}
-              value={posts}
-              onChange={(e) => setPostCount(bounded(e.target.value, 1, 24))}
-            />
-          </label>
-          <label className="field">
-            Chu kỳ đăng (ngày)
-            <input
-              type="number"
-              min={1}
-              max={365}
-              value={every}
-              onChange={(e) => setEvery(bounded(e.target.value, 1, 365))}
-            />
-          </label>
-          <label className="field">
-            Ngày bắt đầu
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
-          <label className="field">
-            Nếu gần / trùng giờ trên cùng máy
-            <select defaultValue="QUEUE">
-              <option value="QUEUE">QUEUE · Giữ giờ, xếp hàng đợi</option>
-              <option value="AUTO_SHIFT">AUTO_SHIFT · Đề xuất dời giờ</option>
-            </select>
-          </label>
-          <label className="field">
-            Chờ sau khi bài đăng thành công (phút)
-            <input type="number" min={0} max={1440} defaultValue={2} />
-          </label>
-          <label className="field">
-            Khoảng cách giữa các bình luận (phút)
-            <input type="number" min={0} max={1440} defaultValue={3} />
-          </label>
-          {workflow.startsWith('fb-group') && (
-            <label className="field">
-              Giãn cách đăng giữa các nhóm (phút)
-              <input type="number" min={0} max={1440} defaultValue={60} />
-            </label>
-          )}
-        </div>
-        <div className="rowflex between">
-          <strong>{posts} khung giờ trong một ngày đăng</strong>
-          <span className="pill amber">Cảnh báo khi dưới 30 phút · không chặn</span>
-        </div>
-        <div className="slot-grid">
-          {ORDINALS.slice(0, posts).map((i) => (
-            <label className="slot" key={i}>
-              <span>Video {i + 1}</span>
-              <input
-                type="time"
-                value={slots[i] ?? '08:00'}
-                onChange={(e) => setSlots(slots.map((v, j) => (j === i ? e.target.value : v)))}
-              />
-            </label>
-          ))}
-        </div>
-        <div className="muted">
-          Múi giờ: chưa xác nhận từ dịch vụ lập lịch. Không có lịch nào được lưu.
-        </div>
+        <ScheduleDraftPanel
+          port={scheduleDraft}
+          groupTargets={workflow.startsWith('fb-group')}
+          context={JSON.stringify([
+            selectedDeviceId,
+            selectedWorkflowId,
+            network,
+            workflow,
+            accountId,
+            target,
+          ])}
+        />
         <div className="buttonrow">
-          <button
-            type="button"
-            className="btn"
-            onClick={() =>
-              setSlots(
-                Array.from({ length: posts }, (_, i) => {
-                  const minutes =
-                    480 + Math.round((posts === 1 ? 0 : (i * 840) / (posts - 1)) / 5) * 5;
-                  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-                }),
-              )
-            }
-          >
-            Tự chia khung giờ
-          </button>
-          <button type="button" className="btn" onClick={() => setPreview(!preview)}>
-            Xếp thời gian vào bảng
-          </button>
           <Unavailable action="schedule" onUnavailable={onUnavailable}>
             Lập lịch hàng loạt
           </Unavailable>
         </div>
-        {preview && (
-          <div className="preview-summary">
-            Bản nháp chưa lưu · chưa có media/tài khoản được xác minh; không tạo job.
-          </div>
-        )}
       </section>
     </>
   );

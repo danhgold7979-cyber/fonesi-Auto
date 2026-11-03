@@ -124,6 +124,9 @@ export function unavailableAction(
   return Object.freeze({ ok: false, code: 'UNAVAILABLE' });
 }
 export type PageProps = Readonly<{
+  scheduleDraft?:
+    | Readonly<{ preview: (input: unknown) => Promise<string>; cancel: () => void }>
+    | undefined;
   selectedWorkflowId: string;
   onChooseWorkflow: (id: string) => void;
   snapshot: UiSnapshot;

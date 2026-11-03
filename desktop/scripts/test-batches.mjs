@@ -122,6 +122,8 @@ export const TEST_FILES = Object.freeze([
   'tests/schedule-draft-bridge.test.mjs',
   'tests/schedule-draft-client.test.mjs',
   'tests/schedule-draft-contract.test.mjs',
+  'tests/schedule-draft-model.test.mjs',
+  'tests/schedule-draft-panel.test.mjs',
   'tests/schedule-gap-contract.test.mjs',
   'tests/schedule-zone-contract.test.mjs',
   'tests/secret-contract.test.mjs',

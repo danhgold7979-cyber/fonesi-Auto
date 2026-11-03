@@ -2,7 +2,18 @@
 
 **Phase07 — Scheduler and queue:** source6/47=12.8%, integrated6/47=12.8%, technical acceptance0/13. Exactly P7-04.A N→I: +1/47 (+2.13 percentage points) each versus10.6%; fixed47-cell denominator unchanged. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
 
-**Current Phase07 continuation — 2026-11-03 21:42 UTC:** the read-only unsaved
+**Current Phase07 continuation — 2026-11-03 22:11 UTC:** the existing V9 Setup
+scheduling placeholder now has a bounded unsaved draft preview editor. Local slot
+identity, exact removal acknowledgment, blank new slots, explicit dates/zone,
+revision/context cancellation, resolved UTC/DST rows and warning-only elapsed gaps
+are integrated without storage, media-table mutation, jobs or device authority.
+Independent implementation review CLEAR; focused64/64 and full desktop aggregate
+**1816/1816 PASS**. Visual Dark/Light screenshots and actual Electron UI/IPC
+execution remain NOT_RUN; no new ledger credit or phase acceptance.
+[UI source evidence and parity limits](evidence/P7-draft-preview-ui-2026-11-03.md).
+Publication and exact-head hosted verification remain pending for this slice.
+
+**Previous Phase07 bridge checkpoint — 2026-11-03 21:42 UTC:** the read-only unsaved
 draft preview bridge is implemented, independently reviewed CLEAR and fully
 source-tested **1796/1796 PASS**. Explicit sandboxed preload calls reach the
 existing trusted main-view admission and real unbound civil/timezone/advisory
@@ -13,6 +24,9 @@ Electron remains NOT_RUN. No UI editor, persistence, queue, dispatch or device
 activation; no new ledger credit. Scheduler source CI push coverage is repaired
 while explicit runtime observation gates remain unchanged.
 [Exact evidence and retained iterations](evidence/P7-draft-preview-bridge-2026-11-03.md).
+Published1eaa2b9 matches local270e17c exactly; scheduler Windows source CI
+41724632904 passes1796/1796 on that exact push head. Observation remains skipped;
+the separate legacy desktop-stack PR-merge failure is retained in the evidence.
 Main and other phase histories remain unchanged.
 
 **Previous Phase07 unbound API checkpoint — 2026-11-03:** exact public production corpus

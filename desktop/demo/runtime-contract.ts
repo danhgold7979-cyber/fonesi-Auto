@@ -31,6 +31,12 @@ export const DEMO_INPUTS = [
   'src/ui/ui-shared.tsx',
   'src/ui/ui-shell.tsx',
   'src/ui/work-pages.tsx',
+  'src/schedule-civil-contract.ts',
+  'src/schedule-zone-contract.ts',
+  'src/schedule-gap-contract.ts',
+  'src/schedule-draft-contract.ts',
+  'src/ui/schedule-draft-model.ts',
+  'src/ui/schedule-draft-panel.tsx',
 ] as const;
 export const DEMO_URL = 'fonesi-demo://app/index.html';
 export const DEMO_OUTPUTS = [

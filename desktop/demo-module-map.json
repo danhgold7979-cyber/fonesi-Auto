@@ -164,6 +164,9 @@
           "useState": "value",
           "ReactNode": "type"
         },
+        "./schedule-draft-panel.tsx": {
+          "ScheduleDraftPanel": "value"
+        },
         "./ui-model.js": {
           "PageProps": "type",
           "DomainAction": "type",
@@ -202,6 +205,86 @@
     "src/ui/tile-zoom.ts": {
       "role": "contract",
       "imports": {}
+    },
+    "src/ui/schedule-draft-model.ts": {
+      "role": "renderer",
+      "imports": {
+        "../schedule-draft-contract.ts": {
+          "snapshotScheduleDraftInput": "value",
+          "parseScheduleDraftResponse": "value",
+          "ScheduleDraftCode": "type",
+          "ScheduleDraftResponse": "type"
+        }
+      }
+    },
+    "src/ui/schedule-draft-panel.tsx": {
+      "role": "renderer",
+      "imports": {
+        "react": {
+          "useState": "value",
+          "useRef": "value",
+          "useEffect": "value"
+        },
+        "./schedule-draft-model.js": {
+          "createScheduleDraftEditor": "value",
+          "ScheduleDraftPort": "type"
+        }
+      }
+    },
+    "src/schedule-civil-contract.ts": {
+      "role": "contract",
+      "imports": {}
+    },
+    "src/schedule-zone-contract.ts": {
+      "role": "contract",
+      "imports": {
+        "@js-temporal/polyfill": {
+          "Temporal": "value"
+        },
+        "node:process": {
+          "versions": "value",
+          "env": "value",
+          "execArgv": "value",
+          "platform": "value",
+          "arch": "value"
+        },
+        "node:crypto": {
+          "createHash": "value"
+        },
+        "./schedule-civil-contract.js": {
+          "previewCivilOccurrences": "value",
+          "CivilOccurrence": "type",
+          "PreviewCode": "type"
+        }
+      }
+    },
+    "src/schedule-gap-contract.ts": {
+      "role": "contract",
+      "imports": {
+        "./schedule-zone-contract.js": {
+          "resolveCivilPreview": "value",
+          "ZoneCode": "type",
+          "ZonePreviewResult": "type"
+        }
+      }
+    },
+    "src/schedule-draft-contract.ts": {
+      "role": "contract",
+      "imports": {
+        "./schedule-civil-contract.js": {
+          "previewCivilOccurrences": "value",
+          "snapshotCivilSchedule": "value",
+          "CivilScheduleV1": "type"
+        },
+        "./schedule-gap-contract.js": {
+          "UnboundGapPreviewResult": "type"
+        },
+        "./schedule-zone-contract.js": {
+          "ResolvedOccurrence": "type",
+          "TimezoneRuntimeV1": "type",
+          "ZoneCode": "type"
+        }
+      }
     }
   }
 }

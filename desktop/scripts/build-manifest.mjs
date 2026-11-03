@@ -185,6 +185,8 @@ export const inputs = [
   'src/ui/ui-shell.tsx',
   'assets/v9.css',
   'src/ui/work-pages.tsx',
+  'src/ui/schedule-draft-model.ts',
+  'src/ui/schedule-draft-panel.tsx',
   'src/main/asset-policy.ts',
   'src/main/lifecycle.ts',
   'src/main/profile-owner.ts',

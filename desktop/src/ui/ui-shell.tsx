@@ -14,6 +14,9 @@ import { Icon, SocialIcon, UnavailableButton, EmptyPanel, UiModal } from './ui-s
 import { OverviewPage, AccountsPage, TrackingPage } from './primary-pages.tsx';
 import { SetupPage, CalendarPage, WorkflowsPage, WORKFLOW_LABELS } from './work-pages.tsx';
 export type ShellProps = Readonly<{
+  scheduleDraft?:
+    | Readonly<{ preview: (input: unknown) => Promise<string>; cancel: () => void }>
+    | undefined;
   theme: 'LIGHT' | 'DARK';
   ready: boolean;
   pending: boolean;
@@ -525,6 +528,7 @@ export function UiShell(p: ShellProps) {
     setModal('unavailable');
   };
   const pageProps = {
+    scheduleDraft: p.scheduleDraft,
     snapshot,
     onUnavailable: unavailable,
     onNavigate: navigate,

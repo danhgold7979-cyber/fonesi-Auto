@@ -109,10 +109,25 @@ SHA-256 `c386a74bef7531a665d51ac937c3f309e558602c39bc83985568e2b6ed412dd3`.
 Exact source paths, slash-bounded directory matching and unchanged native gates
 remain checked. No source runtime result was inferred from these fixture tests.
 
-## Publication boundary
+## Publication and exact-head hosted closure
 
-The reviewed tree is prepared for a history-preserving phase-07 fast-forward
-against public `981ce632b6d571a2c7a00b76999e907ffd85f487`, using an expected-head
-lease. Exact-head hosted checks are pending until the resulting public commit
-is observable; local aggregate PASS is not called hosted PASS. No force push
-or main update is intended.
+Published commit `1eaa2b9cc5847c4bc7e888c8d3d106ba0d5241fb` is a
+lease-checked, non-force fast-forward of `981ce632b6d571a2c7a00b76999e907ffd85f487`.
+Its tree `4df3b769a4b07bb631569ea91789ef2c1248dd0d` exactly matches local
+`270e17caadc1cd1e09601ae4e01d33a40ab6e7b8`. Both local history and public
+history are preserved; neither was reset or rewritten. Remote ref and fetched
+object identities were read back. Main remains untouched.
+
+[Scheduler source run41724632904](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41724632904)
+is SUCCESS at exact public head1eaa2b9 on a push, not a pull-request merge.
+Job126226081973 logs verify the exact checkout and **1796/1796 PASS** plus
+`DESKTOP_SOURCE_CHECK_PASS` at21:48 UTC. The dedicated observation package and
+report upload were both skipped under the unchanged explicit gates, as intended.
+This closes Windows source verification, not actual new IPC execution in Electron.
+
+Associated PR checks for telemetry41724644132, secret restart41724643979,
+collector41724643803 and SQLite41724643702 succeeded. The separate legacy
+desktop-stack lab41724644127 still failed at install/launch with
+`RUNTIME_OR_CONTAINMENT_FAILED`, runtime exit1, and installer/runtime cleanuptrue.
+It executed PR merge `d299de6e65f0fb189c52674a24ca644c351a5f0a`, not the direct
+phase head. This known failure family remains visible and unwaived.

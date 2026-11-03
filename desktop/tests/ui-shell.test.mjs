@@ -163,6 +163,8 @@ function mount(extra = {}) {
     require(name) {
       if (name === 'react') return hooks;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+      if (name === './schedule-draft-panel.tsx')
+        return { ScheduleDraftPanel: 'ScheduleDraftPanel' };
       if (name === './ui-model.js') return model;
       if (name === './tile-zoom.js') return tileZoom;
       if (name === './ui-shared.tsx') return shared.exports;
@@ -189,6 +191,8 @@ function mount(extra = {}) {
     require(name) {
       if (name === 'react') return hooks;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
+      if (name === './schedule-draft-panel.tsx')
+        return { ScheduleDraftPanel: 'ScheduleDraftPanel' };
       if (name === './ui-model.js') return model;
       if (name === './tile-zoom.js') return tileZoom;
       if (name === './ui-shared.tsx') return shared.exports;

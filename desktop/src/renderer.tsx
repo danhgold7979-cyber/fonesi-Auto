@@ -916,6 +916,7 @@ function Diagnostic() {
   }
   return (
     <UiShell
+      scheduleDraft={window.scheduleDraft}
       snapshot={fleetUi}
       selection={
         fleetFailed || !fleet

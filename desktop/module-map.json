@@ -1259,6 +1259,9 @@
      "useState": "value",
      "ReactNode": "type"
     },
+    "./schedule-draft-panel.tsx": {
+     "ScheduleDraftPanel": "value"
+    },
     "./ui-model.js": {
      "PageProps": "type",
      "DomainAction": "type",
@@ -2735,6 +2738,31 @@
      "scheduleDraftError": "value",
      "scheduleDraftSuccess": "value",
      "ScheduleDraftCode": "type"
+    }
+   }
+  },
+  "ui/schedule-draft-model.ts": {
+   "role": "renderer",
+   "imports": {
+    "../schedule-draft-contract.ts": {
+     "snapshotScheduleDraftInput": "value",
+     "parseScheduleDraftResponse": "value",
+     "ScheduleDraftCode": "type",
+     "ScheduleDraftResponse": "type"
+    }
+   }
+  },
+  "ui/schedule-draft-panel.tsx": {
+   "role": "renderer",
+   "imports": {
+    "react": {
+     "useState": "value",
+     "useRef": "value",
+     "useEffect": "value"
+    },
+    "./schedule-draft-model.js": {
+     "createScheduleDraftEditor": "value",
+     "ScheduleDraftPort": "type"
     }
    }
   }

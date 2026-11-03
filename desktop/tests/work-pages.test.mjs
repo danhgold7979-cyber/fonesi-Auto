@@ -6,6 +6,7 @@ import { transformSync } from 'esbuild';
 import * as model from '../src/ui/ui-model.ts';
 const source = readFileSync(new URL('../src/ui/work-pages.tsx', import.meta.url), 'utf8');
 const jsx = (type, props) => ({ type, props });
+const draftPanelStub = (props) => jsx('draft-panel', props);
 const shared = {
   UiModal: ({ title, children, onClose }) =>
     jsx('section', {
@@ -46,6 +47,7 @@ function harness(name, snapshot = model.unavailableSnapshot, props = {}) {
           },
         };
       if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
+      if (id === './schedule-draft-panel.tsx') return { ScheduleDraftPanel: draftPanelStub };
       if (id === './ui-model.js') return model;
       if (id === './ui-shared.tsx') return shared;
       throw Error(`unexpected module ${id}`);
@@ -261,7 +263,7 @@ test('all work pages remain within the unchanged bounded TSX import grammar', as
   const { sourceImports } = await import('../scripts/check-module-graph.mjs');
   assert.deepEqual(
     (await sourceImports(source, 'tsx')).map((entry) => entry.specifier),
-    ['react', './ui-model.js', './ui-model.js', './ui-shared.tsx'],
+    ['react', './schedule-draft-panel.tsx', './ui-model.js', './ui-model.js', './ui-shared.tsx'],
   );
 });
 
@@ -413,4 +415,32 @@ test('workflow category bands and subgroup badges match the static catalogue; ca
   );
   assert.equal(nodes(calendar, (n) => n.props?.className === 'notice warn').length, 0);
   assert.ok(text(calendar).includes('Chưa triển khai dịch vụ'));
+});
+
+test('Setup passes local and external selection context to unsaved preview without table or save authority', () => {
+  const port = { preview: async () => '', cancel() {} };
+  const props = {
+    selectedDeviceId: 'device-a',
+    selectedWorkflowId: 'fb-page-video',
+    scheduleDraft: port,
+  };
+  const h = harness('SetupPage', model.unavailableSnapshot, props);
+  let panel = nodes(h.render(), (n) => n.type === 'draft-panel')[0];
+  assert.equal(panel.props.port, port);
+  const first = JSON.parse(panel.props.context);
+  assert.equal(first[0], 'device-a');
+  assert.equal(first[1], 'fb-page-video');
+  props.selectedDeviceId = 'device-b';
+  props.selectedWorkflowId = 'fb-page-photo';
+  panel = nodes(h.render(), (n) => n.type === 'draft-panel')[0];
+  assert.equal(JSON.parse(panel.props.context)[0], 'device-b');
+  assert.equal(JSON.parse(panel.props.context)[1], 'fb-page-photo');
+  const tree = h.render();
+  nodes(tree, (n) => n.props?.id === 'setup-network')[0].props.onChange({
+    target: { value: 'youtube' },
+  });
+  panel = nodes(h.render(), (n) => n.type === 'draft-panel')[0];
+  assert.equal(JSON.parse(panel.props.context)[2], 'youtube');
+  button(h.render(), 'Lập lịch hàng loạt').props.onClick();
+  assert.deepEqual(h.events, [['unavailable', 'schedule']]);
 });
