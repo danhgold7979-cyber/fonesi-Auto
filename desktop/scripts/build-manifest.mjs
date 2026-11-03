@@ -176,6 +176,7 @@ export const inputs = [
   'src/preload.ts',
   'src/renderer.tsx',
   'src/ui/icon-data.ts',
+  'src/ui/fleet-health.ts',
   'src/ui/primary-pages.tsx',
   'src/ui/social-data.ts',
   'src/ui/tile-zoom.ts',

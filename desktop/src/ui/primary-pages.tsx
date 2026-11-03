@@ -1,3 +1,4 @@
+import { readFleetHealth } from './fleet-health.js';
 import { useState } from 'react';
 import { UI_EXPORT_ACTION, type PageProps } from './ui-model.js';
 import { UnavailableButton, EmptyPanel, PageHeader, StatCard } from './ui-shared.tsx';
@@ -367,10 +368,13 @@ export function TrackingPage({
   selectedDeviceId,
   onFocusDevice,
 }: PageProps) {
+  const health = readFleetHealth(snapshot);
+  const accountScopeKnown = snapshot.status === 'READY' && snapshot.provenance === 'SYNTHETIC_TEST';
   const [network, setNetwork] = useState('facebook');
   const [query, setQuery] = useState('');
   const [accountId, setAccountId] = useState('');
   const devices = snapshot.status === 'READY' ? snapshot.devices : [];
+  const healthDevices = health || accountScopeKnown ? devices : [];
   const activePhone = devices.some((device) => device.id === selectedDeviceId)
     ? selectedDeviceId
     : '';
@@ -407,7 +411,7 @@ export function TrackingPage({
         actions={
           <>
             <UnavailableButton action="metrics-refresh" onUnavailable={onUnavailable} icon="scan">
-              Check tất cả ({accounts.length})
+              Check tất cả ({accountScopeKnown ? accounts.length : '—'})
             </UnavailableButton>
             <UnavailableButton
               action={UI_EXPORT_ACTION}
@@ -477,15 +481,19 @@ export function TrackingPage({
           </div>
         </div>
         <div className="rowflex between wrap">
-          <span className="pill blue">{accounts.length} tài khoản đã tải</span>
+          <span className="pill blue">
+            {accountScopeKnown
+              ? `${accounts.length} tài khoản mẫu đã tải`
+              : 'Tài khoản: chưa có nguồn'}
+          </span>
           <span className="muted">Chỉ số chưa khả dụng · không phải quan sát trực tiếp</span>
         </div>
       </section>
       <div className="stat-grid">
         <StatCard
           label="Tài khoản trong bộ lọc"
-          value={accounts.length}
-          detail="Số bản ghi đã tải"
+          value={accountScopeKnown ? accounts.length : '—'}
+          detail="Bản ghi tài khoản trong bộ lọc; chưa có nguồn thật"
         />
         <StatCard label="Bài đăng theo dõi" detail="Chưa có dữ liệu bài đăng" />
         <StatCard label="Đã check trong phiên" detail="Dịch vụ đo chưa khả dụng" />
@@ -494,8 +502,18 @@ export function TrackingPage({
       <section className="content-card">
         <div className="rowflex between wrap">
           <b>Sức khỏe điện thoại</b>
-          <span className="muted">Thiết lập nội dung và lịch đăng theo điện thoại</span>
+          <span className="muted" data-fleet-health-scope>
+            {health
+              ? `${health.recordCount} bản ghi trong toàn bộ registry đã nhận`
+              : 'Số bản ghi: chưa khả dụng'}
+          </span>
         </div>
+        <small className="muted" data-fleet-health-source>
+          {health
+            ? `Nguồn: ${health.source} · registry ${health.registryRevision} · selection ${health.selection.revision}`
+            : 'Nguồn fleet: chưa khả dụng'}
+          {' · Thời điểm quan sát/xác minh: chưa có · Không xác định độ mới'}
+        </small>
         <div className="health-table-wrap">
           <table className="health-table tracking-device-health">
             <colgroup>
@@ -521,13 +539,15 @@ export function TrackingPage({
               </tr>
             </thead>
             <tbody>
-              {devices.map((device) => (
+              {healthDevices.map((device) => (
                 <tr key={device.id}>
                   <td>
                     <b>
                       {device.id} · {device.name}
                     </b>
-                    <small>{device.serial}</small>
+                    <small>
+                      {device.serial} · Generation {device.generation}
+                    </small>
                     <button
                       type="button"
                       className="inline-link"
@@ -553,10 +573,16 @@ export function TrackingPage({
                   <td>—</td>
                   <td>
                     <span className="pill dark">{device.status}</span>
+                    <small>
+                      Xác minh thiết bị trong registry:{' '}
+                      {health?.records.find((row) => row.deviceId === device.id)?.verification ??
+                        'UNAVAILABLE'}
+                    </small>
+                    <small>Không xác nhận đăng nhập tài khoản</small>
                   </td>
                 </tr>
               ))}
-              {devices.length === 0 ? (
+              {healthDevices.length === 0 ? (
                 <tr>
                   <td colSpan={6}>
                     <EmptyPanel
@@ -706,7 +732,7 @@ export function TrackingPage({
       <section className="content-card">
         <div className="rowflex between wrap">
           <b>Lịch sử các lần kiểm tra</b>
-          <span className="pill">0 snapshot đã tải</span>
+          <span className="pill">Snapshot: chưa có nguồn</span>
         </div>
         <EmptyPanel
           status={snapshot.status}

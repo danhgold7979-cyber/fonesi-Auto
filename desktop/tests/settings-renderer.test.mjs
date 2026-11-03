@@ -10,6 +10,7 @@ import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as contract from '../src/settings-contract.ts';
 import * as fleetContract from '../src/fleet-contract.ts';
+import * as fleetHealth from '../src/ui/fleet-health.ts';
 import * as setupContract from '../src/platform-tools-setup-contract.ts';
 const code = transformSync(readFileSync(new URL('../src/renderer.tsx', import.meta.url), 'utf8'), {
   loader: 'tsx',
@@ -131,6 +132,7 @@ function mount(
       if (name === './discovery-contract.js') return discoveryContract;
       if (name === './settings-contract.js') return contract;
       if (name === './fleet-contract.js') return fleetContract;
+      if (name === './ui/fleet-health.js') return fleetHealth;
       if (name === './platform-tools-setup-contract.js') return setupContract;
       if (name === './runtime-version-contract.js') return runtimeVersionContract;
       if (name === './ui/ui-shell.tsx') return { UiShell: 'UiShell' };

@@ -1,3 +1,4 @@
+import * as fleetHealth from '../src/ui/fleet-health.ts';
 import * as inputClient from '../src/input-interaction-client.ts';
 import * as inputContract from '../src/input-interaction-contract.ts';
 import * as associationClient from '../src/association-client.ts';
@@ -331,6 +332,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
       if (name === './discovery-contract.js') return discoveryContract;
       if (name === './settings-contract.js') return contract;
       if (name === './fleet-contract.js') return fleetContract;
+      if (name === './ui/fleet-health.js') return fleetHealth;
       if (name === './platform-tools-setup-contract.js') return setupContract;
       if (name === './ui/ui-shell.tsx') return { UiShell: 'UiShell' };
       throw Error('UNKNOWN_MODULE');

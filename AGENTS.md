@@ -248,3 +248,13 @@ catalog on `phase-09`, plus closed tests/build/CI registration. It supplies no
 registry, dispatch fence, permission or certification and has no runtime consumers.
 Renderer/visual integration and all pilot/acceptance gates remain deferred/open.
 The coordinator limits active phases to Phase07 and Phase09, preserving Phase08.
+
+## Bounded P10-06 source entry — 2026-11-03 22:34 UTC
+
+The [reviewed fleet-health entry](docs/phases/P10-FLEET-HEALTH-SOURCE-ENTRY.md)
+permits an internal captured-registry projection through existing Tracking UI on
+`phase-10`, based on exact public Phase09 `9befe4dcd936fc7b399af0e77190bb0e9a94e47d`.
+Phase07 is source-frozen; this replaces the historical Phase07/09 lane wording above.
+At most two source phases remain active. Registry verification is device-record
+metadata, not current account login or freshness. No collection, commands, export,
+metrics, runtime/native/device campaign or predecessor acceptance is added.

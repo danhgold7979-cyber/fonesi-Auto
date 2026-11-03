@@ -66,6 +66,7 @@
     "src/ui/primary-pages.tsx": {
       "role": "renderer",
       "imports": {
+        "./fleet-health.js": {"readFleetHealth":"value"},
         "react": {
           "useState": "value"
         },
@@ -199,6 +200,8 @@
         }
       }
     },
+    "src/fleet-contract.ts": {"role":"contract","imports":{}},
+    "src/ui/fleet-health.ts": {"role":"contract","imports":{"../fleet-contract.ts":{"snapshotFleetSnapshot":"value","FleetSnapshot":"type"},"./ui-model.ts":{"UiSnapshot":"type"}}},
     "src/ui/tile-zoom.ts": {
       "role": "contract",
       "imports": {}

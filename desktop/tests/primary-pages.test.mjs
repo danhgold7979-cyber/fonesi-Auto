@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
+import { readFleetHealth } from '../src/ui/fleet-health.ts';
 
 const code = transformSync(
   readFileSync(new URL('../src/ui/primary-pages.tsx', import.meta.url), 'utf8'),
@@ -50,6 +51,7 @@ function mount(name, snapshot) {
         };
       if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (id === './ui-shared.tsx') return shared;
+      if (id === './fleet-health.js') return { readFleetHealth };
       if (id === './ui-model.js') return { UI_EXPORT_ACTION: 'export' };
       throw Error('UNEXPECTED_MODULE');
     },

@@ -21,7 +21,7 @@ import { createRoot } from 'react-dom/client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { parseSettingsResponse, type PublicSettings } from './settings-contract.js';
 import { parseFleetResponse, type FleetSnapshot, type FleetSelection } from './fleet-contract.js';
-import type { UiSnapshot } from './ui/ui-model.js';
+import { projectFleetUi, createFleetRevisionGate } from './ui/fleet-health.js';
 import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
@@ -379,6 +379,7 @@ function Diagnostic() {
       setRuntimePending(false);
     }
   }
+  const fleetRevisions = useRef(createFleetRevisionGate());
   const [fleet, setFleet] = useState<FleetSnapshot | null>(null);
   const [fleetStatus, setFleetStatus] = useState('LOADING / FLEET NOT YET OBSERVED');
   const [fleetFailed, setFleetFailed] = useState(false);
@@ -403,7 +404,7 @@ function Diagnostic() {
             : await window.fleet.replaceSelection(fleet?.selection.revision ?? 0, selection);
         if (generation !== fleetGeneration.current) return;
         const response = parseFleetResponse(raw);
-        if (!response?.ok) {
+        if (!response?.ok || !fleetRevisions.current.admit(response.fleet)) {
           if (response && !response.ok) observeRevocation(response.code);
           invalidateMetadata();
           invalidateInput();
@@ -747,30 +748,11 @@ function Diagnostic() {
       }
     }
   }
-  const emptyRows = { devices: [], accounts: [], media: [], jobs: [] };
-  const fleetUi: UiSnapshot = fleetFailed
-    ? { status: 'ERROR', code: 'UNAVAILABLE', ...emptyRows }
-    : !fleet
-      ? { status: 'LOADING', ...emptyRows }
-      : fleet.availability === 'UNAVAILABLE'
-        ? {
-            status: 'UNAVAILABLE',
-            reason: fleet.reason as 'BINARY_UNAVAILABLE' | 'LIVE_DISCOVERY_UNAVAILABLE',
-            ...emptyRows,
-          }
-        : {
-            status: 'READY',
-            provenance: 'MAIN_OBSERVED',
-            ...emptyRows,
-            devices: fleet.devices.map((device) => ({
-              id: device.deviceId,
-              generation: device.generation,
-              name: device.label,
-              serial: '—',
-              status: device.state,
-              connection: 'UNKNOWN',
-            })),
-          };
+  const fleetUi = projectFleetUi(
+    fleet,
+    fleetFailed || fleetReconcile ? 'ERROR' : !fleet ? 'LOADING' : 'READY',
+    !fleetPending,
+  );
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
   const [reconcile, setReconcile] = useState(false);

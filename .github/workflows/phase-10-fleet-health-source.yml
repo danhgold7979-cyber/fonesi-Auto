@@ -1,0 +1,35 @@
+name: Phase 10 fleet health source only
+on:
+  workflow_dispatch:
+  push:
+    branches: [phase-10]
+permissions:
+  contents: read
+jobs:
+  workflow-source:
+    if: github.ref == 'refs/heads/phase-10'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Scripts-disabled restore and full source verification
+        run: |
+          Write-Output "SOURCE_HEAD=$env:GITHUB_SHA"
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Explicit unactivated workflow boundary
+        run: |
+          Write-Output 'PHASE10_SOURCE_ONLY'
+          Write-Output 'FLEET_HEALTH_CAPTURED_RECORDS_ONLY'
+          Write-Output 'VISUAL_NATIVE_NOT_RUN'
+          Write-Output 'DEVICE_HARDWARE_NOT_RUN'
+          Write-Output 'P106_CROSS_USER_UNMET_NOT_RERUN'

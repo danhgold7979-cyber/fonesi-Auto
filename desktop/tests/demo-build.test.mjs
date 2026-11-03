@@ -121,9 +121,11 @@ test('separate demo graph admits exact shared UI closure but rejects privileged 
   const widened = structuredClone(map);
   widened.modules['src/ui/ui-shell.tsx'].imports['./ui-model.js'].UiSelection = 'value';
   await assert.rejects(validateGraph(sources, widened), /BINDING_DENIED/);
-  assert.equal(
-    Object.keys(map.modules).some((name) => name.includes('fleet-')),
-    false,
+  assert.deepEqual(
+    Object.keys(map.modules)
+      .filter((name) => name.includes('fleet-'))
+      .sort(),
+    ['src/fleet-contract.ts', 'src/ui/fleet-health.ts'],
   );
   for (const prefix of [
     "import { createFleetService } from '../src/main/fleet-service.ts';\n",
