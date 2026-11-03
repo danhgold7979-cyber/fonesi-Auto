@@ -568,3 +568,12 @@ two active phases. The [reviewed manifest entry](phases/P8-MANIFEST-SOURCE-ENTRY
 records exact public development base, owned files, dependency limits and checks.
 This supersedes only the historical software-entry restriction for that pure leaf;
 no predecessor acceptance, runtime/device action or missing-result PASS follows.
+
+## Bounded Phase09 source continuation — 2026-11-03 21:40 UTC
+
+Under the user's independent-continuation direction, the coordinator replaces the
+completed bounded Phase08 lane with the [reviewed P9-10 denial source entry](phases/P9-DENIAL-SOURCE-ENTRY.md).
+Only Phase07 and Phase09 remain active. New `phase-09` starts from verified public
+`76efe43d071c8fa4566dc1abcc6f229052f56b35`; Phase08/main and history are preserved.
+The unconditional source leaf has no renderer/service/IPC/device consumer and does
+not establish runtime denial, policy approval, Phase09 acceptance or release scope.

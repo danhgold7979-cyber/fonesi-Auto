@@ -42,6 +42,7 @@ export const TEST_FILES = Object.freeze([
   'tests/durable-audit.test.mjs',
   'tests/durable-coordinator.test.mjs',
   'tests/durable-database.test.mjs',
+  'tests/facebook-denial-contract.test.mjs',
   'tests/fleet-audit.test.mjs',
   'tests/fleet-bridge.test.mjs',
   'tests/fleet-client.test.mjs',

@@ -1,5 +1,9 @@
 # PHASE-09 — Facebook capability pilot
 
+> Current bounded development entry: [P9-10 unconditional denial metadata](P9-DENIAL-SOURCE-ENTRY.md),
+> adopted 2026-11-03. Historical full-plan approval and pilot gates below remain open.
+> No renderer/runtime integration, policy grant or Phase acceptance follows.
+
 **Revision:** 0.2-draft · **Date:** 2026-10-30
 **Status:** DRAFT — NOT APPROVED / NOT AUTHORIZED FOR EXECUTION
 **Task status:** P9-01–P9-12 NOT_STARTED; all implementation/hardware tests NOT RUN

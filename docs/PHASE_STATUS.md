@@ -1,5 +1,23 @@
 # Phase Status — Fonesi-Auto
 
+**Phase09 — bounded P9-10 denial source:** exact existing 11 Facebook catalog IDs
+map to immutable, unconditional DISABLED decisions with distinct reason families.
+Unknown inputs fail closed without inspecting caller objects. Focused21/21 and
+quality PASS; frozen full source PASS1802/1802 + DESKTOP_SOURCE_CHECK_PASS and
+independent implementation review CLEAR. No renderer/IPC/registry/actor consumer,
+permission or pilot activity.
+Full P9-10 remains partial and Phase09 technical acceptance **0/12**.
+[Source evidence and limitations](evidence/P9-10-denial-source-2026-11-03.md).
+
+Opened `phase-09` at 2026-11-03 21:37:52 UTC from public Phase08 `76efe43d`,
+whose exact source [Windows CI41722369686](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41722369686)
+PASS1781/1781 is independently audited. This supersedes only the older
+pre-publication wording below. Phase08/main remain unchanged, with no acceptance
+or merge. Current active lanes are Phase07 and Phase09. Source-only Phase09
+publication/hosted outcome remains pending; no numerical code percentage is inferred.
+
+## Inherited Phase08 source checkpoint
+
 **Phase 08 — bounded P8-01 manifest source:** immutable unverified declarations,
 strict fixed-step requirements and exact historical version retention are locally
 implemented and independently reviewed CLEAR. Focused 28/28, foundation 109/109

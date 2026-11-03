@@ -239,3 +239,12 @@ The [reviewed P8-01 manifest entry](docs/phases/P8-MANIFEST-SOURCE-ENTRY.md)
 permits only the independent non-executing immutable declaration/version leaf on
 `phase-08` under the user’s continued-independent-work direction and maximum two
 active phases. Earlier acceptance gates stay open; no runtime or device authority.
+
+## Bounded P9-10 source entry — 2026-11-03 21:40 UTC
+
+The [reviewed denial-source entry](docs/phases/P9-DENIAL-SOURCE-ENTRY.md) permits
+only unconditional informational denial metadata for the exact existing Facebook
+catalog on `phase-09`, plus closed tests/build/CI registration. It supplies no
+registry, dispatch fence, permission or certification and has no runtime consumers.
+Renderer/visual integration and all pilot/acceptance gates remain deferred/open.
+The coordinator limits active phases to Phase07 and Phase09, preserving Phase08.

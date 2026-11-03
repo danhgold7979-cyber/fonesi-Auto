@@ -15,3 +15,5 @@ foundation/** text=auto eol=lf
 ui-reference/Fonesi-Auto-V9-UI-Reference.html text eol=lf
 # Phase 08 source-only CI fixture uses the same exact bytes on every checkout.
 .github/workflows/phase-08-workflow-source.yml text eol=lf
+# Phase 09 denial-source CI fixture retains exact reviewed bytes.
+.github/workflows/phase-09-facebook-source.yml text eol=lf
