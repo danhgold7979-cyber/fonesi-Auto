@@ -123,6 +123,7 @@ namespace Fonesi.Development.VisionBootstrap
                 QuotaPeakNonPagedPoolUsage, QuotaNonPagedPoolUsage, PagefileUsage, PeakPagefileUsage;
         }
         [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetFileInformationByHandle(SafeFileHandle file, out FILE_INFO info);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern uint GetFileType(SafeFileHandle file);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern uint GetFinalPathNameByHandle(SafeFileHandle file, StringBuilder path, uint length, uint flags);
         [DllImport("psapi.dll", SetLastError = true)] static extern bool GetProcessMemoryInfo(IntPtr process, ref MEMORY_COUNTERS info, uint length);
 
@@ -156,9 +157,11 @@ namespace Fonesi.Development.VisionBootstrap
 
         public const string CandidateRoot = @"D:\a\_temp\fonesi-p4-windows-candidate-v1";
         public const string AcquisitionRoot = @"D:\a\_temp\fonesi-p4-windows-acquisition-v1";
+        public const string EvidenceRoot = @"D:\a\_temp\fonesi-p4-materialization-evidence-v1";
         const string ParentRoot = @"D:\a\_temp";
         const string WindowsRoot = @"C:\Windows";
         static StagingCustody staging;
+        static EvidenceCustody evidence;
         public string WorkDirectory { get { return work; } }
         // 600 seconds useful work plus at most 10 seconds initial safety observation.
         // Explicit later reconciliation never authorizes more child work or a fresh retry.
@@ -216,6 +219,182 @@ namespace Fonesi.Development.VisionBootstrap
                 try { staging.Reserve(); }
                 catch { staging.Failed = true; } // return retained failed custody for explicit Release
                 return staging;
+            }
+        }
+        // Metadata export only, after all process/staging custody is reconciled. The
+        // wrapper validates closed JSON schemas and supplies held/revalidated inventory
+        // bytes. This owner never opens a caller path, traverses a tree or deletes data.
+        // Release means resource retirement; only Completed also permits an upload marker.
+        public sealed class EvidenceCustody
+        {
+            readonly VisionBootstrapProcess holder = new VisionBootstrapProcess();
+            readonly List<EvidenceDirectory> directories = new List<EvidenceDirectory>();
+            readonly Dictionary<string, EvidenceFile> files = new Dictionary<string, EvidenceFile>(StringComparer.Ordinal);
+            bool ready, failed, releaseStarted, released, completeBeforeRelease, completed;
+
+            sealed class EvidenceDirectory
+            {
+                public string Path;
+                public SafeFileHandle Handle;
+                public FILE_INFO Identity;
+            }
+            sealed class EvidenceFile
+            {
+                public FileStream Stream;
+                public FILE_INFO Identity;
+                public string Sha256;
+                public int Length;
+            }
+
+            internal EvidenceCustody() { retained.Add(holder); }
+            internal void Reserve()
+            {
+                try {
+                    // Admit fixed ancestors top-down, before creating the fresh root.
+                    HoldDirectory(@"D:\"); HoldDirectory(@"D:\a"); HoldDirectory(ParentRoot);
+                    Require(CreateDirectory(EvidenceRoot, IntPtr.Zero));
+                    HoldDirectory(EvidenceRoot);
+                    CheckOutputs(); ready = true;
+                } catch { failed = true; } // retain even a partially reserved custody
+            }
+            public bool Ready { get { lock (retained) { return ready && !failed && !releaseStarted; } } }
+            public bool Completed { get { lock (retained) { return completed; } } }
+
+            static int Limit(string name)
+            {
+                if (name == "materialization-report.json" || name == "evidence-manifest.json") return 65536;
+                if (name == "installed-inventory.json") return 16777216;
+                throw new ArgumentException("EVIDENCE_NAME_REJECTED");
+            }
+            void HoldDirectory(string path)
+            {
+                SECURITY_ATTRIBUTES security = new SECURITY_ATTRIBUTES(); security.nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES));
+                // READ_ATTRIBUTES, SHARE_READ | SHARE_WRITE, OPEN_EXISTING,
+                // BACKUP_SEMANTICS | OPEN_REPARSE_POINT, never SHARE_DELETE.
+                IntPtr raw = CreateFile(path, 0x80, 3, ref security, 3, 0x02200000, IntPtr.Zero);
+                Require(raw != InvalidHandle);
+                AdmissionLease lease = new AdmissionLease(raw, null); holder.admission.Add(lease);
+                SafeFileHandle handle = new SafeFileHandle(raw, false); lease.Resource = handle;
+                FILE_INFO info; Require(GetFileInformationByHandle(handle, out info));
+                if (GetFileType(handle) != 1 || (info.Attributes & 0x400) != 0 || (info.Attributes & 0x10) == 0)
+                    throw new IOException("EVIDENCE_DIRECTORY_REJECTED");
+                CheckFinal(handle, path);
+                directories.Add(new EvidenceDirectory { Path = path, Handle = handle, Identity = info });
+            }
+            static bool SameIdentity(FILE_INFO before, FILE_INFO after)
+            {
+                return before.Volume == after.Volume && before.IndexHigh == after.IndexHigh && before.IndexLow == after.IndexLow &&
+                    before.Attributes == after.Attributes && before.Links == after.Links;
+            }
+            static bool SameFile(FILE_INFO before, FILE_INFO after)
+            {
+                return SameIdentity(before, after) && before.SizeHigh == after.SizeHigh && before.SizeLow == after.SizeLow &&
+                    before.Write.dwHighDateTime == after.Write.dwHighDateTime && before.Write.dwLowDateTime == after.Write.dwLowDateTime;
+            }
+            static string Digest(byte[] bytes)
+            {
+                using (SHA256 hash = SHA256.Create())
+                    return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+            }
+            static string Digest(FileStream file)
+            {
+                file.Position = 0;
+                using (SHA256 hash = SHA256.Create())
+                    return BitConverter.ToString(hash.ComputeHash(file)).Replace("-", "").ToLowerInvariant();
+            }
+            static FILE_INFO InspectFile(string name, FileStream file, int length)
+            {
+                FILE_INFO info; Require(GetFileInformationByHandle(file.SafeFileHandle, out info));
+                CheckFinal(file.SafeFileHandle, Path.Combine(EvidenceRoot, name));
+                if (GetFileType(file.SafeFileHandle) != 1 || (info.Attributes & 0x450) != 0 || info.Links != 1 ||
+                    info.SizeHigh != 0 || info.SizeLow != length || file.Length != length || length > Limit(name))
+                    throw new IOException("EVIDENCE_FILE_REJECTED");
+                return info;
+            }
+            void CheckOutputs()
+            {
+                foreach (EvidenceDirectory directory in directories) {
+                    FILE_INFO current; Require(GetFileInformationByHandle(directory.Handle, out current));
+                    CheckFinal(directory.Handle, directory.Path);
+                    if (!SameIdentity(directory.Identity, current)) throw new IOException("EVIDENCE_DIRECTORY_CHANGED");
+                }
+                int entries = 0;
+                foreach (string path in Directory.EnumerateFileSystemEntries(EvidenceRoot)) {
+                    string name = Path.GetFileName(path);
+                    if (++entries > 3 || !files.ContainsKey(name) || path != Path.Combine(EvidenceRoot, name))
+                        throw new IOException("EVIDENCE_OUTPUT_REJECTED");
+                }
+                if (entries != files.Count) throw new IOException("EVIDENCE_OUTPUT_MISSING");
+                foreach (KeyValuePair<string, EvidenceFile> pair in files) {
+                    EvidenceFile file = pair.Value;
+                    FILE_INFO before = InspectFile(pair.Key, file.Stream, file.Length);
+                    string digest = Digest(file.Stream);
+                    FILE_INFO after = InspectFile(pair.Key, file.Stream, file.Length);
+                    if (!SameFile(file.Identity, before) || !SameFile(before, after) || digest != file.Sha256)
+                        throw new IOException("EVIDENCE_FILE_CHANGED");
+                }
+            }
+            public string Write(string name, byte[] bytes)
+            {
+                lock (retained) {
+                    if (!Ready) throw new InvalidOperationException("EVIDENCE_NOT_READY");
+                    try {
+                        int maximum = Limit(name);
+                        if (bytes == null || bytes.Length == 0 || bytes.Length > maximum || files.ContainsKey(name))
+                            throw new ArgumentException("EVIDENCE_BYTES_REJECTED");
+                        // No caller-owned array survives admission. The returned digest is
+                        // independently computed from resulting flushed, held file bytes.
+                        byte[] owned = (byte[])bytes.Clone(); string expected = Digest(owned);
+                        CheckOutputs();
+                        SECURITY_ATTRIBUTES security = new SECURITY_ATTRIBUTES(); security.nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES));
+                        // READ | WRITE, SHARE_READ only, CREATE_NEW, OPEN_REPARSE_POINT.
+                        IntPtr raw = CreateFile(Path.Combine(EvidenceRoot, name), 0xc0000000, 1, ref security, 1, 0x00200000, IntPtr.Zero);
+                        Require(raw != InvalidHandle);
+                        AdmissionLease lease = new AdmissionLease(raw, null); holder.admission.Add(lease);
+                        FileStream file = new FileStream(new SafeFileHandle(raw, false), FileAccess.ReadWrite, 65536, false);
+                        lease.Resource = file;
+                        InspectFile(name, file, 0);
+                        file.Write(owned, 0, owned.Length); file.Flush(true);
+                        FILE_INFO before = InspectFile(name, file, owned.Length);
+                        string digest = Digest(file);
+                        FILE_INFO after = InspectFile(name, file, owned.Length);
+                        if (!SameFile(before, after) || digest != expected) throw new IOException("EVIDENCE_WRITE_CHANGED");
+                        files.Add(name, new EvidenceFile { Stream = file, Identity = after, Sha256 = digest, Length = owned.Length });
+                        CheckOutputs(); return digest;
+                    } catch { failed = true; ready = false; throw; }
+                }
+            }
+            public bool Release()
+            {
+                lock (retained) {
+                    if (released) return true;
+                    if (admissionReserved || staging != null || retained.Count != 1 || !retained.Contains(holder)) return false;
+                    ready = false;
+                    if (!releaseStarted) {
+                        releaseStarted = true;
+                        try {
+                            if (!failed) {
+                                CheckOutputs();
+                                completeBeforeRelease = files.ContainsKey("materialization-report.json") && files.ContainsKey("evidence-manifest.json");
+                            }
+                        } catch { failed = true; }
+                    }
+                    // A partial close may expose already closed outputs. A later close
+                    // retry retires custody but cannot promote that export to Completed.
+                    try { if (!holder.ReleaseAdmission()) { failed = true; return false; } }
+                    catch { failed = true; return false; }
+                    released = true; completed = completeBeforeRelease && !failed;
+                    retained.Remove(holder); evidence = null; return true;
+                }
+            }
+        }
+        public static EvidenceCustody ReserveEvidence()
+        {
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT || IntPtr.Size != 8 ||
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows) != WindowsRoot) throw new ArgumentException("EVIDENCE_REJECTED");
+            lock (retained) {
+                if (evidence != null || staging != null || admissionReserved || retained.Count != 0) throw new InvalidOperationException("SLOT_RESERVED");
+                evidence = new EvidenceCustody(); evidence.Reserve(); return evidence;
             }
         }
         // Trusted manifest bootstrap only: no caller executable, argv, cwd or env.

@@ -371,3 +371,145 @@ test('host staging source: public bundle paths return a defensive clone', () => 
   );
   assert.doesNotMatch(source, /public static (?:readonly )?string\[\] BundleSourceNames/);
 });
+
+// Narrow metadata export policy checks. Actual WinAPI custody remains gated.
+const evidence = section(
+  'public sealed class EvidenceCustody',
+  'static readonly string[] HostSourceNames',
+);
+const materializer = readFileSync(
+  new URL('../verification/Invoke-VisionMaterialization.ps1', import.meta.url),
+  'utf8',
+);
+const pureMetadataTests = readFileSync(
+  new URL('../verification/Test-VisionMaterializationTransport.ps1', import.meta.url),
+  'utf8',
+);
+test('metadata source: fixed root and only three output names and caps', () => {
+  includes('EvidenceRoot = @"D:\\a\\_temp\\fonesi-p4-materialization-evidence-v1"');
+  for (const name of [
+    'materialization-report.json',
+    'installed-inventory.json',
+    'evidence-manifest.json',
+  ])
+    assert.ok(evidence.includes(`"${name}"`));
+  assert.ok(evidence.includes('return 65536;'));
+  assert.ok(evidence.includes('return 16777216;'));
+  assert.ok(evidence.includes('EVIDENCE_NAME_REJECTED'));
+});
+test('metadata source: custody registered before native reservation', () => {
+  assert.ok(evidence.includes('internal EvidenceCustody() { retained.Add(holder); }'));
+  assert.ok(
+    evidence.includes(
+      'HoldDirectory(@"D:\\"); HoldDirectory(@"D:\\a"); HoldDirectory(ParentRoot);',
+    ),
+  );
+  assert.ok(evidence.includes('Require(CreateDirectory(EvidenceRoot, IntPtr.Zero));'));
+});
+test('metadata source: no child process or recursive transfer interface', () => {
+  assert.doesNotMatch(
+    evidence,
+    /Process\.Start|CreateProcess|File\.Copy|Directory\.Delete|File\.Delete|ExtractToDirectory/,
+  );
+  assert.ok(evidence.includes('Path.Combine(EvidenceRoot, name)'));
+});
+test('metadata source: CREATE_NEW and no write/delete share for exact outputs', () => {
+  assert.ok(
+    evidence.includes(
+      'CreateFile(Path.Combine(EvidenceRoot, name), 0xc0000000, 1, ref security, 1, 0x00200000, IntPtr.Zero)',
+    ),
+  );
+  assert.ok(evidence.includes('holder.admission.Add(lease)'));
+});
+test('metadata source: cloned bytes independently flushed hashed and compared', () => {
+  for (const text of [
+    'byte[] owned = (byte[])bytes.Clone()',
+    'file.Flush(true)',
+    'string digest = Digest(file)',
+    'digest != expected',
+    'EVIDENCE_WRITE_CHANGED',
+  ])
+    assert.ok(evidence.includes(text));
+});
+test('metadata source: exact final path and file metadata revalidated', () => {
+  for (const text of [
+    'CheckFinal(file.SafeFileHandle, Path.Combine(EvidenceRoot, name))',
+    'SameFile(file.Identity, before)',
+    'SameFile(before, after)',
+    'digest != file.Sha256',
+  ])
+    assert.ok(evidence.includes(text));
+});
+test('metadata source: unknown directory entries refuse instead of being ignored', () => {
+  assert.ok(evidence.includes('++entries > 3 || !files.ContainsKey(name)'));
+  assert.ok(evidence.includes('Directory.EnumerateFileSystemEntries(EvidenceRoot)'));
+});
+test('metadata source: resource retirement and completed export remain distinct', () => {
+  assert.ok(
+    evidence.includes(
+      'files.ContainsKey("materialization-report.json") && files.ContainsKey("evidence-manifest.json")',
+    ),
+  );
+  assert.ok(evidence.includes('completed = completeBeforeRelease && !failed'));
+  assert.ok(evidence.includes('if (!holder.ReleaseAdmission()) { failed = true; return false; }'));
+});
+test('metadata wrapper: readiness requires native release and completion', () => {
+  assert.ok(materializer.includes('if(-not $evidenceReleased -or -not $evidence.Completed)'));
+  assert.ok(
+    materializer.includes(
+      "if($evidenceReady){Write-Output 'VISION_MATERIALIZATION_EVIDENCE_READY'}",
+    ),
+  );
+  assert.ok(
+    materializer.indexOf('$evidenceReleased=$evidence.Release()') <
+      materializer.indexOf('$evidenceReady=$true'),
+  );
+});
+test('metadata wrapper: seven named profiles remain distinct from pending/final observations', () => {
+  for (const name of [
+    'Prepare',
+    'Bundle',
+    'CreatePreprocess',
+    'CreateOcr',
+    'InstallPreprocess',
+    'InstallOcr',
+    'Freeze',
+  ])
+    assert.ok(materializer.includes(`'${name}'`));
+  for (const observation of ['PENDING', 'TERMINAL', 'FINAL_RECONCILIATION'])
+    assert.ok(materializer.includes(`'${observation}'`));
+  assert.ok(materializer.includes('$terminal.Count -ne 7 -or $finals.Count -ne 7'));
+});
+test('metadata wrapper: inventory captured from retained stream with exact digest and cap', () => {
+  for (const token of [
+    '$stream.Length -gt 16777216',
+    '(HashBytes $bytes) -cne $expected',
+    'ReadHeldInventory $guards[$guards.Count-1] $frozen.reportSha256',
+  ])
+    assert.ok(materializer.includes(token));
+});
+test('metadata wrapper: failure discards inventory and never becomes successful export outcome', () => {
+  assert.ok(materializer.includes('}else{$inventory=$null}'));
+  assert.ok(materializer.includes("$report.failure='EVIDENCE_EXPORT_UNAVAILABLE'"));
+  assert.ok(materializer.includes('if($failed){exit 1}'));
+});
+test('metadata wrapper: closed report fields and bounded serialized report manifest', () => {
+  for (const token of [
+    '$value.Count -ne $keys.Count',
+    '$key -cnotin $keys',
+    '$bytes.Length -gt 65536',
+    '$manifestBytes.Length -gt 65536',
+    "candidateInference='NOT_RUN'",
+  ])
+    assert.ok(materializer.includes(token));
+});
+test('metadata tests: pure AST functions and twenty-seven bounded evidence cases', () => {
+  assert.ok(
+    pureMetadataTests.includes(
+      "@('HostReceipt','HashBytes','ReadHeldInventory','ClosedMetadata','MetadataInteger','MetadataHash','MetadataSchema','EvidencePayload')",
+    ),
+  );
+  assert.ok(pureMetadataTests.includes('$evidenceCount -ne 27'));
+  assert.ok(pureMetadataTests.includes('VISION_MATERIALIZER_EVIDENCE_27_PASS'));
+  assert.doesNotMatch(pureMetadataTests, /ReserveEvidence\(|ReviewedMaterialization|Add-Type/);
+});

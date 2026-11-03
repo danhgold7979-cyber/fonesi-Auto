@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_materialization:
+        description: 'Reviewed fixed Windows materialization and metadata only; no model inference or device'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -66,8 +71,52 @@ jobs:
           Write-Output 'WINDOWS_OCR_MODEL_NOT_RUN'
           Write-Output 'VI_REQUIRED_UNAVAILABLE'
           Write-Output 'DEVICE_HARDWARE_NOT_RUN'
+      - name: Validate mutually exclusive reviewed vision campaigns
+        id: validate_vision_campaign
+        env:
+          VISION_MANAGED_REQUESTED: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[vision-managed]')) }}
+          VISION_MATERIALIZATION_REQUESTED: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_materialization == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[vision-materialize]')) }}
+          VISION_PUSH: ${{ github.event_name == 'push' }}
+          VISION_REF: ${{ github.ref }}
+          VISION_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          foreach($value in @($env:VISION_MANAGED_REQUESTED,$env:VISION_MATERIALIZATION_REQUESTED,$env:VISION_PUSH)){if($value -cnotin @('true','false')){throw 'VISION_CAMPAIGN_FLAGS_REJECTED'}}
+          if($env:VISION_MANAGED_REQUESTED -ceq 'true' -and $env:VISION_MATERIALIZATION_REQUESTED -ceq 'true'){throw 'VISION_CAMPAIGNS_MUTUALLY_EXCLUSIVE'}
+          if(($env:VISION_MANAGED_REQUESTED -ceq 'true' -or $env:VISION_MATERIALIZATION_REQUESTED -ceq 'true') -and $env:VISION_REF -cne 'refs/heads/phase-04'){throw 'VISION_CAMPAIGN_BRANCH_REJECTED'}
+          if($env:VISION_MATERIALIZATION_REQUESTED -ceq 'true' -and $env:VISION_PUSH -ceq 'true'){
+            if([Text.Encoding]::UTF8.GetByteCount($env:VISION_COMMIT_MESSAGE) -gt 65536){throw 'VISION_COMMIT_MESSAGE_LIMIT'}
+            if(-not $env:VISION_COMMIT_MESSAGE.Contains('[vision-materialize]')){throw 'VISION_MATERIALIZATION_MARKER_REJECTED'}
+          }
       - name: Explicit reviewed synthetic native ownership cases, never OCR runtime
-        if: github.ref == 'refs/heads/phase-04' && ((github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[vision-managed]')))
+        if: github.ref == 'refs/heads/phase-04' && ((github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[vision-managed]'))) && steps.validate_vision_campaign.outcome == 'success'
         run: |
           & desktop/verification/Invoke-VisionQualification.ps1 -Mode Managed
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Explicit reviewed fixed Windows materialization, never model inference
+        id: vision_materialization
+        if: github.ref == 'refs/heads/phase-04' && ((github.event_name == 'workflow_dispatch' && inputs.run_materialization == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[vision-materialize]'))) && steps.validate_vision_campaign.outcome == 'success'
+        run: |
+          $version=(& npm --version).Trim()
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          if($version -cnotin @('11.9.0','11.19.1')){throw 'MATERIALIZATION_NPM_REJECTED'}
+          $evidenceReady=0
+          'attempted=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          & desktop/verification/Invoke-VisionMaterialization.ps1 -ReviewedMaterialization -NpmVersion $version | ForEach-Object {
+            Write-Output $_
+            if($_ -is [string] -and $_ -ceq 'VISION_MATERIALIZATION_EVIDENCE_READY'){$evidenceReady++}
+          }
+          $materializationExit=$LASTEXITCODE
+          if($evidenceReady -eq 1){'evidence_ready=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append}
+          if($materializationExit -ne 0){exit $materializationExit}
+          if($evidenceReady -ne 1){throw 'MATERIALIZATION_EVIDENCE_UNAVAILABLE'}
+      - name: Retain only validated materialization metadata, including failure reports
+        if: always() && steps.validate_vision_campaign.outcome == 'success' && steps.vision_materialization.outputs.attempted == 'true' && steps.vision_materialization.outputs.evidence_ready == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-04-materialization-evidence-v1
+          path: |
+            D:\a\_temp\fonesi-p4-materialization-evidence-v1\materialization-report.json
+            D:\a\_temp\fonesi-p4-materialization-evidence-v1\installed-inventory.json
+            D:\a\_temp\fonesi-p4-materialization-evidence-v1\evidence-manifest.json
+          if-no-files-found: error
+          retention-days: 14

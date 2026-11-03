@@ -8,7 +8,7 @@ $desktop=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $checkout=[IO.Path]::GetFullPath((Join-Path $desktop '..'))
 $guards=New-Object 'System.Collections.Generic.List[IDisposable]'
 $owners=New-Object 'System.Collections.Generic.List[object]'
-$before=@{};$lease=$null;$failed=$false;$compiledRoot=$null;$failureStage='ADMISSION'
+$before=@{};$lease=$null;$failed=$false;$compiledRoot=$null;$failureStage='ADMISSION';$inventoryBytes=$null;$evidence=$null;$evidenceReady=$false
 $report=[ordered]@{version=1;scope='WINDOWS_MATERIALIZATION_ONLY';hostTrust='EXISTING_HOSTED_CI_TOOLCHAIN';compiled=$false;sourceOwnerSha256=$null;compiledOwnerSha256=$null;compilerExecutableSha256=$null;hostVersion=$null;hostExecutableSha256=$null;hostPathPolicy='OBSERVED_CANONICAL_RUNNER_TOOL_CACHE';hostPrerequisites=@();hostPrerequisitesScope='STATIC_ONLY_NOT_RUNTIME_ADMISSION';runtimeFiles=$null;runtimeBytes=$null;stages=@();installedInventorySha256=$null;retired=$true;sourceUnchanged=$false;passed=$false;candidateInference='NOT_RUN';failure=$null;failureStage=$null;hostDiagnostic=$null}
 function Hash([string]$path){return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()}
 function Hold([string]$path,[long]$cap){
@@ -19,14 +19,15 @@ function Hold([string]$path,[long]$cap){
 }
 function Dictionary(){return ,(New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal))}
 function NativeSummary($r){return [ordered]@{status=$r.Status;retired=$r.Retired;exitCode=$r.ExitCode;stdoutBytes=$r.Stdout.Length;stderrBytes=$r.Stderr.Length;stdoutOverflow=$r.StdoutOverflow;stderrOverflow=$r.StderrOverflow;elapsedMilliseconds=$r.ElapsedMilliseconds}}
-function WaitOwned($owner){
- $script:owners.Add($owner);$r=$owner.Begin();$watch=[Diagnostics.Stopwatch]::StartNew()
+function WaitOwned($owner,[string]$profile){
+ if($profile -cnotin @('Prepare','Bundle','CreatePreprocess','CreateOcr','InstallPreprocess','InstallOcr','Freeze')){throw 'PROFILE_REJECTED'}
+ $script:owners.Add([pscustomobject]@{owner=$owner;profile=$profile});$r=$owner.Begin();$watch=[Diagnostics.Stopwatch]::StartNew()
  while(-not $r.Retired -and $watch.ElapsedMilliseconds -lt 610000){
   if($r.Status -match 'UNCERTAIN|UNRETIRED'){break}
   Start-Sleep -Milliseconds 10;$r=$owner.Poll()
  }
- if(-not $r.Retired){$script:report.stages+=@([ordered]@{pending=NativeSummary $r});$r=$owner.Reconcile(10000)}
- $script:report.stages+=@(NativeSummary $r)
+ if(-not $r.Retired){$script:report.stages+=@([ordered]@{profile=$profile;observation='PENDING';result=NativeSummary $r});$r=$owner.Reconcile(10000)}
+ $script:report.stages+=@([ordered]@{profile=$profile;observation='TERMINAL';result=NativeSummary $r})
  if(-not $r.Retired){$script:report.retired=$false;throw 'OWNERSHIP_PENDING'}
  if($r.Status -cne 'SUCCESS' -or $r.ExitCode -ne 0 -or $r.StdoutOverflow -or $r.StderrOverflow){
   if($script:failureStage -cin @('HOST_PREPARE','HOST_FREEZE') -and $r.Stderr.Length -le 512){
@@ -36,6 +37,88 @@ function WaitOwned($owner){
  }
  return $r
 }
+function HashBytes([byte[]]$bytes){
+ $sha=[Security.Cryptography.SHA256]::Create()
+ try{return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+}
+function ReadHeldInventory([IO.Stream]$stream,[string]$expected){
+ if(-not $stream.CanRead -or -not $stream.CanSeek -or $stream.Length -lt 2 -or $stream.Length -gt 16777216 -or $expected -cnotmatch '^[0-9a-f]{64}$'){throw 'INVENTORY_CAPTURE_REJECTED'}
+ $bytes=New-Object byte[] ([int]$stream.Length);$stream.Position=0;$offset=0
+ while($offset -lt $bytes.Length){$read=$stream.Read($bytes,$offset,$bytes.Length-$offset);if($read -le 0){throw 'INVENTORY_CAPTURE_SHORT'};$offset+=$read}
+ if($stream.Length -ne $bytes.Length -or (HashBytes $bytes) -cne $expected){throw 'INVENTORY_CAPTURE_CHANGED'}
+ return ,$bytes
+}
+function ClosedMetadata($value,[string[]]$keys){
+ if($value -isnot [Collections.IDictionary] -or $value.Count -ne $keys.Count){throw 'EVIDENCE_SCHEMA'}
+ foreach($key in $value.Keys){if($key -isnot [string] -or $key -cnotin $keys){throw 'EVIDENCE_SCHEMA'}}
+}
+function MetadataInteger($value,[long]$minimum,[long]$maximum,[bool]$nullable){
+ if($null -eq $value -and $nullable){return}
+ if(($value -isnot [int] -and $value -isnot [long]) -or $value -lt $minimum -or $value -gt $maximum){throw 'EVIDENCE_INTEGER'}
+}
+function MetadataHash($value,[bool]$nullable){
+ if($null -eq $value -and $nullable){return}
+ if($value -isnot [string] -or $value -cnotmatch '^[0-9a-f]{64}$'){throw 'EVIDENCE_HASH'}
+}
+function MetadataSchema($value){
+ $keys=@('version','scope','hostTrust','compiled','sourceOwnerSha256','compiledOwnerSha256','compilerExecutableSha256','hostVersion','hostExecutableSha256','hostPathPolicy','hostPrerequisites','hostPrerequisitesScope','runtimeFiles','runtimeBytes','stages','installedInventorySha256','retired','sourceUnchanged','passed','candidateInference','failure','failureStage','hostDiagnostic')
+ ClosedMetadata $value $keys
+ MetadataInteger $value.version 1 1 $false
+ foreach($key in @('scope','hostTrust','hostPathPolicy','hostPrerequisitesScope','candidateInference')){if($value[$key] -isnot [string]){throw 'EVIDENCE_POLICY'}}
+ if($value.scope -cne 'WINDOWS_MATERIALIZATION_ONLY' -or $value.hostTrust -cne 'EXISTING_HOSTED_CI_TOOLCHAIN' -or $value.hostPathPolicy -cne 'OBSERVED_CANONICAL_RUNNER_TOOL_CACHE' -or $value.hostPrerequisitesScope -cne 'STATIC_ONLY_NOT_RUNTIME_ADMISSION' -or $value.candidateInference -cne 'NOT_RUN'){throw 'EVIDENCE_POLICY'}
+ foreach($key in @('compiled','retired','sourceUnchanged','passed')){if($value[$key] -isnot [bool]){throw 'EVIDENCE_BOOLEAN'}}
+ foreach($key in @('sourceOwnerSha256','compiledOwnerSha256','compilerExecutableSha256','hostExecutableSha256','installedInventorySha256')){MetadataHash $value[$key] $true}
+ if($null -ne $value.hostVersion -and ($value.hostVersion -isnot [string] -or $value.hostVersion.Length -gt 20 -or $value.hostVersion -cnotmatch '^3\.12\.[0-9]+$')){throw 'EVIDENCE_HOST_VERSION'}
+ MetadataInteger $value.runtimeFiles 0 50000 $true;MetadataInteger $value.runtimeBytes 0 4294967296 $true
+ if($null -ne $value.failure -and ($value.failure -isnot [string] -or $value.failure -cnotin @('MATERIALIZATION_UNAVAILABLE','EVIDENCE_EXPORT_UNAVAILABLE'))){throw 'EVIDENCE_FAILURE'}
+ if($null -ne $value.failureStage -and ($value.failureStage -isnot [string] -or $value.failureStage -cnotin @('ADMISSION','COMPILE','RESERVE','HOST_SOURCE','HOST_PREPARE','HOST_BUNDLE','CANDIDATE_BOOTSTRAP','HOST_FREEZE','EVIDENCE'))){throw 'EVIDENCE_FAILURE_STAGE'}
+ if($value.hostPrerequisites -isnot [array] -or $value.hostPrerequisites.Count -gt 4 -or $value.stages -isnot [array] -or $value.stages.Count -gt 21){throw 'EVIDENCE_ARRAY'}
+ $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+ foreach($item in $value.hostPrerequisites){
+  ClosedMetadata $item @('name','state','sha256')
+  if($item.name -isnot [string] -or $item.state -isnot [string]){throw 'EVIDENCE_PREREQUISITE'}
+  if($item.name -cnotin @('VCOMP140.DLL','MFPlat.DLL','MF.dll','MFReadWrite.dll') -or -not $seen.Add($item.name)){throw 'EVIDENCE_PREREQUISITE'}
+  if($item.state -ceq 'OBSERVED'){MetadataHash $item.sha256 $false}elseif($item.state -ceq 'MISSING'){if($null -ne $item.sha256){throw 'EVIDENCE_PREREQUISITE'}}else{throw 'EVIDENCE_PREREQUISITE'}
+ }
+ if($null -ne $value.hostDiagnostic){
+  ClosedMetadata $value.hostDiagnostic @('stage','type')
+  if($value.hostDiagnostic.stage -isnot [string] -or $value.hostDiagnostic.type -isnot [string]){throw 'EVIDENCE_DIAGNOSTIC'}
+  if($value.hostDiagnostic.stage -cnotin @('ADMISSION','SOURCE_INDEX','PREPARE','FREEZE','REPORT') -or $value.hostDiagnostic.type -cnotin @('ValueError','OSError','TimeoutError','URLError','HTTPError','JSONDecodeError','PermissionError','FileExistsError','FileNotFoundError','ModuleNotFoundError','RuntimeError','Other')){throw 'EVIDENCE_DIAGNOSTIC'}
+ }
+ foreach($entry in $value.stages){
+  ClosedMetadata $entry @('profile','observation','result')
+  if($entry.profile -isnot [string] -or $entry.observation -isnot [string]){throw 'EVIDENCE_STAGE'}
+  if($entry.profile -cnotin @('Prepare','Bundle','CreatePreprocess','CreateOcr','InstallPreprocess','InstallOcr','Freeze') -or $entry.observation -cnotin @('PENDING','TERMINAL','FINAL_RECONCILIATION')){throw 'EVIDENCE_STAGE'}
+  $r=$entry.result;ClosedMetadata $r @('status','retired','exitCode','stdoutBytes','stderrBytes','stdoutOverflow','stderrOverflow','elapsedMilliseconds')
+  if($r.status -isnot [string]){throw 'EVIDENCE_STATUS'}
+  if($r.status -cnotin @('ADMISSION_CLEANUP_UNCERTAIN','ADMITTED','CANCELLED','DESCENDANT_UNRETIRED','EXIT_QUERY_UNCERTAIN','HANDLE_CLOSE_UNCERTAIN','JOB_QUERY_UNCERTAIN','MEMORY_UNAVAILABLE','OBSERVATION_UNCERTAIN','OUTPUT_LIMIT','PIPE_FAILED','PROCESS_QUERY_UNCERTAIN','RUNNING','TERMINATION_UNCERTAIN','TIMEOUT','LAUNCH_FAILED','SUCCESS','NONZERO_EXIT')){throw 'EVIDENCE_STATUS'}
+  foreach($key in @('retired','stdoutOverflow','stderrOverflow')){if($r[$key] -isnot [bool]){throw 'EVIDENCE_BOOLEAN'}}
+  MetadataInteger $r.exitCode -2147483648 2147483647 $true
+  MetadataInteger $r.stdoutBytes 0 65536 $false;MetadataInteger $r.stderrBytes 0 65536 $false
+  MetadataInteger $r.elapsedMilliseconds 0 86400000 $false
+ }
+}
+
+function EvidencePayload($value,[byte[]]$inventory){
+ $profiles=@('Prepare','Bundle','CreatePreprocess','CreateOcr','InstallPreprocess','InstallOcr','Freeze')
+ MetadataSchema $value
+ $terminal=@();$finals=@();foreach($entry in $value.stages){
+  if($entry.profile -cnotin $profiles -or $entry.observation -cnotin @('PENDING','TERMINAL','FINAL_RECONCILIATION')){throw 'EVIDENCE_STAGE'}
+  if($entry.observation -ceq 'TERMINAL'){$terminal+=@($entry)}
+  if($entry.observation -ceq 'FINAL_RECONCILIATION'){$finals+=@($entry)}
+ }
+ if($value.passed){
+  foreach($key in @('sourceOwnerSha256','compiledOwnerSha256','compilerExecutableSha256','hostExecutableSha256','installedInventorySha256')){MetadataHash $value[$key] $false}
+  if(-not $value.compiled -or $null -eq $value.hostVersion -or $value.runtimeFiles -lt 3354 -or $value.runtimeBytes -lt 152074886 -or $value.hostPrerequisites.Count -ne 4){throw 'EVIDENCE_INCOMPLETE'}
+  if(-not $value.retired -or -not $value.sourceUnchanged -or $null -ne $value.failure -or $terminal.Count -ne 7 -or $finals.Count -ne 7 -or $null -eq $inventory){throw 'EVIDENCE_INCOMPLETE'}
+  foreach($observations in @($terminal,$finals)){for($i=0;$i -lt 7;$i++){$entry=$observations[$i];if($entry.profile -cne $profiles[$i] -or $entry.result.status -cne 'SUCCESS' -or $entry.result.exitCode -ne 0 -or -not $entry.result.retired -or $entry.result.stdoutOverflow -or $entry.result.stderrOverflow){throw 'EVIDENCE_INCOMPLETE'}}}
+  if($inventory.Length -lt 2 -or $inventory.Length -gt 16777216 -or (HashBytes $inventory) -cne $value.installedInventorySha256){throw 'EVIDENCE_INVENTORY'}
+ }else{$inventory=$null}
+ $bytes=$utf8.GetBytes(($value|ConvertTo-Json -Depth 10 -Compress)+"`n")
+ if($bytes.Length -gt 65536){throw 'EVIDENCE_REPORT_LIMIT'}
+ return [pscustomobject]@{report=$bytes;inventory=$inventory}
+}
+
 function HostReceipt([byte[]]$bytes,[string]$stage,[string]$version,[string]$exeHash){
  # This fixed Python producer emits a flat ASCII scalar object. No outer
  # PowerShell serialization-byte equality; decoded duplicate keys are rejected.
@@ -126,12 +209,12 @@ try {
  }
  $context=New-Object -TypeName 'Fonesi.Development.VisionBootstrap.VisionBootstrapProcess+HostToolContext' -ArgumentList @($toolcache,$version,$pythonHash,$checkout,$NpmVersion)
  $failureStage='HOST_PREPARE'
- $r=WaitOwned ([Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::AdmitHost($lease,[Fonesi.Development.VisionBootstrap.HostStagingProfile]::Prepare,$context,$hostHashes,$bundleHashes))
+ $r=WaitOwned ([Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::AdmitHost($lease,[Fonesi.Development.VisionBootstrap.HostStagingProfile]::Prepare,$context,$hostHashes,$bundleHashes)) 'Prepare'
  $prepared=HostReceipt $r.Stdout 'PREPARE' $version $pythonHash
  Hold (Join-Path $acquisition 'reports/prepare.json') 16777216
  if((Hash (Join-Path $acquisition 'reports/prepare.json')) -cne $prepared.reportSha256){throw 'PREPARE_REPORT_CHANGED'}
  $failureStage='HOST_BUNDLE'
- $r=WaitOwned ([Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::AdmitHost($lease,[Fonesi.Development.VisionBootstrap.HostStagingProfile]::Bundle,$context,$hostHashes,$bundleHashes))
+ $r=WaitOwned ([Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::AdmitHost($lease,[Fonesi.Development.VisionBootstrap.HostStagingProfile]::Bundle,$context,$hostHashes,$bundleHashes)) 'Bundle'
  $candidateHashes=Dictionary
  foreach($member in (Get-Content -LiteralPath (Join-Path $hostSource 'windows_python_members.json') -Raw|ConvertFrom-Json)){$candidateHashes.Add($member.path,$member.sha256)}
  foreach($name in @('preprocess_worker.py','ocr_windows_worker.py','ocr_evaluation_metrics.py','vision-qualification-fixture.mjs')){$p=Join-Path $root ('source/'+$name);Hold $p 1048576;$candidateHashes.Add('source/'+$name,$before[$p])}
@@ -154,13 +237,16 @@ try {
    foreach($name in @('pyvenv.cfg','Scripts/python.exe','Scripts/pythonw.exe','Scripts/Activate.ps1','Scripts/activate','Scripts/activate.fish','Scripts/activate.bat','Scripts/deactivate.bat')){$relative=$target+'/'+$name;$candidateHashes[$relative]=Hash (Join-Path $root $relative)}
   }
   $enum=[Enum]::Parse([Fonesi.Development.VisionBootstrap.BootstrapProfile],$bootstrapProfile)
-  $r=WaitOwned ([Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::Admit($lease,$enum,$candidateHashes,$acquisitionHashes))
+  $r=WaitOwned ([Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::Admit($lease,$enum,$candidateHashes,$acquisitionHashes)) $bootstrapProfile
  }
  $failureStage='HOST_FREEZE'
- $r=WaitOwned ([Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::AdmitHost($lease,[Fonesi.Development.VisionBootstrap.HostStagingProfile]::Freeze,$context,$hostHashes,$bundleHashes))
+ $r=WaitOwned ([Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::AdmitHost($lease,[Fonesi.Development.VisionBootstrap.HostStagingProfile]::Freeze,$context,$hostHashes,$bundleHashes)) 'Freeze'
  $frozen=HostReceipt $r.Stdout 'FREEZE' $version $pythonHash
  Hold (Join-Path $acquisition 'reports/installed-inventory.json') 16777216
  if((Hash (Join-Path $acquisition 'reports/installed-inventory.json')) -cne $frozen.reportSha256){throw 'FREEZE_REPORT_CHANGED'}
+ # Exact bytes from held/hash-bound trusted Freeze producer: inventory_tree +
+ # validate_inventory enforce closed relative path/hash rows before this capture.
+ $inventoryBytes=ReadHeldInventory $guards[$guards.Count-1] $frozen.reportSha256
  if(-not $lease.Ready){throw 'OVERALL_DEADLINE'}
  foreach($name in @('VCOMP140.DLL','MFPlat.DLL','MF.dll','MFReadWrite.dll')){
   $path=Join-Path 'C:/Windows/System32' $name
@@ -173,12 +259,37 @@ try {
  $report.passed=$true
 }catch{$failed=$true;$report.failure='MATERIALIZATION_UNAVAILABLE';$report.failureStage=$failureStage}
 finally{
- foreach($owner in $owners){try{$r=$owner.Poll();if(-not $r.Retired){$r=$owner.Cancel();if(-not $r.Retired){$r=$owner.Reconcile(10000)}};if(-not $r.Retired){$report.retired=$false}}catch{$report.retired=$false}}
+ foreach($owned in $owners){$owner=$owned.owner;try{$r=$owner.Poll();if(-not $r.Retired){$r=$owner.Cancel();if(-not $r.Retired){$r=$owner.Reconcile(10000)}};if(-not $r.Retired){$report.retired=$false};$report.stages+=@([ordered]@{profile=$owned.profile;observation='FINAL_RECONCILIATION';result=NativeSummary $r})}catch{$report.retired=$false}}
  if($null -ne $lease){try{if(-not $lease.Release()){$report.retired=$false}}catch{$report.retired=$false}}
  try{$report.sourceUnchanged=$true;foreach($p in $before.Keys){if((Hash $p) -cne $before[$p]){$report.sourceUnchanged=$false}}}catch{$report.sourceUnchanged=$false}
  foreach($guard in $guards){try{$guard.Dispose()}catch{$report.retired=$false}}
  if(-not $report.retired -or -not $report.sourceUnchanged){$failed=$true;$report.passed=$false}
  if($failed){$report.passed=$false}
- $report|ConvertTo-Json -Depth 8 -Compress
+ try{
+  $payload=EvidencePayload $report $inventoryBytes
+  if($ReviewedMaterialization -and $report.compiled){
+   $evidence=[Fonesi.Development.VisionBootstrap.VisionBootstrapProcess]::ReserveEvidence()
+   if(-not $evidence.Ready){throw 'EVIDENCE_ROOT_UNAVAILABLE'}
+   $items=@()
+   $digest=$evidence.Write('materialization-report.json',$payload.report)
+   $items+=@([ordered]@{name='materialization-report.json';bytes=$payload.report.Length;sha256=$digest})
+   if($null -ne $payload.inventory){$digest=$evidence.Write('installed-inventory.json',$payload.inventory);$items+=@([ordered]@{name='installed-inventory.json';bytes=$payload.inventory.Length;sha256=$digest})}
+   $manifest=[ordered]@{version=1;scope='WINDOWS_MATERIALIZATION_METADATA_ONLY';candidateInference='NOT_RUN';files=$items}|ConvertTo-Json -Depth 5 -Compress
+   $manifestBytes=$utf8.GetBytes($manifest+"`n")
+   if($manifestBytes.Length -gt 65536){throw 'EVIDENCE_MANIFEST_LIMIT'}
+   $null=$evidence.Write('evidence-manifest.json',$manifestBytes)
+   $evidenceReleased=$evidence.Release()
+   if(-not $evidenceReleased -or -not $evidence.Completed){throw 'EVIDENCE_RELEASE_UNCERTAIN'}
+   $evidenceReady=$true
+  }
+ }catch{$failed=$true;$report.passed=$false;$report.failure='EVIDENCE_EXPORT_UNAVAILABLE';$report.failureStage='EVIDENCE'}
+ finally{if($null -ne $evidence -and -not $evidenceReady){try{if(-not $evidence.Release()){$report.retired=$false}}catch{$report.retired=$false}}}
+ try{
+  MetadataSchema $report
+  $final=$utf8.GetBytes(($report|ConvertTo-Json -Depth 10 -Compress)+"`n")
+  if($final.Length -gt 65536){throw 'REPORT_LIMIT'}
+  Write-Output ($utf8.GetString($final).TrimEnd("`n"))
+ }catch{$failed=$true;$evidenceReady=$false;Write-Output '{"version":1,"scope":"WINDOWS_MATERIALIZATION_ONLY","passed":false,"retired":false,"failure":"REPORT_SCHEMA_UNAVAILABLE","candidateInference":"NOT_RUN"}'}
+ if($evidenceReady){Write-Output 'VISION_MATERIALIZATION_EVIDENCE_READY'}
 }
 if($failed){exit 1}

@@ -248,6 +248,7 @@ test('Windows workflow compiles by default and keeps actual native ownership exp
     assert.match(s, /persist-credentials: false/);
     assert.match(s, /runs-on: windows-2022\n {4}timeout-minutes: 15/);
     assert.match(s, /run_native_ownership:[\s\S]*?default: false/);
+    assert(!s.includes('default: true'));
     assert.ok(
       s.includes(
         "if: github.ref == 'refs/heads/phase-04' && ((github.event_name == 'workflow_dispatch' && inputs.run_native_ownership == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[vision-managed]')))",
@@ -257,7 +258,10 @@ test('Windows workflow compiles by default and keeps actual native ownership exp
     assert.match(s, /run_vision_source_tests.py/);
     assert(!s.includes('-Mode Runtime'));
     assert(!s.includes('pip install'));
-    assert(!s.includes('upload-artifact'));
+    assert.match(s, /steps\.validate_vision_campaign\.outcome == 'success'/);
+    assert.match(s, /steps\.vision_materialization\.outputs\.evidence_ready == 'true'/);
+    assert.match(s, /actions\/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f/);
+    assert(!s.includes('fonesi-p4-windows-candidate-v1/**'));
     assert.match(s, /WINDOWS_OCR_MODEL_NOT_RUN/);
   }
   closed(raw);
@@ -276,13 +280,16 @@ test('Windows workflow compiles by default and keeps actual native ownership exp
     assert.equal(admitted(...args), false);
 
   for (const changed of [
-    raw.replace('default: false', 'default: true'),
-    raw.replace('contents: read', 'contents: write'),
-    raw.replace('&& inputs.run_native_ownership == true', '|| inputs.run_native_ownership == true'),
-    raw.replace('-Mode Compile', '-Mode Runtime'),
-    raw.replace("github.ref == 'refs/heads/phase-04' && (", '('),
-    raw.replace("github.event_name == 'push' && contains", 'contains'),
-    raw.replace('[vision-managed]', '[unrelated-marker]'),
+    raw.replaceAll('default: false', 'default: true'),
+    raw.replaceAll('contents: read', 'contents: write'),
+    raw.replaceAll(
+      '&& inputs.run_native_ownership == true',
+      '|| inputs.run_native_ownership == true',
+    ),
+    raw.replaceAll('-Mode Compile', '-Mode Runtime'),
+    raw.replaceAll("github.ref == 'refs/heads/phase-04' && (", '('),
+    raw.replaceAll("github.event_name == 'push' && contains", 'contains'),
+    raw.replaceAll('[vision-managed]', '[unrelated-marker]'),
   ])
     assert.throws(() => closed(changed));
 });
