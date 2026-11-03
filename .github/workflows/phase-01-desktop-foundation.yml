@@ -17,7 +17,7 @@ permissions:
   contents: read
 jobs:
   owned-windows-foundation:
-    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[vault-context]')
+    if: github.event_name != 'push' || (!contains(github.event.head_commit.message, '[vault-context]') && !contains(github.event.head_commit.message, '[p1-launcher]'))
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:

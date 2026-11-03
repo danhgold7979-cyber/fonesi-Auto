@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
 const require = createRequire(import.meta.url);
 const { CASES, STATUSES, parse } = require('../verification/vault-context-contract.cjs');
 const source = readFileSync(
@@ -102,16 +103,51 @@ test('context wrapper binds exact diagnostic helper and selected campaign preser
   assert.equal(paths(full), paths(ordinary));
   assert.ok(full.includes('s.countTestCases()==159'));
   assert.ok(ordinary.includes('s.countTestCases()==159'));
-  assert.ok(
-    full.includes(
-      "github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/phase-01' && contains(github.event.head_commit.message, '[vault-context]'))",
-    ),
-  );
-  assert.ok(
-    ordinary.includes(
-      "github.event_name != 'push' || !contains(github.event.head_commit.message, '[vault-context]')",
-    ),
-  );
+  const jobCondition = (text) => text.match(/owned-windows-foundation:\n    if: ([^\n]+)/)[1];
+  const stepCondition = (id) => full.match(new RegExp('id: ' + id + '\\n        if: ([^\\n]+)'))[1];
+  const evaluate = (
+    expression,
+    event,
+    message,
+    foundation = true,
+    persistence = false,
+    healthy = true,
+  ) =>
+    runInNewContext(
+      expression,
+      {
+        github: {
+          event_name: event,
+          ref: 'refs/heads/phase-01',
+          event: { head_commit: { message } },
+        },
+        steps: {
+          validation: { outcome: foundation ? 'success' : 'failure' },
+          persistence_validation: { outcome: persistence ? 'success' : 'skipped' },
+        },
+        success: () => healthy,
+        contains: (value, token) => value.includes(token),
+      },
+      { timeout: 100 },
+    );
+  for (const [event, message, ordinarySelected, fullSelected, runPersistence, runLauncher] of [
+    ['push', 'ordinary', true, false, true, false],
+    ['push', '[p1-launcher]', false, true, false, true],
+    ['push', '[vault-context]', false, true, true, false],
+    ['push', '[vault-context] [p1-launcher]', false, true, true, false],
+    ['workflow_dispatch', '[p1-launcher]', true, true, true, false],
+  ]) {
+    assert.equal(evaluate(jobCondition(ordinary), event, message), ordinarySelected);
+    assert.equal(evaluate(jobCondition(full), event, message), fullSelected);
+    assert.equal(evaluate(stepCondition('persistence'), event, message), runPersistence);
+    assert.equal(evaluate(stepCondition('launcher'), event, message), runLauncher);
+    assert.equal(evaluate(stepCondition('launcher'), event, message, true, true), true);
+    for (const id of ['persistence', 'launcher']) {
+      assert.equal(evaluate(stepCondition(id), event, message, false, true), false);
+      assert.equal(evaluate(stepCondition(id), event, message, true, true, false), false);
+    }
+  }
+  assert.ok(!full.includes('continue-on-error'));
   assert.equal(
     (full.match(/& \.\/desktop\/verification\/Invoke-Persistence.ps1/g) || []).length,
     1,
