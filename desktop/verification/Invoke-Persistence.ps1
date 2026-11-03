@@ -8,7 +8,7 @@ $owner = $null
 $baseVerified = $false
 $allClean = $true
 $failure = 'PREPARE_FAILED'
-$report = [ordered]@{schemaVersion=5; scope='HOSTED_PERSISTENCE_AND_VAULT_NEGATIVES'; modes=[ordered]@{}; ready=[ordered]@{}; store=[ordered]@{}; maintenance=[ordered]@{}; restore=[ordered]@{}; vault=[ordered]@{}; context=[ordered]@{}; runtimeCopyVerified=$false; directoryCleanup=$false; failure=$null}
+$report = [ordered]@{schemaVersion=6; scope='HOSTED_PERSISTENCE_AND_VAULT_NEGATIVES'; modes=[ordered]@{}; ready=[ordered]@{}; store=[ordered]@{}; maintenance=[ordered]@{}; restore=[ordered]@{}; vault=[ordered]@{}; context=[ordered]@{}; runtimeCopyVerified=$false; directoryCleanup=$false; failure=$null}
 function Retired($Probe) {
     return ($Probe.CleanupComplete -and -not $Probe.StdoutTruncated -and -not $Probe.StderrTruncated -and $Probe.Status -in @('SUCCESS','NONZERO_EXIT','EMPTY_OUTPUT'))
 }

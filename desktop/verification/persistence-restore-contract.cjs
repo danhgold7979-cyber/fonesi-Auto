@@ -15,6 +15,9 @@ const CASES = Object.freeze([
   'source_unchanged',
   'service_closed',
 ]);
+const CURRENT_CASES = Object.freeze(
+  CASES.map((name) => (name === 'schema_two' ? 'schema_three' : name)),
+);
 const VERSIONS = Object.freeze({ electron: '45.1.0', node: '24.22.1', chrome: '156.0.8078.49' });
 const uuid = (x) =>
   typeof x === 'string' &&
@@ -180,18 +183,20 @@ function control(raw) {
 function result(raw) {
   const v = exact(raw, ['version', 'scope', 'mode', 'versions', 'cases']);
   if (
-    v.version !== 1 ||
+    ![1, 2].includes(v.version) ||
     v.scope !== 'COPIED_PROFILE_RESTORE_REOPEN' ||
     !['source', 'package'].includes(v.mode) ||
     JSON.stringify(v.versions) !== JSON.stringify(VERSIONS) ||
-    JSON.stringify(Object.keys(v.cases)) !== JSON.stringify(CASES) ||
-    CASES.some((k) => typeof v.cases[k] !== 'boolean')
+    JSON.stringify(Object.keys(v.cases)) !==
+      JSON.stringify(v.version === 2 ? CURRENT_CASES : CASES) ||
+    (v.version === 2 ? CURRENT_CASES : CASES).some((k) => typeof v.cases[k] !== 'boolean')
   )
     throw new Error('RESTORE_RESULT');
   return v;
 }
 module.exports = {
   CASES,
+  CURRENT_CASES,
   VERSIONS,
   uuid,
   plain,

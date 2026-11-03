@@ -5,6 +5,7 @@ CASES = ('audited_copy','first_provisioned','first_authenticated','first_main_re
          'second_no_reprovision','same_old_backup','second_main_ready','second_lease_released','v2_orderly_proof',
          'schema2','automatic_admission_persisted','backups_persisted','dialog_answers_instrumented')
 
+CURRENT_CASES = tuple('schema3' if key == 'schema2' else key for key in CASES)
 
 def validate_raw(raw):
     if type(raw) is not bytes or not 0 < len(raw) <= 65536:
@@ -17,15 +18,16 @@ def validate_public(value):
     exact_record(value, ('version','result','cleanupComplete'))
     result=value['result']
     exact_record(result, ('version','scope','cases','protectedCount','ordinaryCount'))
-    exact_record(result['cases'], CASES)
-    if type(value['version']) is not int or value['version'] != 1 or type(result['version']) is not int or result['version'] != 1:
+    cases = CURRENT_CASES if value['version'] == 2 else CASES
+    exact_record(result['cases'], cases)
+    if type(value['version']) is not int or value['version'] not in (1, 2) or type(result['version']) is not int or result['version'] != value['version']:
         reject()
-    if result['scope'] != 'INSTRUMENTED_PRODUCTION_LAUNCHER' or type(value['cleanupComplete']) is not bool or any(type(result['cases'][k]) is not bool for k in CASES):
+    if result['scope'] != 'INSTRUMENTED_PRODUCTION_LAUNCHER' or type(value['cleanupComplete']) is not bool or any(type(result['cases'][k]) is not bool for k in cases):
         reject()
-    for key, limit in (('protectedCount',2),('ordinaryCount',1)):
+    for key, limit in (('protectedCount',3 if value['version'] == 2 else 2),('ordinaryCount',1)):
         if type(result[key]) is not int or not 0 <= result[key] <= limit:
             reject()
-    return value['cleanupComplete'] and all(result['cases'].values()) and result['protectedCount']==2 and result['ordinaryCount']==1
+    return value['cleanupComplete'] and all(result['cases'].values()) and result['protectedCount']==(3 if value['version'] == 2 else 2) and result['ordinaryCount']==1
 
 
 def publish(root):

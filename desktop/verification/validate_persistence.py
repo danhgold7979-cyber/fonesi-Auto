@@ -265,7 +265,9 @@ def validate_public_mode(value, mode):
     return passed
 
 
-def validate_ready(capture, database, mode):
+def validate_ready(capture, database, mode, expected_schema=2):
+    if type(expected_schema) is not int or expected_schema not in (2, 3):
+        reject()
     exact_record(capture, ('process', 'stdout', 'stderr'))
     process_passed = validate_process(capture['process'])
     for name in ('stdout', 'stderr'):
@@ -290,8 +292,8 @@ def validate_ready(capture, database, mode):
     if database['version'] != 1 or database['mode'] != mode or any(type(database[x]) is not bool for x in ('quarantined', 'automaticAdmissionRecorded')):
         reject()
     passed = (process_passed and runtime['mainReady'] and runtime['orderlyQuit'] and
-              database['schemaVersion'] == 2 and not database['quarantined'] and database['automaticAdmissionRecorded'] and
-              database['protectedCount'] == 2 and database['ordinaryCount'] == 1 and database['totalCount'] == 3 and
+              database['schemaVersion'] == expected_schema and not database['quarantined'] and database['automaticAdmissionRecorded'] and
+              database['protectedCount'] == expected_schema and database['ordinaryCount'] == 1 and database['totalCount'] == expected_schema + 1 and
               not any(x in capture['stderr'].splitlines() for x in ('PERSISTENCE_MAIN_FAILED', 'PERSISTENCE_MAIN_DEADLINE', 'BOOTSTRAP_FAILED', 'BOOTSTRAP_CLEANUP_FAILED', 'PERSISTENCE_SHUTDOWN_FAILED', 'LOGGING_DEGRADED')))
     return {'mode': mode, 'versions': dict(VERSIONS), 'process': dict(capture['process']),
             'mainReady': runtime['mainReady'], 'orderlyQuit': runtime['orderlyQuit'], 'database': database, 'passed': passed}
@@ -299,7 +301,7 @@ def validate_ready(capture, database, mode):
 
 def ready_files(root, mode):
     public = validate_ready(_parse(_read_owned(root, f'persistence-ready-capture-{mode}.json')),
-                            _parse(_read_owned(root, f'persistence-ready-database-{mode}.json')), mode)
+                            _parse(_read_owned(root, f'persistence-ready-database-{mode}.json')), mode, 3)
     _write_new(root, f'persistence-ready-public-{mode}.json', public)
     return public['passed']
 
@@ -307,8 +309,8 @@ def ready_files(root, mode):
 def validate_report(raw):
     value = _parse(raw)
     version = value.get('schemaVersion') if type(value) is dict else None
-    exact_record(value, ('schemaVersion', 'scope', 'modes', 'runtimeCopyVerified', 'directoryCleanup', 'failure') + (('ready',) if version in (2, 3, 4, 5) else ()) + (('store', 'maintenance', 'restore') if version in (3, 4, 5) else ()) + (('vault','context') if version in (4, 5) else ()))
-    scopes = {1: 'HOSTED_KEY_MECHANISM_ONLY', 2: 'HOSTED_KEY_AND_MAIN_READY', 3: 'HOSTED_KEY_MAIN_STORE_MAINTENANCE_RESTORE', 4: 'HOSTED_PERSISTENCE_AND_VAULT', 5: 'HOSTED_PERSISTENCE_AND_VAULT_NEGATIVES'}
+    exact_record(value, ('schemaVersion', 'scope', 'modes', 'runtimeCopyVerified', 'directoryCleanup', 'failure') + (('ready',) if version in (2, 3, 4, 5, 6) else ()) + (('store', 'maintenance', 'restore') if version in (3, 4, 5, 6) else ()) + (('vault','context') if version in (4, 5, 6) else ()))
+    scopes = {1: 'HOSTED_KEY_MECHANISM_ONLY', 2: 'HOSTED_KEY_AND_MAIN_READY', 3: 'HOSTED_KEY_MAIN_STORE_MAINTENANCE_RESTORE', 4: 'HOSTED_PERSISTENCE_AND_VAULT', 5: 'HOSTED_PERSISTENCE_AND_VAULT_NEGATIVES', 6: 'HOSTED_PERSISTENCE_AND_VAULT_NEGATIVES'}
     if type(version) is not int or version not in scopes or value['scope'] != scopes[version]:
         reject()
     if type(value['modes']) is not dict or not set(value['modes']).issubset({'source', 'package'}):
@@ -322,7 +324,7 @@ def validate_report(raw):
     passed = value['failure'] is None and value['runtimeCopyVerified'] and value['directoryCleanup']
     for mode, item in value['modes'].items():
         passed = validate_public_mode(item, mode) and passed
-    if version in (2, 3, 4, 5):
+    if version in (2, 3, 4, 5, 6):
         if type(value['ready']) is not dict or not set(value['ready']).issubset({'source', 'package'}):
             reject()
         if value['failure'] is None and set(value['ready']) != {'source', 'package'}:
@@ -331,11 +333,11 @@ def validate_report(raw):
             exact_record(item, ('mode', 'versions', 'process', 'mainReady', 'orderlyQuit', 'database', 'passed'))
             runtime = {key: item[key] for key in ('mode', 'versions', 'mainReady', 'orderlyQuit')}
             capture = {'process': item['process'], 'stdout': 'BOOTSTRAP_READY\nBOOTSTRAP_CLOSED\nPERSISTENCE_MAIN_ORDERLY\nPERSISTENCE_MAIN_RESULT ' + json.dumps(runtime) + '\n', 'stderr': ''}
-            rebuilt = validate_ready(capture, item['database'], mode)
+            rebuilt = validate_ready(capture, item['database'], mode, 3 if version == 6 else 2)
             if type(item['passed']) is not bool or (item['passed'] and not rebuilt['passed']):
                 reject()
             passed = item['passed'] and passed
-    if version in (3, 4, 5):
+    if version in (3, 4, 5, 6):
         from validate_persistence_store import validate_public as validate_store
         from validate_persistence_maintenance import validate_public as validate_maintenance
         from validate_persistence_restore import validate_public as validate_restore
@@ -357,12 +359,16 @@ def validate_report(raw):
                 for stage, item in stages.items():
                     passed = validate_store(item, mode, boundary, stage) and passed
         for mode, item in value['maintenance'].items():
+            if type(item) is not dict or item.get('version') != (2 if version == 6 else 1):
+                reject()
             passed = validate_maintenance(item, mode) and passed
         for mode, item in value['restore'].items():
+            if type(item) is not dict or item.get('version') != (2 if version == 6 else 1):
+                reject()
             passed = validate_restore(item, mode) and passed
-    if version in (4, 5):
+    if version in (4, 5, 6):
         from validate_vault import STAGES, LEGACY_STAGES, validate_public as validate_vault, validate_context_public
-        VAULT_STAGES = STAGES if version == 5 else LEGACY_STAGES
+        VAULT_STAGES = STAGES if version in (5, 6) else LEGACY_STAGES
         for field in ('vault','context'):
             if type(value[field]) is not dict or not set(value[field]).issubset({'source','package'}):reject()
             if value['failure'] is None and set(value[field])!={'source','package'}:reject()

@@ -6,6 +6,7 @@ from validate_persistence import _parse, _read_owned, _write_new, _admit_root
 CASES = ('restored_lease', 'profile_before_ready', 'copied_key_material',
          'original_bootstrap_authenticated', 'proof_bound', 'schema_two', 'root_quarantined',
          'sql_quarantined', 'automatic_backup_disabled', 'source_unchanged', 'service_closed')
+CURRENT_CASES = tuple('schema_three' if key == 'schema_two' else key for key in CASES)
 SCOPE = 'COPIED_PROFILE_RESTORE_REOPEN'
 
 
@@ -17,12 +18,12 @@ def _mode(mode):
 def _result(value, mode):
     _mode(mode)
     exact_record(value, ('version', 'scope', 'mode', 'versions', 'cases'))
-    if type(value['version']) is not int or value['version'] != 1 or value['scope'] != SCOPE or value['mode'] != mode:
+    if type(value['version']) is not int or value['version'] not in (1, 2) or value['scope'] != SCOPE or value['mode'] != mode:
         reject()
     exact_record(value['versions'], VERSIONS)
     if value['versions'] != VERSIONS:
         reject()
-    booleans(value['cases'], CASES)
+    booleans(value['cases'], CURRENT_CASES if value['version'] == 2 else CASES)
 
 
 def validate_raw(result_raw, capture_raw, mode):
@@ -48,8 +49,8 @@ def validate_raw(result_raw, capture_raw, mode):
         reject()
     no_failure = not any(line in ('PERSISTENCE_RESTORE_FAILED', 'PERSISTENCE_RESTORE_DEADLINE')
                          for line in capture['stderr'].splitlines())
-    return {'version': 1, 'scope': SCOPE, 'mode': mode, 'versions': dict(VERSIONS),
-            'cases': {key: value['cases'][key] for key in CASES},
+    return {'version': value['version'], 'scope': SCOPE, 'mode': mode, 'versions': dict(VERSIONS),
+            'cases': {key: value['cases'][key] for key in (CURRENT_CASES if value['version'] == 2 else CASES)},
             'process': dict(capture['process']), 'orderlyQuitObserved': True,
             'failureMarkerAbsent': no_failure,
             'passed': process_passed and all(value['cases'].values()) and no_failure}

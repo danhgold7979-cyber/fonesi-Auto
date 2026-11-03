@@ -32,6 +32,16 @@ test('launcher E2E public facts reject duplicate masking/private data and never 
     ordinaryCount: 1,
   };
   assert.equal(fixedResult(JSON.stringify(value)).passed, true);
+  const { CURRENT_CASES } = require('./persistence-launch-e2e-control.cjs');
+  const current = {
+    ...value,
+    version: 2,
+    cases: Object.fromEntries(CURRENT_CASES.map((k) => [k, true])),
+    protectedCount: 3,
+  };
+  assert.equal(fixedResult(JSON.stringify(current)).passed, true);
+  assert.equal(fixedResult(JSON.stringify({ ...current, protectedCount: 2 })).passed, false);
+  assert.throws(() => fixedResult(JSON.stringify({ ...current, cases: value.cases })));
   for (const key of CASES) {
     const bad = structuredClone(value);
     bad.cases[key] = false;

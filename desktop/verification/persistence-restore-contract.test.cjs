@@ -50,6 +50,15 @@ test('public result permits only exact fixed versions and boolean case set', () 
     cases: Object.fromEntries(CASES.map((k) => [k, true])),
   };
   assert.deepEqual(result(JSON.stringify(v)), v);
+  const { CURRENT_CASES } = require('./persistence-restore-contract.cjs');
+  const current = {
+    ...v,
+    version: 2,
+    cases: Object.fromEntries(CURRENT_CASES.map((k) => [k, true])),
+  };
+  assert.deepEqual(result(JSON.stringify(current)), current);
+  assert.throws(() => result(JSON.stringify({ ...current, cases: v.cases })));
+  assert.throws(() => result(JSON.stringify({ ...v, cases: current.cases })));
   assert.throws(() => result(JSON.stringify({ ...v, privatePath: 'PRIVATE' })));
   assert.throws(() => result(JSON.stringify({ ...v, versions: { ...VERSIONS, node: '24.22.2' } })));
   v.cases.source_unchanged = false;

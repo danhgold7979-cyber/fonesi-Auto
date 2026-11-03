@@ -242,12 +242,12 @@ async function run() {
         totalCount: counts.total,
       };
       if (
-        result.schemaVersion !== 2 ||
+        result.schemaVersion !== 3 ||
         result.quarantined ||
         !result.automaticAdmissionRecorded ||
-        result.protectedCount !== 2 ||
+        result.protectedCount !== 3 ||
         result.ordinaryCount !== 1 ||
-        result.totalCount !== 3
+        result.totalCount !== 4
       )
         throw new Error('DATABASE_EVIDENCE');
       await assertLease();

@@ -9,6 +9,13 @@ def fixture():
 class LauncherTests(unittest.TestCase):
     def test_all_fixed_facts_and_cleanup_required(self):
         self.assertTrue(validate_public(fixture()))
+        from validate_persistence_launcher import CURRENT_CASES
+        current=fixture();current['version']=2;current['result'].update(version=2, cases=dict.fromkeys(CURRENT_CASES,True), protectedCount=3)
+        self.assertTrue(validate_public(current))
+        current['result']['protectedCount']=2
+        self.assertFalse(validate_public(current))
+        current['result']['version']=1
+        with self.assertRaises(InvalidEvidence):validate_public(current)
         for case in CASES:
             value=fixture();value['result']['cases'][case]=False
             self.assertFalse(validate_public(value))

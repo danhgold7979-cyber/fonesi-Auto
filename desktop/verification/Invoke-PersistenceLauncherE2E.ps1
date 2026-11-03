@@ -138,6 +138,6 @@ try{
     foreach($entry in $left.Entries){if($entry.PSIsContainer -or ($entry.Name -cnotin @('.owner','Invoke-Desktop.instrumented.ps1','launch-core.ps1','copy.json','first-capture.json','second-capture.json','first.json','result.json') -and $entry.Name -cnotin $witnessNames)){throw 'REMAINDER'}}
     foreach($entry in $left.Entries){if($entry.Name -cne '.owner'){[IO.File]::Delete($entry.FullName)}}
     Remove-VerifiedOwnedRun $owner $allClean
-    Write-Exclusive (Join-Path $base 'launcher-e2e-result.json') (([ordered]@{version=1;result=$public;cleanupComplete=$true})|ConvertTo-Json -Depth 8 -Compress)
+    Write-Exclusive (Join-Path $base 'launcher-e2e-result.json') (([ordered]@{version=2;result=$public;cleanupComplete=$true})|ConvertTo-Json -Depth 8 -Compress)
     Write-Output 'PERSISTENCE_LAUNCH_E2E_PASS'
 }catch{Write-Output ('PERSISTENCE_LAUNCH_E2E_'+$failure);exit 1}

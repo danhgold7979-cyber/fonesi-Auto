@@ -20,6 +20,12 @@ class MaintenanceTests(unittest.TestCase):
     def test_pass_and_all_false_cases_remain_failure(self):
         result, capture = inputs()
         self.assertTrue(check(result, capture)['passed'])
+        result.update(version=2, protectedCount=2)
+        self.assertTrue(check(result, capture)['passed'])
+        result['protectedCount'] = 1
+        self.assertFalse(check(result, capture)['passed'])
+        result.update(version=1, protectedCount=2)
+        self.assertFalse(check(result, capture)['passed'])
         for case in CASES:
             result, capture = inputs()
             result['cases'][case] = False

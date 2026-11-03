@@ -37,11 +37,11 @@ def validate_raw(result_raw, capture_raw, mode):
     exact_record(result, ('version', 'scope', 'mode', 'versions', 'cases', 'ordinaryCount', 'protectedCount', 'releasedSafetyCount'))
     exact_record(result['versions'], VERSIONS)
     exact_record(result['cases'], CASES)
-    if (type(result['version']) is not int or result['version'] != 1 or
+    if (type(result['version']) is not int or result['version'] not in (1, 2) or
             result['scope'] != 'NATIVE_ADAPTER_MAINTENANCE' or result['mode'] != mode or result['versions'] != VERSIONS or
             any(type(result['cases'][key]) is not bool for key in CASES)):
         reject()
-    for key, limit in (('ordinaryCount', 7), ('protectedCount', 2), ('releasedSafetyCount', 2)):
+    for key, limit in (('ordinaryCount', 7), ('protectedCount', 3 if result['version'] == 2 else 2), ('releasedSafetyCount', 3 if result['version'] == 2 else 2)):
         if type(result[key]) is not int or not 0 <= result[key] <= limit:
             reject()
     _diagnostic_stage = 'CAPTURE_SCHEMA'
@@ -62,7 +62,7 @@ def validate_raw(result_raw, capture_raw, mode):
         reject()
     failures = {'PERSISTENCE_MAINTENANCE_FAILED', 'PERSISTENCE_MAINTENANCE_DEADLINE'}
     passed = (process_passed and all(result['cases'].values()) and result['ordinaryCount'] == 7 and
-              result['protectedCount'] == 1 and result['releasedSafetyCount'] == 1 and
+              result['protectedCount'] == (2 if result['version'] == 2 else 1) and result['releasedSafetyCount'] == 1 and
               not failures.intersection(capture['stderr'].splitlines()))
     return {**result, 'process': dict(capture['process']), 'orderlyQuitObserved': True, 'passed': passed}
 

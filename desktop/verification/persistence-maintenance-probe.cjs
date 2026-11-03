@@ -259,7 +259,7 @@ try {
     }
     stage = 'RESULT';
     const result = {
-      version: 1,
+      version: 2,
       scope: 'NATIVE_ADAPTER_MAINTENANCE',
       mode: control.mode,
       versions: {
@@ -305,7 +305,7 @@ try {
       stage = 'INITIALIZE';
       await service.initialize(Date.now());
       cases.native_keys = true;
-      cases.ready_schema = inspect((db) => db.version === 2);
+      cases.ready_schema = inspect((db) => db.version === 3);
       const backupParent = path.join(root, `maintenance-backup-parent-${control.mode}`),
         restoreParent = path.join(root, `maintenance-restore-parent-${control.mode}`);
       plain(backupParent);
@@ -323,7 +323,7 @@ try {
       cases.cancel_folder_unchanged = true;
       stage = 'CANCEL_ACCEPT';
       const protectedRows = (await service.list()).filter((r) => r.protected);
-      if (protectedRows.length !== 2) throw new Error('PROTECTED');
+      if (protectedRows.length !== 3) throw new Error('PROTECTED');
       const protectedPath = await selectedPath(protectedRows[0].backupId);
       before = fingerprint();
       if (
@@ -462,7 +462,7 @@ try {
           (s) => s.get(),
         );
         cases.restore_quarantined =
-          restored.version === 2 &&
+          restored.version === 3 &&
           row.restore_quarantine === 1 &&
           row.restored_from_backup_id === restore.backupId;
       } finally {

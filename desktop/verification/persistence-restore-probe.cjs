@@ -2,7 +2,7 @@
 const { app, safeStorage } = require('electron');
 const path = require('node:path');
 const {
-  CASES,
+  CURRENT_CASES: CASES,
   VERSIONS,
   uuid,
   plain,
@@ -182,7 +182,7 @@ try {
         }
       };
       const before = inspect();
-      cases.schema_two = before.version === 2;
+      cases.schema_three = before.version === 3;
       cases.sql_quarantined =
         before.row.restore_quarantine === 1 &&
         before.row.restored_from_backup_id === c.sourceBackupId;
@@ -202,7 +202,7 @@ try {
   app.once('will-quit', () => {
     try {
       if (!completed) throw new Error('RESTORE_EARLY_QUIT');
-      const value = { version: 1, scope: 'COPIED_PROFILE_RESTORE_REOPEN', mode, versions, cases };
+      const value = { version: 2, scope: 'COPIED_PROFILE_RESTORE_REOPEN', mode, versions, cases };
       result(JSON.stringify(value));
       write(path.join(root, `persistence-restore-result-${mode}.json`), value);
       clearTimeout(timer);

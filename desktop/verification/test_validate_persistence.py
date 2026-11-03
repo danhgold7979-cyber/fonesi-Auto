@@ -244,6 +244,10 @@ class ReadyApplicationTests(unittest.TestCase):
         from validate_persistence import validate_ready
         capture, database = self.inputs()
         self.assertTrue(validate_ready(capture, database, 'source')['passed'])
+        current = {**database, 'schemaVersion': 3, 'protectedCount': 3, 'totalCount': 4}
+        self.assertTrue(validate_ready(capture, current, 'source', 3)['passed'])
+        self.assertFalse(validate_ready(capture, database, 'source', 3)['passed'])
+        self.assertFalse(validate_ready(capture, current, 'source', 2)['passed'])
         capture['process']['cleanupComplete'] = False
         self.assertFalse(validate_ready(capture, database, 'source')['passed'])
         capture['stdout'] = capture['stdout'].replace('BOOTSTRAP_CLOSED\n', '')
@@ -281,6 +285,36 @@ class ReadyApplicationTests(unittest.TestCase):
                  'ready': {mode: validate_ready(*self.inputs(mode), mode) for mode in ('source', 'package')},
                  'runtimeCopyVerified': True, 'directoryCleanup': True, 'failure': None}
         self.assertTrue(validate_report(json.dumps(value).encode())['passed'])
+        import copy
+        current = copy.deepcopy(value)
+        current.update(schemaVersion=6, scope='HOSTED_PERSISTENCE_AND_VAULT_NEGATIVES',
+                       store={}, maintenance={}, restore={}, vault={}, context={}, failure='STAGE_VALIDATION_FAILED')
+        with self.assertRaises(InvalidEvidence):
+            validate_report(json.dumps(current).encode())
+        for item in current['ready'].values():
+            item['database'].update(schemaVersion=3, protectedCount=3, totalCount=4)
+        self.assertFalse(validate_report(json.dumps(current).encode())['passed'])
+        from test_validate_persistence_maintenance import inputs, check
+        maintenance, capture = inputs()
+        legacy = check(maintenance, capture)
+        current['maintenance']['source'] = legacy
+        with self.assertRaises(InvalidEvidence):
+            validate_report(json.dumps(current).encode())
+        maintenance.update(version=2, protectedCount=2)
+        current['maintenance']['source'] = check(maintenance, capture)
+        self.assertFalse(validate_report(json.dumps(current).encode())['passed'])
+        from test_validate_persistence_restore import fixture, raw
+        from validate_persistence_restore import validate_raw, CURRENT_CASES
+        restored, capture = fixture()
+        current['restore']['source'] = validate_raw(raw(restored), raw(capture), 'source')
+        with self.assertRaises(InvalidEvidence):
+            validate_report(json.dumps(current).encode())
+        restored.update(version=2, cases=dict.fromkeys(CURRENT_CASES, True))
+        current['restore']['source'] = validate_raw(raw(restored), raw(capture), 'source')
+        self.assertFalse(validate_report(json.dumps(current).encode())['passed'])
+        current['schemaVersion'] = 5
+        with self.assertRaises(InvalidEvidence):
+            validate_report(json.dumps(current).encode())
         del value['ready']['package']
         with self.assertRaises(InvalidEvidence):
             validate_report(json.dumps(value).encode())

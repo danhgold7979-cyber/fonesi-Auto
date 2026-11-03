@@ -20,6 +20,7 @@ const CASES = [
   'backups_persisted',
   'dialog_answers_instrumented',
 ];
+const CURRENT_CASES = Object.freeze(CASES.map((name) => (name === 'schema2' ? 'schema3' : name)));
 const hash = (x) => crypto.createHash('sha256').update(x).digest('hex');
 const uuid = (x) =>
   typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(x);
@@ -139,21 +140,25 @@ function fixedResult(raw) {
     JSON.stringify(v) !== raw ||
     JSON.stringify(Object.keys(v)) !==
       JSON.stringify(['version', 'scope', 'cases', 'protectedCount', 'ordinaryCount']) ||
-    v.version !== 1 ||
+    ![1, 2].includes(v.version) ||
     v.scope !== 'INSTRUMENTED_PRODUCTION_LAUNCHER' ||
-    JSON.stringify(Object.keys(v.cases)) !== JSON.stringify(CASES) ||
-    CASES.some((k) => typeof v.cases[k] !== 'boolean') ||
+    JSON.stringify(Object.keys(v.cases)) !==
+      JSON.stringify(v.version === 2 ? CURRENT_CASES : CASES) ||
+    (v.version === 2 ? CURRENT_CASES : CASES).some((k) => typeof v.cases[k] !== 'boolean') ||
     !Number.isInteger(v.protectedCount) ||
     !Number.isInteger(v.ordinaryCount) ||
     v.protectedCount < 0 ||
-    v.protectedCount > 2 ||
+    v.protectedCount > (v.version === 2 ? 3 : 2) ||
     v.ordinaryCount < 0 ||
     v.ordinaryCount > 1
   )
     throw new Error('RESULT');
   return {
     ...v,
-    passed: CASES.every((k) => v.cases[k]) && v.protectedCount === 2 && v.ordinaryCount === 1,
+    passed:
+      (v.version === 2 ? CURRENT_CASES : CASES).every((k) => v.cases[k]) &&
+      v.protectedCount === (v.version === 2 ? 3 : 2) &&
+      v.ordinaryCount === 1,
   };
 }
 function capture(launch, stage, expected) {
@@ -321,7 +326,7 @@ async function run() {
   let admission, counts;
   try {
     db.validate();
-    if (db.version !== 2) throw new Error('SCHEMA');
+    if (db.version !== 3) throw new Error('SCHEMA');
     const row = statement(
       db.connection,
       'SELECT restore_quarantine,last_auto_admitted_utc FROM foundation_store WHERE singleton=1',
@@ -335,7 +340,7 @@ async function run() {
       "SELECT SUM(CASE WHEN protected=1 AND reason='PRE_MIGRATION' THEN 1 ELSE 0 END) AS protectedCount,SUM(CASE WHEN protected=0 AND reason='DAILY' THEN 1 ELSE 0 END) AS ordinaryCount,COUNT(*) AS total FROM backup_record WHERE state='VALIDATED'",
       (s) => s.get(),
     );
-    if (counts.protectedCount !== 2 || counts.ordinaryCount !== 1 || counts.total !== 3)
+    if (counts.protectedCount !== 3 || counts.ordinaryCount !== 1 || counts.total !== 4)
       throw new Error('COUNTS');
   } finally {
     db.close();
@@ -352,9 +357,9 @@ async function run() {
     });
   else
     write(path.join(root, 'result.json'), {
-      version: 1,
+      version: 2,
       scope: 'INSTRUMENTED_PRODUCTION_LAUNCHER',
-      cases: Object.fromEntries(CASES.map((k) => [k, true])),
+      cases: Object.fromEntries(CURRENT_CASES.map((k) => [k, true])),
       protectedCount: counts.protectedCount,
       ordinaryCount: counts.ordinaryCount,
     });
@@ -365,4 +370,12 @@ if (require.main === module)
     console.log('PERSISTENCE_LAUNCH_E2E_FAILED');
     process.exitCode = 1;
   });
-module.exports = { transform, fixedResult, CASES, ORIGINAL_SHA, WRAPPER_SHA, witnessPath };
+module.exports = {
+  transform,
+  fixedResult,
+  CASES,
+  CURRENT_CASES,
+  ORIGINAL_SHA,
+  WRAPPER_SHA,
+  witnessPath,
+};

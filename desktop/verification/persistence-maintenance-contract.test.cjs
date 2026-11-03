@@ -13,6 +13,9 @@ const fixture = () => ({
   releasedSafetyCount: 1,
 });
 test('maintenance fixed result requires all facts and exact retained counts', () => {
+  const current = { ...fixture(), version: 2, protectedCount: 2 };
+  assert.equal(parse(JSON.stringify(current)).passed, true);
+  assert.equal(parse(JSON.stringify({ ...current, protectedCount: 1 })).passed, false);
   const good = fixture();
   assert.equal(parse(JSON.stringify(good)).passed, true);
   for (const name of CASES) {

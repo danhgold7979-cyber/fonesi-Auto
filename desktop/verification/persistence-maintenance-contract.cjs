@@ -45,7 +45,7 @@ function parse(raw) {
   exact(value.versions, Object.keys(VERSIONS));
   exact(value.cases, CASES);
   if (
-    value.version !== 1 ||
+    ![1, 2].includes(value.version) ||
     value.scope !== 'NATIVE_ADAPTER_MAINTENANCE' ||
     !['source', 'package'].includes(value.mode) ||
     JSON.stringify(value.versions) !== JSON.stringify(VERSIONS) ||
@@ -55,10 +55,10 @@ function parse(raw) {
     value.ordinaryCount > 7 ||
     !Number.isInteger(value.protectedCount) ||
     value.protectedCount < 0 ||
-    value.protectedCount > 2 ||
+    value.protectedCount > (value.version === 2 ? 3 : 2) ||
     !Number.isInteger(value.releasedSafetyCount) ||
     value.releasedSafetyCount < 0 ||
-    value.releasedSafetyCount > 2 ||
+    value.releasedSafetyCount > (value.version === 2 ? 3 : 2) ||
     JSON.stringify(value) !== raw
   )
     throw new Error('INVALID');
@@ -67,7 +67,7 @@ function parse(raw) {
     passed:
       CASES.every((name) => value.cases[name]) &&
       value.ordinaryCount === 7 &&
-      value.protectedCount === 1 &&
+      value.protectedCount === (value.version === 2 ? 2 : 1) &&
       value.releasedSafetyCount === 1,
   });
 }

@@ -82,3 +82,25 @@ Exact additional fingerprints:
 - `/tmp/p1-context-pin-closure-final.log` SHA256 `11c32f2425f5790d43b38e43d9041c89efa612bcdd782700d337f7be01e904e3`.
 - `/tmp/p1-context-python-final.log` SHA256 `cfd58d3bc025d47c0009e8b0a05e20f1d9256312dc7f2000c04807d377a3bd46`.
 - Final routing-only regression `/tmp/p1-context-routing-final.log` 4/4 PASS, overlapping prior4; SHA256 `01483642891380a47467a7a42efeca08eab4c900824f65d08704be591a007362`. Python/native sources unchanged after159/159; no duplicate Python run.
+
+## Published diagnostic campaign and schema closure — 2026-11-03 15:35 UTC
+
+The reviewed local9f5f8be887f27aa4b686cc5d2ae8df4af92cb11f tree45bfd0534d45e9c51a41d4f145c00b5415f2ed01 was published as ad093a98bbaeb17044b79b13a4e5ec063a071786, preserving public parentf8b155738e0ebbe404449579d4f4b60b911aed28. [Run41663612141](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41663612141) completed FAILURE. Its source587/587, foundation and Python159 gates passed. The sanitized persistence artifact ZIP SHA256bf51e9c31d998276d31f4965fb6ede20a0906a54dbd47b735260462017f71510 contains only fixed public facts: all four source key-auth stages passed with proven child retirement, followed by STAGE_VALIDATION_FAILED, empty READY/context summaries and directoryCleanup=false. It did not reach LogonUser, and supplies no new token error category. The artifact alone does not distinguish the READY inspector from its following validator; no raw logs, identities or private files are disclosed here.
+
+Source inspection established a concrete campaign incompatibility: actual Phase1 production DATABASE_VERSION is3, while READY inspection required2 with only2 protected migration backups/3 total. Actual maintenance/restore and production-launcher verification also imported the current build but retained schema2 predicates. The coherent repair updates verification only, not product SQL or migration behavior. Report6 binds READY schema3, exactly3 protected predecessor backups plus1 ordinary backup. Nested maintenance evidence2 binds initial3 protected backups, then exactly2 protected and1 released after accepting one backup; restore evidence2 explicitly names schema_three. Launcher outer/result2 binds schema3 and3+1 backups. Historical reports1–5, nested evidence1 and launcher1 retain their original exact schema2 meanings; cross-version mixtures cannot pass. Fixed process/custody, marker, row-count, quarantine, all-case and cleanup gates remain mandatory. Store crash-boundary scenarios still test their actual predecessor0/1 outcomes unchanged.
+
+Final local checks: Python159/159 PASS (expanded existing cases, not new test count); three CJS contract suites13/13 PASS; actual foundation-persistence plus context-source suites12/12 PASS; pinned quality, diff check and BUILD_VERIFIED PASS. The two earlier CJS attempts lacked normal build/test-output prerequisites and failed; they are retained separately, not described as product failures or clean passes. Existing historical sample and new failed artifact both revalidate as passed=false under the new reader. No local C#/PowerShell/Windows execution or new P1-06 acceptance is claimed. Final independent source/disclosure readback CLEAR; the next actual campaign remains necessary.
+
+Final retained local evidence digests (logs are not published):
+- Python159: `664a31a8792080503020f6bb2a68ae95f9c2d7039f855186a56fb33e0869ee67`.
+- CJS13: `eb01cf34f02d6da033ada9a96e4ad21ebbb7c7ebc41d85a89958a03d362eadbf`.
+- Actual service/context12: `a71226454d0ec484002088d1f8c60f87f0e5be7e1df3fcc686c65667ae2c839f`.
+- Build: `8f83032384d612278af87d199eb4285ec209e665f53a55e95912c853447f66c6`.
+- Historical failed-evidence readback: `7d5c7ca229c85998aa6b0a91022802f943f24669ac8a19ae4f0ee4a95316c84e`.
+
+Current verification pins:
+- validate_persistence.py: `40461ea1cbf498cff30079cfe4edbd904bc2f295c000777b0265772a05348f44`.
+- persistence-control.cjs: `a17dd2255c7c5fa21c90a734171e1aa07ea7bc644ff6d704d5bfbb6bd049d910`.
+- persistence-maintenance-contract.cjs: `7ad4f6abf37ab0da46b2f0c9e6860fa7ea63e82b003933088e14685a0e0feb35`.
+- persistence-restore-contract.cjs: `fc6d5394dc0b0c8f45656575c88a78686c7d457b039ecaddfc3e4c5e1368e5d3`.
+- persistence-launch-e2e-control.cjs: `7ea87d7dee67a4d1a1bff591a6f8f6f09675d38f57423a738d2c5f744e5091da`.
