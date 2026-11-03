@@ -118,4 +118,31 @@ test('context wrapper binds exact diagnostic helper and selected campaign preser
   );
   assert.ok(full.includes('steps.persistence_validation.outputs.written'));
   assert.ok(full.includes('desktop/.persistence-runtime/validated.json'));
+  // Every current-build database guard in this selected campaign must bind the
+  // production schema. Audit/log versions and historical predecessor fixtures
+  // are separate formats, not current database admission.
+  const contract = readFileSync(new URL('../src/persistence-contract.ts', import.meta.url), 'utf8');
+  const schema = Number(contract.match(/export const DATABASE_VERSION = (\d+);/)[1]);
+  const controls = [
+    ['persistence-control.cjs', 'result.schemaVersion', '!==', 1],
+    ['vault-control.cjs', 'database.version', '!==', 1],
+    ['persistence-launch-e2e-control.cjs', 'db.version', '!==', 1],
+    ['persistence-maintenance-probe.cjs', 'db.version', '===', 1],
+    ['persistence-maintenance-probe.cjs', 'restored.version', '===', 1],
+    ['persistence-restore-probe.cjs', 'before.version', '===', 1],
+  ];
+  for (const [file, field, operator, count] of controls) {
+    const text = readFileSync(new URL('../verification/' + file, import.meta.url), 'utf8');
+    const pattern = new RegExp(field.replaceAll('.', '\\.') + ' ' + operator + ' (\\d+)', 'g');
+    const values = [...text.matchAll(pattern)].map((match) => Number(match[1]));
+    assert.deepEqual(values, Array(count).fill(schema), file + ':' + field);
+    const stale = text.replace(
+      field + ' ' + operator + ' ' + schema,
+      field + ' ' + operator + ' ' + (schema - 1),
+    );
+    assert.notDeepEqual(
+      [...stale.matchAll(pattern)].map((match) => Number(match[1])),
+      values,
+    );
+  }
 });

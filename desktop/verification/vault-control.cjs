@@ -54,7 +54,7 @@ async function run() {
   );
   try {
     database.validate();
-    if (database.version !== 2) throw new Error('SCHEMA');
+    if (database.version !== 3) throw new Error('SCHEMA');
   } finally {
     database.close();
   }

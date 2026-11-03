@@ -104,3 +104,9 @@ Current verification pins:
 - persistence-maintenance-contract.cjs: `7ad4f6abf37ab0da46b2f0c9e6860fa7ea63e82b003933088e14685a0e0feb35`.
 - persistence-restore-contract.cjs: `fc6d5394dc0b0c8f45656575c88a78686c7d457b039ecaddfc3e4c5e1368e5d3`.
 - persistence-launch-e2e-control.cjs: `7ea87d7dee67a4d1a1bff591a6f8f6f09675d38f57423a738d2c5f744e5091da`.
+
+## Remaining vault preflight closure — 2026-11-03 15:44 UTC
+
+The schema repair was published as f4be0bf7baad67bbd31ec7c6689390270fc759a4, exact local08a539e6ea89854000c31c59c2ce381fde65f8db/tree54f2d3e39d8821a8366df294bd905f096158ad3c. [Run41666214242](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41666214242) retained source587/587, foundation and Python159 PASS, then ended FAILURE. Its sanitized ZIP SHA256bf810a875eb88dc2a963d084160711feeb4cc1f9eff9dd67d9e513d3602617d7 proves actual source READY schema3 with3 protected+1 ordinary backup, mainReady/orderlyQuit and owned child cleanup all true. The subsequent first vault preflight failed; context remained empty and directoryCleanup=false. No new LogonUser outcome exists.
+
+The previous source scan missed vault-control.cjs, which also opens the actual current database but still required schema2. This follow-on changes that one exact predicate to3, with no native/API call or proof relaxation. The existing campaign regression now enumerates all six current database-guard sites across READY, vault, launcher, maintenance and restore, compares them to the actual production DATABASE_VERSION, and rejects a synthetic stale predecessor mutation. Audit log schema2 and backup predecessor2 remain unchanged because they are different formats with legitimate historical semantics. Focused4/4 PASS, pinned quality and diff check PASS; no duplicate full build/Python run is claimed. Current Windows result remains FAIL until a new exact campaign. Independent final source/disclosure readback CLEAR. P1-06 remains UNMET.
