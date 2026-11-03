@@ -1,4 +1,10 @@
-import { createTileVideoDecoder, type VideoAccounting } from './video-decoder.ts';
+import {
+  createTileVideoDecoder,
+  measureVideoRates,
+  VIDEO_ACCOUNTING_FRESH_MS,
+  type VideoAccounting,
+  type VideoRates,
+} from './video-decoder.ts';
 import { snapshotVideoPresentationMessage } from './video-presentation-contract.ts';
 import {
   parseVideoStreamResponse,
@@ -845,10 +851,19 @@ function Diagnostic() {
     state: string;
   } | null>(null);
   const videoSession = useRef<DisplaySession | null>(null);
-  const [previewCapture, setPreviewCapture] = useState<Readonly<{
+  type PreviewObservation = Readonly<{
     owner: DisplaySession;
+    decoder: NonNullable<DisplaySession['decoder']>;
     sample: VideoAccounting;
-  }> | null>(null);
+  }>;
+  const previewBaseline = useRef<PreviewObservation | null>(null);
+  const [previewCapture, setPreviewCapture] = useState<
+    (PreviewObservation & Readonly<{ rates: VideoRates | null }>) | null
+  >(null);
+  function clearPreview() {
+    previewBaseline.current = null;
+    if (videoAlive.current) setPreviewCapture(null);
+  }
   const previewClock = useRef<number | null>(null);
   const previewClockValid = useRef(true);
   function previewNow() {
@@ -881,18 +896,33 @@ function Diagnostic() {
   }
   function readPreview() {
     const r = videoSession.current;
-    const sample = currentPreview(r) ? r?.decoder?.accounting() : null;
+    const decoder = r?.decoder;
+    const sample = currentPreview(r) ? decoder?.accounting() : null;
     const now = previewNow();
-    setPreviewCapture(
-      r &&
-        now !== null &&
-        sample &&
-        sample.admitted > 0 &&
-        sample.observedAt <= now &&
-        currentPreview(r)
-        ? { owner: r, sample }
-        : null,
-    );
+    if (
+      !r ||
+      !decoder ||
+      !sample ||
+      now === null ||
+      sample.admitted <= 0 ||
+      sample.videoId !== r.videoId ||
+      sample.segment !== decoder.snapshot().segment ||
+      sample.observedAt > now ||
+      now - sample.observedAt >= VIDEO_ACCOUNTING_FRESH_MS ||
+      r.decoder !== decoder ||
+      !currentPreview(r)
+    ) {
+      clearPreview();
+      return;
+    }
+    const previous = previewBaseline.current;
+    const rates =
+      previous?.owner === r && previous.decoder === decoder
+        ? measureVideoRates(previous.sample, sample)
+        : null;
+    const observation = { owner: r, decoder, sample };
+    previewBaseline.current = observation;
+    setPreviewCapture({ ...observation, rates });
   }
 
   const videoAlive = useRef(true);
@@ -919,11 +949,11 @@ function Diagnostic() {
   }, []);
   const stopVideo = async () => {
     const r = videoSession.current;
+    clearPreview();
     if (!r) return;
     r.stopped = true;
     r.disposeVisibility?.();
     r.disposeVisibility = null;
-    if (videoAlive.current) setPreviewCapture(null);
     r.decoder?.close();
     r.decoder = null;
     r.port?.close();
@@ -1018,8 +1048,13 @@ function Diagnostic() {
         void videoActions.current.stopVideo();
         return;
       }
-      if (message?.kind === 'PRESENTATION') r.decoder?.presentation(message);
-      else r.decoder?.receive(message ?? event.data);
+      const decoder = r.decoder;
+      const segment = decoder?.snapshot().segment;
+      if (message?.kind === 'PRESENTATION') decoder?.presentation(message);
+      else decoder?.receive(message ?? event.data);
+      // CONFIG advances synchronously before its capability Promise settles.
+      // Invalidate here rather than waiting for a later onState notification.
+      if (decoder && decoder.snapshot().segment !== segment) clearPreview();
     };
     port.onmessageerror = () => {
       if (videoSession.current === r && !r.stopped && r.port === port)
@@ -1086,7 +1121,7 @@ function Diagnostic() {
       disposeVisibility: null,
     };
     videoSession.current = r;
-    setPreviewCapture(null);
+    clearPreview();
     setVideoView({ deviceId, generation, state: 'STARTING' });
     try {
       const raw = await window.videoStream.invoke(
@@ -1106,6 +1141,7 @@ function Diagnostic() {
         result.code !== 'PENDING' ||
         !result.videoId
       ) {
+        clearPreview();
         r.stopped = true;
         r.disposeVisibility?.();
         r.disposeVisibility = null;
@@ -1128,6 +1164,7 @@ function Diagnostic() {
       if (r.stopped) void videoActions.current.stopVideo();
     } catch {
       if (videoSession.current === r) {
+        clearPreview();
         r.stopped = true;
         r.disposeVisibility?.();
         r.disposeVisibility = null;
@@ -1373,11 +1410,15 @@ function Diagnostic() {
   const previewSample =
     previewCapture &&
     currentPreview(previewCapture.owner) &&
+    previewCapture.owner.decoder === previewCapture.decoder &&
+    previewCapture.sample.videoId === previewCapture.owner.videoId &&
+    previewCapture.sample.segment === previewCapture.decoder.snapshot().segment &&
     capturedNow !== null &&
     capturedNow >= previewCapture.sample.observedAt &&
-    capturedNow - previewCapture.sample.observedAt < 5000
+    capturedNow - previewCapture.sample.observedAt < VIDEO_ACCOUNTING_FRESH_MS
       ? previewCapture.sample
       : null;
+  const previewRates = previewSample ? previewCapture?.rates : null;
   return (
     <UiShell
       video={{
@@ -1408,7 +1449,8 @@ function Diagnostic() {
               </small>
               <div>
                 Media nhận: {previewSample.admitted} · Lần gọi decode: {previewSample.submitted} ·
-                Canvas đã vẽ: {previewSample.drawn}
+                Canvas đã vẽ: {previewSample.drawn} · AVC payload: {previewSample.payloadBytes}{' '}
+                bytes
               </div>
               <div>
                 Bỏ: {previewSample.discarded} (chờ key {previewSample.waitingKey}, reset{' '}
@@ -1427,16 +1469,23 @@ function Diagnostic() {
               </div>
             </>
           ) : null}
+          <div>
+            RENDERER_INTERVAL ·{' '}
+            {previewRates
+              ? `Canvas: ${previewRates.canvasFps.toFixed(2)} draws/s · AVC payload: ${(previewRates.payloadBitsPerSecond / 1000000).toFixed(6)} Mbps · khoảng ${previewRates.intervalMs} ms`
+              : 'Canvas draws/s / AVC payload Mbps: UNKNOWN'}
+          </div>
           <small>
-            FPS / bitrate / native drops / GPU presentation: UNKNOWN. Canvas draw không chứng minh
-            màn hình vật lý.
+            Đọc lần hai trong 5 giây để chụp trung bình khoảng thời gian; không phải số liệu trực
+            tiếp. Native/effective FPS / bitrate / native drops / GPU presentation: UNKNOWN. Canvas
+            draw không chứng minh màn hình vật lý.
           </small>
         </section>
       }
       onPreviewAccountingRead={readPreview}
       onHostResourcesClose={() => {
         cancelHost();
-        setPreviewCapture(null);
+        clearPreview();
       }}
       onHostResourcesRead={() => {
         void readHost();

@@ -585,3 +585,16 @@ producer, actor, public Start/Stop, target authority and stream settings remain
 unchanged. Only P3/P10 lanes are active. No whole C-cell, visual, native, device,
 P1-06 or Phase acceptance follows. Independent review and serialized full checks
 precede publication; no user computer or phone is accessed.
+
+
+## P3-11.F bounded renderer rates — 2026-11-03 23:48 UTC
+
+After hidden-decoder exact-head Windows source PASS, coordinator adopted the
+independently CLEAR [renderer interval observation entry](phases/P3-RENDERER-RATES-SOURCE-ENTRY.md).
+Two explicit local accounting reads may report actual canvas draws/s and validated
+AVC payload bits/s, fenced by current owner, decoder, segment and freshness.
+No native/effective setting, performance envelope, automatic policy, public IPC,
+new timer or device access is added. Only P3/P10 remain active. Whole F/C cells,
+visual/runtime/native/device proof and technical acceptance remain open. Preserve
+main/history and run independent final review/full source verification before
+non-force phase-03 publication.

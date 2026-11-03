@@ -187,7 +187,12 @@ function mount(
         return () => `00000000-0000-4000-8000-${(++n).toString().padStart(12, '0')}`;
       })(),
     },
-    performance: { now: () => hostClock },
+    performance: {
+      now: () => {
+        if (hostClock instanceof Error) throw hostClock;
+        return hostClock;
+      },
+    },
     setTimeout: (fn, ms) => {
       const id = {};
       hostTimers.set(id, { fn, ms });
@@ -2603,5 +2608,372 @@ for (const terminal of [
     assert.equal(posts.length, before);
     assert.equal(calls.filter((v) => v.kind === 'START').length, 1);
     m.dispose();
+  });
+}
+
+const previewText = (node) =>
+  typeof node === 'string' || typeof node === 'number'
+    ? String(node)
+    : Array.isArray(node)
+      ? node.map(previewText).join('')
+      : node?.props
+        ? previewText(node.props.children)
+        : '';
+async function rateRenderer() {
+  let now = 0,
+    supports = () => Promise.resolve(true),
+    preferenceResult = contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE');
+  const timers = new Map(),
+    calls = [],
+    posts = [];
+  const f = fleetState(0, [fleetId]);
+  f.devices[0].state = 'DEVICE';
+  let sessionNumber = 0;
+  const m = mount(
+    { read: async () => preferenceResult },
+    1600,
+    { read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE') },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    {
+      invoke: async (raw) => {
+        const r = JSON.parse(raw);
+        calls.push(r);
+        return videoContract.videoStreamResponse(
+          r.requestId,
+          r.kind === 'START' ? 'PENDING' : 'STOPPED',
+          r.kind === 'START'
+            ? `00000000-0000-4000-8000-${String(++sessionNumber).padStart(12, '0')}`
+            : r.videoId,
+        );
+      },
+    },
+    {
+      now: () => now,
+      utc: () => Date.now(),
+      set: (fn, ms) => {
+        const id = {};
+        timers.set(id, { fn, ms });
+        return id;
+      },
+      clear: (id) => timers.delete(id),
+      supported: () => supports(),
+      chunk: (v) => v,
+      create: (output) => ({
+        decodeQueueSize: 0,
+        configure() {},
+        close() {},
+        decode: (chunk) =>
+          output({
+            timestamp: chunk.timestamp,
+            codedWidth: 32,
+            codedHeight: 16,
+            visibleRect: { x: 0, y: 0, width: 32, height: 16 },
+            displayWidth: 32,
+            displayHeight: 16,
+            rotation: 0,
+            flip: false,
+            close() {},
+          }),
+      }),
+    },
+  );
+  m.effects();
+  await flush();
+  m.effects();
+  await flush();
+  const fixture = generateVideoDecoderFixture('LANDSCAPE');
+  async function start() {
+    m.render().props.video.onStart(fleetId, 1);
+    await flush();
+    const videoId = `00000000-0000-4000-8000-${String(sessionNumber).padStart(12, '0')}`;
+    const port = {
+      onmessage: null,
+      onmessageerror: null,
+      start() {},
+      close() {},
+      postMessage: (v) => posts.push(v),
+    };
+    m.events.get('message')({
+      source: m.hostWindow,
+      origin: videoContract.VIDEO_WINDOW_ORIGIN,
+      data: {
+        type: 'AUTO_VIDEO_PORT_V1',
+        version: 1,
+        videoId,
+        requestId: calls.at(-1).requestId,
+        deviceId: fleetId,
+        generation: 1,
+        deadlineUtc: Date.now() + 20000,
+      },
+      ports: [port],
+    });
+    m.render().props.video.canvasRef({
+      dataset: {},
+      width: 0,
+      height: 0,
+      style: {},
+      getContext: () => ({ clearRect() {}, drawImage() {} }),
+    });
+    let epoch = 0,
+      delivery = 0,
+      packet = 0,
+      geometry = 0,
+      config = 0;
+    const presentation = (state) =>
+      port.onmessage({
+        data: {
+          version: 2,
+          videoId,
+          kind: 'PRESENTATION',
+          epoch: ++epoch,
+          state,
+          afterDeliveryId: delivery,
+          afterPacketId: packet,
+          remainingMs: 20000,
+        },
+      });
+    const send = (
+      kind,
+      bytes = kind === 'CONFIG'
+        ? fixture.configuration
+        : kind === 'SESSION'
+          ? new Uint8Array()
+          : fixture.key,
+    ) => {
+      if (kind === 'SESSION') geometry++;
+      else packet++;
+      if (kind === 'CONFIG') config++;
+      port.onmessage({
+        data: {
+          version: 2,
+          videoId,
+          kind: 'MEDIA',
+          epoch,
+          delivery: {
+            version: 1,
+            videoId,
+            deliveryId: ++delivery,
+            geometryId: geometry,
+            configId: kind === 'SESSION' ? 0 : config,
+            packetId: packet,
+            kind,
+            ptsUs: kind === 'KEY' || kind === 'DELTA' ? packet : null,
+            totalBytes: bytes.length,
+            width: 32,
+            height: 16,
+            bytes,
+          },
+        },
+      });
+    };
+    presentation('VISIBLE');
+    send('SESSION');
+    send('CONFIG');
+    await flush();
+    send('KEY');
+    await flush();
+    assert.equal(m.render().props.video.view.state, 'DISPLAYING');
+    return { port, send, presentation, videoId };
+  }
+  return {
+    m,
+    timers,
+    calls,
+    posts,
+    fixture,
+    start,
+    time: (value) => {
+      now = value;
+      m.hostTime(value);
+    },
+    text: () => previewText(m.render().props.previewAccounting),
+    read: () => m.render().props.onPreviewAccountingRead(),
+    support: (fn) => {
+      supports = fn;
+    },
+    revoke: () => {
+      preferenceResult = contract.settingsError('SESSION_REVOKED', null, 'DEGRADED');
+    },
+  };
+}
+
+test('renderer interval rates use two explicit reads, correct units, idle zeros and no additional effects', async () => {
+  const h = await rateRenderer(),
+    s = await h.start();
+  h.read();
+  assert.match(h.text(), /CAPTURED/);
+  assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+  const calls = h.calls.length,
+    posts = h.posts.length,
+    timers = h.timers.size;
+  h.time(1000);
+  s.send('KEY');
+  await flush();
+  h.read();
+  assert.match(h.text(), /Canvas: 1\.00 draws\/s/);
+  assert.ok(
+    h.text().includes(`AVC payload: ${((h.fixture.key.length * 8) / 1000000).toFixed(6)} Mbps`),
+  );
+  assert.match(h.text(), /khoảng 1000 ms/);
+  assert.match(h.text(), /RENDERER_INTERVAL/);
+  assert.match(
+    h.text(),
+    /Native\/effective FPS \/ bitrate \/ native drops \/ GPU presentation: UNKNOWN/,
+  );
+  assert.match(h.text(), /Đọc lần hai trong 5 giây/);
+  assert.equal(h.calls.length, calls);
+  assert.equal(h.posts.length, posts + 2); // Only the actual KEY's painted/consumed ACKs.
+  assert.equal(h.timers.size, timers);
+  assert.equal(h.m.hostTimers.size, 0);
+  h.time(1500);
+  h.read();
+  assert.match(h.text(), /Canvas: 0\.00 draws\/s · AVC payload: 0\.000000 Mbps · khoảng 500 ms/);
+  h.read();
+  assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+  h.time(6500);
+  h.read(); // Exactly 5 seconds is not an interval, but becomes a new baseline.
+  assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+  h.time(6600);
+  h.read();
+  assert.match(h.text(), /Canvas: 0\.00 draws\/s/);
+  h.time(11600);
+  assert.doesNotMatch(h.text(), /CAPTURED/);
+  assert.doesNotMatch(h.text(), /Canvas: 0\.00 draws\/s/);
+  h.m.dispose();
+});
+
+test('renderer clears interval capture synchronously during pending CONFIG and at SESSION and hidden fences', async () => {
+  const h = await rateRenderer(),
+    s = await h.start();
+  h.read();
+  h.time(100);
+  h.read();
+  assert.match(h.text(), /Canvas: 0\.00 draws\/s/);
+  let complete;
+  h.support(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  s.send('CONFIG');
+  assert.doesNotMatch(h.text(), /CAPTURED/); // No onState has run for pending capability.
+  complete(true);
+  await flush();
+  h.read();
+  assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+  s.send('KEY');
+  await flush();
+  h.time(200);
+  h.read();
+  assert.match(h.text(), /Canvas: 10\.00 draws\/s/);
+  s.presentation('HIDDEN');
+  assert.doesNotMatch(h.text(), /CAPTURED/);
+  h.read();
+  assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+  h.time(1200);
+  s.send('KEY');
+  await flush();
+  h.read();
+  assert.match(h.text(), /Canvas: 0\.00 draws\/s/);
+  assert.ok(
+    h.text().includes(`AVC payload: ${((h.fixture.key.length * 8) / 1000000).toFixed(6)} Mbps`),
+  );
+  s.presentation('VISIBLE');
+  assert.doesNotMatch(h.text(), /CAPTURED/);
+  h.read();
+  assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+  s.send('SESSION');
+  assert.doesNotMatch(h.text(), /CAPTURED/);
+  h.read();
+  assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+  h.m.dispose();
+});
+
+for (const terminal of [
+  'stop-replace',
+  'panel-close',
+  'pagehide',
+  'unmount',
+  'port-failure',
+  'revocation',
+]) {
+  test(`captured renderer rates cannot survive ${terminal}`, async () => {
+    const h = await rateRenderer(),
+      s = await h.start();
+    h.read();
+    h.time(100);
+    h.read();
+    assert.match(h.text(), /Canvas: 0\.00 draws\/s/);
+    if (terminal === 'panel-close') h.m.render().props.onHostResourcesClose();
+    if (terminal === 'pagehide') h.m.events.get('pagehide')();
+    if (terminal === 'unmount') h.m.dispose();
+    if (terminal === 'port-failure') s.port.onmessageerror();
+    if (terminal === 'stop-replace') h.m.render().props.video.onStop();
+    if (terminal === 'revocation') {
+      h.revoke();
+      h.m.find('preferences-read').props.onClick();
+      await flush();
+      h.m.effects();
+    }
+    assert.doesNotMatch(h.text(), /CAPTURED/);
+    assert.doesNotMatch(h.text(), /Canvas: 0\.00 draws\/s/);
+    await flush();
+    if (terminal === 'stop-replace') {
+      await h.start();
+      h.read();
+      assert.match(h.text(), /CAPTURED/);
+      assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+      s.port.onmessageerror(); // Retired decoder/owner cannot invalidate the replacement.
+      assert.match(h.text(), /CAPTURED/);
+    } else if (terminal === 'panel-close') {
+      h.time(200);
+      h.read(); // A new panel's first legitimate read cannot reuse the closed baseline.
+      assert.match(h.text(), /Canvas draws\/s \/ AVC payload Mbps: UNKNOWN/);
+    } else {
+      h.read();
+      assert.doesNotMatch(h.text(), /CAPTURED/);
+    }
+    h.m.dispose();
+  });
+}
+
+test('renderer backward observation clock permanently fences captured interval values', async () => {
+  const h = await rateRenderer();
+  await h.start();
+  h.read();
+  h.time(100);
+  h.read();
+  assert.match(h.text(), /Canvas: 0\.00 draws\/s/);
+  h.time(99);
+  assert.doesNotMatch(h.text(), /CAPTURED/);
+  h.time(101);
+  h.read();
+  assert.doesNotMatch(h.text(), /CAPTURED/);
+  assert.equal(h.m.render().props.video.view.state, 'DISPLAYING');
+  h.m.dispose();
+});
+
+for (const fault of [NaN, Infinity, new Error('synthetic clock failure')]) {
+  test(`renderer accounting clock fault ${String(fault)} hides rates without changing media`, async () => {
+    const h = await rateRenderer();
+    await h.start();
+    h.read();
+    h.time(100);
+    h.read();
+    assert.match(h.text(), /Canvas: 0\.00 draws\/s/);
+    h.m.hostTime(fault);
+    assert.doesNotMatch(h.text(), /CAPTURED/);
+    h.time(200);
+    h.read();
+    assert.doesNotMatch(h.text(), /CAPTURED/);
+    assert.equal(h.m.render().props.video.view.state, 'DISPLAYING');
+    assert.equal(h.calls.length, 1);
+    h.m.dispose();
   });
 }

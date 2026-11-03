@@ -105,3 +105,13 @@ adds the explicitly requested application-data-volume disk read only. See
 [actual evidence and remaining gates](../evidence/P3-11B-disk-space-source-2026-11-03.md).
 The original plan and fixed B definition remain unchanged: no disk-I/O support,
 whole-task/phase acceptance, user-device access or visual/runtime waiver follows.
+
+
+## Bounded renderer-rate continuation — 2026-11-03
+
+The independently CLEAR [P3-11.F source entry](P3-RENDERER-RATES-SOURCE-ENTRY.md)
+permits captured interval-average canvas draws/s and validated AVC payload bits/s
+using two explicit local reads, within one current owner/decoder segment. This
+adds no stream control, sampling timer or benchmark assumption. Full fixed-cell
+P3-11.F, native/effective rates, live monitoring, host/device envelope and all
+original formal acceptance criteria remain incomplete and unchanged.

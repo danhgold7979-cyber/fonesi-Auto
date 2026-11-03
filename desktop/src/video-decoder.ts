@@ -83,6 +83,9 @@ export type VideoGeometryFailure = Readonly<
 >;
 export type VideoAccounting = Readonly<{
   scope: 'RENDERER_CANVAS';
+  videoId: string;
+  segment: number;
+  payloadBytes: number;
   observedAt: number;
   width: number | null;
   height: number | null;
@@ -115,6 +118,125 @@ const uuid = (v: unknown): v is string =>
   typeof v === 'string' &&
   v.length === 36 &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
+export const VIDEO_ACCOUNTING_FRESH_MS = 5000;
+export type VideoRates = Readonly<{
+  scope: 'RENDERER_INTERVAL';
+  videoId: string;
+  segment: number;
+  startedAt: number;
+  endedAt: number;
+  intervalMs: number;
+  canvasFps: number;
+  payloadBitsPerSecond: number;
+}>;
+const cumulativeKeys = [
+  'admitted',
+  'submitted',
+  'drawn',
+  'discarded',
+  'waitingKey',
+  'reset',
+  'stopped',
+  'hidden',
+  'payloadBytes',
+] as const;
+const accountingKeys = [
+  'scope',
+  'videoId',
+  'segment',
+  'observedAt',
+  'width',
+  'height',
+  ...cumulativeKeys,
+  'outstanding',
+  'pending',
+  'held',
+] as const;
+const observationTime = (v: unknown): v is number =>
+  typeof v === 'number' &&
+  Number.isFinite(v) &&
+  v >= 0 &&
+  v <= Number.MAX_SAFE_INTEGER &&
+  !Object.is(v, -0);
+function rateSample(raw: unknown): VideoAccounting | null {
+  try {
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(raw))
+    )
+      return null;
+    const descriptors = Object.getOwnPropertyDescriptors(raw);
+    if (
+      Reflect.ownKeys(descriptors).length !== accountingKeys.length ||
+      accountingKeys.some(
+        (key) => !descriptors[key]?.enumerable || !Object.hasOwn(descriptors[key], 'value'),
+      )
+    )
+      return null;
+    // Read descriptor values only: caller accessors are never invoked.
+    const v = Object.fromEntries(accountingKeys.map((key) => [key, descriptors[key]?.value]));
+    if (
+      v.scope !== 'RENDERER_CANVAS' ||
+      !uuid(v.videoId) ||
+      !integer(v.segment) ||
+      !observationTime(v.observedAt) ||
+      cumulativeKeys.some((key) => !integer(v[key])) ||
+      !integer(v.outstanding) ||
+      v.outstanding > 3 ||
+      !integer(v.pending) ||
+      v.pending > 2 ||
+      !integer(v.held) ||
+      v.held > 1 ||
+      !(
+        (v.width === null && v.height === null) ||
+        (integer(v.width, 1) &&
+          integer(v.height, 1) &&
+          v.width <= 4096 &&
+          v.height <= 4096 &&
+          v.width * v.height <= 8388608)
+      ) ||
+      v.admitted - v.drawn - v.discarded !== v.outstanding ||
+      v.discarded - v.waitingKey - v.reset - v.stopped - v.hidden !== 0 ||
+      v.submitted > v.admitted ||
+      v.drawn > v.submitted
+    )
+      return null;
+    return v as VideoAccounting;
+  } catch {
+    return null;
+  }
+}
+/** Pure, captured renderer observations, never native/effective stream settings. */
+export function measureVideoRates(previous: unknown, current: unknown): VideoRates | null {
+  const before = rateSample(previous),
+    after = rateSample(current);
+  if (
+    !before ||
+    !after ||
+    before.videoId !== after.videoId ||
+    before.segment !== after.segment ||
+    after.admitted === 0 ||
+    cumulativeKeys.some((key) => after[key] < before[key])
+  )
+    return null;
+  const intervalMs = after.observedAt - before.observedAt;
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0 || intervalMs >= VIDEO_ACCOUNTING_FRESH_MS)
+    return null;
+  const canvasFps = ((after.drawn - before.drawn) / intervalMs) * 1000;
+  const payloadBitsPerSecond = ((after.payloadBytes - before.payloadBytes) / intervalMs) * 8000;
+  if (![canvasFps, payloadBitsPerSecond].every((v) => Number.isFinite(v) && v >= 0)) return null;
+  return Object.freeze({
+    scope: 'RENDERER_INTERVAL',
+    videoId: after.videoId,
+    segment: after.segment,
+    startedAt: before.observedAt,
+    endedAt: after.observedAt,
+    intervalMs,
+    canvasFps,
+    payloadBitsPerSecond,
+  });
+}
 export function createTileVideoDecoder(
   options: Readonly<{
     videoId: string;
@@ -190,6 +312,7 @@ export function createTileVideoDecoder(
   type Record = { drawing: boolean; deferred: Outcome | null };
   const accounting = new Map<number, Record>();
   const counts = {
+    payloadBytes: 0,
     admitted: 0,
     submitted: 0,
     drawn: 0,
@@ -234,6 +357,11 @@ export function createTileVideoDecoder(
       unavailableAccounting();
       return;
     }
+    if (!integer(v.totalBytes) || counts.payloadBytes > Number.MAX_SAFE_INTEGER - v.totalBytes) {
+      unavailableAccounting();
+      return;
+    }
+    counts.payloadBytes += v.totalBytes;
     increment('admitted');
     if (accountingAvailable) accounting.set(v.deliveryId, { drawing: false, deferred: null });
   }
@@ -247,7 +375,8 @@ export function createTileVideoDecoder(
       return null;
     }
     if (
-      !Number.isFinite(now) ||
+      !integer(generation) ||
+      !observationTime(now) ||
       now < observedAt ||
       counts.admitted !== counts.drawn + counts.discarded + accounting.size ||
       counts.discarded !== counts.waitingKey + counts.reset + counts.stopped + counts.hidden ||
@@ -260,6 +389,8 @@ export function createTileVideoDecoder(
     observedAt = now;
     return Object.freeze({
       scope: 'RENDERER_CANVAS',
+      videoId: options.videoId,
+      segment: generation,
       observedAt,
       width: lastPaint >= 0 && config ? config.displayWidth : null,
       height: lastPaint >= 0 && config ? config.displayHeight : null,
@@ -827,6 +958,7 @@ export function createTileVideoDecoder(
       Object.freeze({
         state,
         closed,
+        segment: generation,
         pending: pending.size,
         held: held !== null,
         epoch,

@@ -90,7 +90,8 @@ It does not prove Electron scheduling, GPU presentation or phone capture timing.
 
 ## Remaining gates and coverage
 
-Exact-head Windows source CI is pending publication at this checkpoint. Real
+Exact-head Windows source CI was pending at the publication checkpoint; the later
+verified result is recorded below. Real
 Electron hide/minimize/restore and background throttling, equal-viewport V9
 Dark/Light visual parity, native decoder/provider integration and device evidence
 remain **NOT_RUN for this new behavior**. Offscreen/CSS/filtered/obscured tiles,
@@ -101,3 +102,30 @@ changed. Existing legacy desktop-stack runtime failure and P1-06 UNMET remain.
 This is a subset of P3-09.C, not full C-cell completion. Fixed ledger remains
 N71/S5/I24: source-covered29/100, integrated24/100, technical task acceptance0/19.
 No new full-cell credit, whole-task/Phase acceptance or hardware/release claim.
+
+## Exact-head hosted closure observed 2026-11-03 23:41 UTC
+
+Published non-force commit `602e8f93b67d436b3de302929ccf32c38a8c40da`,
+tree `ce6f2d3e7ade5320eebc4223a4353fa87c676e8d`, sole parent
+`2b5085939184ccd0b6c4088186f5993904572f3d`. Public branch ref was read back and
+matched. Local commit `08dbfaba782d280e6391554f076c1960698d66f5` has the identical
+reviewed tree and base; both histories are preserved, without reset or force push.
+
+[Windows source run 41740519875](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41740519875)
+completed **SUCCESS** at 23:40:22 UTC, job 126280563946. Actual log confirms
+desktop **1944/1944**, foundation **109/109**, Python **383/383**, production/demo
+builds and synthetic qualifier build PASS. The runner was Windows2022
+win22/20261026.347.1, Node24.22.1, npm11.19.1 and Python3.12.10. These are actual
+hosted results, not reuse of Linux counts. Bundled disk-worker cases also passed
+**4/4**, with owned-directory retirement confirmed. Optional native/runtime/device
+jobs were skipped; no hidden-window Electron runtime or device claim follows.
+
+The automatic [legacy desktop-stack PR run 41740528027](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41740528027)
+still failed on synthetic merge `75f2861f83c2d29b69f4f596fd7215d25e8b4bb5`:
+source/package each20/21, `navigation_denied=false`, runtime exit1, installer/runtime
+cleanup true. This is the previously documented G0-12 navigation failure. It was
+not repaired or rerun here; no all-checks-green claim is made. Collector, telemetry,
+secret and SQLite legacy runs succeeded. Main, original gates and P1-06 remain
+unchanged. Closure is retained for the next meaningful source publication instead
+of triggering another status-only push. This recovery through hosted verification
+took approximately16 minutes from its recorded23:25 UTC start.

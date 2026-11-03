@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import { parseAvcConfiguration, prepareAvcChunk, annexBNals } from '../src/h264-video.ts';
-import { createTileVideoDecoder } from '../src/video-decoder.ts';
+import {
+  createTileVideoDecoder,
+  measureVideoRates,
+  VIDEO_ACCOUNTING_FRESH_MS,
+} from '../src/video-decoder.ts';
 const id = '00000000-0000-4000-8000-000000000001';
 class Bits {
   text = '';
@@ -828,6 +832,7 @@ test('SPS cropped visible content may be repacked without applying original crop
 // These tests execute createTileVideoDecoder, substituting native WebCodecs, Canvas
 // and clocks only. They do not establish native decoder or physical presentation evidence.
 const counterKeys = [
+  'payloadBytes',
   'admitted',
   'submitted',
   'drawn',
@@ -1740,5 +1745,278 @@ test('nested VISIBLE fence from decoder close preserves the held delivery ACK ex
   r.frame(r.decoders[1], fresh.ptsUs);
   assert.equal(r.owner.snapshot().state, 'DISPLAYING');
   assert.equal(new Set(r.consumed.map((v) => v.deliveryId)).size, r.consumed.length);
+  r.owner.close();
+});
+
+test('rate observations have an exact immutable schema and use actual successful draws and admitted bytes', async () => {
+  assert.equal(VIDEO_ACCOUNTING_FRESH_MS, 5000);
+  const r = await configuredRig();
+  const before = accounting(r, { payloadBytes: 0 });
+  assert.deepEqual(
+    Object.keys(before).sort(),
+    ['scope', 'videoId', 'segment', 'observedAt', 'width', 'height', ...counterKeys].sort(),
+  );
+  assert.equal(before.videoId, id);
+  assert.equal(before.segment, r.owner.snapshot().segment);
+  const key = r.send('KEY');
+  r.frame(r.decoders[0], key.ptsUs);
+  const delta = r.send('DELTA');
+  r.frame(r.decoders[0], delta.ptsUs);
+  r.setNow(1000);
+  const after = accounting(r, { payloadBytes: key.totalBytes + delta.totalBytes });
+  const calls = { ...r.calls };
+  const rates = measureVideoRates(before, after);
+  assert.deepEqual(rates, {
+    scope: 'RENDERER_INTERVAL',
+    videoId: id,
+    segment: after.segment,
+    startedAt: 0,
+    endedAt: 1000,
+    intervalMs: 1000,
+    canvasFps: 2,
+    payloadBitsPerSecond: (key.totalBytes + delta.totalBytes) * 8,
+  });
+  assert.equal(Object.isFrozen(rates), true);
+  assert.throws(() => {
+    rates.canvasFps = 99;
+  }, TypeError);
+  assert.deepEqual(r.calls, calls, 'pure rate calculation has no clock/media effects');
+  r.setNow(1500);
+  assert.equal(measureVideoRates(after, accounting(r)).canvasFps, 0);
+  assert.equal(measureVideoRates(after, accounting(r)).payloadBitsPerSecond, 0);
+  r.owner.close();
+});
+
+test('validated hidden, waiting-key and held payloads count once, while session/config and invalid payloads do not', async () => {
+  const r = await configuredRig();
+  accounting(r, { payloadBytes: 0 });
+  const waiting = r.send('DELTA');
+  const first = r.send('KEY');
+  const second = r.send('DELTA');
+  const held = r.send('DELTA');
+  const bytes = waiting.totalBytes + first.totalBytes + second.totalBytes + held.totalBytes;
+  accounting(r, { payloadBytes: bytes, waitingKey: 1, held: 1 });
+  for (const v of [first, second, held]) r.frame(r.decoders[0], v.ptsUs);
+  accounting(r, { payloadBytes: bytes, drawn: 3, held: 0 });
+  r.fence('HIDDEN');
+  const baseline = accounting(r);
+  const hidden = r.send('KEY');
+  r.setNow(1000);
+  const sample = accounting(r, { payloadBytes: bytes + hidden.totalBytes, hidden: 1 });
+  assert.equal(measureVideoRates(baseline, sample).canvasFps, 0);
+  assert.equal(measureVideoRates(baseline, sample).payloadBitsPerSecond, hidden.totalBytes * 8);
+  r.send('CONFIG', { configId: 2 });
+  accounting(r, { payloadBytes: sample.payloadBytes });
+  r.send('KEY', { configId: 2, bytes: media(false), totalBytes: media(false).length });
+  accounting(r, { payloadBytes: sample.payloadBytes });
+  assert.equal(r.owner.snapshot().closed, true);
+});
+
+test('rate interval guards reject missing, stale, duplicate, backwards and mixed identity or segment reads', async () => {
+  const r = await configuredRig();
+  const empty = accounting(r);
+  assert.equal(measureVideoRates(empty, { ...empty, observedAt: 1 }), null);
+  const key = r.send('KEY');
+  r.frame(r.decoders[0], key.ptsUs);
+  const sample = accounting(r);
+  for (const previous of [null, undefined, {}, [], 1])
+    assert.equal(measureVideoRates(previous, sample), null);
+  for (const observedAt of [-1, -0, 0, 5000, 5001, NaN, Infinity, Number.MAX_VALUE])
+    assert.equal(measureVideoRates(sample, { ...sample, observedAt }), null);
+  assert.notEqual(measureVideoRates(sample, { ...sample, observedAt: 4999.5 }), null);
+  assert.equal(
+    measureVideoRates(sample, { ...sample, observedAt: 1, videoId: id.replace(/1$/, '2') }),
+    null,
+  );
+  for (const advance of [
+    () => r.fence('HIDDEN'),
+    () => r.fence('VISIBLE'),
+    () => r.send('CONFIG', { configId: 2 }),
+    () => r.owner.close(),
+  ]) {
+    const before = accounting(r);
+    advance();
+    r.setNow(before.observedAt + 1);
+    const after = accounting(r);
+    assert.ok(after.segment > before.segment);
+    assert.equal(after.segment, r.owner.snapshot().segment);
+    assert.equal(measureVideoRates(before, after), null);
+  }
+});
+
+test('strict accounting rate validation refuses accessors, extra keys, prototypes, unsafe fields and broken conservation', async () => {
+  const r = await configuredRig();
+  const key = r.send('KEY');
+  r.frame(r.decoders[0], key.ptsUs);
+  const sample = accounting(r);
+  const later = { ...sample, observedAt: 100 };
+  let accessed = 0;
+  const accessor = { ...later };
+  Object.defineProperty(accessor, 'drawn', {
+    enumerable: true,
+    get() {
+      accessed++;
+      return 1;
+    },
+  });
+  const hidden = { ...later };
+  Object.defineProperty(hidden, 'drawn', { value: 1, enumerable: false });
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  const bad = [
+    accessor,
+    hidden,
+    revoked.proxy,
+    { ...later, extra: 1 },
+    { ...later, [Symbol('extra')]: 1 },
+    Object.assign(Object.create({}), later),
+    { ...later, scope: 'NATIVE' },
+    { ...later, videoId: 'device' },
+    { ...later, width: 4097 },
+    { ...later, height: null },
+    { ...later, outstanding: 4 },
+    { ...later, pending: 3 },
+    { ...later, held: 2 },
+    { ...later, admitted: 2 },
+    { ...later, drawn: 2 },
+    { ...later, submitted: 0 },
+    { ...later, discarded: 1 },
+    { ...later, hidden: 1 },
+  ];
+  for (const field of [...counterKeys, 'segment'])
+    for (const value of [-1, -0, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '1'])
+      bad.push({ ...later, [field]: value });
+  for (const v of bad) {
+    assert.equal(measureVideoRates(sample, v), null);
+    assert.equal(measureVideoRates(v, later), null);
+  }
+  assert.equal(accessed, 0);
+  assert.notEqual(measureVideoRates(sample, Object.assign(Object.create(null), later)), null);
+  r.owner.close();
+});
+
+test('only cumulative counters must be monotonic; pending, held and outstanding gauges may decrease', async () => {
+  const r = await configuredRig();
+  const first = r.send('KEY'),
+    second = r.send('DELTA'),
+    held = r.send('DELTA');
+  const before = accounting(r, { outstanding: 3, pending: 2, held: 1 });
+  for (const v of [first, second, held]) r.frame(r.decoders[0], v.ptsUs);
+  r.setNow(1000);
+  const after = accounting(r, { outstanding: 0, pending: 0, held: 0 });
+  assert.equal(measureVideoRates(before, after).canvasFps, 3);
+  assert.equal(measureVideoRates(before, after).payloadBitsPerSecond, 0);
+  const fixture = {
+    ...after,
+    admitted: 10,
+    submitted: 5,
+    drawn: 2,
+    discarded: 8,
+    waitingKey: 2,
+    reset: 2,
+    stopped: 2,
+    hidden: 2,
+    payloadBytes: 100,
+  };
+  for (const key of [
+    'admitted',
+    'submitted',
+    'drawn',
+    'discarded',
+    'waitingKey',
+    'reset',
+    'stopped',
+    'hidden',
+    'payloadBytes',
+  ]) {
+    // Individually valid snapshots with a declining counter must never produce a rate.
+    const older = { ...fixture, observedAt: 0 };
+    const newer = { ...fixture, observedAt: 1, [key]: fixture[key] - 1 };
+    if (key === 'admitted') {
+      newer.discarded--;
+      newer.hidden--;
+    }
+    if (key === 'drawn') newer.outstanding++;
+    if (key === 'discarded') {
+      newer.outstanding++;
+      newer.hidden--;
+    }
+    if (['waitingKey', 'reset', 'stopped', 'hidden'].includes(key)) {
+      newer.discarded--;
+      newer.outstanding++;
+    }
+    assert.equal(measureVideoRates(older, newer), null, key);
+  }
+  r.owner.close();
+});
+
+for (const throws of [false, true])
+  test(`reentrant ${throws ? 'failed' : 'successful'} draw preserves cumulative semantics but invalidates interval`, async () => {
+    const r = await configuredRig();
+    const key = r.send('KEY');
+    const before = accounting(r);
+    r.setDrawHook(() => {
+      r.fence('HIDDEN');
+      if (throws) throw Error('synthetic draw');
+    });
+    r.frame(r.decoders[0], key.ptsUs);
+    r.setNow(100);
+    const after = accounting(r, { drawn: throws ? 0 : 1, payloadBytes: key.totalBytes });
+    assert.equal(measureVideoRates(before, after), null);
+    r.owner.close();
+  });
+
+test('payload checked addition reaches exact safe bound then disables only accounting', async () => {
+  const measured = await configuredRig({
+    factory: await accountingSourceFactory({
+      seed: { payloadBytes: Number.MAX_SAFE_INTEGER - media().length },
+      storage: true,
+    }),
+  });
+  const control = await configuredRig();
+  for (const r of [measured, control]) {
+    const key = r.send('KEY');
+    if (r === measured) accounting(r, { payloadBytes: Number.MAX_SAFE_INTEGER });
+    r.frame(r.decoders[0], key.ptsUs);
+    const delta = r.send('DELTA');
+    r.frame(r.decoders[0], delta.ptsUs);
+  }
+  assert.equal(measured.owner.accounting(), null);
+  assert.equal(measured.owner.accountingStorage(), 0);
+  assert.deepEqual(measured.owner.snapshot(), control.owner.snapshot());
+  assert.deepEqual(measured.consumed, control.consumed);
+  assert.deepEqual(measured.painted, control.painted);
+  assert.deepEqual(measured.states, control.states);
+  assert.deepEqual(measured.decoders[0].chunks, control.decoders[0].chunks);
+  assert.equal(measured.calls.set, control.calls.set);
+  assert.equal(measured.calls.clear, control.calls.clear);
+  measured.owner.close();
+  control.owner.close();
+});
+
+test('duplicate and invalid-PTS media never add validated payload bytes', async () => {
+  for (const invalid of ['duplicate', 'pts', 'size']) {
+    const r = await configuredRig();
+    const first = r.send('KEY');
+    r.frame(r.decoders[0], first.ptsUs);
+    if (invalid === 'duplicate')
+      r.owner.receive({ version: 2, videoId: id, kind: 'MEDIA', epoch: 1, delivery: first });
+    else r.send('DELTA', invalid === 'pts' ? { ptsUs: first.ptsUs } : { totalBytes: 1 });
+    accounting(r, { payloadBytes: first.totalBytes, admitted: 1 });
+    assert.equal(r.owner.snapshot().closed, true);
+  }
+});
+
+test('rate arithmetic remains finite for safe byte deltas and refuses nonfinite tiny-interval results', async () => {
+  const r = await configuredRig();
+  const key = r.send('KEY');
+  r.frame(r.decoders[0], key.ptsUs);
+  const before = { ...accounting(r), payloadBytes: 0 };
+  const after = { ...before, observedAt: 1000, payloadBytes: Number.MAX_SAFE_INTEGER };
+  assert.equal(
+    measureVideoRates(before, after).payloadBitsPerSecond,
+    (Number.MAX_SAFE_INTEGER / 1000) * 8000,
+  );
+  assert.equal(measureVideoRates(before, { ...after, observedAt: Number.MIN_VALUE }), null);
   r.owner.close();
 });

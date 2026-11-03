@@ -1,6 +1,6 @@
 # V9 UI Baseline Mapping
 
-**Revision:** 0.3-draft · **Date:** 2026-10-30
+**Revision:** 0.4-draft · **Date:** 2026-11-03
 **Rule:** This document maps [accepted C-01–C-22](16_ACCEPTED_PRODUCT_DECISIONS.md#1-accepted-checklist) to the approved V9 layout. It is not permission to redesign the interface or treat untested service behavior as implemented.
 
 **Canonical full HTML reference:** [ui-reference/Fonesi-Auto-V9-UI-Reference.html](../ui-reference/Fonesi-Auto-V9-UI-Reference.html) · [Open instructions](../ui-reference/README.md). This file contains the complete V9 HTML, CSS and JavaScript. Download it and open in Chrome/Edge; GitHub's source viewer does not execute HTML.
@@ -133,6 +133,14 @@ Live panel:
 - Requested vs effective vs recommended settings.
 - Clear reason, affected scope and recommended action for every warning. Text/icons supplement colors; color alone is insufficient.
 
+Bounded source observation (2026-11-03): the existing explicit preview accounting
+read may show a captured interval-average canvas draw rate and validated AVC
+media-payload bitrate after two reads in the same decoder segment. Label the
+source, units and interval; first, stale or invalid reads remain UNKNOWN. These
+are renderer observations, not phone capture FPS, configured/effective encoder
+settings, network utilization or GPU presentation. No timer, policy or layout
+change follows. See the [reviewed source entry](phases/P3-RENDERER-RATES-SOURCE-ENTRY.md).
+
 Interaction rules:
 - Changing tile zoom does not change stream resolution.
 - Ctrl+wheel continues to resize the whole device tile.
@@ -189,3 +197,5 @@ Section 9.1 is the single control/interaction specification for this same panel;
 - 2026-10-30 — 0.2-draft: consolidated duplicate resource-panel requirements without removing controls; aligned DEC-019/DEC-020, capability-derived ranges, import/schedule/metric states and acceptance traces. Canonical V9 HTML was not edited; proposed schema/scope details still require ADR/Phase approval.
 
 - 2026-10-30 — 0.3-draft: mapped accepted ownership/provisioning, scoped capabilities/proxy/USB, album/row override and exact calendar semantics from C-01–C-22; retained V9 geometry and backend/evidence gates. Canonical HTML unchanged.
+
+- 2026-11-03 / 0.4-draft: clarified the bounded captured renderer-rate source observation inside the existing performance panel; no V9 layout or acceptance change.
