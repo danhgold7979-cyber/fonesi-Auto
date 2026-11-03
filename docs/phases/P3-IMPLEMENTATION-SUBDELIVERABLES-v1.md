@@ -234,6 +234,25 @@ Independent source/criterion review of the [media/decode evidence](../evidence/P
 
 **Current fixed ledger N74/S4/I22: source26/100=26.0% (+5.0pp versus §3.6); integrated22/100=22.0% (+5.0pp); technical acceptance0/19.** No denominator or definition changed. P3-04.E remains N because the complete named display recovery behavior is absent; partial rejection/detach work is not rounded up. Pause/resume, restart, multi-stream and focused/background profiles remain open. Null runtime pair admission does not erase complete source/software-integration behavior, but actual matching-pair/managed92, Windows H.264/custom-origin, rendered visual parity and physical qualification remain NOT_RUN for these bytes. No new runtime/task acceptance is implied.
 
+## 3.8. Local explicit recovery milestone — 2026-11-02 19:00 UTC
+
+Coordinator adopted the independent fixed-cell review after the final source gate **1835/1835**, foundation **109/109**, Python **383/383**, and qualifier build passed. See [exact local recovery evidence](../evidence/P3-02-P3-04-explicit-recovery-source-2026-11-02.md) and [adopted ownership entry](P3-EXPLICIT-VIDEO-RECOVERY-SOURCE-ENTRY.md). The fixed definitions and 100-cell denominator above are unchanged.
+
+| Cell | Before | Now | Complete behavior and evidence limit |
+|---|---|---|---|
+| P3-02.D | N | S | Fresh immutable attempt/ordinal/process identity, actual drain/CAS replacement and bounded failed-start/cancellation/exit handling are implemented across TS/native ownership. New native process/exit fixture groups are authored but not compiled or executed; source credit only. |
+| P3-04.E | N | I | Actual renderer/main/issuer/service/lower software wiring rejects corrupt/stale/out-of-order work and supports explicit display recovery after proven retirement without stopping a healthy actor. Attributable software tests cover fresh sealed tickets, pre-handoff cancellation, held Stop, stale work, refusal/quota UI and local capability teardown. This does not claim actual Windows/native recovery or physical acceptance. |
+
+**Current fixed ledger: N72 / S5 / I23. Source-covered28/100 =28.0% (+2.0 percentage points versus §3.7); integrated/software-tested23/100 =23.0% (+1.0pp). Technical task acceptance remains0/19.** Native compilation and the118 managed groups are **NOT_RUN**. P3-09.D remains N because the named cooldown policy is absent; P3-09.E remains N because the complete queued-actor/reconnect isolation slice is still partial. Pause/resume, independent multiple streams, profiles and all other uncompleted requirements remain open. The null runtime pair pin is not used to erase legitimate source/software-integration credit, and test counts are not converted into extra cells.
+
+This milestone is local-only in the authorized detached recovery worktree. The canonical pending-publication commit `ec046efc04f510355c3fc34873cce265e651d0ad` and its tree remain unchanged; no new publication or runtime campaign is implied.
+
+## 3.9. Local truthful preview accounting — 2026-11-03
+
+The independently reviewed [P3-09.B accounting implementation](P3-PREVIEW-ACCOUNTING-SOURCE-ENTRY.md) passed the final merged source gate **1887/1887**, foundation **109/109**, Python **383/383**, and production/qualifier builds. Under the coordinator's conditional adoption after those gates, **P3-09.B N→I** is the only new credit: actual decoder admission/draw/discard/outstanding conservation, bounded identity-local lifecycle settlement, and explicit captured renderer/popover integration with stale/unavailable fences. Attributable actual-source tests include pressure, reset/Stop, draw/ACK failure, reentrant callbacks, overflow, monotonic-clock faults and guarded UI reads.
+
+**Current fixed ledger N71/S5/I24: source29/100=29.0% (+1.0pp); integrated24/100=24.0% (+1.0pp); formal acceptance0/19.** Definitions and denominator remain unchanged. Canvas draws do not prove GPU/compositor or physical presentation; renderer counters do not prove native/network totals. FPS/bitrate and full P3-11.F remain UNKNOWN/incomplete. No P3-09.C/D/E credit, no native compilation/118-group execution, no new Windows qualification or physical evidence. Earlier synthetic campaign failures remain retained. This milestone is local and publication is intentionally batched.
+
 ## 4. First baseline and honest deltas
 
 The independently reviewed complete mapping and evidence overlay establish:

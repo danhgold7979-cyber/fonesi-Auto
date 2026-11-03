@@ -1,3 +1,4 @@
+import { generateVideoDecoderFixture } from '../verification/video-decoder-fixture.mjs';
 import * as videoContract from '../src/video-stream-contract.ts';
 import * as videoClient from '../src/video-stream-client.ts';
 import * as videoDecoder from '../src/video-decoder.ts';
@@ -41,6 +42,7 @@ function mount(
   inputApi = null,
   hostApi = null,
   videoApi = null,
+  videoBindings = null,
 ) {
   let component,
     cursor = 0;
@@ -140,11 +142,20 @@ function mount(
       if (name === './video-stream-contract.ts')
         return {
           ...videoContract,
+          snapshotVideoRefusal: (raw) =>
+            videoContract.snapshotVideoRefusal(JSON.parse(JSON.stringify(raw))),
           snapshotVideoPortMetadata: (raw) =>
             videoContract.snapshotVideoPortMetadata(JSON.parse(JSON.stringify(raw))),
         }; // VM realm marshaling only
       if (name === './video-stream-client.ts') return videoClient;
-      if (name === './video-decoder.ts') return videoDecoder;
+      if (name === './video-decoder.ts')
+        return videoBindings
+          ? {
+              ...videoDecoder,
+              createTileVideoDecoder: (options) =>
+                videoDecoder.createTileVideoDecoder(options, videoBindings),
+            }
+          : videoDecoder;
       if (name === './host-resource-contract.ts') return hostContract;
       if (name === './input-interaction-contract.js') return inputContract;
       if (name === './association-contract.js') return associationContract;
@@ -186,6 +197,7 @@ function mount(
       node.props?.children,
       node.props?.settings,
       node.props?.hostResources,
+      node.props?.previewAccounting,
     ].flat(Infinity)) {
       const found = find(id, child ?? null);
       if (found) return found;
@@ -2082,5 +2094,303 @@ test('renderer rejects foreign port and Stop before PENDING never sends READY or
   settle(videoContract.videoStreamResponse(calls[0].requestId, 'PENDING', videoId));
   await flush();
   assert.equal(calls.length, 2);
+  m.dispose();
+});
+
+for (const stopFailure of [false, true])
+  for (const reason of ['BUSY', 'QUOTA'])
+    test(`renderer retains ${reason} refusal separately with cleanup failure=${stopFailure}`, async () => {
+      const calls = [],
+        posts = [];
+      let settle;
+      const f = fleetState(0, [fleetId]);
+      f.devices[0].state = 'DEVICE';
+      const m = mount(
+        { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+        1600,
+        { read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE') },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        {
+          invoke: (raw) => {
+            const r = JSON.parse(raw);
+            calls.push(r);
+            return r.kind === 'START'
+              ? new Promise((resolve) => (settle = resolve))
+              : stopFailure
+                ? Promise.reject(Error('synthetic'))
+                : Promise.resolve(
+                    videoContract.videoStreamResponse(r.requestId, 'STOPPED', r.videoId),
+                  );
+          },
+        },
+      );
+      m.effects();
+      await flush();
+      m.effects();
+      await flush();
+      assert.equal(calls.length, 0);
+      assert.equal(m.render().props.video.canStart(fleetId, 1), true);
+      m.render().props.video.onStart(fleetId, 1);
+      assert.equal(calls.length, 1);
+      const videoId = '00000000-0000-4000-8000-000000000099';
+      const port = {
+        onmessage: null,
+        onmessageerror: null,
+        closed: 0,
+        start() {
+          assert.equal(typeof this.onmessage, 'function');
+        },
+        postMessage: (v) => posts.push(v),
+        close() {
+          this.closed++;
+        },
+      };
+      const metadata = {
+        version: 1,
+        videoId,
+        requestId: calls[0].requestId,
+        deviceId: fleetId,
+        generation: 1,
+        deadlineUtc: Date.now() + 20000,
+      };
+      m.events.get('message')({
+        source: m.hostWindow,
+        origin: videoContract.VIDEO_WINDOW_ORIGIN,
+        data: { type: 'AUTO_VIDEO_PORT_V1', ...metadata },
+        ports: [port],
+      });
+      assert.equal(posts.length, 0);
+      const dataset = { videoGeometry: 'stale' };
+      m.render().props.video.canvasRef({
+        dataset,
+        width: 0,
+        height: 0,
+        style: {},
+        getContext: () => ({ clearRect() {}, drawImage() {} }),
+      });
+      assert.equal(Object.hasOwn(dataset, 'videoGeometry'), false);
+      assert.deepEqual(
+        posts.map((v) => v.kind),
+        ['READY'],
+      );
+      settle(videoContract.videoStreamResponse(calls[0].requestId, 'PENDING', videoId));
+      await flush();
+      port.onmessage({
+        data: {
+          version: 1,
+          videoId: '00000000-0000-4000-8000-000000000098',
+          kind: 'REFUSED',
+          reason: 'QUOTA',
+        },
+      });
+      assert.equal(calls.length, 1);
+      port.onmessage({ data: { version: 1, videoId, kind: 'REFUSED', reason } });
+      assert.equal(m.render().props.video.canStart(fleetId, 1), false);
+      await flush();
+      assert.equal(calls[1].kind, 'STOP');
+      assert.equal(
+        m.render().props.video.view.state,
+        `REFUSED:${reason} / ${stopFailure ? 'UNCERTAIN' : 'STOPPED'}`,
+      );
+      assert.equal(m.render().props.video.canStart(fleetId, 1), !stopFailure && reason === 'BUSY');
+      port.onmessage({ data: { version: 1, videoId, kind: 'REFUSED', reason: 'QUOTA' } });
+      assert.equal(m.render().props.video.canStart(fleetId, 1), !stopFailure && reason === 'BUSY');
+      assert.ok(port.closed > 0);
+      m.dispose();
+    });
+
+test('actual renderer reads scoped preview counts without IPC and invalidates stale stopped or closed samples', async () => {
+  let now = 0;
+  const timers = new Map();
+  const bindings = {
+    now: () => now,
+    utc: () => Date.now(),
+    set: (fn, ms) => {
+      const id = {};
+      timers.set(id, { fn, ms });
+      return id;
+    },
+    clear: (id) => timers.delete(id),
+    supported: async () => true,
+    chunk: (v) => v,
+    create(output) {
+      return {
+        decodeQueueSize: 0,
+        configure() {},
+        close() {},
+        decode(chunk) {
+          output({
+            timestamp: chunk.timestamp,
+            codedWidth: 32,
+            codedHeight: 16,
+            visibleRect: { x: 0, y: 0, width: 32, height: 16 },
+            displayWidth: 32,
+            displayHeight: 16,
+            rotation: 0,
+            flip: false,
+            close() {},
+          });
+        },
+      };
+    },
+  };
+  const calls = [],
+    posts = [];
+  let settle;
+  const f = fleetState(0, [fleetId]);
+  f.devices[0].state = 'DEVICE';
+  const m = mount(
+    { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+    1600,
+    { read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE') },
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    {
+      invoke: (raw) => {
+        const r = JSON.parse(raw);
+        calls.push(r);
+        return r.kind === 'START'
+          ? new Promise((resolve) => (settle = resolve))
+          : Promise.resolve(videoContract.videoStreamResponse(r.requestId, 'STOPPED', r.videoId));
+      },
+    },
+    bindings,
+  );
+  m.effects();
+  await flush();
+  m.effects();
+  await flush();
+  assert.equal(calls.length, 0);
+  assert.equal(m.render().props.video.canStart(fleetId, 1), true);
+  m.render().props.video.onStart(fleetId, 1);
+  assert.equal(calls.length, 1);
+  const videoId = '00000000-0000-4000-8000-000000000099';
+  const port = {
+    onmessage: null,
+    onmessageerror: null,
+    closed: 0,
+    start() {
+      assert.equal(typeof this.onmessage, 'function');
+    },
+    postMessage: (v) => posts.push(v),
+    close() {
+      this.closed++;
+    },
+  };
+  const metadata = {
+    version: 1,
+    videoId,
+    requestId: calls[0].requestId,
+    deviceId: fleetId,
+    generation: 1,
+    deadlineUtc: Date.now() + 20000,
+  };
+  m.events.get('message')({
+    source: m.hostWindow,
+    origin: videoContract.VIDEO_WINDOW_ORIGIN,
+    data: { type: 'AUTO_VIDEO_PORT_V1', ...metadata },
+    ports: [port],
+  });
+  assert.equal(posts.length, 0);
+  const dataset = { videoGeometry: 'stale' };
+  m.render().props.video.canvasRef({
+    dataset,
+    width: 0,
+    height: 0,
+    style: {},
+    getContext: () => ({ clearRect() {}, drawImage() {} }),
+  });
+  assert.equal(Object.hasOwn(dataset, 'videoGeometry'), false);
+  assert.deepEqual(
+    posts.map((v) => v.kind),
+    ['READY'],
+  );
+  settle(videoContract.videoStreamResponse(calls[0].requestId, 'PENDING', videoId));
+  await flush();
+
+  const show = () => JSON.stringify(m.render().props.previewAccounting);
+  m.render().props.onPreviewAccountingRead();
+  assert.ok(show().includes('UNKNOWN'));
+  assert.equal(calls.length, 1);
+  const fixture = generateVideoDecoderFixture('LANDSCAPE');
+  const send = (kind, deliveryId, packetId, bytes) =>
+    port.onmessage({
+      data: {
+        version: 1,
+        videoId,
+        deliveryId,
+        geometryId: 1,
+        configId: kind === 'SESSION' ? 0 : 1,
+        packetId,
+        kind,
+        ptsUs: kind === 'KEY' ? 1 : null,
+        totalBytes: bytes.length,
+        width: 32,
+        height: 16,
+        bytes,
+      },
+    });
+  send('SESSION', 1, 0, new Uint8Array());
+  send('CONFIG', 2, 1, fixture.configuration);
+  await flush();
+  send('KEY', 3, 2, fixture.key);
+  await flush();
+  assert.equal(m.render().props.video.view.state, 'DISPLAYING');
+  const timerCount = timers.size;
+  m.render().props.onPreviewAccountingRead();
+  assert.ok(show().includes('CAPTURED'));
+  assert.ok(show().includes('RENDERER_CANVAS'));
+  assert.ok(show().includes('Canvas đã vẽ: '));
+  const renderedText = (node) =>
+    typeof node === 'string' || typeof node === 'number'
+      ? String(node)
+      : Array.isArray(node)
+        ? node.map(renderedText).join('')
+        : node?.props
+          ? renderedText(node.props.children)
+          : '';
+  const text = renderedText(m.render().props.previewAccounting);
+  assert.match(text, /Media nhận: 1/);
+  assert.match(text, /Lần gọi decode: 1/);
+  assert.match(text, /Canvas đã vẽ: 1/);
+  assert.match(text, /Bỏ: 0/);
+  assert.match(text, /Chưa kết thúc: 0/);
+  assert.match(text, /Canvas: 32×16/);
+
+  assert.equal(calls.length, 1);
+  assert.equal(timers.size, timerCount);
+  m.render().props.onHostResourcesClose();
+  assert.ok(!show().includes('CAPTURED'));
+  m.render().props.onPreviewAccountingRead();
+  assert.ok(show().includes('CAPTURED'));
+  now = 6000;
+  m.hostTime(now);
+  assert.ok(!show().includes('CAPTURED'));
+  m.render().props.onPreviewAccountingRead();
+  assert.ok(show().includes('CAPTURED'));
+  now = 5999;
+  m.hostTime(now);
+  assert.ok(!show().includes('CAPTURED'));
+  now = 6001;
+  m.hostTime(now);
+  m.render().props.onPreviewAccountingRead();
+  assert.ok(!show().includes('CAPTURED'));
+  assert.equal(m.render().props.video.view.state, 'DISPLAYING');
+  m.render().props.video.onStop();
+  await flush();
+  assert.equal(calls[1].kind, 'STOP');
+  m.render().props.onPreviewAccountingRead();
+  assert.ok(!show().includes('CAPTURED'));
+  assert.equal(m.render().props.video.view.state, 'STOPPED');
+  assert.ok(port.closed > 0);
   m.dispose();
 });

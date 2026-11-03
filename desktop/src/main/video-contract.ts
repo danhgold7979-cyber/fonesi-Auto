@@ -255,3 +255,112 @@ export type VideoMediaSink = Readonly<{
   accept(header: VideoMediaHeader, bytes: Uint8Array): Promise<void>;
   close(): void;
 }>;
+
+/** Explicit retained-host v7 media sub-attempt. Legacy v5/v6 inputs remain separate. */
+export type VideoRecoveryStart = VideoStart &
+  Readonly<{
+    videoOrdinal: number;
+    previousVideoId: string | null;
+  }>;
+export type VideoRecoveryResult = Readonly<{
+  handoff: 'NOT_STARTED' | 'OWNED';
+  videoId: string;
+  videoOrdinal: number;
+  refusal: null | 'BUSY' | 'QUOTA' | 'STALE_TARGET' | 'REJECTED';
+  snapshot: VideoSnapshot | null;
+  fresh: boolean;
+}>;
+export type VideoRecoveryTransportSession = Readonly<{
+  started: Promise<VideoRecoveryResult | null>;
+  status(): Promise<VideoRecoveryResult | null>;
+  stop(): Promise<VideoRecoveryResult | null>;
+  readonly retired: boolean;
+}>;
+export function videoOrdinal(value: unknown): value is number {
+  return count(value) && value >= 1 && value <= 128;
+}
+export function snapshotVideoRecoveryStart(raw: unknown): VideoRecoveryStart | null {
+  const v = videoRecord(raw, [
+    'videoId',
+    'transportId',
+    'hostEpoch',
+    'deadlineUtc',
+    'artifactId',
+    'scid',
+    'nonceHex',
+    'videoOrdinal',
+    'previousVideoId',
+  ]);
+  if (
+    !v ||
+    !videoOrdinal(v.videoOrdinal) ||
+    (v.previousVideoId !== null && !videoUuid(v.previousVideoId)) ||
+    v.previousVideoId === v.videoId
+  )
+    return null;
+  const { videoOrdinal: ordinal, previousVideoId, ...legacy } = v;
+  const start = snapshotVideoStart(legacy);
+  return start
+    ? (Object.freeze({ ...start, videoOrdinal: ordinal, previousVideoId }) as VideoRecoveryStart)
+    : null;
+}
+export function snapshotVideoRecoveryResult(raw: unknown): VideoRecoveryResult | null {
+  const v = videoRecord(raw, [
+    'handoff',
+    'videoId',
+    'videoOrdinal',
+    'refusal',
+    'snapshot',
+    'fresh',
+  ]);
+  if (!v || !videoUuid(v.videoId) || !videoOrdinal(v.videoOrdinal) || typeof v.fresh !== 'boolean')
+    return null;
+  if (v.handoff === 'NOT_STARTED') {
+    if (
+      v.snapshot !== null ||
+      v.fresh !== false ||
+      !['BUSY', 'QUOTA', 'STALE_TARGET', 'REJECTED'].includes(v.refusal as string)
+    )
+      return null;
+    return Object.freeze(v) as VideoRecoveryResult;
+  }
+  if (
+    v.handoff !== 'OWNED' ||
+    !(v.refusal === null || (v.refusal === 'QUOTA' && v.fresh === false))
+  )
+    return null;
+  const snapshot = snapshotVideo(v.snapshot);
+  if (!snapshot || snapshot.sessionId !== v.videoId) return null;
+  return Object.freeze({ ...v, snapshot }) as VideoRecoveryResult;
+}
+/** A NOT_STARTED result is not a native snapshot and never fabricates one. */
+export function videoRecoveryRetired(value: VideoRecoveryResult): boolean {
+  return (
+    value.handoff === 'NOT_STARTED' ||
+    (!!value.snapshot &&
+      value.snapshot.localRetired &&
+      ['CLEANED', 'NOT_REQUIRED'].includes(value.snapshot.cleanup) &&
+      ['CLOSED', 'FAILED'].includes(value.snapshot.state))
+  );
+}
+
+export type VideoRecoverySession = VideoRecoveryTransportSession &
+  Readonly<{
+    snapshot(): VideoRecoveryResult | null;
+  }>;
+export function rejectedVideoRecovery(
+  videoId: string,
+  ordinal: number,
+  refusal: Exclude<VideoRecoveryResult['refusal'], null>,
+): VideoRecoveryResult {
+  const result = snapshotVideoRecoveryResult({
+    handoff: 'NOT_STARTED',
+    videoId,
+    videoOrdinal: ordinal,
+    refusal,
+    snapshot: null,
+    fresh: false,
+  });
+  if (!result) throw Error('VIDEO_REJECTED');
+  return result;
+}

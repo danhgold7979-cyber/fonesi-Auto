@@ -80,7 +80,8 @@ test('generated fixed entry calls only the managed fixture and demands eight pro
   assert.match(entry, /RunInput\(\) != 12/);
   assert.match(entry, /RunVideo\(\) != 23/);
   assert.match(entry, /RunVideoMedia\(\) != 18/);
-  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_92"\)/);
+  assert.match(entry, /RunVideoRecovery\(\) != 26/);
+  assert.match(entry, /Console\.Out\.WriteLine\("RETAINED_MANAGED_GROUPS_118"\)/);
   assert.match(
     entry,
     /catch \{ Console\.Error\.WriteLine\("RETAINED_MANAGED_FIXTURE_FAILED"\); return 1;/,
@@ -205,7 +206,7 @@ test('managed-only gate is phase-bound explicit opt-in with LF/CRLF and rejects 
     assert.throws(() => managedOnlyJob(changedDefault));
   }
 });
-test('managed-only job has no native campaign or archive actions and publishes only strict version8 JSON', () => {
+test('managed-only job has no native campaign or archive actions and publishes only strict version9 JSON', () => {
   const job = managedOnlyJob(workflow);
   assert.match(job, /Invoke-RetainedManagedFixture\.ps1\)/);
   assert.match(job, /validate_retained_host\.py managed-video 2>&1/);

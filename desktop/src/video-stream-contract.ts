@@ -20,6 +20,22 @@ export type VideoPortMetadata = Readonly<{
   generation: number;
   deadlineUtc: number;
 }>;
+/** Notification only: cleanup proof still comes exclusively from STOPPED. */
+export type VideoRefusal = Readonly<{
+  version: 1;
+  videoId: string;
+  kind: 'REFUSED';
+  reason: 'BUSY' | 'QUOTA' | 'STALE_TARGET' | 'REJECTED';
+}>;
+export function snapshotVideoRefusal(raw: unknown): VideoRefusal | null {
+  const v = record(raw, ['version', 'videoId', 'kind', 'reason']);
+  return v?.version === 1 &&
+    uuid(v.videoId) &&
+    v.kind === 'REFUSED' &&
+    ['BUSY', 'QUOTA', 'STALE_TARGET', 'REJECTED'].includes(v.reason as string)
+    ? (Object.freeze(v) as VideoRefusal)
+    : null;
+}
 export type VideoStreamCode =
   | 'PENDING'
   | 'STOPPED'

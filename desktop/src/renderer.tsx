@@ -1,7 +1,8 @@
-import { createTileVideoDecoder } from './video-decoder.ts';
+import { createTileVideoDecoder, type VideoAccounting } from './video-decoder.ts';
 import {
   parseVideoStreamResponse,
   snapshotVideoPortMetadata,
+  snapshotVideoRefusal,
   VIDEO_WINDOW_ORIGIN,
   type VideoPortMetadata,
 } from './video-stream-contract.ts';
@@ -843,7 +844,58 @@ function Diagnostic() {
     state: string;
   } | null>(null);
   const videoSession = useRef<DisplaySession | null>(null);
+  const [previewCapture, setPreviewCapture] = useState<Readonly<{
+    owner: DisplaySession;
+    sample: VideoAccounting;
+  }> | null>(null);
+  const previewClock = useRef<number | null>(null);
+  const previewClockValid = useRef(true);
+  function previewNow() {
+    let now: number;
+    try {
+      now = performance.now();
+    } catch {
+      previewClockValid.current = false;
+      return null;
+    }
+    if (!Number.isFinite(now) || (previewClock.current !== null && now < previewClock.current))
+      previewClockValid.current = false;
+    previewClock.current = now;
+    return previewClockValid.current ? now : null;
+  }
+  function currentPreview(r: DisplaySession | null) {
+    return (
+      r !== null &&
+      videoSession.current === r &&
+      !r.stopped &&
+      !r.stopping &&
+      r.failure === null &&
+      r.videoId !== null &&
+      r.metadata?.videoId === r.videoId &&
+      eligibleVideo(r.deviceId, r.generation) &&
+      videoFleet.current.fleet?.registryRevision === r.registryRevision &&
+      r.decoder !== null &&
+      !r.decoder.snapshot().closed
+    );
+  }
+  function readPreview() {
+    const r = videoSession.current;
+    const sample = currentPreview(r) ? r?.decoder?.accounting() : null;
+    const now = previewNow();
+    setPreviewCapture(
+      r &&
+        now !== null &&
+        sample &&
+        sample.admitted > 0 &&
+        sample.observedAt <= now &&
+        currentPreview(r)
+        ? { owner: r, sample }
+        : null,
+    );
+  }
+
   const videoAlive = useRef(true);
+  const videoQuotaClosed = useRef(false);
   const videoFleetBlocked = fleetFailed || fleetReconcile || fleetPending;
   const videoFleet = useRef({ fleet, fleetFailed, fleetReconcile, fleetPending });
   videoFleet.current = { fleet, fleetFailed, fleetReconcile, fleetPending };
@@ -868,6 +920,7 @@ function Diagnostic() {
     const r = videoSession.current;
     if (!r) return;
     r.stopped = true;
+    if (videoAlive.current) setPreviewCapture(null);
     r.decoder?.close();
     r.decoder = null;
     r.port?.close();
@@ -900,7 +953,11 @@ function Diagnostic() {
       if (result?.code === 'STOPPED') videoSession.current = null;
     } catch {
       if (videoAlive.current && videoSession.current === r)
-        setVideoView({ deviceId: r.deviceId, generation: r.generation, state: 'UNCERTAIN' });
+        setVideoView({
+          deviceId: r.deviceId,
+          generation: r.generation,
+          state: `${r.failure ? `${r.failure} / ` : ''}UNCERTAIN`,
+        });
     }
   };
   const videoActions = useRef({ stopVideo });
@@ -924,7 +981,8 @@ function Diagnostic() {
       onConsumed: (value) => port.postMessage(value),
       onPainted: (value) => port.postMessage(value),
       onState: (state) => {
-        if (videoSession.current !== r || !videoAlive.current) return;
+        if (videoSession.current !== r || !videoAlive.current || r.failure?.startsWith('REFUSED:'))
+          return;
         setVideoView({ deviceId: r.deviceId, generation: r.generation, state });
         if (state === 'DECODE_FAILED' || state === 'DECODER_UNAVAILABLE') {
           const geometry = r.decoder?.snapshot().geometryFailure;
@@ -942,7 +1000,16 @@ function Diagnostic() {
       return;
     }
     port.onmessage = (event) => {
-      if (videoSession.current === r && !r.stopped) r.decoder?.receive(event.data);
+      if (videoSession.current !== r || r.stopped) return;
+      const refused = snapshotVideoRefusal(event.data);
+      if (refused) {
+        if (refused.videoId !== r.videoId) return;
+        if (refused.reason === 'QUOTA') videoQuotaClosed.current = true;
+        r.failure = `REFUSED:${refused.reason}`;
+        void videoActions.current.stopVideo();
+        return;
+      }
+      r.decoder?.receive(event.data);
     };
     port.onmessageerror = () => {
       void videoActions.current.stopVideo();
@@ -962,6 +1029,7 @@ function Diagnostic() {
   async function startVideo(deviceId: string, generation: number) {
     if (
       videoSession.current ||
+      videoQuotaClosed.current ||
       !window.videoStream ||
       !eligibleVideo(deviceId, generation) ||
       !videoFleet.current.fleet
@@ -990,6 +1058,7 @@ function Diagnostic() {
       canvas: null,
     };
     videoSession.current = r;
+    setPreviewCapture(null);
     setVideoView({ deviceId, generation, state: 'STARTING' });
     try {
       const raw = await window.videoStream.invoke(
@@ -1268,12 +1337,22 @@ function Diagnostic() {
       performance.now() >= hostFresh.current.until)
       ? 'STALE'
       : hostStatus;
+  const capturedNow = previewNow();
+  const previewSample =
+    previewCapture &&
+    currentPreview(previewCapture.owner) &&
+    capturedNow !== null &&
+    capturedNow >= previewCapture.sample.observedAt &&
+    capturedNow - previewCapture.sample.observedAt < 5000
+      ? previewCapture.sample
+      : null;
   return (
     <UiShell
       video={{
         view: videoView,
         available: !!window.videoStream,
-        canStart: (id, generation) => !videoSession.current && eligibleVideo(id, generation),
+        canStart: (id, generation) =>
+          !videoQuotaClosed.current && !videoSession.current && eligibleVideo(id, generation),
         onStart: (id, generation) => {
           void startVideo(id, generation);
         },
@@ -1282,7 +1361,50 @@ function Diagnostic() {
         },
         canvasRef: videoCanvas,
       }}
-      onHostResourcesClose={cancelHost}
+      previewAccounting={
+        <section aria-label="Renderer preview accounting" id="preview-accounting">
+          <span>Stream / backlog · RENDERER_CANVAS</span>
+          <strong>
+            {previewSample
+              ? 'CAPTURED · không phải số liệu trực tiếp'
+              : 'UNKNOWN · chưa có mẫu hiện hành'}
+          </strong>
+          {previewSample ? (
+            <>
+              <small>
+                Mẫu monotonic {previewSample.observedAt} ms · chỉ lần thử preview hiện tại
+              </small>
+              <div>
+                Media nhận: {previewSample.admitted} · Lần gọi decode: {previewSample.submitted} ·
+                Canvas đã vẽ: {previewSample.drawn}
+              </div>
+              <div>
+                Bỏ: {previewSample.discarded} (chờ key {previewSample.waitingKey}, reset{' '}
+                {previewSample.reset}, stop/lỗi {previewSample.stopped})
+              </div>
+              <div>
+                Canvas:{' '}
+                {previewSample.width === null
+                  ? 'UNKNOWN'
+                  : `${previewSample.width}×${previewSample.height}`}
+              </div>
+              <div>
+                Chưa kết thúc: {previewSample.outstanding} · Bản ghi pending:{' '}
+                {previewSample.pending} · Held: {previewSample.held}
+              </div>
+            </>
+          ) : null}
+          <small>
+            FPS / bitrate / native drops / GPU presentation: UNKNOWN. Canvas draw không chứng minh
+            màn hình vật lý.
+          </small>
+        </section>
+      }
+      onPreviewAccountingRead={readPreview}
+      onHostResourcesClose={() => {
+        cancelHost();
+        setPreviewCapture(null);
+      }}
       onHostResourcesRead={() => {
         void readHost();
       }}

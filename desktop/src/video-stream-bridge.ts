@@ -6,7 +6,7 @@ import {
 } from 'electron';
 import type { Admission } from './view-session.ts';
 import type { DiscoverySessionService } from './main/discovery-session-service.ts';
-import type { VideoMediaSink } from './main/video-contract.ts';
+import { snapshotVideoRecoveryResult, type VideoMediaSink } from './main/video-contract.ts';
 import {
   VIDEO_STREAM_CHANNEL,
   VIDEO_PORT_CHANNEL,
@@ -40,9 +40,17 @@ export function installVideoStreamBridge(
   admitCleanup: (event: IpcMainInvokeEvent) => Admission,
   service: () => DiscoverySessionService | null,
 ) {
-  let disposed = false;
-  type Owner = { videoId: string; sender: IpcMainInvokeEvent['sender']; stop(): Promise<boolean> };
+  let disposed = false,
+    quotaClosed = false;
+  type Owner = {
+    videoId: string;
+    sender: IpcMainInvokeEvent['sender'];
+    readonly retired: boolean;
+    stop(): Promise<boolean>;
+  };
   let owner: Owner | null = null;
+  const owners = new Map<string, Owner>();
+  let rejectionStop: Promise<boolean> | null = null;
   const requests = new Set<string>();
   ipc.handle(VIDEO_STREAM_CHANNEL, async (event, raw: unknown, ...extra: unknown[]) => {
     let release: (() => void) | undefined;
@@ -60,13 +68,15 @@ export function installVideoStreamBridge(
       if (request.kind === 'START') requests.add(requestId);
       if (!admission.current()) return videoStreamResponse(requestId, 'CLOSED');
       if (request.kind === 'STOP') {
-        if (!owner || owner.videoId !== request.videoId || owner.sender !== event.sender)
+        const captured = owners.get(request.videoId);
+        if (!captured || captured.sender !== event.sender)
           return videoStreamResponse(requestId, 'STALE');
-        const captured = owner;
         const retired = await captured.stop();
         return videoStreamResponse(requestId, retired ? 'STOPPED' : 'UNCERTAIN', captured.videoId);
       }
-      if (owner) return videoStreamResponse(requestId, 'BUSY');
+      if (owner && !owner.retired) return videoStreamResponse(requestId, 'BUSY');
+      if (quotaClosed || owners.size >= 128 || rejectionStop)
+        return videoStreamResponse(requestId, 'UNAVAILABLE');
       const frame = event.senderFrame;
       if (
         !frame ||
@@ -79,6 +89,22 @@ export function installVideoStreamBridge(
       const candidate = service()?.reserveVideo(request.deviceId, request.expectedRegistryRevision);
       if (!candidate) return videoStreamResponse(requestId, 'UNAVAILABLE');
       const reservation = candidate;
+      if (owners.has(reservation.videoId)) {
+        let finish: (value: boolean) => void = () => {};
+        rejectionStop = new Promise<boolean>((resolve) => {
+          finish = resolve;
+        });
+        try {
+          void reservation.stop().then(
+            (value) => finish(value === true),
+            () => finish(false),
+          );
+        } catch {
+          finish(false);
+        }
+        return videoStreamResponse(requestId, 'UNAVAILABLE');
+      }
+      let retired = false;
       let stopped = false,
         ready = false,
         port: MessagePortMain | null = null;
@@ -106,6 +132,13 @@ export function installVideoStreamBridge(
         startedMono + 30000,
         lastMono + Math.max(0, Math.min(30000, reservation.deadlineUtc - Date.now())),
       );
+      const startupDeadline = drawDeadline;
+      let portRetired = false,
+        portTeardownStarted = false;
+      let refusalTimer: ReturnType<typeof setTimeout> | null = null;
+      let refusal: string | null = null;
+      let startResolved = false,
+        lowerMediaClosed = false;
       const current = () =>
         !disposed &&
         !stopped &&
@@ -137,13 +170,36 @@ export function installVideoStreamBridge(
           }
         }, remaining);
       }
-      function stop(): Promise<boolean> {
-        if (stopWork) return stopWork;
+      function teardownPort() {
+        if (portTeardownStarted) return;
+        portTeardownStarted = true; // Before either potentially reentrant close callback.
+        if (refusalTimer !== null) clearTimeout(refusalTimer);
+        refusalTimer = null;
+        let closed = true;
+        try {
+          port?.close();
+        } catch {
+          closed = false;
+        }
+        try {
+          transferPort?.close();
+          transferPort = null;
+        } catch {
+          closed = false;
+        }
+        portRetired = closed;
+      }
+      function stop(keepNotification = false): Promise<boolean> {
+        if (stopWork) {
+          if (!keepNotification) teardownPort();
+          return stopWork;
+        }
         stopped = true;
         let settle: (value: boolean) => void = () => {};
         stopWork = new Promise<boolean>((resolve) => {
           settle = resolve;
         });
+        if (!keepNotification) teardownPort();
         if (timer !== null) clearTimeout(timer);
         timer = null;
         const reject = rejectDelivery;
@@ -153,12 +209,13 @@ export function installVideoStreamBridge(
         paints.clear();
         reject?.();
         try {
-          port?.close();
-          transferPort?.close();
-          transferPort = null;
-        } catch {}
-        try {
-          void reservation.stop().then(settle, () => settle(false));
+          void reservation.stop().then(
+            (value) => {
+              retired = value === true;
+              settle(retired);
+            },
+            () => settle(false),
+          );
         } catch {
           settle(false);
         }
@@ -167,9 +224,13 @@ export function installVideoStreamBridge(
       const entry: Owner = Object.freeze({
         videoId: reservation.videoId,
         sender: event.sender,
-        stop,
+        get retired() {
+          return retired && portRetired;
+        },
+        stop: async () => (await stop()) && portRetired,
       });
-      owner = entry; // Retain even after Stop: this native attempt is single-use, never rearm.
+      owners.set(entry.videoId, entry);
+      owner = entry; // Distinct owner after proven retirement; old tombstone remains single-use.
       const send = (delivery: VideoMediaDelivery): Promise<void> => {
         if (!current() || !ready || !port || pendingDelivery)
           return Promise.reject(Error('VIDEO_CLOSED'));
@@ -196,11 +257,15 @@ export function installVideoStreamBridge(
       };
       const sink: VideoMediaSink = Object.freeze({
         close() {
-          void stop();
+          lowerMediaClosed = true;
+          // Lower cancellation can precede the classified START reply. Preserve
+          // only the bounded notification path, never media or retirement credit.
+          if (startResolved) void stop(refusal !== null && !portRetired);
         },
         async accept(header: VideoMediaHeader, bytes: Uint8Array) {
           if (
             accepting ||
+            lowerMediaClosed ||
             !current() ||
             header.videoId !== reservation.videoId ||
             header.creditId !== credit + 1
@@ -330,10 +395,44 @@ export function installVideoStreamBridge(
               ready = true;
               const session = reservation.begin(sink);
               void session.started.then(
-                () => {
-                  if (!current()) void stop();
+                (rawResult) => {
+                  startResolved = true;
+                  const result = rawResult === null ? null : snapshotVideoRecoveryResult(rawResult);
+                  if (rawResult !== null && (!result || result.videoId !== reservation.videoId)) {
+                    void stop();
+                    return;
+                  }
+                  if (result?.refusal === 'QUOTA') quotaClosed = true;
+                  if (!current()) {
+                    void stop();
+                    return;
+                  }
+                  if (result?.handoff === 'OWNED') {
+                    if (lowerMediaClosed) void stop();
+                    return;
+                  }
+                  refusal = result?.refusal ?? 'REJECTED';
+                  if (refusal === 'QUOTA') quotaClosed = true;
+                  void stop(true); // Cancel media/lower work now; notification is not retirement.
+                  try {
+                    const remaining = startupDeadline - now();
+                    if (remaining <= 0 || !port) {
+                      teardownPort();
+                      return;
+                    }
+                    refusalTimer = setTimeout(teardownPort, remaining);
+                    port.postMessage({
+                      version: 1,
+                      videoId: reservation.videoId,
+                      kind: 'REFUSED',
+                      reason: refusal,
+                    });
+                  } catch {
+                    teardownPort();
+                  }
                 },
                 () => {
+                  startResolved = true;
                   void stop();
                 },
               );
@@ -478,7 +577,11 @@ export function installVideoStreamBridge(
     close() {
       disposed = true;
       ipc.removeHandler(VIDEO_STREAM_CHANNEL);
-      return owner?.stop() ?? Promise.resolve(true);
+      return Promise.all(
+        [...owners.values()]
+          .map((record) => record.stop())
+          .concat(rejectionStop ? [rejectionStop] : []),
+      ).then((results) => results.every((value) => value === true));
     },
   });
 }

@@ -1,4 +1,8 @@
-import type { VideoTransportSession, VideoMediaSink } from './video-contract.ts';
+import type {
+  VideoRecoveryTransportSession,
+  VideoTransportSession,
+  VideoMediaSink,
+} from './video-contract.ts';
 import { inspectFleetActiveInputIntent, type OwnedFleetActiveIntent } from './fleet-service.ts';
 import { inspectAssociationConfirmation } from './association-confirmation.ts';
 import {
@@ -223,6 +227,17 @@ const videoTargets = new WeakMap<object, VideoTargetRecord>();
 export function inspectOwnedVideoTarget(value: unknown): VideoTargetRecord | null {
   return value !== null && typeof value === 'object' ? (videoTargets.get(value) ?? null) : null;
 }
+export type OwnedVideoRecoveryTarget = Readonly<{ ownedVideoRecoveryTarget: true }>;
+type RecoveryTargetRecord = Omit<VideoTargetRecord, 'begin'> & {
+  begin(
+    request: Parameters<VideoTargetRecord['begin']>[0],
+    media: VideoMediaSink,
+  ): VideoRecoveryTransportSession;
+};
+const recoveryTargets = new WeakMap<object, RecoveryTargetRecord>();
+export function inspectOwnedVideoRecoveryTarget(value: unknown): RecoveryTargetRecord | null {
+  return value !== null && typeof value === 'object' ? (recoveryTargets.get(value) ?? null) : null;
+}
 export type OwnedMetadataTarget = Readonly<{ ownedMetadataTarget: true }>;
 export type MetadataTargetRecord = Readonly<{
   ownerAnchor: object;
@@ -424,6 +439,16 @@ export function createAdbDiscoveryService(
   const inputTickets = new Map<string, OwnedInputTarget>();
   const videoTickets = new Map<string, OwnedVideoTarget>();
   const videoSessions = new Set<VideoTransportSession>();
+  const recoveryTickets = new Map<
+    string,
+    {
+      ticket: OwnedVideoRecoveryTarget;
+      used: boolean;
+      session: VideoRecoveryTransportSession | null;
+    }
+  >();
+  const recoverySessions = new Set<VideoRecoveryTransportSession>();
+  let recoveryIssued = 0;
   const videoWorks = new Set<Promise<unknown>>();
   const ownerAnchors = new Map<string, object>();
 
@@ -1556,6 +1581,25 @@ export function createAdbDiscoveryService(
   }
   function stopVideos() {
     videoTickets.clear();
+    recoveryTickets.clear();
+    for (const session of recoverySessions) {
+      try {
+        const work = session.stop();
+        videoWorks.add(work);
+        void work
+          .then(
+            () => {
+              if (!session.retired) uncertainRetirement = true;
+            },
+            () => {
+              uncertainRetirement = true;
+            },
+          )
+          .finally(() => videoWorks.delete(work));
+      } catch {
+        uncertainRetirement = true;
+      }
+    }
     for (const session of videoSessions) {
       if (videoWorks.size >= 256) {
         uncertainRetirement = true;
@@ -1579,6 +1623,52 @@ export function createAdbDiscoveryService(
         uncertainRetirement = true;
       }
     }
+  }
+  function videoRecoveryTarget(deviceId: string): OwnedVideoRecoveryTarget | null {
+    if (!native?.videoAvailable() || closed || recoveryIssued >= 128 || videoSessions.size)
+      return null;
+    const prior = recoveryTickets.get(deviceId);
+    // An unused issuer ticket may already be claimed by a locally cancelled
+    // consumer. Replace it with a fresh sealed witness, never recycle it.
+    if (prior?.used && !prior.session?.retired) return null;
+    // Reissue only from a still-current sealed registry proof, never from the UUID alone.
+    const proof = inspectOwnedInputTarget(issueTarget(deviceId, 'INPUT'));
+    if (!proof?.finalCurrent() || issuedTickets >= 65536) return null;
+    const binding = captureRegistryVideoBinding(actualRegistry, proof.projection, deviceId);
+    if (!binding) return null;
+    const ticket = Object.freeze({ ownedVideoRecoveryTarget: true as const });
+    const owner = { ticket, used: false, session: null as VideoRecoveryTransportSession | null };
+    const record: RecoveryTargetRecord = Object.freeze({
+      target: proof.target,
+      installationRevision: native.installationRevision,
+      current: proof.current,
+      finalCurrent: () => recoveryTickets.get(deviceId) === owner && proof.finalCurrent(),
+      begin(request, media) {
+        if (owner.used || recoveryTickets.get(deviceId) !== owner) throw Error('VIDEO_REJECTED');
+        owner.used = true;
+        proof.current();
+        if (!proof.finalCurrent() || !native) throw Error('VIDEO_REJECTED');
+        const session = native.beginVideoRecovery(binding, request, media);
+        owner.session = session;
+        recoverySessions.add(session);
+        videoWorks.add(session.started);
+        void session.started
+          .then(
+            () => {},
+            () => {
+              uncertainRetirement = true;
+            },
+          )
+          .finally(() => videoWorks.delete(session.started));
+        return session;
+      },
+    });
+    if (!proof.finalCurrent()) return null;
+    issuedTickets++;
+    recoveryIssued++;
+    recoveryTickets.set(deviceId, owner);
+    recoveryTargets.set(ticket, record);
+    return ticket;
   }
   function videoTarget(deviceId: string): OwnedVideoTarget | null {
     if (!native?.videoAvailable()) return null;
@@ -1624,6 +1714,7 @@ export function createAdbDiscoveryService(
   }
   return Object.freeze({
     videoTarget,
+    videoRecoveryTarget,
     metadataTarget: (deviceId: string) =>
       issueTarget(deviceId, 'METADATA') as OwnedMetadataTarget | null,
     inputTarget: (deviceId: string) => issueTarget(deviceId, 'INPUT') as OwnedInputTarget | null,

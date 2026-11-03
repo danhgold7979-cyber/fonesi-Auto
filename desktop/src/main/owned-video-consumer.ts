@@ -1,7 +1,13 @@
 /** One headless session over a genuine sealed native target; no caller effect callbacks. */
 import { randomBytes, randomUUID } from 'node:crypto';
 import { inspectOwnedVideoTarget } from './adb-discovery-service.ts';
+import { inspectOwnedVideoRecoveryTarget } from './adb-discovery-service.ts';
 import {
+  snapshotVideoRecoveryResult,
+  videoRecoveryRetired,
+  type VideoRecoveryResult,
+  type VideoRecoverySession,
+  type VideoRecoveryTransportSession,
   preparingVideo,
   videoRecord,
   videoUuid,
@@ -13,6 +19,7 @@ import {
 } from './video-contract.ts';
 const claimed = new WeakSet<object>();
 const scids = new Set<number>();
+const nonces = new Set<string>();
 const clock = Date.now.bind(Date);
 export function createOwnedVideoConsumer(target: unknown): VideoSession {
   return createConsumer(target);
@@ -308,5 +315,213 @@ function createConsumer(
       return view;
     },
     stop,
+  });
+}
+
+/** Explicit sequential media attempt. Cancellation is not a native retirement witness. */
+export function createOwnedVideoRecoveryMediaConsumer(
+  target: unknown,
+  context: Readonly<{ admittedUtc: number; deadlineUtc: number; videoId: string }>,
+  sink: VideoMediaSink,
+): VideoRecoverySession {
+  const record = inspectOwnedVideoRecoveryTarget(target);
+  const c = videoRecord(context, ['admittedUtc', 'deadlineUtc', 'videoId']);
+  const m = videoRecord(sink, ['accept', 'close']);
+  if (
+    !record ||
+    !target ||
+    typeof target !== 'object' ||
+    claimed.has(target) ||
+    scids.size >= 65536 ||
+    nonces.size >= 65536 ||
+    !c ||
+    !m ||
+    typeof m.accept !== 'function' ||
+    typeof m.close !== 'function' ||
+    !Number.isSafeInteger(c.admittedUtc) ||
+    (c.admittedUtc as number) < 0 ||
+    Object.is(c.admittedUtc, -0) ||
+    !Number.isSafeInteger(c.deadlineUtc) ||
+    c.deadlineUtc !== (c.admittedUtc as number) + 30000 ||
+    !videoUuid(c.videoId)
+  )
+    throw Error('VIDEO_REJECTED');
+  claimed.add(target);
+  const admitted = c.admittedUtc as number,
+    deadline = c.deadlineUtc as number,
+    id = c.videoId;
+  const acceptMedia = m.accept.bind(sink),
+    closeMedia = m.close.bind(sink);
+  let stopped = false,
+    mediaClosed = false,
+    uncertain = false,
+    entered = false,
+    pending = 1,
+    stopDone = false;
+  let transport: VideoRecoveryTransportSession | null = null;
+  let latest: VideoRecoveryResult | null = null;
+  let stopWork: Promise<VideoRecoveryResult | null> | null = null;
+  const statusWorks = new Set<Promise<unknown>>();
+  const media: VideoMediaSink = Object.freeze({
+    async accept(header, bytes) {
+      if (stopped || mediaClosed) throw Error('VIDEO_REJECTED');
+      record.current();
+      if (!record.finalCurrent()) throw Error('VIDEO_REJECTED');
+      await acceptMedia(header, bytes);
+      if (stopped || mediaClosed || !record.finalCurrent()) throw Error('VIDEO_REJECTED');
+    },
+    close() {
+      if (mediaClosed) return;
+      mediaClosed = true;
+      closeMedia();
+    },
+  });
+  function accept(raw: VideoRecoveryResult | null) {
+    if (raw === null) {
+      if (latest !== null) throw Error('VIDEO_REJECTED');
+      return null;
+    }
+    const value = snapshotVideoRecoveryResult(raw);
+    if (
+      !value ||
+      value.videoId !== id ||
+      (latest && (latest.videoOrdinal !== value.videoOrdinal || latest.handoff !== value.handoff))
+    )
+      throw Error('VIDEO_REJECTED');
+    const old = latest?.snapshot,
+      next = value.snapshot;
+    if (old && next && next.snapshotRevision < old.snapshotRevision) return latest;
+    if (
+      old &&
+      next &&
+      ((next.snapshotRevision === old.snapshotRevision &&
+        JSON.stringify(old) !== JSON.stringify(next)) ||
+        (old.localRetired && !next.localRetired))
+    )
+      throw Error('VIDEO_REJECTED');
+    latest = value;
+    return value;
+  }
+  const timer = setTimeout(
+    () => {
+      uncertain = true;
+      void stop().catch(() => {});
+    },
+    Math.max(0, deadline - clock()),
+  );
+  const started = Promise.resolve()
+    .then(async () => {
+      if (stopped) return null;
+      record.current();
+      if (clock() < admitted || clock() >= deadline || !record.finalCurrent())
+        throw Error('VIDEO_REJECTED');
+      const scid = randomBytes(4).readUInt32BE(0) & 0x7fffffff;
+      const nonceHex = randomBytes(32).toString('hex');
+      if (scids.has(scid) || nonces.has(nonceHex)) throw Error('VIDEO_REJECTED');
+      scids.add(scid);
+      nonces.add(nonceHex);
+      record.current();
+      if (stopped) return null;
+      if (clock() >= deadline || !record.finalCurrent()) throw Error('VIDEO_REJECTED');
+      entered = true;
+      transport = record.begin(
+        Object.freeze({ videoId: id, deadlineUtc: deadline, scid, nonceHex }),
+        media,
+      );
+      return accept(await transport.started);
+    })
+    .catch(() => {
+      // Construction entered without a retained transport cannot be certified side-effect free.
+      if (!entered) return null;
+      uncertain = true;
+      throw Error('VIDEO_REJECTED');
+    })
+    .finally(() => {
+      pending--;
+      clearTimeout(timer);
+    });
+  function stop(): Promise<VideoRecoveryResult | null> {
+    if (stopWork) return stopWork;
+    stopped = true;
+    let resolve: (v: VideoRecoveryResult | null) => void = () => {};
+    let reject: (e: Error) => void = () => {};
+    stopWork = new Promise((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    pending++;
+    try {
+      media.close();
+    } catch {
+      uncertain = true;
+    }
+    let immediate: Promise<VideoRecoveryResult | null> | null = null;
+    try {
+      if (transport) immediate = transport.stop();
+    } catch {
+      uncertain = true;
+    }
+    void Promise.resolve()
+      .then(async () => {
+        if (immediate) accept(await immediate);
+        await started.catch(() => {});
+        const lower = transport as VideoRecoveryTransportSession | null;
+        if (!immediate && lower) accept(await lower.stop());
+        await Promise.allSettled([...statusWorks]);
+        if (entered && (!lower?.retired || (latest !== null && !videoRecoveryRetired(latest))))
+          uncertain = true;
+      })
+      .catch(() => {
+        uncertain = true;
+      })
+      .finally(() => {
+        pending--;
+        stopDone = true;
+        clearTimeout(timer);
+        if (uncertain) reject(Error('VIDEO_REJECTED'));
+        else resolve(latest);
+      });
+    return stopWork;
+  }
+  // Retain cleanup for every failed start, even if its caller has already gone away.
+  void started.then(
+    () => {
+      if (!entered || latest === null || latest.handoff === 'NOT_STARTED')
+        void stop().catch(() => {});
+    },
+    () => {
+      void stop().catch(() => {});
+    },
+  );
+  return Object.freeze({
+    started,
+    stop,
+    snapshot() {
+      return latest;
+    },
+    get retired() {
+      return (
+        stopped && stopDone && pending === 0 && !uncertain && (!entered || !!transport?.retired)
+      );
+    },
+    async status() {
+      if (stopped || !transport) return latest;
+      record.current();
+      if (!record.finalCurrent() || statusWorks.size) throw Error('VIDEO_REJECTED');
+      pending++;
+      const lower = transport;
+      const work = Promise.resolve().then(() => lower.status());
+      statusWorks.add(work);
+      try {
+        return accept(await work);
+      } catch {
+        uncertain = true;
+        void stop().catch(() => {});
+        throw Error('VIDEO_REJECTED');
+      } finally {
+        pending--;
+        statusWorks.delete(work);
+      }
+    },
   });
 }

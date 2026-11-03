@@ -20,10 +20,17 @@ source = source
     "import { inspectOwnedVideoTarget } from './adb-discovery-service.ts';",
     'const inspectOwnedVideoTarget=v=>globalThis.__videoTestRecords.get(v)??null;',
   )
+  .replace(
+    "import { inspectOwnedVideoRecoveryTarget } from './adb-discovery-service.ts';",
+    'const inspectOwnedVideoRecoveryTarget=v=>globalThis.__videoTestRecords.get(v)??null;',
+  )
   .replace('const clock = Date.now.bind(Date);', 'const clock = ()=>1000;')
   .replace(/from '(\.\.?\/[^']+)'/g, (_m, p) => `from '${new URL(p, url).href}'`);
-const { createOwnedVideoConsumer: create, createOwnedVideoMediaConsumer: createMedia } =
-  await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {
+  createOwnedVideoConsumer: create,
+  createOwnedVideoMediaConsumer: createMedia,
+  createOwnedVideoRecoveryMediaConsumer: createRecovery,
+} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const deferred = () => {
   let resolve;
   const promise = new Promise((r) => {
@@ -293,4 +300,203 @@ test('media context does not extend admission, mint target authority, or invoke 
       sink,
     ),
   );
+});
+
+function recoveryFixture(options = {}) {
+  const target = Object.freeze({}),
+    start = deferred(),
+    stop = deferred();
+  let request,
+    media,
+    retired = false,
+    starts = 0,
+    stops = 0,
+    current = true;
+  records.set(target, {
+    current() {
+      if (!current) throw Error('STALE');
+    },
+    finalCurrent: () => current,
+    begin(r, m) {
+      request = r;
+      media = m;
+      starts++;
+      return {
+        started: start.promise,
+        stop() {
+          stops++;
+          return stop.promise;
+        },
+        status: options.status ?? (async () => result(false)),
+        get retired() {
+          return retired;
+        },
+      };
+    },
+  });
+  function result(clean) {
+    return {
+      handoff: 'OWNED',
+      videoId: request.videoId,
+      videoOrdinal: 1,
+      refusal: null,
+      fresh: true,
+      snapshot: {
+        ...preparingVideo(request.videoId),
+        snapshotRevision: clean ? 2 : 1,
+        state: clean ? 'CLOSED' : 'PREPARING',
+        code: clean ? 'CLOSED' : 'OK',
+        localRetired: clean,
+      },
+    };
+  }
+  return {
+    target,
+    start,
+    stop,
+    result,
+    get media() {
+      return media;
+    },
+    get starts() {
+      return starts;
+    },
+    get stops() {
+      return stops;
+    },
+    retire(value = result(true)) {
+      retired = true;
+      stop.resolve(value);
+    },
+    stale() {
+      current = false;
+    },
+  };
+}
+const recoveryContext = (n) => ({
+  admittedUtc: 1000,
+  deadlineUtc: 31000,
+  videoId: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+});
+test('recovery consumer retains exact lower retirement and rejects stale media after Stop', async () => {
+  const f = recoveryFixture();
+  let paints = 0,
+    closes = 0;
+  const c = createRecovery(f.target, recoveryContext(9001), {
+    accept: async () => {
+      paints++;
+    },
+    close() {
+      closes++;
+    },
+  });
+  await tick();
+  f.start.resolve(f.result(false));
+  await c.started;
+  await f.media.accept({}, new Uint8Array());
+  assert.equal(paints, 1);
+  const stopping = c.stop();
+  assert.equal(c.stop(), stopping);
+  assert.equal(c.retired, false);
+  await assert.rejects(f.media.accept({}, new Uint8Array()));
+  assert.equal(f.stops, 1);
+  f.retire();
+  await stopping;
+  assert.equal(c.retired, true);
+  assert.equal(closes, 1);
+  assert.throws(() =>
+    createRecovery(f.target, recoveryContext(9002), { accept: async () => {}, close() {} }),
+  );
+});
+test('recovery consumer cancellation before handoff is locally retired without forged wire facts', async () => {
+  const f = recoveryFixture();
+  const c = createRecovery(f.target, recoveryContext(9003), { accept: async () => {}, close() {} });
+  assert.equal(await c.stop(), null);
+  assert.equal(await c.started, null);
+  assert.equal(c.retired, true);
+  assert.equal(f.starts, 0);
+});
+test('recovery consumer clean-looking snapshot cannot replace actual lower retirement', async () => {
+  const f = recoveryFixture();
+  const c = createRecovery(f.target, recoveryContext(9004), { accept: async () => {}, close() {} });
+  await tick();
+  f.start.resolve(f.result(false));
+  await c.started;
+  const stopping = c.stop();
+  f.stop.resolve(f.result(true));
+  await assert.rejects(stopping);
+  assert.equal(c.retired, false);
+});
+
+test('recovery synchronous status throw retains cleanup and never certifies uncertainty as retirement', async () => {
+  const f = recoveryFixture({
+    status() {
+      throw Error('synthetic');
+    },
+  });
+  const c = createRecovery(f.target, recoveryContext(9005), { accept: async () => {}, close() {} });
+  await tick();
+  f.start.resolve(f.result(false));
+  await c.started;
+  await assert.rejects(c.status());
+  const stopped = c.stop();
+  f.retire();
+  await assert.rejects(stopped);
+  assert.equal(f.stops, 1);
+  assert.equal(c.retired, false);
+});
+test('recovery old START after Stop cannot replace a newer retirement snapshot', async () => {
+  const f = recoveryFixture();
+  const c = createRecovery(f.target, recoveryContext(9006), { accept: async () => {}, close() {} });
+  await tick();
+  const stopped = c.stop();
+  f.retire();
+  await tick();
+  assert.equal(c.retired, false);
+  f.start.resolve(f.result(false));
+  await stopped;
+  assert.equal(c.snapshot().snapshot.state, 'CLOSED');
+  assert.equal(c.retired, true);
+});
+
+test('recovery refused candidate cannot turn into OWNED on Stop', async () => {
+  const f = recoveryFixture();
+  const c = createRecovery(f.target, recoveryContext(9007), { accept: async () => {}, close() {} });
+  await tick();
+  const refusal = {
+    handoff: 'NOT_STARTED',
+    videoId: recoveryContext(9007).videoId,
+    videoOrdinal: 1,
+    refusal: 'BUSY',
+    snapshot: null,
+    fresh: false,
+  };
+  f.start.resolve(refusal);
+  await c.started;
+  // Even a no-handoff response retains the actual lower record until its Stop settles.
+  assert.equal(c.retired, false);
+  f.retire();
+  // This synthetic lower changes handoff on Stop, which must fail closed.
+  await assert.rejects(c.stop());
+  assert.equal(c.retired, false);
+});
+
+test('recovery native BUSY refusal settles cleanly without invented native snapshot', async () => {
+  const f = recoveryFixture();
+  const c = createRecovery(f.target, recoveryContext(9008), { accept: async () => {}, close() {} });
+  await tick();
+  const refusal = {
+    handoff: 'NOT_STARTED',
+    videoId: recoveryContext(9008).videoId,
+    videoOrdinal: 1,
+    refusal: 'BUSY',
+    snapshot: null,
+    fresh: false,
+  };
+  f.start.resolve(refusal);
+  await c.started;
+  assert.equal(c.retired, false);
+  f.retire(refusal);
+  assert.deepEqual(await c.stop(), refusal);
+  assert.equal(c.retired, true);
 });

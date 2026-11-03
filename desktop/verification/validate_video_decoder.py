@@ -15,7 +15,7 @@ FILES = (
 )
 IMPORTS = {
     FILES[0]: {'electron', 'node:fs', 'node:path', 'node:crypto',
-               '../src/video-stream-bridge.ts', '../src/view-session.ts',
+               '../src/video-stream-bridge.ts', '../src/view-session.ts', '../src/main/video-contract.ts',
                '../src/main/window-policy.ts', '../src/settings-contract.ts',
                '../src/fleet-contract.ts', '../src/platform-tools-setup-contract.ts',
                '../src/metadata-contract.ts', './video-decoder-fixture.mjs',
@@ -71,7 +71,7 @@ REQUIRED = {
         "result.metafile.inputs", "productionManifest:", "output:digest(result.outputFiles[0].contents)",
     ),
     FILES[3]: (
-        "if(Retired$p){Control'diagnostic'}",
+        "if(Retired$p){$phase='DIAGNOSTIC';Control'diagnostic'}",
         "Set-StrictMode-Version2.0", "Invoke-OwnedChild$exe$arguments$timeout@{}",
         "$p.CleanupComplete", "$null-ne$p.ExitCode", "$p.StdoutTruncated",
         "$p.StderrTruncated", "Assert-OwnedRun$owner", "Remove-VerifiedOwnedRun$owner$retired",
@@ -140,6 +140,12 @@ ORDERED = {
         "staleRefused&&finalFacts.clear&&finalFacts.state==='STOPPED'&&stops===1",
     ),
     FILES[3]: (
+        "if(Retired$p){$phase='DIAGNOSTIC';Control'diagnostic'}",
+        "if(-not(Retired$p)-or$p.Status-cne'SUCCESS'-or$p.ExitCode-ne0-or$p.StdoutTruncated-or$p.StderrTruncated){throw'PROBE_FAILED'}",
+        "$phase='RUNTIME_VERIFY'Require(Run$node([string[]]@((Join-Path$PSScriptRoot'persistence-control.cjs'),'verify-runtime',$desktop,$env:GITHUB_SHA))120000)'PERSISTENCE_RUNTIME_VERIFIED'",
+        "$phase='RESULT_INSPECT';Control'inspect'",
+        "$phase='PROBE_MARKER';Require$p'VIDEO_DECODER_PROBE_PASS'",
+        "$phase='CLEANUP';Control'cleanup'",
         "$report.failure=$phase+'_FAILED'",
         'finally{if($null-ne$owner-and-not$report.directoryCleanup){if($retired){',
         "$report.cleanupFailure='CLEANUP_FAILED'",

@@ -1,3 +1,4 @@
+import { preparingVideo } from '../src/main/video-contract.ts';
 // Verification-only main: no production main, native provider, ADB or persistence import.
 import { app, BrowserWindow, session, protocol, ipcMain } from 'electron';
 import {
@@ -519,7 +520,16 @@ try {
                 begins++;
                 sink = value;
                 cases.portReady = true;
-                return { started: Promise.resolve() };
+                return {
+                  started: Promise.resolve({
+                    handoff: 'OWNED',
+                    videoId: VIDEO,
+                    videoOrdinal: 1,
+                    refusal: null,
+                    fresh: true,
+                    snapshot: preparingVideo(VIDEO),
+                  }),
+                };
               },
               stop() {
                 stops++;

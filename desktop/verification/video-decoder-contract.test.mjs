@@ -494,3 +494,22 @@ test('viewport containment rejects clipping and exact-fit geometry is distinct f
   }
   for (const bad of [0, -1, NaN, Infinity]) assert.throws(() => ctx.geometry(16, 32, 148, bad));
 });
+
+test('post-retirement marker failure retains qualified pixels without certifying campaign success', () => {
+  const s = {
+    ...supervisor(),
+    process: { ...supervisor().process, status: 'SUCCESS', exitCode: 0 },
+    failure: 'PROBE_MARKER_FAILED',
+  };
+  const v = { version: 1, scope, head: s.head, supervisor: s, diagnostic: null, result: valid() };
+  assert.equal(validateVideoEvidence(v), true);
+  assert.equal(validateVideoEvidence({ ...v, supervisor: { ...s, passed: true } }), false);
+  for (const failure of ['DIAGNOSTIC_FAILED', 'RUNTIME_VERIFY_FAILED', 'RESULT_INSPECT_FAILED']) {
+    assert.equal(
+      validateVideoEvidence({ ...v, supervisor: { ...s, failure }, result: null }),
+      true,
+    );
+    assert.equal(validateVideoEvidence({ ...v, supervisor: { ...s, failure } }), false);
+  }
+  assert.equal(validateVideoSupervisor({ ...s, failure: 'ARBITRARY_FAILED' }), false);
+});

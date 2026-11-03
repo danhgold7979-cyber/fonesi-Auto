@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 import { parseAvcConfiguration, prepareAvcChunk, annexBNals } from '../src/h264-video.ts';
 import { createTileVideoDecoder } from '../src/video-decoder.ts';
 const id = '00000000-0000-4000-8000-000000000001';
@@ -141,11 +143,20 @@ const cfg = configuration();
 const flush = async () => {
   for (let i = 0; i < 4; i++) await Promise.resolve();
 };
-function rig({ support = async () => true, deadline = 30000 } = {}) {
+function rig({
+  support = async () => true,
+  deadline = 30000,
+  factory = createTileVideoDecoder,
+} = {}) {
   let now = 0,
+    nowError = null,
     current = true,
     paintHook = null,
-    stateHook = null;
+    stateHook = null,
+    drawHook = null,
+    decodeHook = null,
+    chunkHook = null;
+  const calls = { now: 0, current: 0, set: 0, clear: 0 };
   const consumed = [],
     painted = [],
     states = [],
@@ -160,17 +171,21 @@ function rig({ support = async () => true, deadline = 30000 } = {}) {
       clearRect() {},
       drawImage(...args) {
         draws.push(args);
+        drawHook?.(...args);
       },
     }),
   };
-  const owner = createTileVideoDecoder(
+  const owner = factory(
     {
       videoId: id,
       deviceId: id,
       generation: 1,
       deadlineUtc: deadline,
       canvas,
-      current: () => current,
+      current: () => {
+        calls.current++;
+        return current;
+      },
       onConsumed: (v) => consumed.push(v),
       onPainted: (v) => {
         painted.push(v);
@@ -182,16 +197,27 @@ function rig({ support = async () => true, deadline = 30000 } = {}) {
       },
     },
     {
-      now: () => now,
+      now: () => {
+        calls.now++;
+        if (nowError) throw nowError;
+        return now;
+      },
       utc: () => 0,
       set: (fn, ms) => {
+        calls.set++;
         const token = {};
         timers.set(token, { fn, ms });
         return token;
       },
-      clear: (t) => timers.delete(t),
+      clear: (t) => {
+        calls.clear++;
+        timers.delete(t);
+      },
       supported: support,
-      chunk: (v) => v,
+      chunk: (v) => {
+        chunkHook?.(v);
+        return v;
+      },
       create(output, error) {
         const d = {
           output,
@@ -205,6 +231,7 @@ function rig({ support = async () => true, deadline = 30000 } = {}) {
           },
           decode(c) {
             this.chunks.push(c);
+            decodeHook?.(this, c);
           },
           close() {
             this.closed = true;
@@ -242,7 +269,7 @@ function rig({ support = async () => true, deadline = 30000 } = {}) {
     owner.receive(v);
     return v;
   };
-  const frame = (decoder, pts) => {
+  const frame = (decoder, pts, extra = {}) => {
     const f = {
       timestamp: pts,
       visibleRect: { x: 0, y: 0, width: 32, height: 32 },
@@ -256,6 +283,7 @@ function rig({ support = async () => true, deadline = 30000 } = {}) {
       close() {
         this.closed++;
       },
+      ...extra,
     };
     decoder.output(f);
     return f;
@@ -263,11 +291,21 @@ function rig({ support = async () => true, deadline = 30000 } = {}) {
   return {
     owner,
     canvas,
+    calls,
     setStateHook: (hook) => {
       stateHook = hook;
     },
     setPaintHook: (hook) => {
       paintHook = hook;
+    },
+    setDrawHook: (hook) => {
+      drawHook = hook;
+    },
+    setDecodeHook: (hook) => {
+      decodeHook = hook;
+    },
+    setChunkHook: (hook) => {
+      chunkHook = hook;
     },
     send,
     frame,
@@ -278,6 +316,7 @@ function rig({ support = async () => true, deadline = 30000 } = {}) {
     timers,
     draws,
     setNow: (v) => (now = v),
+    setNowError: (error) => (nowError = error),
     revoke: () => (current = false),
   };
 }
@@ -522,8 +561,8 @@ test('VUI buffering below actual SPS reference count refuses while equal bound a
   );
 });
 
-async function configuredRig() {
-  const r = rig();
+async function configuredRig(options) {
+  const r = rig(options);
   r.send('SESSION');
   r.send('CONFIG');
   await flush();
@@ -766,4 +805,707 @@ test('SPS cropped visible content may be repacked without applying original crop
     assert.deepEqual(r.draws[0], [f, 0, 0, 28, 30]);
     r.owner.close();
   }
+});
+
+// These tests execute createTileVideoDecoder, substituting native WebCodecs, Canvas
+// and clocks only. They do not establish native decoder or physical presentation evidence.
+const counterKeys = [
+  'admitted',
+  'submitted',
+  'drawn',
+  'discarded',
+  'waitingKey',
+  'reset',
+  'stopped',
+  'outstanding',
+  'pending',
+  'held',
+];
+function accounting(r, expected = {}) {
+  const s = r.owner.accounting();
+  assert.notEqual(s, null, 'accounting must remain available');
+  assert.equal(Object.isFrozen(s), true);
+  assert.equal(s.scope, 'RENDERER_CANVAS');
+  for (const key of counterKeys) {
+    assert.equal(Number.isSafeInteger(s[key]), true, `${key} is a safe integer`);
+    assert.ok(s[key] >= 0, `${key} is nonnegative`);
+  }
+  assert.equal(s.admitted, s.drawn + s.discarded + s.outstanding);
+  assert.equal(s.discarded, s.waitingKey + s.reset + s.stopped);
+  assert.ok(s.submitted <= s.admitted);
+  assert.ok(s.drawn <= s.submitted);
+  assert.ok(s.outstanding <= 3, 'accounting retains at most three admitted delivery identities');
+  assert.ok(s.pending <= 2, 'pending is a bounded queue, not a displayed-frame total');
+  assert.ok(s.held <= 1, 'at most one delivery is held');
+  for (const [key, value] of Object.entries(expected)) assert.equal(s[key], value, key);
+  return s;
+}
+
+test('accounting distinguishes admission, API submissions, successful draws and immutable captures', async () => {
+  const r = rig();
+  const empty = accounting(r, Object.fromEntries(counterKeys.map((key) => [key, 0])));
+  assert.equal(empty.width, null);
+  assert.equal(empty.height, null);
+  r.send('SESSION');
+  accounting(r, { admitted: 0 });
+  r.send('CONFIG');
+  accounting(r, { admitted: 0 });
+  await flush();
+  const key = r.send('KEY');
+  const queued = accounting(r, {
+    admitted: 1,
+    submitted: 1,
+    drawn: 0,
+    discarded: 0,
+    outstanding: 1,
+    pending: 1,
+    held: 0,
+    width: null,
+    height: null,
+  });
+  r.setNow(7);
+  assert.equal(r.frame(r.decoders[0], key.ptsUs).closed, 1);
+  const drawn = accounting(r, {
+    admitted: 1,
+    submitted: 1,
+    drawn: 1,
+    discarded: 0,
+    outstanding: 0,
+    pending: 0,
+    width: 32,
+    height: 32,
+    observedAt: 7,
+  });
+  assert.notEqual(drawn, queued);
+  assert.equal(queued.drawn, 0);
+  assert.equal(queued.outstanding, 1);
+  assert.equal(empty.admitted, 0);
+  assert.throws(() => {
+    drawn.drawn = 999;
+  }, TypeError);
+  const delta = r.send('DELTA');
+  accounting(r, { admitted: 2, submitted: 2, drawn: 1, outstanding: 1 });
+  r.frame(r.decoders[0], delta.ptsUs);
+  accounting(r, { admitted: 2, submitted: 2, drawn: 2, discarded: 0, outstanding: 0 });
+  assert.equal(r.painted.length, 2);
+  r.owner.close();
+});
+
+test('pre-key deltas settle once as waiting-key discards and never call decode', async () => {
+  const r = await configuredRig();
+  for (let i = 1; i <= 4; i++) {
+    r.send('DELTA');
+    accounting(r, {
+      admitted: i,
+      submitted: 0,
+      drawn: 0,
+      discarded: i,
+      waitingKey: i,
+      reset: 0,
+      stopped: 0,
+      outstanding: 0,
+      pending: 0,
+    });
+  }
+  assert.equal(r.decoders[0].chunks.length, 0);
+  assert.equal(r.consumed.length, 6);
+  const key = r.send('KEY');
+  r.frame(r.decoders[0], key.ptsUs);
+  accounting(r, { admitted: 5, submitted: 1, drawn: 1, discarded: 4, waitingKey: 4 });
+  r.owner.close();
+  accounting(r, { stopped: 0 });
+});
+
+test('pressure-held admission is counted before submission and drains within the fixed three records', async () => {
+  const r = await configuredRig();
+  const deliveries = [r.send('KEY'), r.send('DELTA'), r.send('DELTA')];
+  const held = accounting(r, {
+    admitted: 3,
+    submitted: 2,
+    drawn: 0,
+    discarded: 0,
+    outstanding: 3,
+    pending: 2,
+    held: 1,
+  });
+  assert.equal(r.consumed.length, 4);
+  r.setPaintHook(() => {
+    accounting(r, { admitted: 3, submitted: 2, drawn: 1, outstanding: 2, pending: 2, held: 1 });
+  });
+  r.frame(r.decoders[0], deliveries[0].ptsUs);
+  r.setPaintHook(null);
+  accounting(r, { admitted: 3, submitted: 3, drawn: 1, outstanding: 2, pending: 2, held: 0 });
+  assert.equal(r.consumed.length, 5);
+  for (const v of deliveries.slice(1)) r.frame(r.decoders[0], v.ptsUs);
+  accounting(r, { admitted: 3, submitted: 3, drawn: 3, outstanding: 0, pending: 0, held: 0 });
+  assert.equal(held.outstanding, 3);
+  for (let cycle = 0; cycle < 32; cycle++) {
+    const batch = [r.send('DELTA'), r.send('DELTA'), r.send('DELTA')];
+    accounting(r, { outstanding: 3, pending: 2, held: 1 });
+    for (const v of batch) {
+      r.frame(r.decoders[0], v.ptsUs);
+      accounting(r);
+    }
+  }
+  accounting(r, { admitted: 99, submitted: 99, drawn: 99, discarded: 0, outstanding: 0 });
+  r.owner.close();
+});
+
+test('decoder API queue pressure holds an admitted key without miscounting submission', async () => {
+  const r = await configuredRig();
+  r.decoders[0].decodeQueueSize = 2;
+  r.send('KEY');
+  accounting(r, { admitted: 1, submitted: 0, drawn: 0, outstanding: 1, pending: 0, held: 1 });
+  assert.equal(r.decoders[0].chunks.length, 0);
+  assert.equal(r.consumed.length, 2);
+  r.owner.close();
+  accounting(r, { admitted: 1, submitted: 0, discarded: 1, stopped: 1, outstanding: 0, held: 0 });
+});
+
+for (const kind of ['CONFIG', 'SESSION']) {
+  test(`${kind} reset discards unresolved submissions once and old callbacks cannot settle new records`, async () => {
+    const r = await configuredRig();
+    const key = r.send('KEY');
+    r.send('DELTA');
+    const old = r.decoders[0];
+    if (kind === 'CONFIG') r.send('CONFIG', { configId: 2 });
+    else {
+      r.send('SESSION', { geometryId: 2 });
+      r.send('CONFIG', { geometryId: 2, configId: 2 });
+    }
+    await flush();
+    accounting(r, {
+      admitted: 2,
+      submitted: 2,
+      drawn: 0,
+      discarded: 2,
+      reset: 2,
+      stopped: 0,
+      outstanding: 0,
+      pending: 0,
+      width: null,
+      height: null,
+    });
+    const extra = { configId: 2, ...(kind === 'SESSION' ? { geometryId: 2 } : {}) };
+    const fresh = r.send('KEY', extra);
+    const before = accounting(r, { admitted: 3, submitted: 3, outstanding: 1 });
+    assert.equal(r.frame(old, key.ptsUs).closed, 1);
+    old.error();
+    assert.deepEqual(accounting(r), before);
+    assert.equal(r.owner.snapshot().closed, false);
+    r.frame(r.decoders[1], fresh.ptsUs);
+    accounting(r, { admitted: 3, submitted: 3, drawn: 1, discarded: 2, reset: 2, outstanding: 0 });
+    r.owner.close();
+  });
+}
+
+test('Stop retires two pending and one held delivery; stale callbacks and repeated close add nothing', async () => {
+  const r = await configuredRig();
+  const first = r.send('KEY');
+  r.send('DELTA');
+  r.send('DELTA');
+  accounting(r, { admitted: 3, submitted: 2, outstanding: 3, pending: 2, held: 1 });
+  const d = r.decoders[0];
+  r.owner.close();
+  const closed = accounting(r, {
+    admitted: 3,
+    submitted: 2,
+    drawn: 0,
+    discarded: 3,
+    stopped: 3,
+    reset: 0,
+    outstanding: 0,
+    pending: 0,
+    held: 0,
+  });
+  const calls = { ...r.calls };
+  for (let i = 0; i < 5; i++) {
+    r.owner.close();
+    d.error();
+    assert.equal(r.frame(d, first.ptsUs).closed, 1);
+    r.send('KEY');
+    assert.deepEqual(accounting(r), closed);
+  }
+  assert.equal(r.calls.clear, calls.clear);
+  assert.equal(r.painted.length, 0);
+  assert.equal(r.timers.size, 0);
+  assert.equal(r.owner.snapshot().failureReason, null);
+});
+
+for (const [name, extra] of [
+  ['foreign video', { videoId: '00000000-0000-4000-8000-000000000002' }],
+  ['delivery sequence', { deliveryId: 99 }],
+  ['invalid envelope version', { version: 2 }],
+  ['extra envelope property', { other: true }],
+  ['invalid byte length', { totalBytes: 999 }],
+  ['invalid media kind', { kind: 'OTHER' }],
+]) {
+  test(`receive rejection (${name}) never admits the rejected delivery`, async () => {
+    const r = await configuredRig();
+    r.send('KEY');
+    r.send('DELTA', extra);
+    accounting(r, { admitted: 1, submitted: 1, discarded: 1, stopped: 1, outstanding: 0 });
+    assert.equal(r.owner.snapshot().failureReason, 'DELIVERY');
+    assert.equal(r.decoders[0].chunks.length, 1);
+  });
+}
+
+test('busy capability and occupied-held receive gates reject media before admission', async () => {
+  let resolve;
+  const busy = rig({ support: () => new Promise((done) => (resolve = done)) });
+  busy.send('SESSION');
+  busy.send('CONFIG');
+  busy.send('KEY');
+  accounting(busy, { admitted: 0, submitted: 0, discarded: 0, outstanding: 0 });
+  resolve(true);
+  await flush();
+  assert.equal(busy.decoders.length, 0);
+  assert.equal(busy.owner.snapshot().failureReason, 'DELIVERY');
+  const held = await configuredRig();
+  held.send('KEY');
+  held.send('DELTA');
+  held.send('DELTA');
+  held.send('DELTA');
+  accounting(held, { admitted: 3, submitted: 2, discarded: 3, stopped: 3, outstanding: 0 });
+  assert.equal(held.owner.snapshot().failureReason, 'DELIVERY');
+});
+
+for (const [name, extra, reason] of [
+  ['wrong geometry', { geometryId: 2 }, 'DELIVERY'],
+  ['wrong dimensions', { width: 16 }, 'DELIVERY'],
+  ['wrong packet sequence', { packetId: 99 }, 'DELIVERY'],
+  ['wrong configuration', { configId: 2 }, 'DELIVERY'],
+  ['malformed AVC contents', { bytes: Uint8Array.of(0), totalBytes: 1 }, 'SUBMISSION'],
+]) {
+  test(`process rejection (${name}) admits then discards, without a decode API call`, async () => {
+    const r = await configuredRig();
+    r.send('KEY', extra);
+    accounting(r, {
+      admitted: 1,
+      submitted: 0,
+      drawn: 0,
+      discarded: 1,
+      stopped: 1,
+      outstanding: 0,
+    });
+    assert.equal(r.owner.snapshot().failureReason, reason);
+    assert.equal(r.decoders[0].chunks.length, 0);
+  });
+}
+
+test('duplicate PTS is admitted at receive then discards both affected submissions', async () => {
+  const r = await configuredRig();
+  const key = r.send('KEY');
+  r.send('DELTA', { ptsUs: key.ptsUs });
+  accounting(r, { admitted: 2, submitted: 1, drawn: 0, discarded: 2, stopped: 2, outstanding: 0 });
+  assert.equal(r.owner.snapshot().failureReason, 'DELIVERY');
+});
+
+test('submission attempts are recorded exactly at decode, including throws and synchronous errors', async () => {
+  for (const failure of ['chunk', 'decode', 'native']) {
+    const r = await configuredRig();
+    if (failure === 'chunk')
+      r.setChunkHook(() => {
+        accounting(r, { admitted: 1, submitted: 0, outstanding: 1 });
+        throw Error('synthetic chunk');
+      });
+    else
+      r.setDecodeHook((d) => {
+        accounting(r, { admitted: 1, submitted: 1, outstanding: 1, pending: 1 });
+        if (failure === 'native') d.error();
+        else throw Error('synthetic decode');
+      });
+    r.send('KEY');
+    accounting(r, {
+      admitted: 1,
+      submitted: failure === 'chunk' ? 0 : 1,
+      drawn: 0,
+      discarded: 1,
+      stopped: 1,
+      outstanding: 0,
+    });
+    assert.equal(
+      r.owner.snapshot().failureReason,
+      failure === 'native' ? 'NATIVE_ERROR' : 'SUBMISSION',
+    );
+  }
+});
+
+test('asynchronous native error settles all pending and held identities without counting new submissions', async () => {
+  const r = await configuredRig();
+  const key = r.send('KEY');
+  r.send('DELTA');
+  r.send('DELTA');
+  r.decoders[0].error();
+  const failed = accounting(r, { admitted: 3, submitted: 2, drawn: 0, discarded: 3, stopped: 3 });
+  assert.equal(r.frame(r.decoders[0], key.ptsUs).closed, 1);
+  assert.deepEqual(accounting(r), failed);
+  assert.equal(r.owner.snapshot().failureReason, 'NATIVE_ERROR');
+});
+
+test('throwing draw discards all admitted work, while failed PAINTED acknowledgment preserves successful draw', async () => {
+  for (const failure of ['draw', 'ack', 'close']) {
+    const r = await configuredRig();
+    const key = r.send('KEY');
+    r.send('DELTA');
+    r.send('DELTA');
+    r.setDrawHook(() => {
+      accounting(r, { drawn: 0, outstanding: 3 });
+      if (failure === 'draw') throw Error('synthetic draw');
+    });
+    r.setPaintHook(() => {
+      accounting(r, { drawn: 1, outstanding: 2 });
+      if (failure === 'ack') throw Error('synthetic ack');
+    });
+    let closes = 0;
+    r.frame(r.decoders[0], key.ptsUs, {
+      close() {
+        closes++;
+        if (failure === 'close') throw Error('synthetic close');
+      },
+    });
+    accounting(r, {
+      admitted: 3,
+      submitted: 2,
+      drawn: failure === 'draw' ? 0 : 1,
+      discarded: failure === 'draw' ? 3 : 2,
+      stopped: failure === 'draw' ? 3 : 2,
+      outstanding: 0,
+      pending: 0,
+      held: 0,
+    });
+    assert.equal(closes, 1);
+    assert.equal(
+      r.owner.snapshot().failureReason,
+      { draw: 'PAINT', ack: 'PAINT_ACK', close: 'FRAME_CLOSE' }[failure],
+    );
+  }
+});
+
+for (const terminal of ['Stop', 'CONFIG', 'SESSION']) {
+  for (const throws of [false, true]) {
+    test(`reentrant ${terminal} during ${throws ? 'throwing' : 'successful'} draw settles the in-flight record exactly once`, async () => {
+      const r = await configuredRig();
+      const key = r.send('KEY');
+      r.send('DELTA');
+      let inside;
+      r.setDrawHook(() => {
+        accounting(r, { admitted: 2, submitted: 2, drawn: 0, outstanding: 2 });
+        if (terminal === 'Stop') r.owner.close();
+        else if (terminal === 'CONFIG') r.send('CONFIG', { configId: 2 });
+        else r.send('SESSION', { geometryId: 2 });
+        inside = accounting(r, {
+          admitted: 2,
+          drawn: 0,
+          discarded: 1,
+          outstanding: 1,
+          pending: 0,
+          held: 0,
+          reset: terminal === 'Stop' ? 0 : 1,
+          stopped: terminal === 'Stop' ? 1 : 0,
+        });
+        r.owner.close();
+        accounting(r, { discarded: 1, outstanding: 1 });
+        if (throws) throw Error('synthetic reentrant draw');
+      });
+      assert.equal(r.frame(r.decoders[0], key.ptsUs).closed, 1);
+      await flush();
+      const result = accounting(r, {
+        admitted: 2,
+        submitted: 2,
+        drawn: throws ? 0 : 1,
+        discarded: throws ? 2 : 1,
+        outstanding: 0,
+        pending: 0,
+        reset: terminal === 'Stop' ? 0 : throws ? 2 : 1,
+        stopped: terminal === 'Stop' ? (throws ? 2 : 1) : 0,
+      });
+      assert.equal(inside.outstanding, 1);
+      assert.equal(r.painted.length, 0);
+      assert.equal(r.owner.snapshot().closed, true);
+      r.owner.close();
+      r.frame(r.decoders[0], key.ptsUs);
+      assert.deepEqual(accounting(r), result);
+    });
+  }
+}
+
+test('reentrant replacement decoder owns independent counts even when the old draw returns successfully', async () => {
+  const old = await configuredRig();
+  const replacement = await configuredRig();
+  const key = old.send('KEY');
+  old.send('DELTA');
+  old.setDrawHook(() => {
+    old.owner.close();
+    const fresh = replacement.send('KEY');
+    replacement.frame(replacement.decoders[0], fresh.ptsUs);
+    accounting(old, { drawn: 0, discarded: 1, outstanding: 1 });
+    accounting(replacement, { admitted: 1, submitted: 1, drawn: 1, discarded: 0, outstanding: 0 });
+  });
+  old.frame(old.decoders[0], key.ptsUs);
+  accounting(old, { admitted: 2, submitted: 2, drawn: 1, discarded: 1, stopped: 1 });
+  const expected = accounting(replacement);
+  old.decoders[0].error();
+  old.frame(old.decoders[0], key.ptsUs);
+  assert.deepEqual(accounting(replacement), expected);
+  replacement.owner.close();
+});
+
+test('synchronous decode output can settle before decode returns, and a later decode throw cannot undo a draw', async () => {
+  for (const throws of [false, true]) {
+    const r = await configuredRig();
+    r.setDecodeHook((d, c) => {
+      accounting(r, { admitted: 1, submitted: 1, drawn: 0, outstanding: 1 });
+      assert.equal(r.frame(d, c.timestamp).closed, 1);
+      accounting(r, { admitted: 1, submitted: 1, drawn: 1, outstanding: 0, pending: 0 });
+      if (throws) throw Error('synthetic throw after synchronous output');
+    });
+    r.send('KEY');
+    accounting(r, {
+      admitted: 1,
+      submitted: 1,
+      drawn: 1,
+      discarded: 0,
+      outstanding: 0,
+      pending: 0,
+    });
+    assert.equal(r.owner.snapshot().failureReason, throws ? 'SUBMISSION' : null);
+    assert.equal(r.painted.length, 1);
+    assert.equal(r.owner.snapshot().state, throws ? 'DECODE_FAILED' : 'DISPLAYING');
+    r.owner.close();
+  }
+});
+
+test('duplicate output never credits the same admitted delivery twice', async () => {
+  const r = await configuredRig();
+  const key = r.send('KEY');
+  r.frame(r.decoders[0], key.ptsUs);
+  r.send('DELTA');
+  assert.equal(r.frame(r.decoders[0], key.ptsUs).closed, 1);
+  accounting(r, { admitted: 2, submitted: 2, drawn: 1, discarded: 1, stopped: 1, outstanding: 0 });
+  assert.equal(r.owner.snapshot().failureReason, 'OUTPUT_IDENTITY');
+});
+
+test('accounting reads sample only the monotonic observation clock and never update decoder deadlines', async () => {
+  const r = await configuredRig();
+  const calls = { ...r.calls };
+  const states = [...r.states];
+  const timers = [...r.timers.values()];
+  for (let i = 1; i <= 12; i++) {
+    r.setNow(i * 100);
+    accounting(r, { observedAt: i * 100, admitted: 0 });
+  }
+  assert.equal(r.calls.now, calls.now + 12);
+  for (const key of ['current', 'set', 'clear']) assert.equal(r.calls[key], calls[key], key);
+  assert.deepEqual(r.states, states);
+  assert.deepEqual([...r.timers.values()], timers);
+  assert.equal(timers[0].ms, 30000);
+  // If accounting had advanced the failure-sensitive media clock, this delivery
+  // would stop with CLOCK. Observation alone is deliberately not media time.
+  r.setNow(1);
+  const key = r.send('KEY');
+  assert.equal(r.owner.snapshot().closed, false);
+  r.frame(r.decoders[0], key.ptsUs);
+  assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+  assert.equal(r.owner.accounting(), null);
+  r.owner.close();
+});
+
+for (const failure of ['backward', 'NaN', 'Infinity', 'throw']) {
+  test(`observation ${failure} latches accounting unavailable without stopping media or rearming timers`, async () => {
+    const r = await configuredRig();
+    r.setNow(100);
+    accounting(r, { observedAt: 100 });
+    const key = r.send('KEY');
+    const snapshot = r.owner.snapshot();
+    const timers = [...r.timers.entries()];
+    const calls = { ...r.calls };
+    if (failure === 'throw') r.setNowError(Error('synthetic observation clock'));
+    else r.setNow({ backward: 99, NaN: NaN, Infinity: Infinity }[failure]);
+    assert.equal(r.owner.accounting(), null);
+    assert.deepEqual(r.owner.snapshot(), snapshot);
+    assert.deepEqual([...r.timers.entries()], timers);
+    assert.equal(r.calls.set, calls.set);
+    assert.equal(r.calls.clear, calls.clear);
+    r.setNowError(null);
+    r.setNow(101);
+    const reads = r.calls.now;
+    assert.equal(r.owner.accounting(), null);
+    assert.equal(r.calls.now, reads, 'latched unavailable reads do not touch clocks');
+    assert.equal(r.frame(r.decoders[0], key.ptsUs).closed, 1);
+    const delta = r.send('DELTA');
+    r.frame(r.decoders[0], delta.ptsUs);
+    assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+    assert.equal(r.owner.snapshot().failureReason, null);
+    assert.equal(r.painted.length, 2);
+    assert.equal(r.decoders[0].chunks.length, 2);
+    assert.equal(r.owner.accounting(), null);
+    r.owner.close();
+  });
+}
+
+// Explicit SOURCE-ONLY substitutions below enter unreachable counter boundaries
+// in a copy of this exact decoder module. No production option, exported hook,
+// native runtime authority, original file write or media-algorithm replacement is added.
+async function accountingSourceFactory({ seed = {}, storage = false, entry = '' } = {}) {
+  const url = new URL('../src/video-decoder.ts', import.meta.url);
+  let source = readFileSync(url, 'utf8');
+  const replaceOnce = (before, after) => {
+    assert.equal(
+      source.split(before).length,
+      2,
+      `source substitution must have one exact target: ${before}`,
+    );
+    source = source.replace(before, after);
+  };
+  for (const [key, value] of Object.entries(seed))
+    replaceOnce(`    ${key}: 0,`, `    ${key}: ${value},`);
+  if (entry)
+    replaceOnce('  let accountingAvailable = true,', `${entry}\n  let accountingAvailable = true,`);
+  if (storage)
+    replaceOnce(
+      '    accounting: accountingSnapshot,',
+      '    accounting: accountingSnapshot,\n    accountingStorage: () => accounting.size,',
+    );
+  for (const dependency of ['./h264-video.ts', './video-media-contract.ts'])
+    replaceOnce(`from '${dependency}'`, `from '${new URL(dependency, url).href}'`);
+  const code = stripTypeScriptTypes(source, { mode: 'strip' });
+  return (await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`))
+    .createTileVideoDecoder;
+}
+
+test('source-only near-safe-integer state reaches the exact bound then latches unavailable without changing media', async () => {
+  const r = await configuredRig({
+    factory: await accountingSourceFactory({
+      seed: {
+        admitted: Number.MAX_SAFE_INTEGER - 1,
+        submitted: Number.MAX_SAFE_INTEGER - 1,
+        drawn: Number.MAX_SAFE_INTEGER - 1,
+      },
+      storage: true,
+    }),
+  });
+  const first = r.send('KEY');
+  accounting(r, {
+    admitted: Number.MAX_SAFE_INTEGER,
+    drawn: Number.MAX_SAFE_INTEGER - 1,
+    submitted: Number.MAX_SAFE_INTEGER,
+    outstanding: 1,
+  });
+  r.frame(r.decoders[0], first.ptsUs);
+  accounting(r, {
+    admitted: Number.MAX_SAFE_INTEGER,
+    drawn: Number.MAX_SAFE_INTEGER,
+    outstanding: 0,
+  });
+  const second = r.send('DELTA');
+  assert.equal(r.owner.accounting(), null);
+  assert.equal(r.owner.accountingStorage(), 0);
+  assert.equal(r.owner.snapshot().closed, false);
+  assert.equal(r.frame(r.decoders[0], second.ptsUs).closed, 1);
+  assert.equal(r.painted.length, 2);
+  assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+  r.owner.close();
+});
+
+for (const key of [
+  'admitted',
+  'submitted',
+  'drawn',
+  'discarded',
+  'waitingKey',
+  'reset',
+  'stopped',
+]) {
+  test(`source-only ${key} counter overflow clears accounting storage without adding media effects`, async () => {
+    const boundary = await accountingSourceFactory({
+      seed: { [key]: Number.MAX_SAFE_INTEGER },
+      storage: true,
+    });
+    const measured = await configuredRig({ factory: boundary });
+    const control = await configuredRig();
+    for (const r of [measured, control]) {
+      if (key === 'discarded' || key === 'waitingKey') r.send('DELTA');
+      else {
+        const first = r.send('KEY');
+        if (key === 'drawn') r.frame(r.decoders[0], first.ptsUs);
+        else if (key === 'reset') {
+          r.send('CONFIG', { configId: 2 });
+          await flush();
+        } else if (key === 'stopped') r.owner.close();
+      }
+    }
+    assert.equal(measured.owner.accounting(), null);
+    assert.equal(measured.owner.accountingStorage(), 0);
+    const state = (r) => ({
+      lifecycle: r.owner.snapshot(),
+      states: r.states,
+      consumed: r.consumed,
+      painted: r.painted,
+      chunks: r.decoders.map((d) => d.chunks),
+      closed: r.decoders.map((d) => d.closed),
+      timers: [...r.timers.values()].map((t) => t.ms),
+      timerSets: r.calls.set,
+      timerClears: r.calls.clear,
+    });
+    assert.deepEqual(state(measured), state(control));
+    for (const r of [measured, control]) {
+      if (!r.owner.snapshot().closed) {
+        const d = r.decoders.at(-1);
+        for (const chunk of [...d.chunks])
+          if (!r.painted.some((p) => p.ptsUs === chunk.timestamp)) r.frame(d, chunk.timestamp);
+        const fresh = r.send('KEY', key === 'reset' ? { configId: 2 } : {});
+        r.frame(d, fresh.ptsUs);
+      }
+      r.owner.close();
+      r.owner.close();
+      r.decoders[0].error();
+      assert.equal(r.frame(r.decoders[0], 2000).closed, 1);
+    }
+    assert.equal(measured.owner.accounting(), null);
+    assert.equal(measured.owner.accountingStorage(), 0);
+    assert.deepEqual(state(measured), state(control));
+  });
+}
+
+test('source-only inconsistent equation disables only telemetry and callbacks continue safely', async () => {
+  const r = await configuredRig({
+    factory: await accountingSourceFactory({ seed: { admitted: 1 }, storage: true }),
+  });
+  const before = r.owner.snapshot();
+  assert.equal(r.owner.accounting(), null);
+  assert.equal(r.owner.accountingStorage(), 0);
+  assert.deepEqual(r.owner.snapshot(), before);
+  const key = r.send('KEY');
+  r.frame(r.decoders[0], key.ptsUs);
+  assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+  assert.equal(r.owner.accounting(), null);
+  r.owner.close();
+});
+
+test('source-only retained in-flight record exercises the real capacity-three unavailable path without dropping held media', async () => {
+  const r = await configuredRig({
+    factory: await accountingSourceFactory({
+      seed: { admitted: 1 },
+      storage: true,
+      entry: '  accounting.set(0, { drawing: true, deferred: null });',
+    }),
+  });
+  const first = r.send('KEY');
+  const second = r.send('DELTA');
+  accounting(r, { admitted: 3, submitted: 2, outstanding: 3, pending: 2, held: 0 });
+  const held = r.send('DELTA');
+  assert.equal(r.owner.accounting(), null);
+  assert.equal(r.owner.accountingStorage(), 0);
+  assert.equal(r.owner.snapshot().closed, false);
+  assert.equal(r.owner.snapshot().held, true);
+  for (const v of [first, second, held]) r.frame(r.decoders[0], v.ptsUs);
+  assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+  assert.equal(r.owner.snapshot().pending, 0);
+  assert.equal(r.owner.snapshot().held, false);
+  assert.equal(r.decoders[0].chunks.length, 3);
+  assert.equal(r.painted.length, 3);
+  assert.equal(r.consumed.length, 5);
+  assert.equal(r.owner.accounting(), null);
+  r.owner.close();
 });

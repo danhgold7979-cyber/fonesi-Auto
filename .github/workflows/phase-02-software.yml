@@ -28,7 +28,7 @@ on:
         type: boolean
         default: false
       run_video_managed:
-        description: 'Compile five current sources and run 92 pure/fake managed groups; no live socket/server/device'
+        description: 'Compile five current sources and run 118 pure/fake managed groups; no live socket/server/device'
         required: false
         type: boolean
         default: false

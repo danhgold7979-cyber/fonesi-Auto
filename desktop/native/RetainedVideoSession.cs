@@ -351,6 +351,31 @@ namespace Fonesi.Development.Server
                 public void CloseAll(){NativeVideoChannel[] copy;lock(sync){copy=channels.ToArray();}foreach(NativeVideoChannel c in copy)c.Close();}
                 public bool Retired {get{if(!Monitor.TryEnter(sync,0))return false;try{foreach(NativeVideoChannel c in channels)if(!c.Retired)return false;return true;}finally{Monitor.Exit(sync);}}}
             }
+            // Fresh v7 owners replace only the exact terminal native record. Legacy start remains single-use.
+            public object VideoOwner(Attempt attempt)
+            { if(!Monitor.TryEnter(gate,0))throw new IOException("BUSY");try{State a=attempt==null?null:attempt.state as State;if(!Exact(a))throw new IOException("ADMISSION_REJECTED");return a.video;}finally{Monitor.Exit(gate);} }
+            public bool VideoOwnerClean(Attempt attempt,object expectedOwner)
+            { if(!Monitor.TryEnter(gate,0))return false;try{State a=attempt==null?null:attempt.state as State;if(!Exact(a)||a.stopping||!Object.ReferenceEquals(a.video,expectedOwner))return false;return a.video==null||a.video.Clean;}finally{Monitor.Exit(gate);} }
+            public object VideoReserveFresh(Attempt attempt,object expectedOwner,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex,RetainedAdbProtocol.VideoMedia media)
+            {
+                State a=attempt==null?null:attempt.state as State;
+                if(!VideoUuid(attemptId)||!VideoUuid(videoId)||!MetadataTransport(transportId)||hostEpoch<1||hostEpoch>VideoSafe||!VideoHash(nonceHex)||scid<0||media==null)throw new IOException("ADMISSION_REJECTED");
+                if(!Enter(a,"FOREGROUND",false))return null;
+                try{lock(gate){if(videoAdmission==null||videoAdmission.hash!=artifactId||a.stopping||!Object.ReferenceEquals(a.video,expectedOwner)||a.video!=null&&!a.video.Clean||!media.Matches(videoAdmission.sessionId,attemptId,videoId))return null;
+                    NativeVideoIo io=new NativeVideoIo(this,a,videoAdmission,attemptId,videoId,transportId,hostEpoch,scid,nonceHex,deadlineUtc);
+                    VideoState v=new VideoState(io,videoId,nonceHex,scid,videoAdmission.bytes,videoAdmission.hash,deadlineUtc,media);
+                    a.video=v;a.videoId=videoId;media.BindStop(v.RequestStop);return v;
+                }}finally{Leave(a);}
+            }
+            public IDictionary<string,object> VideoStartReserved(Attempt attempt,object owner)
+            {
+                State a=attempt==null?null:attempt.state as State;VideoState v=owner as VideoState;
+                if(v==null||a==null)throw new IOException("ADMISSION_REJECTED");
+                // A registered candidate must still run its cancellation/settlement path when
+                // parent retirement races the reserve/start boundary. Never abandon an unstarted owner.
+                lock(gate){if(!Object.ReferenceEquals(a.video,v))throw new IOException("ADMISSION_REJECTED");if(!Exact(a)||a.stopping)v.RequestStop();v.Start();}
+                return v.AwaitStarted();
+            }
             public IDictionary<string,object> VideoStart(Attempt attempt,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex)
             {return VideoStartCore(attempt,attemptId,videoId,transportId,hostEpoch,deadlineUtc,artifactId,scid,nonceHex,null);}
             public IDictionary<string,object> VideoStartMedia(Attempt attempt,string attemptId,string videoId,string transportId,long hostEpoch,long deadlineUtc,string artifactId,int scid,string nonceHex,RetainedAdbProtocol.VideoMedia media)

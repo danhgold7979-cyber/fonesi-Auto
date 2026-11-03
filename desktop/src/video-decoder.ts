@@ -76,6 +76,22 @@ export type VideoGeometryFailure = Readonly<
     number | null
   > & { flip: boolean | null }
 >;
+export type VideoAccounting = Readonly<{
+  scope: 'RENDERER_CANVAS';
+  observedAt: number;
+  width: number | null;
+  height: number | null;
+  admitted: number;
+  submitted: number;
+  drawn: number;
+  discarded: number;
+  waitingKey: number;
+  reset: number;
+  stopped: number;
+  outstanding: number;
+  pending: number;
+  held: number;
+}>;
 type Decoder = Pick<VideoDecoder, 'configure' | 'decode' | 'close' | 'decodeQueueSize'>;
 /** Source-test substitution only; production callers omit this second argument. */
 export type VideoDecoderTestBindings = Readonly<{
@@ -143,6 +159,88 @@ export function createTileVideoDecoder(
     remaining = options.deadlineUtc - native.utc();
   let lastNow = admitted,
     until = admitted + Math.min(30000, remaining);
+  type Outcome = 'drawn' | 'waitingKey' | 'reset' | 'stopped';
+  type Record = { drawing: boolean; deferred: Outcome | null };
+  const accounting = new Map<number, Record>();
+  const counts = {
+    admitted: 0,
+    submitted: 0,
+    drawn: 0,
+    discarded: 0,
+    waitingKey: 0,
+    reset: 0,
+    stopped: 0,
+  };
+  let accountingAvailable = true,
+    observedAt = admitted;
+  function unavailableAccounting() {
+    accountingAvailable = false;
+    accounting.clear();
+  }
+  function increment(key: keyof typeof counts) {
+    if (!accountingAvailable) return;
+    if (counts[key] >= Number.MAX_SAFE_INTEGER) {
+      unavailableAccounting();
+      return;
+    }
+    counts[key]++;
+  }
+  function settle(id: number, outcome: Outcome) {
+    if (!accountingAvailable) return;
+    const record = accounting.get(id);
+    if (!record) return;
+    if (record.drawing && outcome !== 'drawn') {
+      record.deferred ??= outcome;
+      return;
+    }
+    accounting.delete(id);
+    increment(outcome);
+    if (outcome !== 'drawn') increment('discarded');
+  }
+  function discard(outcome: 'reset' | 'stopped') {
+    for (const id of accounting.keys()) settle(id, outcome);
+  }
+  function account(v: VideoDelivery) {
+    if (!accountingAvailable || (v.kind !== 'KEY' && v.kind !== 'DELTA')) return;
+    if (accounting.size >= 3 || accounting.has(v.deliveryId)) {
+      unavailableAccounting();
+      return;
+    }
+    increment('admitted');
+    if (accountingAvailable) accounting.set(v.deliveryId, { drawing: false, deferred: null });
+  }
+  function accountingSnapshot(): VideoAccounting | null {
+    if (!accountingAvailable) return null;
+    let now: number;
+    try {
+      now = native.now();
+    } catch {
+      unavailableAccounting();
+      return null;
+    }
+    if (
+      !Number.isFinite(now) ||
+      now < observedAt ||
+      counts.admitted !== counts.drawn + counts.discarded + accounting.size ||
+      counts.discarded !== counts.waitingKey + counts.reset + counts.stopped ||
+      counts.submitted > counts.admitted ||
+      counts.drawn > counts.submitted
+    ) {
+      unavailableAccounting();
+      return null;
+    }
+    observedAt = now;
+    return Object.freeze({
+      scope: 'RENDERER_CANVAS',
+      observedAt,
+      width: lastPaint >= 0 && config ? config.displayWidth : null,
+      height: lastPaint >= 0 && config ? config.displayHeight : null,
+      ...counts,
+      outstanding: accounting.size,
+      pending: pending.size,
+      held: held === null ? 0 : 1,
+    });
+  }
   function clock() {
     const n = native.now();
     if (!Number.isFinite(n) || n < lastNow) {
@@ -181,6 +279,7 @@ export function createTileVideoDecoder(
     if (next === 'DECODE_FAILED' || next === 'DECODER_UNAVAILABLE')
       failureReason ??= clockFailed ? 'CLOCK' : reason;
     closed = true;
+    discard('stopped');
     generation++;
     held = null;
     pending.clear();
@@ -224,6 +323,7 @@ export function createTileVideoDecoder(
     if (closed) return;
   }
   function reset() {
+    discard('reset');
     generation++;
     try {
       decoder?.close();
@@ -306,7 +406,17 @@ export function createTileVideoDecoder(
       options.canvas.height = config.displayHeight;
       options.canvas.style.aspectRatio = `${config.displayWidth} / ${config.displayHeight}`;
       if (!live() || token !== generation || closed) return stop();
-      context.drawImage(frame as VideoFrame, 0, 0, config.displayWidth, config.displayHeight);
+      const record = accounting.get(v.deliveryId);
+      if (record) record.drawing = true;
+      try {
+        context.drawImage(frame as VideoFrame, 0, 0, config.displayWidth, config.displayHeight);
+        settle(v.deliveryId, 'drawn');
+      } finally {
+        if (record) {
+          record.drawing = false;
+          if (record.deferred) settle(v.deliveryId, record.deferred);
+        }
+      }
       completed = frame.timestamp;
       lastPaint = frame.timestamp;
       if (!live() || token !== generation || closed) return stop();
@@ -415,6 +525,7 @@ export function createTileVideoDecoder(
       }
       const key = v.kind === 'KEY';
       if (pts < 0 && !key) {
+        settle(v.deliveryId, 'waitingKey');
         packet = v.packetId;
         acknowledge(v);
         return;
@@ -426,6 +537,7 @@ export function createTileVideoDecoder(
       pts = v.ptsUs;
       packet = v.packetId;
       pending.set(v.ptsUs, v);
+      increment('submitted');
       decoder.decode(chunk);
       if (closed) return;
       if (pending.has(v.ptsUs)) publish('DECODING');
@@ -461,9 +573,11 @@ export function createTileVideoDecoder(
         return;
       }
       delivery = v.deliveryId;
+      account(v);
       void process(v);
     },
     close: () => stop(),
+    accounting: accountingSnapshot,
     snapshot: () =>
       Object.freeze({
         state,

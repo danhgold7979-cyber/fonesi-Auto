@@ -23,6 +23,8 @@ export type ShellProps = Readonly<{
     canvasRef: (canvas: HTMLCanvasElement | null) => void;
   }>;
   hostResources?: ReactNode;
+  previewAccounting?: ReactNode;
+  onPreviewAccountingRead?: () => void;
   onHostResourcesClose?: () => void;
   onHostResourcesRead?: () => void;
   hostResourcesReadDisabled?: boolean;
@@ -46,7 +48,12 @@ export type ShellProps = Readonly<{
 function Performance({
   onUnavailable,
   hostResources,
-}: Readonly<{ onUnavailable: (action: DomainAction) => void; hostResources?: ReactNode }>) {
+  previewAccounting,
+}: Readonly<{
+  onUnavailable: (action: DomainAction) => void;
+  hostResources?: ReactNode;
+  previewAccounting?: ReactNode;
+}>) {
   return (
     <>
       <div className="notice">
@@ -92,6 +99,7 @@ function Performance({
         </label>
       </div>
       {hostResources}
+      {previewAccounting}
       <div className="stat-grid">
         {[
           'CPU',
@@ -103,7 +111,11 @@ function Performance({
           'Hàng đợi Vision',
           'Mức tài nguyên',
         ]
-          .filter((label) => !hostResources || (label !== 'CPU' && label !== 'RAM'))
+          .filter(
+            (label) =>
+              (!hostResources || (label !== 'CPU' && label !== 'RAM')) &&
+              (!previewAccounting || label !== 'Stream / backlog'),
+          )
           .map((label) => (
             <div className="stat" key={label}>
               <span>{label}</span>
@@ -170,6 +182,8 @@ export function UiShell(p: ShellProps) {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState('');
   const [modal, setModal] = useState<'help' | 'unavailable' | null>(null);
   const [performance, setPerformance] = useState<PerformanceSession | null>(null);
+  const previewRead = useRef(p.onPreviewAccountingRead);
+  previewRead.current = p.onPreviewAccountingRead;
   const hostClose = useRef(p.onHostResourcesClose);
   hostClose.current = p.onHostResourcesClose;
   const hostRead = useRef({
@@ -965,7 +979,31 @@ export function UiShell(p: ShellProps) {
                   Đọc CPU/RAM máy chủ
                 </button>
               ) : null}
+              {p.previewAccounting ? (
+                <button
+                  type="button"
+                  id="preview-accounting-read"
+                  disabled={!p.onPreviewAccountingRead || performance.cap === null}
+                  onClick={() => {
+                    if (
+                      !lifetime.current ||
+                      performanceSession.current?.token !== performance.token ||
+                      performanceSession.current.cap === null ||
+                      !performanceGate.current.ready ||
+                      performanceGate.current.modal !== null ||
+                      document.querySelector('[role="dialog"]') !== null ||
+                      !document.hasFocus() ||
+                      document.hidden
+                    )
+                      return;
+                    previewRead.current?.();
+                  }}
+                >
+                  Đọc bộ đếm preview
+                </button>
+              ) : null}
               <Performance
+                previewAccounting={p.previewAccounting}
                 hostResources={p.hostResources}
                 onUnavailable={(next) => {
                   if (

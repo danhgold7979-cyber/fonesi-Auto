@@ -2,6 +2,12 @@ import { inspectRegistryVideoBinding } from './registry-store.ts';
 import {
   snapshotVideo,
   snapshotVideoStart,
+  snapshotVideoRecoveryStart,
+  snapshotVideoRecoveryResult,
+  videoRecoveryRetired,
+  videoOrdinal,
+  type VideoRecoveryStart,
+  type VideoRecoveryResult,
   type VideoSnapshot,
   type VideoMediaSink,
   type VideoStart,
@@ -131,6 +137,21 @@ export function snapshotHostAcquisitionFacts(raw: unknown): HostAcquisitionFacts
   }
 }
 export interface HostNativeProvider {
+  videoRecoveryStart?(
+    attempt: object,
+    request: VideoRecoveryStart,
+    media?: VideoMediaSink,
+  ): Promise<VideoRecoveryResult>;
+  videoRecoveryStatus?(
+    attempt: object,
+    videoId: string,
+    ordinal: number,
+  ): Promise<VideoRecoveryResult>;
+  videoRecoveryStop?(
+    attempt: object,
+    videoId: string,
+    ordinal: number,
+  ): Promise<VideoRecoveryResult>;
   videoStart?(attempt: object, request: VideoStart, media?: VideoMediaSink): Promise<VideoSnapshot>;
   videoStatus?(attempt: object, videoId: string): Promise<VideoSnapshot>;
   videoStop?(attempt: object, videoId: string): Promise<VideoSnapshot>;
@@ -196,7 +217,10 @@ export function createHostAdapter(
     input = provider.input?.bind(provider),
     videoStart = provider.videoStart?.bind(provider),
     videoStatus = provider.videoStatus?.bind(provider),
-    videoStop = provider.videoStop?.bind(provider);
+    videoStop = provider.videoStop?.bind(provider),
+    recoveryStart = provider.videoRecoveryStart?.bind(provider),
+    recoveryStatus = provider.videoRecoveryStatus?.bind(provider),
+    recoveryStop = provider.videoRecoveryStop?.bind(provider);
   const capabilities = new WeakMap<object, { ownerId: string; admit(): void }>();
   const attempts = new WeakSet<object>();
   const works = new Set<Promise<unknown>>();
@@ -566,7 +590,7 @@ export function createHostAdapter(
       attempt.terminal
     )
       return Promise.reject(Error('VIDEO_REJECTED'));
-    if (kind === 'START' ? !request || videoId !== null : videoId !== id)
+    if (recoveries.size || (kind === 'START' ? !request || videoId !== null : videoId !== id))
       return Promise.reject(Error('VIDEO_REJECTED'));
     if (kind === 'STOP' && videoStopWork) return videoStopWork;
     if (kind === 'STOP') videoStopped = true;
@@ -647,8 +671,223 @@ export function createHostAdapter(
     if (kind === 'STOP') videoStopWork = settled;
     return settled;
   }
+  type Recovery = {
+    readonly request: VideoRecoveryStart;
+    readonly binding: unknown;
+    readonly attempt: Attempt;
+    readonly pending: Set<Promise<unknown>>;
+    handed: boolean;
+    stopping: boolean;
+    failed: boolean;
+    cancelled: boolean;
+    result: VideoRecoveryResult | null;
+    startWork: Promise<VideoRecoveryResult | null> | null;
+    stopWork: Promise<VideoRecoveryResult | null> | null;
+  };
+  const recoveries = new Map<string, Recovery>();
+  let lastOwnedVideo: string | null = null;
+  let nextRecoveryOrdinal = 1;
+  function recoveryControl(
+    cap: HostCapability,
+    kind: 'START' | 'STATUS' | 'STOP',
+    raw: unknown,
+    ordinal?: number,
+    binding?: unknown,
+    media?: VideoMediaSink,
+  ): Promise<VideoRecoveryResult | null> {
+    const request = kind === 'START' ? snapshotVideoRecoveryStart(raw) : null;
+    const id = request?.videoId ?? raw,
+      sequence = request?.videoOrdinal ?? ordinal;
+    const a = attempt;
+    if (
+      !uuid(id) ||
+      !videoOrdinal(sequence) ||
+      videoId !== null ||
+      operationSet !== 'SERVER_ONLY' ||
+      !a ||
+      a.kind !== 'FOREGROUND' ||
+      a.capability !== cap ||
+      a.terminal
+    )
+      return Promise.reject(Error('VIDEO_REJECTED'));
+    let record = recoveries.get(id);
+    if (kind === 'START') {
+      if (
+        !request ||
+        !media ||
+        record ||
+        request.videoOrdinal !== nextRecoveryOrdinal ||
+        recoveries.size >= 128 ||
+        request.previousVideoId !== lastOwnedVideo ||
+        busy ||
+        works.size ||
+        closed ||
+        uncertain ||
+        releasing ||
+        [...recoveries.values()].some(
+          (r) =>
+            r.failed ||
+            r.pending.size ||
+            (!r.cancelled && (!r.result || !videoRecoveryRetired(r.result))) ||
+            r.binding === binding ||
+            r.request.scid === request.scid ||
+            r.request.nonceHex === request.nonceHex,
+        )
+      )
+        return Promise.reject(Error('VIDEO_REJECTED'));
+      record = {
+        request,
+        binding,
+        attempt: a,
+        pending: new Set(),
+        handed: false,
+        stopping: false,
+        failed: false,
+        cancelled: false,
+        result: null,
+        startWork: null,
+        stopWork: null,
+      };
+      recoveries.set(id, record);
+    } else {
+      if (!record || record.request.videoOrdinal !== sequence || record.attempt !== a)
+        return Promise.reject(Error('VIDEO_REJECTED'));
+      if (kind === 'STOP' && record.stopWork) return record.stopWork;
+      if (kind === 'STATUS' && binding !== record.binding)
+        return Promise.reject(Error('VIDEO_REJECTED'));
+      if (record.cancelled) return Promise.resolve(null);
+      if (record.result?.handoff === 'NOT_STARTED') return Promise.resolve(record.result);
+      if (
+        kind === 'STATUS' &&
+        (binding !== record.binding ||
+          record.stopping ||
+          busy ||
+          works.size ||
+          closed ||
+          uncertain ||
+          releasing)
+      )
+        return Promise.reject(Error('VIDEO_REJECTED'));
+    }
+    const owner = record;
+    if (kind === 'STOP') owner.stopping = true;
+    else {
+      busy = true;
+      executionDone = new Promise<void>((resolve) => {
+        finishExecution = resolve;
+      });
+    }
+    const work = Promise.resolve().then(async () => {
+      if (kind !== 'STOP') {
+        const entry = capabilities.get(cap),
+          token = read;
+        if (!entry || !token || !observation) throw Error('VIDEO_REJECTED');
+        current(cap, entry.ownerId);
+        const validation = await custody.revalidateRead(token);
+        if (!validation.ok || validation.token !== token) throw Error('VIDEO_REJECTED');
+        observation = validation.observation;
+        current(cap, entry.ownerId);
+        const now = clock(),
+          proof = inspectRegistryVideoBinding(owner.binding);
+        if (
+          request &&
+          (!Number.isSafeInteger(now) ||
+            now < 0 ||
+            now >= request.deadlineUtc ||
+            request.deadlineUtc - now > 30000)
+        )
+          throw Error('VIDEO_REJECTED');
+        custody.assertReadInternal(token);
+        if (
+          attempt !== a ||
+          read !== token ||
+          closed ||
+          uncertain ||
+          owner.stopping ||
+          !proof?.finalCurrent() ||
+          (request &&
+            (proof.binding.transportId !== request.transportId ||
+              proof.binding.hostEpoch !== request.hostEpoch))
+        )
+          throw Error('VIDEO_REJECTED');
+      } else if (!owner.handed) {
+        // Cancellation before async admission cannot impersonate a native ordinal or receipt.
+        await owner.startWork;
+        if (!owner.handed && owner.cancelled) return null;
+        if (!owner.handed) throw Error('VIDEO_REJECTED');
+      }
+      let rawFacts: unknown;
+      if (kind === 'START') {
+        if (!recoveryStart) throw Error('VIDEO_REJECTED');
+        owner.handed = true; // Before any synchronous provider callback.
+        nextRecoveryOrdinal++; // A local cancelled candidate never consumes a native ordinal.
+        rawFacts = await recoveryStart(a.token, owner.request, media);
+      } else if (kind === 'STATUS') rawFacts = await recoveryStatus?.(a.token, id, sequence);
+      else rawFacts = await recoveryStop?.(a.token, id, sequence);
+      const facts = snapshotVideoRecoveryResult(rawFacts);
+      if (
+        !facts ||
+        facts.videoId !== id ||
+        facts.videoOrdinal !== sequence ||
+        (owner.result &&
+          (owner.result.handoff !== facts.handoff ||
+            (owner.result.snapshot &&
+              facts.snapshot &&
+              owner.result.snapshot.snapshotRevision === facts.snapshot.snapshotRevision &&
+              JSON.stringify(owner.result.snapshot) !== JSON.stringify(facts.snapshot))))
+      )
+        throw Error('VIDEO_REJECTED');
+      if (facts.handoff === 'OWNED') {
+        if (kind === 'START') lastOwnedVideo = id;
+        if (!facts.snapshot?.localRetired) a.terminal = false;
+      }
+      if (
+        !owner.result ||
+        facts.handoff === 'NOT_STARTED' ||
+        (facts.snapshot &&
+          (!owner.result.snapshot ||
+            facts.snapshot.snapshotRevision >= owner.result.snapshot.snapshotRevision))
+      )
+        owner.result = facts;
+      return facts;
+    });
+    owner.pending.add(work);
+    works.add(work);
+    const settled = work
+      .catch((error) => {
+        if (owner.stopping && !owner.handed) {
+          owner.cancelled = true;
+          return null; // Actual construction settled without provider handoff; not a wire result.
+        }
+        owner.failed = true;
+        a.terminal = false;
+        throw error;
+      })
+      .finally(() => {
+        owner.pending.delete(work);
+        works.delete(work);
+        if (kind !== 'STOP') {
+          busy = false;
+          finishExecution?.();
+          finishExecution = null;
+        }
+      });
+    if (kind === 'START') owner.startWork = settled;
+    if (kind === 'STOP') owner.stopWork = settled;
+    return settled;
+  }
   return Object.freeze({
     snapshot: engine.snapshot,
+    startVideoRecovery: (
+      cap: HostCapability,
+      request: unknown,
+      binding: unknown,
+      media?: VideoMediaSink,
+    ) => recoveryControl(cap, 'START', request, undefined, binding, media),
+    statusVideoRecovery: (cap: HostCapability, id: string, ordinal: number, binding: unknown) =>
+      recoveryControl(cap, 'STATUS', id, ordinal, binding),
+    stopVideoRecovery: (cap: HostCapability, id: string, ordinal: number) =>
+      recoveryControl(cap, 'STOP', id, ordinal),
     startVideo: (
       cap: HostCapability,
       request: unknown,

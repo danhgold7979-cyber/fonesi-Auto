@@ -1400,3 +1400,42 @@ test('explicit video controls are siblings of ACTIVE tile and old Start Stop han
   assert.equal(starts, 1);
   assert.equal(stops, 0);
 });
+
+test('preview Read belongs to the live measured panel session and stale close reopen handlers cannot sample', () => {
+  let reads = 0;
+  const m = mount({
+    previewAccounting: { type: 'section', props: { id: 'preview-history' } },
+    onPreviewAccountingRead() {
+      reads++;
+    },
+  });
+  openPerformance(m);
+  const oldRead = m.find('preview-accounting-read').props.onClick;
+  oldRead();
+  assert.equal(reads, 1);
+  m.all((n) => n.props?.['aria-label'] === 'Đóng bảng hiệu năng')[0].props.onClick();
+  oldRead();
+  assert.equal(reads, 1);
+  openPerformance(m);
+  oldRead();
+  assert.equal(reads, 1);
+  const currentRead = m.find('preview-accounting-read').props.onClick;
+  currentRead();
+  assert.equal(reads, 2);
+  m.document.hidden = true;
+  currentRead();
+  assert.equal(reads, 2);
+  m.document.hidden = false;
+  const query = m.document.querySelector;
+  m.document.querySelector = () => ({ role: 'dialog' });
+  currentRead();
+  assert.equal(reads, 2);
+  m.document.querySelector = query;
+  m.props.ready = false;
+  m.render();
+  currentRead();
+  assert.equal(reads, 2);
+  m.dispose();
+  currentRead();
+  assert.equal(reads, 2);
+});

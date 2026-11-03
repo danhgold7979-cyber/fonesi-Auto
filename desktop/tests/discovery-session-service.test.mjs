@@ -69,8 +69,8 @@ const { createDiscoverySessionService } = await import(
   moduleUrl(
     readFileSync(facadePath, 'utf8')
       .replace(
-        "import { createOwnedVideoMediaConsumer } from './owned-video-consumer.ts';",
-        'const createOwnedVideoMediaConsumer=(target,context,sink)=>globalThis.__facadeVideoConsumers.get(target)(context,sink);',
+        "import { createOwnedVideoRecoveryMediaConsumer } from './owned-video-consumer.ts';",
+        'const createOwnedVideoRecoveryMediaConsumer=(target,context,sink)=>globalThis.__facadeVideoConsumers.get(target)(context,sink);',
       )
       .replace("'./adb-server-service.ts'", JSON.stringify(serverUrl))
       .replaceAll("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
@@ -317,7 +317,7 @@ async function fixture(extra = {}) {
               {},
               {
                 ...Object.getOwnPropertyDescriptors(actual),
-                videoTarget: { value: extra.videoTarget, enumerable: true },
+                videoRecoveryTarget: { value: extra.videoTarget, enumerable: true },
               },
             ),
           )
@@ -1362,7 +1362,7 @@ function syntheticVideo(extra = {}) {
   };
 }
 const videoSink = () => ({ accept: async () => {}, close() {} });
-test('video reservation precedes allocator/clock reentry; captured deadline survives delayed negotiation and consumed reservation cannot rearm', async () => {
+test('video reservation precedes reentry; consumed reservation stays single-use and retired owner permits fresh attempt', async () => {
   const v = syntheticVideo();
   let f,
     armed = false,
@@ -1411,8 +1411,13 @@ test('video reservation precedes allocator/clock reentry; captured deadline surv
     assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
     const stopped = r.stop();
     v.retire();
-    await stopped;
-    assert.throws(() => f.facade.reserveVideo(s.devices[0].deviceId, s.revision));
+    assert.equal(await stopped, true);
+    const fresh = f.facade.reserveVideo(s.devices[0].deviceId, s.revision);
+    assert.notEqual(fresh.videoId, r.videoId);
+    assert.throws(() => r.begin(videoSink()));
+    assert.equal(await r.stop(), true);
+    assert.equal(fresh.current(), true);
+    assert.equal(await fresh.stop(), true);
   } finally {
     v.settle();
     v.retire();

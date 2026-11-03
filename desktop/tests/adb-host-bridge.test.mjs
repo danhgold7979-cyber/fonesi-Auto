@@ -1210,3 +1210,482 @@ test('v6 synchronous sink close cannot reenter the reserved STOP or RETIRE lane'
     await stop;
   }
 });
+
+const lastRecoveryControl = (f) => f.writes.findLast((r) => r.kind !== 'VIDEO_CREDIT');
+const recoveryStart = (ordinal = 1, previousVideoId = null) => ({
+  ...mediaStart,
+  videoId: id(90 + ordinal),
+  videoOrdinal: ordinal,
+  previousVideoId,
+  scid: ordinal,
+  nonceHex: ordinal.toString(16).padStart(64, '0'),
+});
+const recoveryFacts = (request, stopped = false) => ({
+  handoff: 'OWNED',
+  videoId: request.videoId,
+  videoOrdinal: request.videoOrdinal,
+  refusal: null,
+  fresh: true,
+  snapshot: stopped
+    ? {
+        ...preparingVideo(request.videoId),
+        snapshotRevision: 1,
+        state: 'CLOSED',
+        code: 'CLOSED',
+        localRetired: true,
+      }
+    : preparingVideo(request.videoId),
+});
+const recoveryResponse = (request, result) => ({ ...v6Response(request, result), version: 7 });
+async function recoveryFixture(extra = {}) {
+  const f = fixture(extra),
+    p = f.bridge.provider,
+    token = p.reserveAttempt('FOREGROUND');
+  const work = p.startForeground(token, {});
+  await tick();
+  f.receive(frame(response(f.writes[0], live)));
+  await work;
+  return { ...f, p, token };
+}
+const emptyMedia = () => ({ accept: async () => {}, close() {} });
+test('v7 strict reply discriminator rejects legacy, wrong ordinal, extra or contradictory facts', () => {
+  const request = {
+    version: 7,
+    requestId: 1,
+    sessionId: id(1),
+    attemptId: id(2),
+    kind: 'VIDEO_START',
+    ...recoveryStart(),
+  };
+  const value = recoveryResponse(request, recoveryFacts(request));
+  assert.equal(parseHostFrame(frame(value)).result.handoff, 'OWNED');
+  for (const result of [
+    preparingVideo(request.videoId),
+    { ...value.result, videoOrdinal: 0 },
+    { ...value.result, extra: 1 },
+    { ...value.result, handoff: 'NOT_STARTED' },
+    { ...value.result, snapshot: null },
+    { ...value.result, fresh: false, refusal: 'BUSY' },
+  ])
+    assert.equal(parseHostFrame(frame({ ...value, result })), null);
+  assert.equal(parseHostFrame(frame({ ...value, version: 6 })), null);
+});
+test('v7 two explicit owners retain foreground, exact ordinals, independent credit and cached old Stop', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  let firstClose = 0,
+    secondClose = 0,
+    delivered = 0;
+  const start = f.p.videoRecoveryStart(f.token, one, {
+    accept: async () => {
+      delivered++;
+    },
+    close() {
+      firstClose++;
+    },
+  });
+  await tick();
+  const request = lastRecoveryControl(f);
+  assert.deepEqual(Object.keys(request), [
+    'version',
+    'requestId',
+    'sessionId',
+    'attemptId',
+    'kind',
+    'videoId',
+    'videoOrdinal',
+    'previousVideoId',
+    'transportId',
+    'hostEpoch',
+    'deadlineUtc',
+    'artifactId',
+    'scid',
+    'nonceHex',
+  ]);
+  assert.equal(
+    f.writes.filter((r) => r.kind === 'VIDEO_CREDIT').length,
+    1,
+    'native startup readiness requires one credit after START write',
+  );
+  f.receive(frame(recoveryResponse(request, recoveryFacts(one))));
+  await start;
+  await tick();
+  assert.deepEqual(f.writes.at(-1), {
+    version: 7,
+    sessionId: id(1),
+    attemptId: id(2),
+    kind: 'VIDEO_CREDIT',
+    videoId: one.videoId,
+    videoOrdinal: 1,
+    creditId: 1,
+  });
+  const stop = f.p.videoRecoveryStop(f.token, one.videoId, 1);
+  assert.equal(f.p.videoRecoveryStop(f.token, one.videoId, 1), stop);
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one, true))));
+  await stop;
+  const two = recoveryStart(2, one.videoId);
+  const second = f.p.videoRecoveryStart(f.token, two, {
+    accept: async () => {
+      delivered++;
+    },
+    close() {
+      secondClose++;
+    },
+  });
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(two))));
+  await second;
+  await tick();
+  const writes = f.writes.length;
+  assert.equal(await f.p.videoRecoveryStop(f.token, one.videoId, 1), await stop);
+  assert.equal(f.writes.length, writes);
+  f.receive(mediaFrame(mediaHeader(1, { videoId: one.videoId }), new Uint8Array()));
+  await tick();
+  assert.equal(delivered, 0, 'known old in-flight credit is checked and discarded');
+  f.receive(mediaFrame(mediaHeader(1, { videoId: two.videoId }), new Uint8Array()));
+  await tick();
+  assert.equal(delivered, 1);
+  assert.equal(f.writes.at(-1).videoId, two.videoId);
+  assert.equal(firstClose, 1);
+  assert.equal(secondClose, 0);
+  await assert.rejects(f.p.videoStart(f.token, mediaStart, emptyMedia()));
+  const healthy = f.p.health(f.token);
+  await tick();
+  f.receive(frame(response(f.writes.at(-1), live)));
+  await healthy;
+});
+test('v7 BUSY is exact non-admission with only the bounded startup credit; later explicit attempt keeps last OWNED predecessor', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  let closed = 0;
+  const start = f.p.videoRecoveryStart(f.token, one, {
+    accept: async () => {},
+    close() {
+      closed++;
+    },
+  });
+  await tick();
+  const refusal = {
+    handoff: 'NOT_STARTED',
+    videoId: one.videoId,
+    videoOrdinal: 1,
+    refusal: 'BUSY',
+    snapshot: null,
+    fresh: false,
+  };
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), refusal)));
+  assert.deepEqual(await start, refusal);
+  assert.equal(closed, 1);
+  const count = f.writes.length;
+  assert.deepEqual(await f.p.videoRecoveryStop(f.token, one.videoId, 1), refusal);
+  assert.equal(f.writes.length, count);
+  assert.equal(
+    f.writes.filter((r) => r.kind === 'VIDEO_CREDIT').length,
+    1,
+    'refusal does not replenish initial credit',
+  );
+  const two = recoveryStart(2, null),
+    next = f.p.videoRecoveryStart(f.token, two, emptyMedia());
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(two))));
+  await next;
+});
+test('v7 duplicate identities, stale ordinal/predecessor and unresolved owner never produce another START', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  const first = f.p.videoRecoveryStart(f.token, one, emptyMedia());
+  await tick();
+  await assert.rejects(
+    f.p.videoRecoveryStart(f.token, recoveryStart(2, one.videoId), emptyMedia()),
+  );
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one))));
+  await first;
+  await tick();
+  const stop = f.p.videoRecoveryStop(f.token, one.videoId, 1);
+  await tick();
+  await assert.rejects(
+    f.p.videoRecoveryStart(f.token, recoveryStart(2, one.videoId), emptyMedia()),
+  );
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one, true))));
+  await stop;
+  for (const change of [
+    { videoOrdinal: 1 },
+    { previousVideoId: null },
+    { videoId: one.videoId },
+    { scid: one.scid },
+    { nonceHex: one.nonceHex },
+  ])
+    await assert.rejects(
+      f.p.videoRecoveryStart(
+        f.token,
+        { ...recoveryStart(2, one.videoId), ...change },
+        emptyMedia(),
+      ),
+    );
+  assert.equal(f.writes.filter((r) => r.kind === 'VIDEO_START').length, 1);
+});
+test('v7 terminal QUOTA retains reserved owner STATUS and first cleanup while rejecting new ordinary attempts', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  const first = f.p.videoRecoveryStart(f.token, one, emptyMedia());
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one))));
+  await first;
+  await tick();
+  const status = f.p.videoRecoveryStatus(f.token, one.videoId, 1);
+  await tick();
+  f.receive(
+    frame(
+      recoveryResponse(lastRecoveryControl(f), {
+        ...recoveryFacts(one),
+        refusal: 'QUOTA',
+        fresh: false,
+      }),
+    ),
+  );
+  await status;
+  await assert.rejects(f.p.videoRecoveryStatus(f.token, one.videoId, 1));
+  const stop = f.p.videoRecoveryStop(f.token, one.videoId, 1);
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one, true))));
+  await stop;
+  await assert.rejects(
+    f.p.videoRecoveryStart(f.token, recoveryStart(2, one.videoId), emptyMedia()),
+  );
+});
+
+test('v7 cleanup latches before synchronous sink close and cancellation rejection preserves healthy channel', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  let rejectSink,
+    nestedStop,
+    entered = false;
+  const sinkWork = new Promise((_r, j) => {
+    rejectSink = j;
+  });
+  const first = f.p.videoRecoveryStart(f.token, one, {
+    accept() {
+      entered = true;
+      return sinkWork;
+    },
+    close() {
+      nestedStop = f.p.videoRecoveryStop(f.token, one.videoId, 1);
+      rejectSink(Error('cancelled old renderer'));
+    },
+  });
+  await tick();
+  const startRequest = lastRecoveryControl(f);
+  f.receive(mediaFrame(mediaHeader(1, { videoId: one.videoId })));
+  await tick();
+  assert.equal(entered, true);
+  f.receive(frame(recoveryResponse(startRequest, recoveryFacts(one))));
+  await first;
+  const stop = f.p.videoRecoveryStop(f.token, one.videoId, 1);
+  assert.equal(nestedStop, stop);
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one, true))));
+  await stop;
+  assert.equal(f.bridge.closed, false);
+  const two = recoveryStart(2, one.videoId),
+    next = f.p.videoRecoveryStart(f.token, two, emptyMedia());
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(two))));
+  await next;
+});
+test('v7 late older START snapshot cannot overwrite completed Stop retirement', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  const first = f.p.videoRecoveryStart(f.token, one, emptyMedia());
+  await tick();
+  const request = lastRecoveryControl(f);
+  const stop = f.p.videoRecoveryStop(f.token, one.videoId, 1);
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one, true))));
+  await stop;
+  await assert.rejects(
+    f.p.videoRecoveryStart(f.token, recoveryStart(2, one.videoId), emptyMedia()),
+  );
+  f.receive(frame(recoveryResponse(request, recoveryFacts(one))));
+  await first;
+  const two = recoveryStart(2, one.videoId),
+    next = f.p.videoRecoveryStart(f.token, two, emptyMedia());
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(two))));
+  await next;
+});
+test('v7 exact actual startup write and stopped sink obligations remain retained before replacement', async () => {
+  let receive, releaseWrite, releaseCredit;
+  const writes = [],
+    startWrite = new Promise((r) => {
+      releaseWrite = r;
+    }),
+    creditWrite = new Promise((r) => {
+      releaseCredit = r;
+    });
+  const b = createHostBridge({
+    sessionId: id(1),
+    newAttemptId: () => id(2),
+    assertRuntime() {},
+    transport: {
+      subscribe(c) {
+        receive = c;
+      },
+      requestCleanup() {},
+      write(bytes) {
+        const q = JSON.parse(new TextDecoder().decode(bytes));
+        writes.push(q);
+        return q.kind === 'VIDEO_START'
+          ? startWrite
+          : q.kind === 'VIDEO_CREDIT'
+            ? creditWrite
+            : Promise.resolve();
+      },
+    },
+  });
+  const p = b.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  let work = p.startForeground(t, {});
+  await tick();
+  receive(frame(response(writes[0], live)));
+  await work;
+  const one = recoveryStart();
+  let settled = false;
+  work = p.videoRecoveryStart(t, one, emptyMedia()).then((r) => {
+    settled = true;
+    return r;
+  });
+  await tick();
+  const request = writes.at(-1);
+  receive(
+    frame(
+      recoveryResponse(request, {
+        handoff: 'NOT_STARTED',
+        videoId: one.videoId,
+        videoOrdinal: 1,
+        refusal: 'BUSY',
+        snapshot: null,
+        fresh: false,
+      }),
+    ),
+  );
+  await tick();
+  assert.equal(settled, false);
+  assert.equal(writes.filter((q) => q.kind === 'VIDEO_CREDIT').length, 0);
+  releaseWrite();
+  await tick();
+  assert.equal(settled, false, 'NOT_STARTED waits actual issued credit write');
+  await assert.rejects(p.videoRecoveryStart(t, recoveryStart(2), emptyMedia()));
+  releaseCredit();
+  await work;
+  assert.equal(settled, true);
+});
+test('v7 same-revision contradictory native snapshots fail closed rather than rewrite ownership', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  const first = f.p.videoRecoveryStart(f.token, one, emptyMedia());
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one))));
+  await first;
+  const status = f.p.videoRecoveryStatus(f.token, one.videoId, 1),
+    rejected = assert.rejects(status);
+  await tick();
+  const contradiction = recoveryFacts(one);
+  contradiction.snapshot = { ...contradiction.snapshot, state: 'FAILED', code: 'PROTOCOL_FAILED' };
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), contradiction)));
+  await rejected;
+  assert.equal(f.bridge.closed, true);
+});
+test('v7 global ordinary ceiling retains the active owner first cleanup independently', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  const first = f.p.videoRecoveryStart(f.token, one, emptyMedia());
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one))));
+  await first;
+  for (let i = 0; i < 127; i++) {
+    const status = f.p.videoRecoveryStatus(f.token, one.videoId, 1);
+    await tick();
+    f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one))));
+    await status;
+  }
+  const count = f.writes.length;
+  await assert.rejects(f.p.videoRecoveryStatus(f.token, one.videoId, 1));
+  assert.equal(f.writes.length, count);
+  const stop = f.p.videoRecoveryStop(f.token, one.videoId, 1);
+  await tick();
+  f.receive(frame(recoveryResponse(lastRecoveryControl(f), recoveryFacts(one, true))));
+  await stop;
+  const retire = f.p.retire(f.token);
+  await tick();
+  f.receive(frame(response(f.writes.at(-1), retired)));
+  await retire;
+});
+test('v7 credit write failure after clean native reply cannot fabricate transport retirement', async () => {
+  let receive, rejectCredit;
+  const writes = [];
+  const credit = new Promise((_r, j) => {
+    rejectCredit = j;
+  });
+  const b = createHostBridge({
+    sessionId: id(1),
+    newAttemptId: () => id(2),
+    assertRuntime() {},
+    transport: {
+      subscribe(c) {
+        receive = c;
+      },
+      requestCleanup() {},
+      write(bytes) {
+        const q = JSON.parse(new TextDecoder().decode(bytes));
+        writes.push(q);
+        return q.kind === 'VIDEO_CREDIT' ? credit : Promise.resolve();
+      },
+    },
+  });
+  const p = b.provider,
+    t = p.reserveAttempt('FOREGROUND');
+  const foreground = p.startForeground(t, {});
+  await tick();
+  receive(frame(response(writes[0], live)));
+  await foreground;
+  const one = recoveryStart(),
+    first = p.videoRecoveryStart(t, one, emptyMedia());
+  await tick();
+  receive(frame(recoveryResponse(writes[1], recoveryFacts(one))));
+  await first;
+  const stop = p.videoRecoveryStop(t, one.videoId, 1),
+    rejection = assert.rejects(stop);
+  await tick();
+  receive(frame(recoveryResponse(writes.at(-1), recoveryFacts(one, true))));
+  rejectCredit(Error('synthetic credit write failure'));
+  await rejection;
+  assert.equal(b.closed, true);
+});
+test('v7 late cleanup cannot install ownership after definitive NOT_STARTED', async () => {
+  const f = await recoveryFixture(),
+    one = recoveryStart();
+  const first = f.p.videoRecoveryStart(f.token, one, emptyMedia());
+  await tick();
+  const startRequest = lastRecoveryControl(f);
+  const stop = f.p.videoRecoveryStop(f.token, one.videoId, 1);
+  await tick();
+  const stopRequest = lastRecoveryControl(f);
+  f.receive(
+    frame(
+      recoveryResponse(startRequest, {
+        handoff: 'NOT_STARTED',
+        videoId: one.videoId,
+        videoOrdinal: 1,
+        refusal: 'BUSY',
+        snapshot: null,
+        fresh: false,
+      }),
+    ),
+  );
+  await first;
+  const rejected = assert.rejects(stop);
+  f.receive(frame(recoveryResponse(stopRequest, recoveryFacts(one, true))));
+  await rejected;
+  assert.equal(f.bridge.closed, true);
+});

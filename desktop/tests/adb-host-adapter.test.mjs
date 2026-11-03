@@ -1,3 +1,4 @@
+import { captureRegistryVideoBinding } from '../src/main/registry-store.ts';
 import { registryVideoFixture } from './fixtures/registry-video.mjs';
 import { fleetActiveFixture } from './fixtures/fleet-active-input.mjs';
 import test from 'node:test';
@@ -1214,5 +1215,319 @@ test('late uncertain or malformed video work requires fresh cleanup confirmation
       await f.adapter.close();
       await actual.close();
     }
+  }
+});
+
+const recoveryRequest = (ordinal = 1, previousVideoId = null) => ({
+  ...videoRequest(),
+  videoId: id(90 + ordinal),
+  videoOrdinal: ordinal,
+  previousVideoId,
+  scid: ordinal,
+  nonceHex: ordinal.toString(16).padStart(64, '0'),
+});
+const recoveryResult = (request, stopped = false) => ({
+  handoff: 'OWNED',
+  videoId: request.videoId,
+  videoOrdinal: request.videoOrdinal,
+  refusal: null,
+  fresh: true,
+  snapshot: {
+    ...videoPreparing(),
+    sessionId: request.videoId,
+    ...(stopped
+      ? { snapshotRevision: 1, state: 'CLOSED', code: 'CLOSED', localRetired: true }
+      : {}),
+  },
+});
+const freshRecoveryBinding = (actual) =>
+  captureRegistryVideoBinding(actual.store, actual.store.snapshot(), actual.deviceId);
+const recoveryMedia = () => ({ accept: async () => {}, close() {} });
+test('recovery adapter preserves issuer/custody and foreground across two explicit fresh owners', async () => {
+  const actual = await registryVideoFixture();
+  let starts = 0,
+    stops = 0;
+  const requests = new Map();
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      async videoRecoveryStart(_token, request) {
+        starts++;
+        requests.set(request.videoId, request);
+        return recoveryResult(request);
+      },
+      async videoRecoveryStop(_token, id, ordinal) {
+        stops++;
+        assert.equal(requests.get(id).videoOrdinal, ordinal);
+        return recoveryResult(requests.get(id), true);
+      },
+    },
+  });
+  try {
+    await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    const one = recoveryRequest();
+    assert.equal(
+      (await f.adapter.startVideoRecovery(f.cap, one, actual.binding, recoveryMedia())).handoff,
+      'OWNED',
+    );
+    const stop = f.adapter.stopVideoRecovery(f.cap, one.videoId, 1);
+    assert.equal(f.adapter.stopVideoRecovery(f.cap, one.videoId, 1), stop);
+    await stop;
+    const two = recoveryRequest(2, one.videoId);
+    await f.adapter.startVideoRecovery(f.cap, two, freshRecoveryBinding(actual), recoveryMedia());
+    assert.equal(await f.adapter.stopVideoRecovery(f.cap, one.videoId, 1), await stop);
+    assert.equal(starts, 2);
+    assert.equal(stops, 1);
+    assert.equal((await f.adapter.execute(f.cap, f.request('SERVER_HEALTH'))).outcome, 'OBSERVED');
+    await assert.rejects(f.adapter.startVideo(f.cap, videoRequest(), actual.binding));
+    await f.adapter.stopVideoRecovery(f.cap, two.videoId, 2);
+  } finally {
+    await f.adapter.close();
+    await actual.close();
+  }
+});
+test('recovery adapter refuses stale tickets, wrong identity, consumed ordinals and held actual work', async () => {
+  const actual = await registryVideoFixture(),
+    held = deferred();
+  let calls = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      videoRecoveryStart: async (_token, r) => {
+        calls++;
+        await held.promise;
+        return recoveryResult(r);
+      },
+      videoRecoveryStop: async (_token, id, ordinal) =>
+        recoveryResult({ ...recoveryRequest(), videoId: id, videoOrdinal: ordinal }, true),
+    },
+  });
+  try {
+    await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    const one = recoveryRequest(),
+      work = f.adapter.startVideoRecovery(f.cap, one, actual.binding, recoveryMedia());
+    await tick();
+    const stop = f.adapter.stopVideoRecovery(f.cap, one.videoId, 1);
+    await stop;
+    await assert.rejects(
+      f.adapter.startVideoRecovery(
+        f.cap,
+        recoveryRequest(2, one.videoId),
+        actual.binding,
+        recoveryMedia(),
+      ),
+    );
+    await assert.rejects(f.adapter.stopVideoRecovery(f.cap, one.videoId, 2));
+    held.resolve();
+    await work;
+    for (const changed of [
+      { videoOrdinal: 1 },
+      { previousVideoId: null },
+      { scid: one.scid },
+      { nonceHex: one.nonceHex },
+    ])
+      await assert.rejects(
+        f.adapter.startVideoRecovery(
+          f.cap,
+          { ...recoveryRequest(2, one.videoId), ...changed },
+          actual.binding,
+          recoveryMedia(),
+        ),
+      );
+    assert.equal(calls, 1);
+    await assert.rejects(
+      f.adapter.startVideoRecovery(
+        f.cap,
+        recoveryRequest(2, one.videoId),
+        Object.freeze({ ...actual.binding }),
+        recoveryMedia(),
+      ),
+    );
+    assert.equal(calls, 1, 'forged ticket never reaches provider');
+  } finally {
+    held.resolve();
+    await f.adapter.close();
+    await actual.close();
+  }
+});
+test('recovery adapter distinguishes NOT_STARTED BUSY from uncertain provider rejection', async () => {
+  for (const uncertain of [false, true]) {
+    const actual = await registryVideoFixture();
+    let calls = 0;
+    const f = fixture({
+      operationSet: 'SERVER_ONLY',
+      provider: {
+        async videoRecoveryStart(_token, r) {
+          calls++;
+          if (uncertain) throw Error('synthetic unknown handoff');
+          return {
+            handoff: 'NOT_STARTED',
+            videoId: r.videoId,
+            videoOrdinal: r.videoOrdinal,
+            refusal: 'BUSY',
+            snapshot: null,
+            fresh: false,
+          };
+        },
+      },
+    });
+    try {
+      await f.adapter.execute(f.cap, f.request('SERVER_START'));
+      const one = recoveryRequest(),
+        first = f.adapter.startVideoRecovery(f.cap, one, actual.binding, recoveryMedia());
+      if (uncertain) {
+        await assert.rejects(first);
+        await assert.rejects(
+          f.adapter.startVideoRecovery(
+            f.cap,
+            recoveryRequest(2),
+            freshRecoveryBinding(actual),
+            recoveryMedia(),
+          ),
+        );
+        assert.equal(calls, 1);
+      } else {
+        const result = await first;
+        assert.equal(await f.adapter.stopVideoRecovery(f.cap, one.videoId, 1), result);
+        await f.adapter.startVideoRecovery(
+          f.cap,
+          recoveryRequest(2),
+          freshRecoveryBinding(actual),
+          recoveryMedia(),
+        );
+        assert.equal(calls, 2);
+      }
+    } finally {
+      await f.adapter.close();
+      await actual.close();
+    }
+  }
+});
+test('recovery Stop while custody validation is held cancels before provider handoff without inventing native retirement', async () => {
+  const actual = await registryVideoFixture(),
+    held = deferred();
+  let armed = false,
+    calls = 0;
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    custody: {
+      async revalidateRead(token) {
+        if (armed) await held.promise;
+        return { ok: true, token, observation: { release: '37.0.1', installationRevision: 1 } };
+      },
+    },
+    provider: {
+      async videoRecoveryStart(_token, r) {
+        calls++;
+        return recoveryResult(r);
+      },
+    },
+  });
+  try {
+    await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    armed = true;
+    const one = recoveryRequest();
+    const start = f.adapter.startVideoRecovery(f.cap, one, actual.binding, recoveryMedia());
+    const stop = f.adapter.stopVideoRecovery(f.cap, one.videoId, 1);
+    let stopped = false;
+    void stop.then(() => {
+      stopped = true;
+    });
+    await tick();
+    assert.equal(stopped, false, 'actual held validation has not retired');
+    held.resolve();
+    assert.deepEqual(await Promise.all([start, stop]), [null, null]);
+    assert.equal(calls, 0);
+    const next = { ...recoveryRequest(2), videoOrdinal: 1 };
+    await assert.rejects(
+      f.adapter.startVideoRecovery(f.cap, next, actual.binding, recoveryMedia()),
+    );
+    const result = await f.adapter.startVideoRecovery(
+      f.cap,
+      next,
+      freshRecoveryBinding(actual),
+      recoveryMedia(),
+    );
+    assert.equal(result.videoOrdinal, 1);
+    assert.equal(calls, 1);
+    assert.equal((await f.adapter.execute(f.cap, f.request('SERVER_HEALTH'))).outcome, 'OBSERVED');
+    assert.equal(await f.adapter.stopVideoRecovery(f.cap, one.videoId, 1), null);
+  } finally {
+    held.resolve();
+    await f.adapter.close();
+    await actual.close();
+  }
+});
+test('recovery adapter rejects equal-revision conflicting snapshots and retains cleanup responsibility', async () => {
+  const actual = await registryVideoFixture(),
+    one = recoveryRequest();
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      async videoRecoveryStart() {
+        return recoveryResult(one);
+      },
+      async videoRecoveryStatus() {
+        const r = recoveryResult(one);
+        return { ...r, snapshot: { ...r.snapshot, state: 'FAILED', code: 'PROTOCOL_FAILED' } };
+      },
+      async videoRecoveryStop() {
+        return recoveryResult(one, true);
+      },
+    },
+  });
+  try {
+    await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    await f.adapter.startVideoRecovery(f.cap, one, actual.binding, recoveryMedia());
+    await assert.rejects(f.adapter.statusVideoRecovery(f.cap, one.videoId, 1, actual.binding));
+    await f.adapter.stopVideoRecovery(f.cap, one.videoId, 1);
+    await assert.rejects(
+      f.adapter.startVideoRecovery(
+        f.cap,
+        recoveryRequest(2, one.videoId),
+        actual.binding,
+        recoveryMedia(),
+      ),
+    );
+  } finally {
+    await f.adapter.close();
+    await actual.close();
+  }
+});
+test('recovery adapter rejects late OWNED receipt after matching NOT_STARTED admission', async () => {
+  const actual = await registryVideoFixture(),
+    starting = deferred(),
+    stopping = deferred(),
+    one = recoveryRequest();
+  const f = fixture({
+    operationSet: 'SERVER_ONLY',
+    provider: {
+      videoRecoveryStart: () => starting.promise,
+      videoRecoveryStop: () => stopping.promise,
+    },
+  });
+  try {
+    await f.adapter.execute(f.cap, f.request('SERVER_START'));
+    const first = f.adapter.startVideoRecovery(f.cap, one, actual.binding, recoveryMedia());
+    await tick();
+    const stop = f.adapter.stopVideoRecovery(f.cap, one.videoId, 1);
+    await tick();
+    starting.resolve({
+      handoff: 'NOT_STARTED',
+      videoId: one.videoId,
+      videoOrdinal: 1,
+      refusal: 'BUSY',
+      snapshot: null,
+      fresh: false,
+    });
+    await first;
+    const rejected = assert.rejects(stop);
+    stopping.resolve(recoveryResult(one, true));
+    await rejected;
+  } finally {
+    starting.resolve();
+    stopping.resolve();
+    await f.adapter.close();
+    await actual.close();
   }
 });

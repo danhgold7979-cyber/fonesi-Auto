@@ -1,5 +1,5 @@
-import { createOwnedVideoMediaConsumer } from './owned-video-consumer.ts';
-import type { VideoMediaSink, VideoSession } from './video-contract.ts';
+import { createOwnedVideoRecoveryMediaConsumer } from './owned-video-consumer.ts';
+import type { VideoMediaSink, VideoRecoverySession } from './video-contract.ts';
 // Main-owned explicit lifecycle facade. No implicit start, acquisition, retry or epoch reset.
 import {
   snapshotDiscoveryRequest,
@@ -169,10 +169,12 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     admittedUtc: number;
     deadlineUtc: number;
     current(): boolean;
-    begin(sink: VideoMediaSink): VideoSession;
+    begin(sink: VideoMediaSink): VideoRecoverySession;
     stop(): Promise<boolean>;
   }>;
   let videoReservation: VideoReservation | null = null;
+  const videoHistory = new Set<VideoReservation>();
+  const retiredVideos = new WeakSet<VideoReservation>();
   function reserveVideo(deviceId: string, expectedRegistryRevision: number): VideoReservation {
     if (
       !uuid(deviceId) ||
@@ -181,7 +183,8 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       Object.is(expectedRegistryRevision, -0) ||
       busy ||
       metadataOwner?.pending ||
-      videoReservation ||
+      (videoReservation !== null && !retiredVideos.has(videoReservation)) ||
+      videoHistory.size >= 128 ||
       !ingestion ||
       !currentProjection() ||
       projection?.revision !== expectedRegistryRevision
@@ -198,7 +201,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     let cancelled = false,
       entered = false,
       constructing = false;
-    let consumer: VideoSession | null = null;
+    let consumer: VideoRecoverySession | null = null;
     let stopWork: Promise<boolean> | null = null;
     let constructionDone: () => void = () => {};
     const construction = new Promise<void>((resolve) => {
@@ -233,13 +236,14 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
           if (lower) await lower;
           const ok = !consumer || consumer.retired;
           if (!ok) uncertain = true;
+          if (ok) retiredVideos.add(reservation);
           complete(ok);
         } catch {
           uncertain = true;
           complete(false);
         } finally {
           work.delete(retained);
-          if (!entered) busy = false;
+          if (!entered && videoReservation === reservation) busy = false;
         }
       });
       return retained;
@@ -272,15 +276,15 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
             const now = clock();
             if (!current() || !Number.isSafeInteger(now) || now < admittedUtc || now >= deadlineUtc)
               throw Error('VIDEO_UNAVAILABLE');
-            const target = capturedIngestion.videoTarget(deviceId);
+            const target = capturedIngestion.videoRecoveryTarget(deviceId);
             if (!target || !current()) throw Error('VIDEO_UNAVAILABLE');
-            consumer = createOwnedVideoMediaConsumer(
+            consumer = createOwnedVideoRecoveryMediaConsumer(
               target,
               { admittedUtc, deadlineUtc, videoId },
               sink,
             );
             const started = consumer.started.finally(() => {
-              busy = false;
+              if (videoReservation === reservation) busy = false;
             });
             work.add(started);
             void started
@@ -305,6 +309,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
         stop,
       });
       videoReservation = reservation;
+      videoHistory.add(reservation);
       return reservation;
     } catch (error) {
       busy = false;
@@ -2123,7 +2128,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     );
   }
   function invalidate() {
-    void videoReservation?.stop();
+    for (const owner of videoHistory) void owner.stop();
     metadataStale();
     projection = null;
     if (attempted) put({ observedAtUtc: null, restartRequired: true });

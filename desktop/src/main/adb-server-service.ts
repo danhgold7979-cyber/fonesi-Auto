@@ -1,6 +1,10 @@
 import { inspectRegistryVideoBinding, type OwnedRegistryVideoBinding } from './registry-store.ts';
 import {
   snapshotVideoAdmission,
+  snapshotVideoRecoveryResult,
+  videoRecoveryRetired,
+  type VideoRecoveryResult,
+  type VideoRecoveryTransportSession,
   snapshotVideo,
   preparingVideo,
   type VideoSnapshot,
@@ -66,6 +70,9 @@ type Factory = Pick<
   | 'startVideo'
   | 'statusVideo'
   | 'stopVideo'
+  | 'startVideoRecovery'
+  | 'statusVideoRecovery'
+  | 'stopVideoRecovery'
   | 'assertDiscoveryEpochCurrent'
   | 'discoveryEpochWitness'
 >;
@@ -113,6 +120,11 @@ type OwnedProviderRecord = Readonly<{
     request: unknown,
     media?: VideoMediaSink,
   ): VideoTransportSession;
+  beginVideoRecovery(
+    binding: OwnedRegistryVideoBinding,
+    request: unknown,
+    media: VideoMediaSink,
+  ): VideoRecoveryTransportSession;
   beginMetadata(request: OwnedMetadataRequest): MetadataQueryHandle;
   beginInput(request: OwnedInputRequest): InputQueryHandle;
   begin(
@@ -269,6 +281,7 @@ export function createAdbServerService(
     });
     return work;
   }
+  const recoveryWorks = new Set<Promise<unknown>>();
   function close(): Promise<ServerReceipt> {
     if (closing) return closing;
     closed = true;
@@ -288,6 +301,7 @@ export function createAdbServerService(
     const drain = (async () => {
       const status = await cleanup;
       if (ordinary) await ordinary;
+      while (recoveryWorks.size) await Promise.allSettled([...recoveryWorks]);
       while (audits.size) await Promise.all([...audits]);
       return status;
     })();
@@ -303,7 +317,11 @@ export function createAdbServerService(
         return Object.freeze({
           kind: 'CLEANUP' as const,
           status:
-            status === 'RETIRED' && factory.retired && active === null && audits.size === 0
+            status === 'RETIRED' &&
+            factory.retired &&
+            active === null &&
+            audits.size === 0 &&
+            recoveryWorks.size === 0
               ? ('RETIRED' as const)
               : ('UNRETIRED' as const),
           auditHealth:
@@ -735,7 +753,8 @@ export function createAdbServerService(
       raw: unknown,
       media?: VideoMediaSink,
     ): VideoTransportSession {
-      if (videoReserved || active || closed || discoveryRevoked) throw Error('VIDEO_REJECTED');
+      if (videoReserved || recoverySessions.size || active || closed || discoveryRevoked)
+        throw Error('VIDEO_REJECTED');
       videoReserved = true;
       const request = snapshotVideoAdmission(raw);
       const binding = inspectRegistryVideoBinding(bindingTicket);
@@ -847,6 +866,192 @@ export function createAdbServerService(
       return session;
     }
     const provider = Object.freeze({ ownedDiscovery: true as const });
+    const recoverySessions = new Map<string, VideoRecoveryTransportSession>();
+    let currentRecovery: VideoRecoveryTransportSession | null = null;
+    function beginVideoRecovery(
+      bindingTicket: OwnedRegistryVideoBinding,
+      raw: unknown,
+      media: VideoMediaSink,
+    ): VideoRecoveryTransportSession {
+      if (
+        videoReserved ||
+        active ||
+        closed ||
+        discoveryRevoked ||
+        recoverySessions.size >= 128 ||
+        (currentRecovery && !currentRecovery.retired)
+      )
+        throw Error('VIDEO_REJECTED');
+      const request = snapshotVideoAdmission(raw);
+      const binding = inspectRegistryVideoBinding(bindingTicket);
+      if (!request || !binding?.finalCurrent() || recoverySessions.has(request.videoId))
+        throw Error('VIDEO_REJECTED');
+      let handed = false,
+        stopped = false,
+        startDone = false,
+        stopDone = false,
+        uncertainVideo = false,
+        pendingVideo = 1;
+      let latest: VideoRecoveryResult | null = null;
+      let stopWork: Promise<VideoRecoveryResult | null> | null = null;
+      let release = () => {};
+      const ordinary = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      active = ordinary;
+      const accept = (rawResult: unknown) => {
+        // Only the trusted factory may return null: its captured construction was
+        // cancelled and actually drained before provider handoff, not a wire refusal.
+        if (rawResult === null) {
+          if (latest !== null) throw Error('VIDEO_REJECTED');
+          handed = false;
+          return null;
+        }
+        const value = snapshotVideoRecoveryResult(rawResult);
+        if (
+          !value ||
+          value.videoId !== request.videoId ||
+          (latest && value.videoOrdinal !== latest.videoOrdinal)
+        )
+          throw Error('VIDEO_REJECTED');
+        if (latest && latest.handoff !== value.handoff) throw Error('VIDEO_REJECTED');
+        const prior = latest?.snapshot,
+          next = value.snapshot;
+        if (prior && next) {
+          if (next.snapshotRevision < prior.snapshotRevision) return latest as VideoRecoveryResult;
+          if (
+            (next.snapshotRevision === prior.snapshotRevision &&
+              JSON.stringify(prior) !== JSON.stringify(next)) ||
+            (prior.localRetired && !next.localRetired)
+          )
+            throw Error('VIDEO_REJECTED');
+        }
+        latest = value;
+        return value;
+      };
+      const started = Promise.resolve()
+        .then(async () => {
+          if (stopped) return null;
+          currentEpoch(true);
+          if (stopped || !binding.finalCurrent()) return null;
+          handed = true;
+          return accept(await factory.startVideoRecovery(grant, request, bindingTicket, media));
+        })
+        .catch(() => {
+          if (!handed) return null;
+          uncertainVideo = true;
+          discoveryRevoked = true;
+          void close();
+          throw Error('VIDEO_REJECTED');
+        })
+        .finally(() => {
+          startDone = true;
+          pendingVideo--;
+          if (active === ordinary) active = null;
+          release();
+        });
+      recoveryWorks.add(started);
+      void started.then(
+        () => recoveryWorks.delete(started),
+        () => recoveryWorks.delete(started),
+      );
+      const session: VideoRecoveryTransportSession = Object.freeze({
+        started,
+        get retired() {
+          return (
+            stopped &&
+            stopDone &&
+            startDone &&
+            pendingVideo === 0 &&
+            !uncertainVideo &&
+            (!handed || (latest !== null && videoRecoveryRetired(latest)))
+          );
+        },
+        async status() {
+          if (stopped) return latest;
+          if (active || closed || discoveryRevoked || currentRecovery !== session)
+            throw Error('VIDEO_REJECTED');
+          let releaseStatus = () => {};
+          const statusSlot = new Promise<void>((resolve) => {
+            releaseStatus = resolve;
+          });
+          active = statusSlot;
+          pendingVideo++;
+          const work = Promise.resolve().then(async () => {
+            currentEpoch(true);
+            if (stopped || currentRecovery !== session || !binding.finalCurrent())
+              throw Error('VIDEO_REJECTED');
+            return accept(await factory.statusVideoRecovery(grant, request.videoId, bindingTicket));
+          });
+          recoveryWorks.add(work);
+          try {
+            return await work;
+          } catch {
+            uncertainVideo = true;
+            throw Error('VIDEO_REJECTED');
+          } finally {
+            pendingVideo--;
+            recoveryWorks.delete(work);
+            if (active === statusSlot) active = null;
+            releaseStatus();
+          }
+        },
+        stop() {
+          if (stopWork) return stopWork;
+          stopped = true;
+          const drain = active;
+          let resolveStop: (value: VideoRecoveryResult | null) => void = () => {};
+          let rejectStop: (reason: Error) => void = () => {};
+          stopWork = new Promise((resolve, reject) => {
+            resolveStop = resolve;
+            rejectStop = reject;
+          });
+          const retained = stopWork;
+          pendingVideo++;
+          recoveryWorks.add(retained);
+          try {
+            media.close();
+          } catch {
+            uncertainVideo = true;
+          }
+          let immediate: Promise<VideoRecoveryResult | null> | null = null;
+          try {
+            if (handed) immediate = factory.stopVideoRecovery(grant, request.videoId);
+          } catch {
+            uncertainVideo = true;
+          }
+          void Promise.resolve()
+            .then(async () => {
+              if (immediate) accept(await immediate);
+              await started;
+              if (!immediate && handed)
+                accept(await factory.stopVideoRecovery(grant, request.videoId));
+              if (drain) await drain;
+              if (handed && (!latest || !videoRecoveryRetired(latest))) uncertainVideo = true;
+            })
+            .then(
+              () => {
+                pendingVideo--;
+                stopDone = true;
+                recoveryWorks.delete(retained);
+                if (uncertainVideo) rejectStop(Error('VIDEO_REJECTED'));
+                else resolveStop(latest);
+              },
+              () => {
+                pendingVideo--;
+                stopDone = true;
+                uncertainVideo = true;
+                recoveryWorks.delete(retained);
+                rejectStop(Error('VIDEO_REJECTED'));
+              },
+            );
+          return retained;
+        },
+      });
+      recoverySessions.set(request.videoId, session);
+      currentRecovery = session; // Publish before the scheduled START can call another owner.
+      return session;
+    }
     const record: OwnedProviderRecord = Object.freeze({
       epoch,
       source: 'ADB_DISCOVERY' as const,
@@ -858,6 +1063,7 @@ export function createAdbServerService(
       localBusy: () => active !== null && !closed && !discoveryRevoked,
       finalCurrent: () => !discoveryRevoked && !closed && epochWitness.valid,
       beginVideo,
+      beginVideoRecovery,
       videoAvailable: () => !closed && !discoveryRevoked && factory.videoArtifactAvailable(),
       beginMetadata: (input: OwnedMetadataRequest) =>
         beginQuery(input, 'METADATA') as MetadataQueryHandle,

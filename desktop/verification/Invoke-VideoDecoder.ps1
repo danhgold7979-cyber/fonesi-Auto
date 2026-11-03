@@ -34,10 +34,13 @@ try{
  Require (Run $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-control.cjs'),'verify-runtime',$desktop,$env:GITHUB_SHA)) 120000) 'PERSISTENCE_RUNTIME_VERIFIED'
  $phase='DECODE';$p=Run $exe ([string[]]@((Join-Path $root 'probe.cjs'),$root)) 120000
  $report.process=[ordered]@{status=$p.Status;exitCode=$p.ExitCode;cleanupComplete=$p.CleanupComplete;stdoutTruncated=$p.StdoutTruncated;stderrTruncated=$p.StderrTruncated}
- if(Retired $p){Control 'diagnostic'}
- Require $p 'VIDEO_DECODER_PROBE_PASS'
+ if(Retired $p){$phase='DIAGNOSTIC';Control 'diagnostic'}
+ $phase='DECODE'
+ if(-not (Retired $p) -or $p.Status -cne 'SUCCESS' -or $p.ExitCode -ne 0 -or $p.StdoutTruncated -or $p.StderrTruncated){throw 'PROBE_FAILED'}
+ $phase='RUNTIME_VERIFY'
  Require (Run $node ([string[]]@((Join-Path $PSScriptRoot 'persistence-control.cjs'),'verify-runtime',$desktop,$env:GITHUB_SHA)) 120000) 'PERSISTENCE_RUNTIME_VERIFIED'
- $phase='CONTROL';Control 'inspect'
+ $phase='RESULT_INSPECT';Control 'inspect'
+ $phase='PROBE_MARKER';Require $p 'VIDEO_DECODER_PROBE_PASS'
  $phase='CLEANUP';Control 'cleanup';Remove-VerifiedOwnedRun $owner $retired;$report.directoryCleanup=$true;$report.passed=$true
 }catch{$report.failure=$phase+'_FAILED';Write-Output ('VIDEO_DECODER_STAGE_'+$phase)}
 finally{

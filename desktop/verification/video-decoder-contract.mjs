@@ -315,6 +315,10 @@ export function validateVideoSupervisor(v) {
       'INSTALL_FAILED',
       'CONTROL_FAILED',
       'DECODE_FAILED',
+      'DIAGNOSTIC_FAILED',
+      'RUNTIME_VERIFY_FAILED',
+      'RESULT_INSPECT_FAILED',
+      'PROBE_MARKER_FAILED',
       'CLEANUP_FAILED',
     ].includes(v.failure)
   )
@@ -379,6 +383,13 @@ export function validateVideoEvidence(v) {
   if (v.result !== null && (!validateVideoQualification(v.result) || v.result.head !== v.head))
     return false;
   if ((v.diagnostic !== null || v.result !== null) && !retiredProcess(v.supervisor.process))
+    return false;
+  if (
+    v.result !== null &&
+    ['DIAGNOSTIC_FAILED', 'RUNTIME_VERIFY_FAILED', 'RESULT_INSPECT_FAILED'].includes(
+      v.supervisor.failure,
+    )
+  )
     return false;
   return !v.supervisor.passed || (v.result !== null && v.diagnostic === null);
 }

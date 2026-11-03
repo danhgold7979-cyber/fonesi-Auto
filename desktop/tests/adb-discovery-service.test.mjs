@@ -826,6 +826,27 @@ async function exerciseNativeIssuer(verified = false, video = false) {
     videoOwnerClose = null,
     videoOwnerAfterValidation = false;
   const videoHold = deferred();
+  const recoveryRecords = new Map();
+  let recoveryOrdinal = 0,
+    recoveryHeldStop = null;
+  const recoveryDrain = deferred();
+  function recoveryResult(owner, clean) {
+    return {
+      handoff: 'OWNED',
+      videoId: owner.id,
+      videoOrdinal: owner.ordinal,
+      refusal: null,
+      fresh: true,
+      snapshot: {
+        ...preparingVideo(owner.id),
+        snapshotRevision: clean ? 2 : 1,
+        state: clean ? 'CLOSED' : 'PREPARING',
+        code: clean ? 'CLOSED' : 'OK',
+        localRetired: clean,
+      },
+    };
+  }
+
   let videoInspect = false,
     videoHeld = false,
     videoInspectEntered = false;
@@ -977,6 +998,19 @@ async function exerciseNativeIssuer(verified = false, video = false) {
           return 'RETIRED';
         },
         videoArtifactAvailable: () => video,
+        startVideoRecovery: async (_cap, request, ticket, media) => {
+          assert.equal(inspectRegistryVideoBinding(ticket).finalCurrent(), true);
+          const owner = { id: request.videoId, ordinal: ++recoveryOrdinal, media };
+          recoveryRecords.set(owner.id, owner);
+          return recoveryResult(owner, false);
+        },
+        statusVideoRecovery: async (_cap, videoId) =>
+          recoveryResult(recoveryRecords.get(videoId), false),
+        stopVideoRecovery: async (_cap, videoId) => {
+          const owner = recoveryRecords.get(videoId);
+          if (videoId === recoveryHeldStop) await recoveryDrain.promise;
+          return recoveryResult(owner, true);
+        },
         startVideo: (_cap, request, ticket, media) => {
           const binding = inspectRegistryVideoBinding(ticket);
           assert.equal(binding.finalCurrent(), true);
@@ -1138,7 +1172,90 @@ async function exerciseNativeIssuer(verified = false, video = false) {
       assert.equal((await h.retirement).status, 'RETIRED');
     } else assert.equal(inputTicket, null);
 
-    if (video) {
+    if (video === 'RECOVERY') {
+      const ownerPath = new URL('../src/main/owned-video-consumer.ts', import.meta.url);
+      const ownerModule = await import(
+        moduleUrl(
+          readFileSync(ownerPath, 'utf8')
+            .replaceAll("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
+            .replace('const clock = Date.now.bind(Date);', 'const clock = ()=>1000;'),
+          ownerPath,
+        )
+      );
+      const context = (i) => ({ admittedUtc: 1000, deadlineUtc: 31000, videoId: id(i) });
+      const sink = { accept: async () => {}, close() {} };
+      const unused = ingestion.videoRecoveryTarget(deviceId);
+      const cancelledTicket = ingestion.videoRecoveryTarget(deviceId);
+      assert.notEqual(cancelledTicket, unused);
+      assert.equal(ingestModule.inspectOwnedVideoRecoveryTarget(unused).finalCurrent(), false);
+      assert.throws(() =>
+        ingestModule
+          .inspectOwnedVideoRecoveryTarget(unused)
+          .begin(
+            { videoId: id(9909), deadlineUtc: 31000, scid: 9, nonceHex: 'a'.repeat(64) },
+            sink,
+          ),
+      );
+      assert.equal(recoveryOrdinal, 0);
+      const cancelled = ownerModule.createOwnedVideoRecoveryMediaConsumer(
+        cancelledTicket,
+        context(9910),
+        sink,
+      );
+      assert.equal(await cancelled.stop(), null);
+      assert.equal(await cancelled.started, null);
+      assert.equal(cancelled.retired, true);
+      assert.equal(recoveryOrdinal, 0);
+      const firstTicket = ingestion.videoRecoveryTarget(deviceId);
+      assert.ok(firstTicket);
+      assert.notEqual(firstTicket, cancelledTicket);
+      assert.equal(ingestModule.inspectOwnedVideoRecoveryTarget({ ...firstTicket }), null);
+      const first = ownerModule.createOwnedVideoRecoveryMediaConsumer(
+        firstTicket,
+        context(9911),
+        sink,
+      );
+      assert.equal((await first.started).videoOrdinal, 1);
+      assert.equal(ingestion.videoRecoveryTarget(deviceId), null);
+      recoveryHeldStop = id(9911);
+      const stop = first.stop();
+      await Promise.resolve();
+      assert.equal(first.retired, false);
+      assert.equal(ingestion.videoRecoveryTarget(deviceId), null);
+      recoveryDrain.resolve();
+      await stop;
+      assert.equal(first.retired, true);
+      const secondTicket = ingestion.videoRecoveryTarget(deviceId);
+      assert.ok(secondTicket);
+      assert.notEqual(secondTicket, firstTicket);
+      assert.equal(ingestModule.inspectOwnedVideoRecoveryTarget(firstTicket).finalCurrent(), false);
+      assert.throws(() =>
+        ownerModule.createOwnedVideoRecoveryMediaConsumer(firstTicket, context(9912), sink),
+      );
+      const second = ownerModule.createOwnedVideoRecoveryMediaConsumer(
+        secondTicket,
+        context(9912),
+        sink,
+      );
+      assert.equal((await second.started).videoOrdinal, 2);
+      await first.stop();
+      assert.equal(second.retired, false);
+      await second.stop();
+      assert.equal(second.retired, true);
+      const thirdTicket = ingestion.videoRecoveryTarget(deviceId);
+      assert.ok(thirdTicket);
+      await ingestion.refresh(f.db.readDurable().meta.revision);
+      assert.equal(ingestModule.inspectOwnedVideoRecoveryTarget(thirdTicket).finalCurrent(), false);
+      assert.throws(() =>
+        ingestModule
+          .inspectOwnedVideoRecoveryTarget(thirdTicket)
+          .begin(
+            { videoId: id(9913), deadlineUtc: 31000, scid: 9, nonceHex: 'a'.repeat(64) },
+            sink,
+          ),
+      );
+      return;
+    } else if (video) {
       const videoTicket = ingestion.videoTarget(deviceId);
       assert.ok(videoTicket);
       assert.equal(ingestModule.inspectOwnedVideoTarget(ticket), null);
@@ -1290,6 +1407,7 @@ async function exerciseNativeIssuer(verified = false, video = false) {
     );
   } finally {
     videoHold.resolve();
+    recoveryDrain.resolve();
     await fleet?.close();
     await ingestion?.close();
     await server.close();
@@ -2197,3 +2315,6 @@ test('sealed media target carries original deadline and restrictive sink through
 
 test('synchronous sink close reentry through actual owner/service/ingestion keeps cleanup reserved and retirement pending', () =>
   exerciseNativeIssuer(true, 'MEDIA_REENTRY'));
+
+test('recovery sealed issuer and actual upper transport require held Stop drain before fresh ticket; old ticket and callbacks cannot rearm', () =>
+  exerciseNativeIssuer(true, 'RECOVERY'));

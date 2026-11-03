@@ -1,5 +1,12 @@
 import { inspectRegistryVideoBinding } from './registry-store.ts';
-import { snapshotVideoAdmission, preparingVideo, type VideoMediaSink } from './video-contract.ts';
+import {
+  snapshotVideoAdmission,
+  preparingVideo,
+  snapshotVideoRecoveryResult,
+  videoRecoveryRetired,
+  type VideoMediaSink,
+  type VideoRecoveryResult,
+} from './video-contract.ts';
 import { inspectFleetActiveInputIntent } from './fleet-service.ts';
 /** Default VERSION_ONLY; SERVER_ONLY remains private and unwired from main. */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -246,6 +253,68 @@ export function createHostFactory(
     videoStopped = false,
     videoHanded = false;
   let registeredVideoId: string | null = null;
+  type RecoveryRegistration = {
+    readonly videoId: string;
+    readonly ordinal: number;
+    readonly scid: number;
+    readonly nonceHex: string;
+    readonly capability: HostCapability;
+    readonly target: unknown;
+    readonly pending: Set<Promise<unknown>>;
+    handed: boolean;
+    stopped: boolean;
+    failed: boolean;
+    cancelled: boolean;
+    result: VideoRecoveryResult | null;
+    stopWork: Promise<VideoRecoveryResult | null> | null;
+  };
+  const recoveryRegistrations = new Map<string, RecoveryRegistration>();
+  let lastRecoveryOwnedId: string | null = null;
+  let nextRecoveryOrdinal = 1;
+  function trackRecovery(
+    owner: RecoveryRegistration,
+    work: Promise<VideoRecoveryResult | null>,
+    starting = false,
+  ) {
+    owner.pending.add(work);
+    return work
+      .then((raw) => {
+        if (raw === null) {
+          if (!owner.stopped || owner.result) fail();
+          owner.cancelled = true;
+          return null; // Trusted adapter proved actual pre-provider construction cancellation.
+        }
+        const result = snapshotVideoRecoveryResult(raw);
+        if (
+          !result ||
+          result.videoId !== owner.videoId ||
+          result.videoOrdinal !== owner.ordinal ||
+          (owner.result &&
+            (owner.result.handoff !== result.handoff ||
+              (owner.result.snapshot &&
+                result.snapshot &&
+                owner.result.snapshot.snapshotRevision === result.snapshot.snapshotRevision &&
+                JSON.stringify(owner.result.snapshot) !== JSON.stringify(result.snapshot))))
+        )
+          fail();
+        if (starting) nextRecoveryOrdinal++;
+        if (starting && result.handoff === 'OWNED') lastRecoveryOwnedId = result.videoId;
+        if (
+          !owner.result ||
+          result.handoff === 'NOT_STARTED' ||
+          (result.snapshot &&
+            (!owner.result.snapshot ||
+              result.snapshot.snapshotRevision >= owner.result.snapshot.snapshotRevision))
+        )
+          owner.result = result;
+        return result;
+      })
+      .catch((error) => {
+        owner.failed = true;
+        throw error;
+      })
+      .finally(() => owner.pending.delete(work));
+  }
   let root: ReturnType<typeof createHostRoot> | null = null,
     bootstrap = '',
     inputEnded = false,
@@ -599,7 +668,13 @@ export function createHostFactory(
       );
     },
     startVideo(capability: HostCapability, raw: unknown, target: unknown, media?: VideoMediaSink) {
-      if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY' || videoRegistered) fail();
+      if (
+        !realFactories.has(factory) ||
+        operationSet !== 'SERVER_ONLY' ||
+        videoRegistered ||
+        recoveryRegistrations.size
+      )
+        fail();
       videoRegistered = true;
       const request = snapshotVideoAdmission(raw),
         proof = inspectRegistryVideoBinding(target);
@@ -654,6 +729,130 @@ export function createHostFactory(
           }),
         );
       return adapter.stopVideo(capability, id);
+    },
+    startVideoRecovery(
+      capability: HostCapability,
+      raw: unknown,
+      target: unknown,
+      media?: VideoMediaSink,
+    ): Promise<VideoRecoveryResult | null> {
+      if (
+        !realFactories.has(factory) ||
+        operationSet !== 'SERVER_ONLY' ||
+        videoRegistered ||
+        stopped ||
+        broken
+      )
+        fail();
+      const request = snapshotVideoAdmission(raw),
+        proof = inspectRegistryVideoBinding(target);
+      const artifact = videoArtifact ? inspectHostVideoArtifact(videoArtifact) : null;
+      if (
+        !request ||
+        !proof ||
+        !artifact ||
+        !media ||
+        recoveryRegistrations.size >= 128 ||
+        recoveryRegistrations.has(request.videoId) ||
+        [...recoveryRegistrations.values()].some(
+          (r) =>
+            r.failed ||
+            r.pending.size ||
+            (!r.cancelled && (!r.result || !videoRecoveryRetired(r.result))) ||
+            r.target === target ||
+            r.scid === request.scid ||
+            r.nonceHex === request.nonceHex,
+        )
+      )
+        fail();
+      const owner: RecoveryRegistration = {
+        videoId: request.videoId,
+        ordinal: nextRecoveryOrdinal,
+        scid: request.scid,
+        nonceHex: request.nonceHex,
+        capability,
+        target,
+        pending: new Set(),
+        handed: false,
+        stopped: false,
+        failed: false,
+        cancelled: false,
+        result: null,
+        stopWork: null,
+      };
+      recoveryRegistrations.set(request.videoId, owner); // Immutable identity before reentrant admission callbacks.
+      try {
+        const now = clock();
+        if (
+          !Number.isSafeInteger(now) ||
+          now < 0 ||
+          now >= request.deadlineUtc ||
+          request.deadlineUtc - now > 30000 ||
+          stopped ||
+          broken ||
+          owner.stopped ||
+          !artifact.finalCurrent() ||
+          !proof.finalCurrent()
+        )
+          fail();
+        owner.handed = true;
+        return trackRecovery(
+          owner,
+          adapter.startVideoRecovery(
+            capability,
+            Object.freeze({
+              ...request,
+              videoOrdinal: owner.ordinal,
+              previousVideoId: lastRecoveryOwnedId,
+              transportId: proof.binding.transportId,
+              hostEpoch: proof.binding.hostEpoch,
+              artifactId: artifact.record.artifactId,
+            }),
+            target,
+            media,
+          ),
+          true,
+        );
+      } catch (error) {
+        owner.failed = true;
+        throw error;
+      }
+    },
+    statusVideoRecovery(
+      capability: HostCapability,
+      id: string,
+      target: unknown,
+    ): Promise<VideoRecoveryResult | null> {
+      const owner = recoveryRegistrations.get(id);
+      if (
+        !realFactories.has(factory) ||
+        !owner ||
+        owner.capability !== capability ||
+        owner.target !== target ||
+        owner.stopped ||
+        !videoArtifact ||
+        !inspectHostVideoArtifact(videoArtifact)?.finalCurrent()
+      )
+        fail();
+      return trackRecovery(
+        owner,
+        adapter.statusVideoRecovery(capability, id, owner.ordinal, target),
+      );
+    },
+    stopVideoRecovery(capability: HostCapability, id: string): Promise<VideoRecoveryResult | null> {
+      const owner = recoveryRegistrations.get(id);
+      if (!realFactories.has(factory) || !owner || owner.capability !== capability) fail();
+      if (owner.stopWork) return owner.stopWork;
+      owner.stopped = true;
+      if (!owner.handed) {
+        owner.failed = true;
+        return Promise.reject(Error('VIDEO_REJECTED'));
+      }
+      owner.stopWork = trackRecovery(
+        owner,
+        adapter.stopVideoRecovery(capability, id, owner.ordinal),
+      );
+      return owner.stopWork;
     },
     acquireInput(capability: HostCapability, request: unknown) {
       if (!realFactories.has(factory) || operationSet !== 'SERVER_ONLY') fail();

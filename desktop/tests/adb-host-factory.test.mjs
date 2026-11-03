@@ -1291,3 +1291,277 @@ test('synthetic recognition: factory forwards internal held-token fence after fi
     f.cleanup();
   }
 });
+
+// Actual issuer methods/registration bookkeeping; authority inspectors are explicitly synthetic.
+// This is not artifact/registry/native attestation or a production factory-recognition hook.
+async function recoveryIssuerFixture(extra = {}) {
+  const contract = await import('../src/main/video-contract.ts');
+  const source = readFileSync(new URL('../src/main/adb-host-factory.ts', import.meta.url), 'utf8');
+  const setup = source.slice(
+    source.indexOf('  type RecoveryRegistration ='),
+    source.indexOf('  let root:'),
+  );
+  const methods = source.slice(
+    source.indexOf('    startVideoRecovery('),
+    source.indexOf('    acquireInput(capability:'),
+  );
+  assert.ok(setup.includes('function trackRecovery'));
+  assert.ok(methods.includes('stopVideoRecovery'));
+  const text = `export function issuer(deps) {
+    const {snapshotVideoAdmission,snapshotVideoRecoveryResult,videoRecoveryRetired,inspectRegistryVideoBinding,
+      inspectHostVideoArtifact,adapter,clock} = deps;
+    const operationSet='SERVER_ONLY', realFactories=new WeakSet();
+    let videoRegistered=false, stopped=false, broken=false, videoArtifact={};
+    function fail(){ throw Error('HOST_FACTORY_REJECTED'); }
+    ${setup}
+    const factory={${methods}};
+    realFactories.add(factory); return factory;
+  }`;
+  const module = await import(
+    `data:text/javascript;base64,${Buffer.from(transformSync(text, { loader: 'ts', format: 'esm', target: 'es2022' }).code).toString('base64')}`
+  );
+  const target = {},
+    cap = {},
+    requests = [],
+    stops = [];
+  const targets = new Set([target]);
+  let current = true,
+    artifact = true;
+  const owned = (r, clean = false) => ({
+    handoff: 'OWNED',
+    videoId: r.videoId,
+    videoOrdinal: r.videoOrdinal,
+    refusal: null,
+    fresh: true,
+    snapshot: {
+      ...contract.preparingVideo(r.videoId),
+      ...(clean
+        ? { snapshotRevision: 1, state: 'CLOSED', code: 'CLOSED', localRetired: true }
+        : {}),
+    },
+  });
+  const factory = module.issuer({
+    ...contract,
+    clock: () => 1000,
+    inspectRegistryVideoBinding: (t) =>
+      targets.has(t)
+        ? { binding: { transportId: '7', hostEpoch: 3 }, finalCurrent: () => current }
+        : null,
+    inspectHostVideoArtifact: () => ({
+      record: { artifactId: 'a'.repeat(64) },
+      finalCurrent: () => artifact,
+    }),
+    adapter: {
+      async startVideoRecovery(c, r, t) {
+        assert.equal(c, cap);
+        assert.ok(targets.has(t));
+        requests.push(r);
+        return extra.start ? extra.start(r) : owned(r);
+      },
+      async statusVideoRecovery(c, videoId, ordinal, t) {
+        assert.equal(c, cap);
+        assert.ok(targets.has(t));
+        return owned(requests.find((r) => r.videoId === videoId && r.videoOrdinal === ordinal));
+      },
+      async stopVideoRecovery(c, videoId, ordinal) {
+        assert.equal(c, cap);
+        stops.push([videoId, ordinal]);
+        if (extra.stop) return extra.stop(videoId, ordinal);
+        return owned(
+          requests.find((r) => r.videoId === videoId && r.videoOrdinal === ordinal),
+          true,
+        );
+      },
+    },
+  });
+  const request = (n) => ({
+    videoId: id(90 + n),
+    deadlineUtc: 2000,
+    scid: n,
+    nonceHex: n.toString(16).padStart(64, '0'),
+  });
+  return {
+    factory,
+    target,
+    freshTarget: () => {
+      const ticket = {};
+      targets.add(ticket);
+      return ticket;
+    },
+    cap,
+    requests,
+    stops,
+    request,
+    owned,
+    invalidate: () => {
+      current = false;
+    },
+    damageArtifact: () => {
+      artifact = false;
+    },
+  };
+}
+const issuerMedia = () => ({ accept: async () => {}, close() {} });
+test('actual recovery issuer methods allocate fresh ordinal/predecessor and cache exact old cleanup', async () => {
+  const f = await recoveryIssuerFixture();
+  await f.factory.startVideoRecovery(f.cap, f.request(1), f.target, issuerMedia());
+  assert.throws(() =>
+    f.factory.startVideoRecovery(f.cap, f.request(2), f.freshTarget(), issuerMedia()),
+  );
+  const stop = f.factory.stopVideoRecovery(f.cap, f.request(1).videoId);
+  assert.equal(f.factory.stopVideoRecovery(f.cap, f.request(1).videoId), stop);
+  await stop;
+  await f.factory.startVideoRecovery(f.cap, f.request(2), f.freshTarget(), issuerMedia());
+  assert.equal(f.requests[0].videoOrdinal, 1);
+  assert.equal(f.requests[0].previousVideoId, null);
+  assert.equal(f.requests[1].videoOrdinal, 2);
+  assert.equal(f.requests[1].previousVideoId, f.request(1).videoId);
+  assert.equal(f.requests[1].transportId, '7');
+  assert.equal(f.requests[1].hostEpoch, 3);
+  await f.factory.stopVideoRecovery(f.cap, f.request(1).videoId);
+  assert.equal(f.stops.length, 1);
+  assert.throws(() => f.factory.stopVideoRecovery({}, f.request(2).videoId));
+  assert.throws(() => f.factory.statusVideoRecovery(f.cap, f.request(2).videoId, {}));
+});
+test('actual recovery issuer methods retain NOT_STARTED history without inventing predecessor ownership', async () => {
+  const f = await recoveryIssuerFixture({
+    start: (r) => ({
+      handoff: 'NOT_STARTED',
+      videoId: r.videoId,
+      videoOrdinal: r.videoOrdinal,
+      refusal: 'BUSY',
+      snapshot: null,
+      fresh: false,
+    }),
+  });
+  await f.factory.startVideoRecovery(f.cap, f.request(1), f.target, issuerMedia());
+  await f.factory.startVideoRecovery(f.cap, f.request(2), f.freshTarget(), issuerMedia());
+  assert.equal(f.requests[1].previousVideoId, null);
+  assert.throws(() =>
+    f.factory.startVideoRecovery(f.cap, { ...f.request(3), scid: 1 }, f.target, issuerMedia()),
+  );
+  assert.throws(() =>
+    f.factory.startVideoRecovery(
+      f.cap,
+      { ...f.request(3), nonceHex: f.request(1).nonceHex },
+      f.target,
+      issuerMedia(),
+    ),
+  );
+  assert.throws(() => f.factory.startVideoRecovery(f.cap, f.request(1), f.target, issuerMedia()));
+});
+test('actual recovery issuer methods refuse stale binding/artifact and unknown handoff replacement', async () => {
+  for (const mode of ['binding', 'artifact', 'unknown']) {
+    const f = await recoveryIssuerFixture(
+      mode === 'unknown' ? { start: () => Promise.reject(Error('uncertain')) } : {},
+    );
+    if (mode === 'binding') f.invalidate();
+    if (mode === 'artifact') f.damageArtifact();
+    if (mode === 'unknown')
+      await assert.rejects(
+        f.factory.startVideoRecovery(f.cap, f.request(1), f.target, issuerMedia()),
+      );
+    else
+      assert.throws(() =>
+        f.factory.startVideoRecovery(f.cap, f.request(1), f.target, issuerMedia()),
+      );
+    assert.equal(f.requests.length, mode === 'unknown' ? 1 : 0);
+    assert.throws(() =>
+      f.factory.startVideoRecovery(f.cap, f.request(2), f.freshTarget(), issuerMedia()),
+    );
+  }
+});
+test('actual recovery issuer rejects equal-revision contradiction without losing cleanup record', async () => {
+  const { preparingVideo } = await import('../src/main/video-contract.ts');
+  const f = await recoveryIssuerFixture({
+    start: (r) => ({
+      handoff: 'OWNED',
+      videoId: r.videoId,
+      videoOrdinal: r.videoOrdinal,
+      refusal: null,
+      fresh: true,
+      snapshot: { ...preparingVideo(r.videoId), state: 'FAILED', code: 'PROTOCOL_FAILED' },
+    }),
+  });
+  await f.factory.startVideoRecovery(f.cap, f.request(1), f.target, issuerMedia());
+  await assert.rejects(f.factory.statusVideoRecovery(f.cap, f.request(1).videoId, f.target));
+  await f.factory.stopVideoRecovery(f.cap, f.request(1).videoId);
+  assert.equal(f.stops.length, 1);
+  assert.throws(() =>
+    f.factory.startVideoRecovery(f.cap, f.request(2), f.freshTarget(), issuerMedia()),
+  );
+});
+test('actual recovery issuer preserves cancelled tombstones but reuses unconsumed native ordinal with fresh ticket', async () => {
+  let release,
+    seenStop = false;
+  const construction = new Promise((r) => {
+    release = r;
+  });
+  const f = await recoveryIssuerFixture({
+    start: (r) =>
+      r.videoId === id(91)
+        ? construction
+        : Promise.resolve({
+            handoff: 'NOT_STARTED',
+            videoId: r.videoId,
+            videoOrdinal: r.videoOrdinal,
+            refusal: 'BUSY',
+            snapshot: null,
+            fresh: false,
+          }),
+    stop: async () => {
+      seenStop = true;
+      await construction;
+      return null;
+    },
+  });
+  const first = f.factory.startVideoRecovery(f.cap, f.request(1), f.target, issuerMedia());
+  const stop = f.factory.stopVideoRecovery(f.cap, f.request(1).videoId);
+  await Promise.resolve();
+  assert.equal(seenStop, true);
+  assert.throws(() =>
+    f.factory.startVideoRecovery(f.cap, f.request(2), f.freshTarget(), issuerMedia()),
+  );
+  release(null);
+  assert.deepEqual(await Promise.all([first, stop]), [null, null]);
+  assert.throws(
+    () => f.factory.startVideoRecovery(f.cap, f.request(2), f.target, issuerMedia()),
+    'consumed ticket is retained',
+  );
+  const result = await f.factory.startVideoRecovery(
+    f.cap,
+    f.request(2),
+    f.freshTarget(),
+    issuerMedia(),
+  );
+  assert.equal(result.videoOrdinal, 1);
+  assert.equal(f.requests[1].previousVideoId, null);
+  assert.throws(
+    () => f.factory.startVideoRecovery(f.cap, f.request(1), f.freshTarget(), issuerMedia()),
+    'cancelled ID is not recycled',
+  );
+});
+test('actual recovery issuer rejects late ownership after definitive NOT_STARTED', async () => {
+  let finishStart, finishStop;
+  const start = new Promise((r) => {
+      finishStart = r;
+    }),
+    stop = new Promise((r) => {
+      finishStop = r;
+    });
+  const f = await recoveryIssuerFixture({ start: () => start, stop: () => stop });
+  const first = f.factory.startVideoRecovery(f.cap, f.request(1), f.target, issuerMedia());
+  const cleanup = f.factory.stopVideoRecovery(f.cap, f.request(1).videoId);
+  finishStart({
+    handoff: 'NOT_STARTED',
+    videoId: id(91),
+    videoOrdinal: 1,
+    refusal: 'BUSY',
+    snapshot: null,
+    fresh: false,
+  });
+  await first;
+  const rejection = assert.rejects(cleanup);
+  finishStop(f.owned(f.requests[0], true));
+  await rejection;
+});

@@ -5,6 +5,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { ViewSession } from '../src/view-session.ts';
 import * as contract from '../src/video-stream-contract.ts';
+import * as nativeContract from '../src/main/video-contract.ts';
 
 // Explicit source-only Electron/clock substitutions. The bridge body, real ViewSession and
 // wire contract execute unchanged. These are not Electron custom-origin or device proofs.
@@ -12,16 +13,18 @@ const source = readFileSync(new URL('../src/video-stream-bridge.ts', import.meta
 const javascript = stripTypeScriptTypes(source)
   .replace(/import\s*\{[^}]+\}\s*from 'electron';/, '')
   .replace(/import\s*\{[^}]+\}\s*from '\.\/video-stream-contract\.ts';/, '')
+  .replace(/import\s*\{[^}]+\}\s*from '\.\/main\/video-contract\.ts';/, '')
   .replace('export function installVideoStreamBridge', 'function installVideoStreamBridge');
 assert.equal(javascript.includes("from 'electron'"), false);
 const load = new Function(
   'MessageChannelMain',
   'contract',
+  'nativeContract',
   'performance',
   'Date',
   'setTimeout',
   'clearTimeout',
-  `const { VIDEO_STREAM_CHANNEL, VIDEO_PORT_CHANNEL, parseVideoStreamRequest, videoStreamResponse } = contract;\n${javascript}\nreturn installVideoStreamBridge;`,
+  `const { VIDEO_STREAM_CHANNEL, VIDEO_PORT_CHANNEL, parseVideoStreamRequest, videoStreamResponse } = contract; const { snapshotVideoRecoveryResult } = nativeContract;\n${javascript}\nreturn installVideoStreamBridge;`,
 );
 const DEVICE = '11111111-1111-4111-8111-111111111111';
 const VIDEO = '22222222-2222-4222-8222-222222222222';
@@ -65,6 +68,7 @@ function fixture(options = {}) {
     start() {}
     close() {
       if (this.closed) return;
+      options.onPortClose?.(this, f);
       this.closed = true;
       queueMicrotask(() => this.emit('close'));
     }
@@ -105,7 +109,20 @@ function fixture(options = {}) {
       begins++;
       sink = value;
       options.onBegin?.(f);
-      return { started: started.promise };
+      return {
+        started: started.promise.then((value) =>
+          value === undefined
+            ? {
+                handoff: 'OWNED',
+                videoId: VIDEO,
+                videoOrdinal: 1,
+                refusal: null,
+                fresh: true,
+                snapshot: nativeContract.preparingVideo(VIDEO),
+              }
+            : value,
+        ),
+      };
     },
     stop() {
       stops++;
@@ -115,6 +132,7 @@ function fixture(options = {}) {
   const install = load(
     Channel,
     contract,
+    nativeContract,
     { now: () => mono },
     { now: () => utc },
     (callback, delay) => {
@@ -137,7 +155,7 @@ function fixture(options = {}) {
         assert.equal(deviceId, DEVICE);
         assert.equal(revision, 9);
         options.onReserve?.(f);
-        return options.unavailable ? null : reservation;
+        return options.unavailable ? null : (options.reserve?.(calls, f) ?? reservation);
       },
     }),
   );
@@ -648,4 +666,307 @@ test('old CONSUMED cannot retire a pending newer CONFIG or SESSION delivery', as
     assert.equal(f.stops, 1);
     await f.close();
   }
+});
+
+test('fresh explicit attempt requires actual retirement; old Stop and port cannot retire new owner', async () => {
+  const secondId = '55555555-5555-4555-8555-555555555555';
+  const secondDrain = deferred();
+  let secondStops = 0;
+  const second = {
+    videoId: secondId,
+    generation: 7,
+    deadlineUtc: 31000,
+    current: () => true,
+    begin: () => ({ started: Promise.resolve() }),
+    stop() {
+      secondStops++;
+      return secondDrain.promise;
+    },
+  };
+  const f = fixture({ reserve: (n) => (n === 2 ? second : null) });
+  await ready(f);
+  const stopping = f.stop();
+  await flush();
+  assert.equal((await f.start()).code, 'BUSY');
+  assert.equal(f.calls, 1);
+  f.drained.resolve(true);
+  assert.equal((await stopping).code, 'STOPPED');
+  const next = await f.start();
+  assert.equal(next.code, 'PENDING');
+  assert.equal(next.videoId, secondId);
+  assert.equal(f.channels.length, 2);
+  assert.equal((await f.stop()).code, 'STOPPED');
+  assert.equal(f.stops, 1);
+  assert.equal(secondStops, 0);
+  f.message({ version: 1, videoId: VIDEO, kind: 'READY' });
+  await flush();
+  assert.equal(secondStops, 0);
+  let complete = false;
+  const closing = f.bridge.close().then((v) => {
+    complete = v;
+  });
+  await flush();
+  assert.equal(secondStops, 1);
+  assert.equal(complete, false);
+  secondDrain.resolve(true);
+  await closing;
+  assert.equal(complete, true);
+});
+test('uncertain old retirement denies replacement and duplicate identity cleanup stays retained', async () => {
+  const f = fixture();
+  await ready(f);
+  const stopped = f.stop();
+  f.drained.resolve(false);
+  assert.equal((await stopped).code, 'UNCERTAIN');
+  assert.equal((await f.start()).code, 'BUSY');
+  assert.equal(f.calls, 1);
+  assert.equal(await f.bridge.close(), false);
+  const rejectedDrain = deferred();
+  let duplicateStops = 0;
+  const g = fixture({
+    reserve: (n, r) =>
+      n === 2
+        ? {
+            ...r.reservation,
+            stop() {
+              duplicateStops++;
+              return rejectedDrain.promise;
+            },
+          }
+        : null,
+  });
+  await ready(g);
+  const clean = g.stop();
+  g.drained.resolve(true);
+  await clean;
+  assert.equal((await g.start()).code, 'UNAVAILABLE');
+  assert.equal(duplicateStops, 1);
+  assert.equal((await g.start()).code, 'UNAVAILABLE');
+  assert.equal(g.calls, 2);
+  let done = false;
+  const closed = g.bridge.close().then((v) => {
+    done = v;
+  });
+  await flush();
+  assert.equal(done, false);
+  rejectedDrain.resolve(true);
+  await closed;
+  assert.equal(done, true);
+});
+
+const refusal = (reason) => ({
+  handoff: 'NOT_STARTED',
+  videoId: VIDEO,
+  videoOrdinal: 1,
+  refusal: reason,
+  snapshot: null,
+  fresh: false,
+});
+test('recovery refusal survives lower media-close before START settlement and requires explicit Stop proof', async () => {
+  const f = fixture();
+  try {
+    await ready(f);
+    f.sink.close();
+    await flush();
+    assert.equal(f.channels[0].port1.closed, false);
+    f.started.resolve(refusal('BUSY'));
+    await flush();
+    assert.deepEqual(f.deliveries.at(-1), {
+      version: 1,
+      videoId: VIDEO,
+      kind: 'REFUSED',
+      reason: 'BUSY',
+    });
+    assert.equal(f.stops, 1);
+    assert.equal(f.channels[0].port1.closed, false);
+    f.drained.resolve(true);
+    await flush();
+    assert.equal(
+      (await f.start()).code,
+      'BUSY',
+      'lower proof alone cannot forget notification port',
+    );
+    assert.equal((await f.stop()).code, 'STOPPED');
+    assert.equal(f.channels[0].port1.closed, true);
+  } finally {
+    await f.close();
+  }
+});
+test('recovery quota survives abandoned notification and retains original deadline', async () => {
+  const f = fixture();
+  try {
+    await ready(f);
+    f.advance(20000);
+    f.started.resolve(refusal('QUOTA'));
+    await flush();
+    f.drained.resolve(true);
+    await flush();
+    assert.equal(f.channels[0].port1.closed, false);
+    f.advance(30000);
+    await flush();
+    assert.equal(f.channels[0].port1.closed, true);
+    assert.equal((await f.start()).code, 'UNAVAILABLE');
+    assert.equal((await f.stop()).code, 'STOPPED');
+  } finally {
+    await f.close();
+  }
+});
+test('refusal notification post failure cannot certify uncertain cleanup', async () => {
+  const f = fixture({
+    onPost(value) {
+      if (value.kind === 'REFUSED') throw Error('synthetic');
+    },
+  });
+  try {
+    await ready(f);
+    f.started.resolve(refusal('BUSY'));
+    await flush();
+    assert.equal(f.channels[0].port1.closed, true);
+    f.drained.resolve(false);
+    assert.equal((await f.stop()).code, 'UNCERTAIN');
+    assert.equal((await f.start()).code, 'BUSY');
+  } finally {
+    await f.close();
+  }
+});
+test('REFUSED DTO rejects foreign shape, accessors and unsupported reason', () => {
+  const value = { version: 1, videoId: VIDEO, kind: 'REFUSED', reason: 'BUSY' };
+  assert.deepEqual(contract.snapshotVideoRefusal(value), value);
+  for (const bad of [
+    { ...value, reason: 'PRIVATE' },
+    { ...value, extra: true },
+    { ...value, videoId: 'private' },
+    {
+      ...value,
+      get reason() {
+        throw Error();
+      },
+    },
+  ])
+    assert.equal(contract.snapshotVideoRefusal(bad), null);
+});
+
+test('late authentic quota after explicit Stop latches no new port notification or replacement', async () => {
+  const f = fixture();
+  try {
+    await ready(f);
+    const stopping = f.stop();
+    f.started.resolve(refusal('QUOTA'));
+    f.drained.resolve(true);
+    assert.equal((await stopping).code, 'STOPPED');
+    await flush();
+    assert.equal(
+      f.deliveries.some((v) => v.kind === 'REFUSED'),
+      false,
+    );
+    assert.equal((await f.start()).code, 'UNAVAILABLE');
+  } finally {
+    await f.close();
+  }
+});
+test('unclassified lower close rejects media while retaining only original negotiation deadline', async () => {
+  const f = fixture();
+  try {
+    await ready(f);
+    f.sink.close();
+    await assert.rejects(f.sink.accept(header(1)));
+    f.advance(30000);
+    await flush();
+    assert.equal(f.channels[0].port1.closed, true);
+    f.drained.resolve(false);
+    assert.equal((await f.stop()).code, 'UNCERTAIN');
+  } finally {
+    await f.close();
+  }
+});
+
+test('throwing local port close leaves Stop uncertain and replacement fenced despite clean lower proof', async () => {
+  const f = fixture({
+    onPortClose() {
+      throw Error('synthetic');
+    },
+  });
+  await ready(f);
+  f.drained.resolve(true);
+  assert.equal((await f.stop()).code, 'UNCERTAIN');
+  assert.equal((await f.start()).code, 'BUSY');
+  assert.equal(await f.bridge.close(), false);
+});
+test('synchronously reentrant port close cannot recurse or duplicate lower Stop', async () => {
+  let reentry,
+    closes = 0;
+  const f = fixture({
+    onPortClose(_port, owner) {
+      closes++;
+      reentry = owner.bridge.close();
+    },
+  });
+  try {
+    await ready(f);
+    f.drained.resolve(true);
+    assert.equal((await f.stop()).code, 'STOPPED');
+    assert.equal(await reentry, true);
+    assert.equal(closes, 1);
+    assert.equal(f.stops, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('failed transfer closes both still-owned handles even when the first close throws', async () => {
+  const closed = [];
+  const f = fixture({
+    onTransfer() {
+      throw Error('synthetic');
+    },
+    onPortClose(port, owner) {
+      closed.push(port);
+      if (port === owner.channels[0].port1) throw Error('synthetic');
+    },
+  });
+  f.drained.resolve(true);
+  assert.equal((await f.start()).code, 'FAILED');
+  assert.equal(closed.length, 2);
+  assert.equal(f.channels[0].port2.closed, true);
+  assert.equal((await f.stop()).code, 'UNCERTAIN');
+  assert.equal(await f.bridge.close(), false);
+});
+
+test('merged synthetic qualifier OWNED handoff reaches actual bridge media and proven explicit Stop', async () => {
+  const probe = readFileSync(
+    new URL('../verification/video-decoder-probe.mjs', import.meta.url),
+    'utf8',
+  );
+  const match = /started: Promise\.resolve\((\{[\s\S]*?\n\s+\})\),/.exec(probe);
+  assert.ok(match);
+  const result = new Function('VIDEO', 'preparingVideo', `return (${match[1]});`)(
+    VIDEO,
+    nativeContract.preparingVideo,
+  );
+  assert.equal(result.handoff, 'OWNED');
+  assert.equal(result.videoOrdinal, 1);
+  const f = fixture();
+  await configured(f);
+  f.started.resolve(result);
+  await flush();
+  assert.equal(f.stops, 0);
+  assert.equal(
+    f.deliveries.some((d) => d.kind === 'REFUSED'),
+    false,
+  );
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+    new Uint8Array([5]),
+  );
+  f.paint(key);
+  await flush();
+  const stopped = f.stop();
+  await flush();
+  assert.equal(f.stops, 1);
+  f.drained.resolve(true);
+  assert.equal((await stopped).code, 'STOPPED');
+  await assert.rejects(f.sink.accept(header(4)));
+  assert.equal(f.stops, 1);
+  await f.close();
 });
