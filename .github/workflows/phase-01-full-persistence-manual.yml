@@ -1,10 +1,23 @@
 name: Phase 01 full historical persistence and vault matrix — explicit approval required
 on:
   workflow_dispatch:
+  push:
+    branches: [phase-01]
+    paths:
+      - '.gitattributes'
+      - 'desktop/**'
+      - 'foundation/**'
+      - 'biome.json'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - 'tools/phase-00/desktop-stack-lab/package-lock.json'
+      - 'tools/phase-00/desktop-stack-lab/dependency-review.json'
+      - '.github/workflows/phase-01-desktop-foundation.yml'
+      - '.github/workflows/phase-01-full-persistence-manual.yml'
 permissions:
   contents: read
 jobs:
   owned-windows-foundation:
+    if: github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/phase-01' && contains(github.event.head_commit.message, '[vault-context]'))
     runs-on: windows-2022
     timeout-minutes: 10
     defaults:
@@ -52,7 +65,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict raw-schema synthetic tests
         run: |
-          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==124; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==159; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: PowerShell 5.1 marker and ownership regressions
         run: |

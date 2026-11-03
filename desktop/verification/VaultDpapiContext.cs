@@ -10,6 +10,11 @@ namespace Fonesi.Verification
     public static class VaultDpapiContext
     {
         const uint TOKEN_QUERY = 8;
+        const int ERROR_ACCESS_DENIED = 5;
+        const int ERROR_PRIVILEGE_NOT_HELD = 1314;
+        const int ERROR_LOGON_TYPE_NOT_GRANTED = 1385;
+        const int ERROR_LOGON_FAILURE = 1326;
+        const int ERROR_ACCOUNT_RESTRICTION = 1327;
         const int ERROR_NO_TOKEN = 1008;
         const uint CRYPTPROTECT_UI_FORBIDDEN = 1;
         [StructLayout(LayoutKind.Sequential)] struct Blob { public int Length; public IntPtr Data; }
@@ -115,6 +120,19 @@ namespace Fonesi.Verification
                 ",\"ownerBlobDenied\":" + denied.ToString().ToLowerInvariant() + ",\"reverted\":" + reverted.ToString().ToLowerInvariant() +
                 ",\"ownerAfter\":" + after.ToString().ToLowerInvariant() + "}";
         }
+        // Fixed diagnostic categories only; never emit the numeric error or system text.
+        static string LogonFailureStatus(int error)
+        {
+            switch (error)
+            {
+                case ERROR_ACCESS_DENIED: return "TOKEN_UNAVAILABLE_ACCESS_DENIED";
+                case ERROR_PRIVILEGE_NOT_HELD: return "TOKEN_UNAVAILABLE_PRIVILEGE_NOT_HELD";
+                case ERROR_LOGON_TYPE_NOT_GRANTED: return "TOKEN_UNAVAILABLE_LOGON_TYPE_NOT_GRANTED";
+                case ERROR_LOGON_FAILURE: return "TOKEN_UNAVAILABLE_LOGON_FAILURE";
+                case ERROR_ACCOUNT_RESTRICTION: return "TOKEN_UNAVAILABLE_ACCOUNT_RESTRICTION";
+                default: return "TOKEN_UNAVAILABLE_OTHER";
+            }
+        }
         public static string Run(byte[] ownerDpapiBlob)
         {
             bool before = false, distinct = false, foreign = false, denied = false, reverted = false, after = false;
@@ -134,7 +152,11 @@ namespace Fonesi.Verification
                 if (!before) return Report("OWNER_PROVIDER_UNAVAILABLE", false, false, false, false, false, false);
                 status = "TOKEN_UNAVAILABLE";
                 if (!LogonUserW("LocalService", "NT AUTHORITY", null, 5, 0, out token))
+                {
+                    int logonError = Marshal.GetLastWin32Error();
+                    status = LogonFailureStatus(logonError);
                     return Report(status, before, false, false, false, false, false);
+                }
                 status = "IMPERSONATION_UNAVAILABLE";
                 if (!ImpersonateLoggedOnUser(token))
                 {

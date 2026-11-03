@@ -9,7 +9,7 @@ try{
     if('Fonesi.Verification.VaultDpapiContext' -as [type]){throw 'PRELOADED'}
     $helper=Join-Path $PSScriptRoot 'VaultDpapiContext.cs'
     $helperItem=Get-Item -LiteralPath $helper -Force
-    if($helperItem.PSIsContainer -or ($helperItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or (Get-FileHash $helper -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'b52511ff827a696d464699eff94b4590a875960cadf071c3a18826fc4b304a23'){throw 'HELPER'}
+    if($helperItem.PSIsContainer -or ($helperItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or (Get-FileHash $helper -Algorithm SHA256).Hash.ToLowerInvariant() -cne '070183ca73a79deb26d451f8187384060111a14ba354e34aa3e7f3aa7b5d35f4'){throw 'HELPER'}
     $raw=Text (Join-Path $Root ('persistence-vault-context-control-'+$Mode+'.json'));$control=$raw|ConvertFrom-Json
     if(($control.PSObject.Properties.Name -join ',') -cne 'version,mode,parentToken,ownerToken,storeId,blobSha256,localStateSha256' -or $control.version -isnot [int] -or $control.version -ne 1 -or $control.mode -cne $Mode -or ($control|ConvertTo-Json -Compress) -cne $raw){throw 'CONTROL'}
     foreach($key in @('parentToken','ownerToken','storeId')){if($control.$key -isnot [string] -or $control.$key -cnotmatch '\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z'){throw 'IDENTITY'}}

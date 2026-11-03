@@ -296,14 +296,16 @@ try {
         $failure='STAGE_VALIDATION_FAILED';$allClean=$false
         $validation=Invoke-OwnedChild $python ([string[]]@((Join-Path $PSScriptRoot 'validate_vault.py'),$owner.Path,$mode,'context')) 120000 @{}
         $allClean=Retired $validation
-        foreach($status in @('PASS','INVALID_INPUT','OWNER_CONTEXT_INVALID','OWNER_PROVIDER_UNAVAILABLE','TOKEN_UNAVAILABLE','IMPERSONATION_UNAVAILABLE','CONTROL_FAILED')){if(Test-ExactlyOneLine $validation.Stdout ('VAULT_CONTEXT_STATUS_'+$status)){Write-Output ('VAULT_CONTEXT_STATUS_'+$status)}}
+        $tokenUnavailableStatuses=@('TOKEN_UNAVAILABLE','TOKEN_UNAVAILABLE_ACCESS_DENIED','TOKEN_UNAVAILABLE_PRIVILEGE_NOT_HELD','TOKEN_UNAVAILABLE_LOGON_TYPE_NOT_GRANTED','TOKEN_UNAVAILABLE_LOGON_FAILURE','TOKEN_UNAVAILABLE_ACCOUNT_RESTRICTION','TOKEN_UNAVAILABLE_OTHER')
+        foreach($status in @('PASS','INVALID_INPUT','OWNER_CONTEXT_INVALID','OWNER_PROVIDER_UNAVAILABLE','TOKEN_UNAVAILABLE','TOKEN_UNAVAILABLE_ACCESS_DENIED','TOKEN_UNAVAILABLE_PRIVILEGE_NOT_HELD','TOKEN_UNAVAILABLE_LOGON_TYPE_NOT_GRANTED','TOKEN_UNAVAILABLE_LOGON_FAILURE','TOKEN_UNAVAILABLE_ACCOUNT_RESTRICTION','TOKEN_UNAVAILABLE_OTHER','IMPERSONATION_UNAVAILABLE','CONTROL_FAILED')){if(Test-ExactlyOneLine $validation.Stdout ('VAULT_CONTEXT_STATUS_'+$status)){Write-Output ('VAULT_CONTEXT_STATUS_'+$status)}}
         if(-not $allClean){throw 'CONTEXT_VALIDATION_RETIREMENT'}
         $report.context[$mode]=Read-FixedPublic ('persistence-vault-context-public-'+$mode+'.json')
         $contextUnavailableCollected=($validation.Status -ceq 'NONZERO_EXIT' -and $validation.ExitCode -eq 1 -and $validation.Stderr -ceq '' -and
             (Test-ExactlyOneLine $validation.Stdout 'VAULT_CONTEXT_COLLECTION_SAFE') -and
-            (Test-ExactlyOneLine $validation.Stdout 'VAULT_CONTEXT_STATUS_TOKEN_UNAVAILABLE') -and
+            ($tokenUnavailableStatuses -ccontains $report.context[$mode].status) -and
+            (Test-ExactlyOneLine $validation.Stdout ('VAULT_CONTEXT_STATUS_'+$report.context[$mode].status)) -and
             (Test-ExactlyOneLine $validation.Stdout 'VAULT_VALIDATION_FAIL') -and
-            $report.context[$mode].passed -eq $false -and $report.context[$mode].status -ceq 'TOKEN_UNAVAILABLE')
+            $report.context[$mode].passed -eq $false)
         # Retired validator + exact safe pre-impersonation outcome permits collection only.
         # The unchanged public context remains false, so the final aggregate cannot PASS.
         if(-not $contextUnavailableCollected){Require-Success $validation 'VAULT_VALIDATION_PASS'}

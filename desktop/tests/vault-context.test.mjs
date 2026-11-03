@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -48,4 +49,73 @@ test('verification helper has only fixed service logon and user-scoped bounded D
   );
   assert.match(source, /TerminateProcess\(GetCurrentProcess\(\), 76\);\s*Environment.Exit\(76\);/);
   assert.match(source, /if \(token != null\) token.Dispose\(\);/);
+});
+test('failed fixed logon captures last error immediately and emits only finite categories', () => {
+  assert.match(
+    source,
+    /if \(!LogonUserW\("LocalService", "NT AUTHORITY", null, 5, 0, out token\)\)\s*\{\s*int logonError = Marshal.GetLastWin32Error\(\);\s*status = LogonFailureStatus\(logonError\);\s*return Report\(status, before, false, false, false, false, false\);/,
+  );
+  const expected = new Map([
+    [5, 'ACCESS_DENIED'],
+    [1314, 'PRIVILEGE_NOT_HELD'],
+    [1385, 'LOGON_TYPE_NOT_GRANTED'],
+    [1326, 'LOGON_FAILURE'],
+    [1327, 'ACCOUNT_RESTRICTION'],
+  ]);
+  const method = source.slice(
+    source.indexOf('static string LogonFailureStatus'),
+    source.indexOf('public static string Run'),
+  );
+  for (const [code, category] of expected) {
+    assert.ok(source.includes('const int ERROR_' + category + ' = ' + code + ';'));
+    assert.ok(
+      method.includes('case ERROR_' + category + ': return "TOKEN_UNAVAILABLE_' + category + '";'),
+    );
+    assert.ok(STATUSES.includes('TOKEN_UNAVAILABLE_' + category));
+  }
+  assert.match(method, /default: return "TOKEN_UNAVAILABLE_OTHER";/);
+  assert.equal((method.match(/case /g) || []).length, 5);
+  assert.doesNotMatch(method, /ToString|FormatMessage|Console|throw|DllImport/);
+  assert.equal((source.match(/LogonUserW\("LocalService"/g) || []).length, 1);
+});
+
+test('context wrapper binds exact diagnostic helper and selected campaign preserves native commands', () => {
+  const wrapper = readFileSync(
+    new URL('../verification/Test-VaultContext.ps1', import.meta.url),
+    'utf8',
+  );
+  const hash = createHash('sha256')
+    .update(readFileSync(new URL('../verification/VaultDpapiContext.cs', import.meta.url)))
+    .digest('hex');
+  assert.ok(wrapper.includes("-cne '" + hash + "'"));
+  assert.equal((wrapper.match(/Get-FileHash \$helper/g) || []).length, 1);
+  const full = readFileSync(
+    new URL('../../.github/workflows/phase-01-full-persistence-manual.yml', import.meta.url),
+    'utf8',
+  );
+  const ordinary = readFileSync(
+    new URL('../../.github/workflows/phase-01-desktop-foundation.yml', import.meta.url),
+    'utf8',
+  );
+  assert.ok(full.includes('branches: [phase-01]'));
+  const paths = (text) => text.slice(text.indexOf('    paths:'), text.indexOf('permissions:'));
+  assert.equal(paths(full), paths(ordinary));
+  assert.ok(full.includes('s.countTestCases()==159'));
+  assert.ok(ordinary.includes('s.countTestCases()==159'));
+  assert.ok(
+    full.includes(
+      "github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/phase-01' && contains(github.event.head_commit.message, '[vault-context]'))",
+    ),
+  );
+  assert.ok(
+    ordinary.includes(
+      "github.event_name != 'push' || !contains(github.event.head_commit.message, '[vault-context]')",
+    ),
+  );
+  assert.equal(
+    (full.match(/& \.\/desktop\/verification\/Invoke-Persistence.ps1/g) || []).length,
+    1,
+  );
+  assert.ok(full.includes('steps.persistence_validation.outputs.written'));
+  assert.ok(full.includes('desktop/.persistence-runtime/validated.json'));
 });

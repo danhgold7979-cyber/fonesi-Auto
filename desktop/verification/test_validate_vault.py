@@ -62,7 +62,7 @@ class VaultTests(unittest.TestCase):
 
     def test_safe_collection_exact_status_vector_is_not_pass(self):
         from itertools import product
-        from validate_vault import CONTEXT_CASES,CONTEXT_STATUSES,validate_context,context_collection_safe
+        from validate_vault import CONTEXT_CASES,CONTEXT_STATUSES,TOKEN_UNAVAILABLE_STATUSES,validate_context,context_collection_safe
         cap=capture();cap['stdout']='VAULT_CONTEXT_RESULT\n'
         for status in CONTEXT_STATUSES:
             for bits in product((False,True),repeat=len(CONTEXT_CASES)):
@@ -70,7 +70,7 @@ class VaultTests(unittest.TestCase):
                 try:value=validate_context(json.dumps(raw).encode(),json.dumps(cap).encode(),'source')
                 except InvalidEvidence:
                     self.assertEqual(status,'PASS');self.assertFalse(all(bits));continue
-                expected=status=='TOKEN_UNAVAILABLE' and bits==(True,False,False,False,False,False)
+                expected=status in TOKEN_UNAVAILABLE_STATUSES and bits==(True,False,False,False,False,False)
                 self.assertEqual(context_collection_safe(value,'source'),expected)
                 if expected:
                     self.assertFalse(value['passed']);value['passed']=True
@@ -89,5 +89,16 @@ class VaultTests(unittest.TestCase):
         source=(Path(__file__).parent/'Invoke-Persistence.ps1').read_text()
         self.assertIn("if(-not $allClean){throw 'CONTEXT_VALIDATION_RETIREMENT'}",source)
         self.assertIn("$validation.Status -ceq 'NONZERO_EXIT' -and $validation.ExitCode -eq 1",source)
-        for marker in ('VAULT_CONTEXT_COLLECTION_SAFE','VAULT_CONTEXT_STATUS_TOKEN_UNAVAILABLE','VAULT_VALIDATION_FAIL'):
+        for marker in ('VAULT_CONTEXT_COLLECTION_SAFE','VAULT_VALIDATION_FAIL'):
             self.assertIn("Test-ExactlyOneLine $validation.Stdout '"+marker+"'",source)
+
+    def test_diagnostic_status_allowlists_match_and_private_errors_reject(self):
+        from pathlib import Path
+        from validate_vault import TOKEN_UNAVAILABLE_STATUSES,validate_context
+        cap=capture();cap['stdout']='VAULT_CONTEXT_RESULT\n'
+        for filename in ('Invoke-Persistence.ps1','vault-context-contract.cjs'):
+            source=(Path(__file__).parent/filename).read_text()
+            for status in TOKEN_UNAVAILABLE_STATUSES:self.assertIn("'"+status+"'",source)
+        for status in ('TOKEN_UNAVAILABLE_1385','TOKEN_UNAVAILABLE_UNKNOWN','token_unavailable_other','private failure'):
+            with self.assertRaises(InvalidEvidence):
+                validate_context(json.dumps({'version':1,'status':status,'ownerBefore':True,'distinctContext':False,'foreignPositive':False,'ownerBlobDenied':False,'reverted':False,'ownerAfter':False}).encode(),json.dumps(cap).encode(),'source')

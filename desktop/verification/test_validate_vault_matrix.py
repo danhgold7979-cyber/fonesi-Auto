@@ -52,3 +52,11 @@ class VaultMatrixTests(unittest.TestCase):
                 self.assertFalse(validate_report(json.dumps(value).encode())['passed'])
         value=fixture(5);value['schemaVersion']=4;value['scope']='HOSTED_PERSISTENCE_AND_VAULT'
         with self.assertRaises(InvalidEvidence):validate_report(json.dumps(value).encode())
+
+    def test_every_classified_logon_failure_keeps_aggregate_failed(self):
+        from validate_vault import TOKEN_UNAVAILABLE_STATUSES
+        for status in TOKEN_UNAVAILABLE_STATUSES:
+            for mode in ('source','package'):
+                value=fixture(5)
+                value['context'][mode].update(status=status,passed=False,cases={k:k=='ownerBefore' for k in CONTEXT_CASES})
+                self.assertFalse(validate_report(json.dumps(value).encode())['passed'])

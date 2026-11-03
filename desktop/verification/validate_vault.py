@@ -53,7 +53,8 @@ def stage_files(root,mode,stage):
     return value['passed']
 
 CONTEXT_CASES=('ownerBefore','distinctContext','foreignPositive','ownerBlobDenied','reverted','ownerAfter')
-CONTEXT_STATUSES=('PASS','INVALID_INPUT','OWNER_CONTEXT_INVALID','OWNER_PROVIDER_UNAVAILABLE','TOKEN_UNAVAILABLE','IMPERSONATION_UNAVAILABLE','CONTROL_FAILED')
+TOKEN_UNAVAILABLE_STATUSES=('TOKEN_UNAVAILABLE','TOKEN_UNAVAILABLE_ACCESS_DENIED','TOKEN_UNAVAILABLE_PRIVILEGE_NOT_HELD','TOKEN_UNAVAILABLE_LOGON_TYPE_NOT_GRANTED','TOKEN_UNAVAILABLE_LOGON_FAILURE','TOKEN_UNAVAILABLE_ACCOUNT_RESTRICTION','TOKEN_UNAVAILABLE_OTHER')
+CONTEXT_STATUSES=('PASS','INVALID_INPUT','OWNER_CONTEXT_INVALID','OWNER_PROVIDER_UNAVAILABLE',*TOKEN_UNAVAILABLE_STATUSES,'IMPERSONATION_UNAVAILABLE','CONTROL_FAILED')
 def validate_context(raw,capture_raw,mode):
     if mode not in ('source','package'):reject()
     value=parse(raw);capture=parse(capture_raw)
@@ -77,7 +78,7 @@ def context_collection_safe(value,mode):
     # Collection permission is NOT acceptance; this exact helper path never impersonated.
     validate_context_public(value,mode)
     expected={key:key=='ownerBefore' for key in CONTEXT_CASES}
-    return (value['status']=='TOKEN_UNAVAILABLE' and value['passed'] is False and
+    return (value['status'] in TOKEN_UNAVAILABLE_STATUSES and value['passed'] is False and
             value['cases']==expected and validate_process(value['process']))
 
 def context_files(root,mode):
