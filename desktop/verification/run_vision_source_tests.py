@@ -43,9 +43,13 @@ FILES = (
     'test_validate_ui.py',
     'test_validate_vault.py',
     'test_validate_vault_matrix.py',
+    'test_windows_vision_catalog.py',
+    'test_windows_vision_host.py',
+    'test_windows_vision_materialize.py',
+    'test_windows_vision_prepare.py',
 )
 SEPARATE = ('test_ocr_evaluation_worker.py', 'test_preprocess_worker.py')
-EXPECTED_CASES = 421
+EXPECTED_CASES = 499
 
 
 def main():
@@ -65,7 +69,7 @@ def main():
         return 1
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     passed = result.wasSuccessful() and not result.skipped and result.testsRun == EXPECTED_CASES
-    print('VISION_PORTABLE_SOURCE_421_PASS' if passed else 'VISION_PORTABLE_SOURCE_FAILED')
+    print('VISION_PORTABLE_SOURCE_499_PASS' if passed else 'VISION_PORTABLE_SOURCE_FAILED')
     return 0 if passed else 1
 
 

@@ -66,7 +66,12 @@ try {
  if('Fonesi.Phase00.NativeProbe' -as [type]){throw 'PRELOADED_HELPER'}
  Add-Type -Path $helper
  $native=Join-Path $desktop 'native/VisionProcess.cs';$fixture=Join-Path $desktop 'tests/fixtures/VisionProcessFixture.cs'
- GuardSource $native 1048576;GuardSource $fixture 1048576;GuardSource $PSCommandPath 1048576
+ $bootstrap=Join-Path $desktop 'native/VisionBootstrapProcess.cs'
+ $materializer=Join-Path $desktop 'verification/Invoke-VisionMaterialization.ps1'
+ $transportTests=Join-Path $desktop 'verification/Test-VisionMaterializationTransport.ps1'
+ GuardSource $materializer 1048576;GuardSource $transportTests 1048576
+ & $transportTests
+ GuardSource $native 1048576;GuardSource $bootstrap 1048576;GuardSource $fixture 1048576;GuardSource $PSCommandPath 1048576
  $framework=Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319'
  $script:compiler=Join-Path $framework 'csc.exe';GuardSource $compiler 8388608
  $refs=@('mscorlib.dll','System.dll','System.Core.dll')|ForEach-Object{$p=Join-Path $framework $_;GuardSource $p 33554432;$p}
@@ -106,7 +111,7 @@ try {
 
  $dll=Join-Path $root 'fixture/VisionProcess.dll';$exe=Join-Path $root 'fixture/VisionProcessFixture.exe'
  $common=@('/nologo','/noconfig','/nostdlib+','/platform:x64','/optimize+')+@($refs|ForEach-Object{'/reference:'+$_})
- Compiler ($common+@('/target:library',('/out:'+$dll),$native))
+ Compiler ($common+@('/target:library',('/out:'+$dll),$native,$bootstrap))
  Compiler ($common+@('/target:exe',('/out:'+$exe),('/reference:'+$dll),$fixture))
  GuardSource $dll 1048576;GuardSource $exe 1048576
  $report.generatedAssemblies=@([ordered]@{name='VisionProcess.dll';sha256=$before[$dll]},[ordered]@{name='VisionProcessFixture.exe';sha256=$before[$exe]})

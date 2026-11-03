@@ -38,7 +38,17 @@ export const outputs = [
   'v9.css',
 ];
 export const inputs = [
+  'native/VisionBootstrapProcess.cs',
   'native/VisionProcess.cs',
+  'scripts/stage-vision-source.mjs',
+  'verification/Invoke-VisionMaterialization.ps1',
+  'verification/Test-VisionMaterializationTransport.ps1',
+  'verification/windows_vision_host.py',
+  'verification/windows_vision_catalog.py',
+  'verification/windows_vision_materialize.py',
+  'verification/windows_vision_prepare.py',
+  'vision/windows_materialization_catalog.json',
+  'vision/windows_python_members.json',
   'tests/fixtures/VisionProcessFixture.cs',
   'scripts/vision-qualification.mjs',
   'verification/Invoke-VisionQualification.ps1',

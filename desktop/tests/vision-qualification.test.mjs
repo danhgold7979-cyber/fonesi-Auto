@@ -292,7 +292,9 @@ test('Windows compiler array entries retain complete output/reference tokens bef
     new URL('../verification/Invoke-VisionQualification.ps1', import.meta.url),
     'utf8',
   );
-  assert.ok(source.includes("Compiler ($common+@('/target:library',('/out:'+$dll),$native))"));
+  assert.ok(
+    source.includes("Compiler ($common+@('/target:library',('/out:'+$dll),$native,$bootstrap))"),
+  );
   assert.ok(
     source.includes(
       "Compiler ($common+@('/target:exe',('/out:'+$exe),('/reference:'+$dll),$fixture))",
