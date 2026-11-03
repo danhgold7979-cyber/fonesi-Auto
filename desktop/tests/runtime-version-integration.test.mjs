@@ -1,6 +1,7 @@
 import * as videoContract from '../src/video-stream-contract.ts';
 import * as videoClient from '../src/video-stream-client.ts';
 import * as videoDecoder from '../src/video-decoder.ts';
+import * as videoPresentation from '../src/video-presentation-contract.ts';
 import * as hostClient from '../src/host-resource-client.ts';
 import * as hostContract from '../src/host-resource-contract.ts';
 import * as inputClient from '../src/input-interaction-client.ts';
@@ -340,6 +341,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null, hostApi = nu
         };
       if (name === './video-stream-contract.ts') return videoContract;
       if (name === './video-decoder.ts') return videoDecoder;
+      if (name === './video-presentation-contract.ts') return videoPresentation;
       if (name === './association-contract.js') return associationContract;
       if (name === './host-resource-contract.ts') return hostContract;
       if (name === './input-interaction-contract.js') return inputContract;

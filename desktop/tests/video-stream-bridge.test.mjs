@@ -5,6 +5,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { ViewSession } from '../src/view-session.ts';
 import * as contract from '../src/video-stream-contract.ts';
+import * as presentationContract from '../src/video-presentation-contract.ts';
 import * as nativeContract from '../src/main/video-contract.ts';
 
 // Explicit source-only Electron/clock substitutions. The bridge body, real ViewSession and
@@ -14,17 +15,19 @@ const javascript = stripTypeScriptTypes(source)
   .replace(/import\s*\{[^}]+\}\s*from 'electron';/, '')
   .replace(/import\s*\{[^}]+\}\s*from '\.\/video-stream-contract\.ts';/, '')
   .replace(/import\s*\{[^}]+\}\s*from '\.\/main\/video-contract\.ts';/, '')
+  .replace(/import\s*\{[^}]+\}\s*from '\.\/video-presentation-contract\.ts';/, '')
   .replace('export function installVideoStreamBridge', 'function installVideoStreamBridge');
 assert.equal(javascript.includes("from 'electron'"), false);
 const load = new Function(
   'MessageChannelMain',
   'contract',
   'nativeContract',
+  'presentationContract',
   'performance',
   'Date',
   'setTimeout',
   'clearTimeout',
-  `const { VIDEO_STREAM_CHANNEL, VIDEO_PORT_CHANNEL, parseVideoStreamRequest, videoStreamResponse } = contract; const { snapshotVideoRecoveryResult } = nativeContract;\n${javascript}\nreturn installVideoStreamBridge;`,
+  `const { VIDEO_STREAM_CHANNEL, VIDEO_PORT_CHANNEL, parseVideoStreamRequest, videoStreamResponse } = contract; const { snapshotVideoRecoveryResult } = nativeContract; const { snapshotVideoPresentationControl } = presentationContract;\n${javascript}\nreturn installVideoStreamBridge;`,
 );
 const DEVICE = '11111111-1111-4111-8111-111111111111';
 const VIDEO = '22222222-2222-4222-8222-222222222222';
@@ -48,7 +51,12 @@ function fixture(options = {}) {
   const timers = new Map(),
     handlers = new Map(),
     channels = [],
-    deliveries = [];
+    deliveries = [],
+    fences = [],
+    envelopes = [],
+    listeners = new Set(),
+    epochs = new WeakMap();
+  let visibility = options.visibility ?? 'VISIBLE';
   const started = deferred(),
     drained = deferred();
   let calls = 0,
@@ -59,8 +67,17 @@ function fixture(options = {}) {
     closed = false;
     postMessage(value) {
       if (this.closed) throw Error('CLOSED');
-      deliveries.push(value);
-      options.onPost?.(value, f);
+      envelopes.push(value);
+      if (value.kind === 'PRESENTATION') {
+        fences.push(value);
+        options.onFence?.(value, f);
+        if (!options.holdFence) queueMicrotask(() => f.fenceAck(value.epoch));
+      } else {
+        const observation = value.kind === 'MEDIA' ? value.delivery : value;
+        deliveries.push(observation);
+        if (value.kind === 'MEDIA') epochs.set(observation, value.epoch);
+        options.onPost?.(observation, f);
+      }
       queueMicrotask(() => {
         if (!this.peer.closed) this.peer.emit('message', { data: value });
       });
@@ -133,6 +150,7 @@ function fixture(options = {}) {
     Channel,
     contract,
     nativeContract,
+    presentationContract,
     { now: () => mono },
     { now: () => utc },
     (callback, delay) => {
@@ -158,6 +176,21 @@ function fixture(options = {}) {
         return options.unavailable ? null : (options.reserve?.(calls, f) ?? reservation);
       },
     }),
+    () =>
+      options.noObserver
+        ? null
+        : {
+            read() {
+              options.onRead?.(f);
+              if (options.readThrows) throw Error('OBSERVATION');
+              return visibility;
+            },
+            subscribe(listener) {
+              listeners.add(listener);
+              options.onSubscribe?.(f);
+              return () => listeners.delete(listener);
+            },
+          },
   );
   const invoke = handlers.get(contract.VIDEO_STREAM_CHANNEL);
   const f = {
@@ -170,6 +203,16 @@ function fixture(options = {}) {
     timers,
     channels,
     deliveries,
+    fences,
+    envelopes,
+    listeners,
+    visibility(value) {
+      visibility = value;
+      for (const listener of listeners) listener();
+    },
+    fenceAck(epoch = fences.at(-1)?.epoch) {
+      f.message({ version: 2, videoId: VIDEO, kind: 'PRESENTATION_ACK', epoch });
+    },
     started,
     drained,
     get calls() {
@@ -212,16 +255,24 @@ function fixture(options = {}) {
       queueMicrotask(() => channels[0].port1.emit('message', { data: value }));
     },
     ready() {
-      f.message({ version: 1, videoId: VIDEO, kind: 'READY' });
+      f.message({ version: 2, videoId: VIDEO, kind: 'READY' });
     },
     ack(deliveryId = deliveries.at(-1)?.deliveryId) {
-      f.message({ version: 1, videoId: VIDEO, deliveryId, kind: 'CONSUMED' });
+      f.message({
+        version: 2,
+        videoId: VIDEO,
+        deliveryId,
+        epoch:
+          epochs.get(deliveries.find((d) => d.deliveryId === deliveryId)) ?? fences.at(-1)?.epoch,
+        kind: 'CONSUMED',
+      });
     },
     paint(delivery = deliveries.at(-1), patch = {}) {
       f.message({
-        version: 1,
+        version: 2,
         videoId: VIDEO,
         kind: 'PAINTED',
+        epoch: epochs.get(delivery),
         deliveryId: delivery.deliveryId,
         geometryId: delivery.geometryId,
         configId: delivery.configId,
@@ -466,7 +517,7 @@ test('port close and view revocation stop the same retained reservation without 
     if (mode === 'port') f.channels[0].port1.close();
     else {
       f.view.revoke();
-      f.message({ version: 1, videoId: VIDEO, kind: 'READY' });
+      f.message({ version: 2, videoId: VIDEO, kind: 'READY' });
     }
     await flush();
     assert.equal(f.stops, 1);
@@ -698,7 +749,7 @@ test('fresh explicit attempt requires actual retirement; old Stop and port canno
   assert.equal((await f.stop()).code, 'STOPPED');
   assert.equal(f.stops, 1);
   assert.equal(secondStops, 0);
-  f.message({ version: 1, videoId: VIDEO, kind: 'READY' });
+  f.message({ version: 2, videoId: VIDEO, kind: 'READY' });
   await flush();
   assert.equal(secondStops, 0);
   let complete = false;
@@ -772,7 +823,7 @@ test('recovery refusal survives lower media-close before START settlement and re
     f.started.resolve(refusal('BUSY'));
     await flush();
     assert.deepEqual(f.deliveries.at(-1), {
-      version: 1,
+      version: 2,
       videoId: VIDEO,
       kind: 'REFUSED',
       reason: 'BUSY',
@@ -830,7 +881,7 @@ test('refusal notification post failure cannot certify uncertain cleanup', async
   }
 });
 test('REFUSED DTO rejects foreign shape, accessors and unsupported reason', () => {
-  const value = { version: 1, videoId: VIDEO, kind: 'REFUSED', reason: 'BUSY' };
+  const value = { version: 2, videoId: VIDEO, kind: 'REFUSED', reason: 'BUSY' };
   assert.deepEqual(contract.snapshotVideoRefusal(value), value);
   for (const bad of [
     { ...value, reason: 'PRIVATE' },
@@ -967,6 +1018,555 @@ test('merged synthetic qualifier OWNED handoff reaches actual bridge media and p
   f.drained.resolve(true);
   assert.equal((await stopped).code, 'STOPPED');
   await assert.rejects(f.sink.accept(header(4)));
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+
+test('owned visibility admission rejects absent, hidden and unavailable observation before reservation and removes listeners', async () => {
+  for (const options of [
+    { noObserver: true },
+    { visibility: 'HIDDEN' },
+    { visibility: 'UNAVAILABLE' },
+    { readThrows: true },
+  ]) {
+    const f = fixture(options);
+    assert.equal((await f.start()).code, 'UNAVAILABLE');
+    assert.equal(f.calls, 0);
+    assert.equal(f.listeners.size, 0);
+    await f.close();
+  }
+});
+test('initial PRESENTATION fence must be acknowledged before begin and missing ACK keeps original expiry', async () => {
+  const f = fixture({ holdFence: true });
+  await f.start();
+  f.ready();
+  await flush();
+  assert.equal(f.fences.length, 1);
+  assert.equal(f.fences[0].epoch, 1);
+  assert.equal(f.fences[0].state, 'VISIBLE');
+  assert.equal(f.begins, 0);
+  f.visibility('HIDDEN');
+  f.advance(30000);
+  assert.equal(f.stops, 1);
+  assert.equal(f.listeners.size, 0);
+  await f.close();
+});
+test('hide drains more than three packets without paint slots, restore requires later key and keeps same reservation', async () => {
+  const f = fixture();
+  await configured(f);
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+  );
+  f.paint(key);
+  await flush();
+  f.advance(1000);
+  f.visibility('HIDDEN');
+  await flush();
+  for (let n = 3; n < 12; n++)
+    await deliver(
+      f,
+      header(n + 1, {
+        configId: 1,
+        packetId: n,
+        kind: n % 2 ? 'DELTA' : 'KEY',
+        ptsUs: n,
+        totalBytes: 1,
+      }),
+    );
+  assert.equal(f.stops, 0);
+  f.advance(100000);
+  f.visibility('VISIBLE');
+  await flush();
+  const restored = f.fences.at(-1);
+  assert.equal(restored.afterPacketId, 11);
+  assert.equal(restored.remainingMs, 29000);
+  await deliver(
+    f,
+    header(13, { configId: 1, packetId: 12, kind: 'DELTA', ptsUs: 12, totalBytes: 1 }),
+  );
+  const fresh = await deliver(
+    f,
+    header(14, { configId: 1, packetId: 13, kind: 'KEY', ptsUs: 13, totalBytes: 1 }),
+  );
+  f.paint(fresh);
+  await flush();
+  assert.equal(f.stops, 0);
+  assert.equal(f.calls, 1);
+  assert.equal(f.begins, 1);
+  f.advance(129999);
+  assert.equal(f.stops, 0);
+  f.advance(130000);
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('29 seconds visible followed by repeated hidden hints/toggles retains at most one second', async () => {
+  const f = fixture();
+  await configured(f);
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+  );
+  f.paint(key);
+  await flush();
+  f.advance(29000);
+  f.visibility('HIDDEN');
+  await flush();
+  f.advance(100000);
+  for (let n = 0; n < 5; n++) {
+    f.visibility('VISIBLE');
+    await flush();
+    f.message({ version: 2, videoId: VIDEO, kind: 'VISIBILITY_HINT' });
+    await flush();
+    assert.equal(f.fences.at(-1).remainingMs, 1000);
+    f.visibility('HIDDEN');
+    await flush();
+  }
+  f.paint(key);
+  await flush();
+  assert.equal(f.stops, 0);
+  f.visibility('VISIBLE');
+  await flush();
+  f.advance(101000);
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('hidden pending media CONSUMED has its original nonpausable operation deadline', async () => {
+  const f = fixture();
+  await configured(f);
+  const key = await deliver(
+    f,
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+  );
+  f.paint(key);
+  await flush();
+  f.advance(100);
+  const rejected = assert.rejects(
+    f.sink.accept(
+      header(4, { configId: 1, packetId: 3, kind: 'DELTA', ptsUs: 2, totalBytes: 1 }),
+      new Uint8Array(1),
+    ),
+    /VIDEO_CLOSED/,
+  );
+  await flush();
+  f.visibility('HIDDEN');
+  await flush();
+  f.advance(30099);
+  assert.equal(f.stops, 0);
+  f.advance(30100);
+  await rejected;
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('fence controls coalesce latest state, gate new media and use posted delivery frontier', async () => {
+  const f = fixture({ holdFence: true });
+  await f.start();
+  f.ready();
+  await flush();
+  f.fenceAck();
+  await flush();
+  assert.equal(f.begins, 1);
+  await deliver(f, header(1));
+  f.visibility('HIDDEN');
+  await flush();
+  const pending = f.sink.accept(
+    header(2, { configId: 1, packetId: 1, kind: 'CONFIG', totalBytes: 1 }),
+    new Uint8Array(1),
+  );
+  await flush();
+  f.visibility('VISIBLE');
+  f.visibility('HIDDEN');
+  f.visibility('VISIBLE');
+  await flush();
+  assert.equal(f.fences.length, 2);
+  assert.equal(f.deliveries.length, 1);
+  f.fenceAck();
+  await flush();
+  assert.equal(f.fences.length, 3);
+  assert.equal(f.fences.at(-1).state, 'VISIBLE');
+  assert.equal(f.fences.at(-1).afterDeliveryId, 1);
+  assert.equal(f.fences.at(-1).afterPacketId, 1);
+  assert.equal(f.deliveries.length, 1);
+  f.fenceAck();
+  await flush();
+  f.ack();
+  await pending;
+  assert.equal(f.deliveries.length, 2);
+  assert.equal(f.begins, 1);
+  await f.close();
+});
+test('partial key at restore frontier is consumed but cannot claim current paint', async () => {
+  const f = fixture();
+  await configured(f);
+  f.visibility('HIDDEN');
+  await flush();
+  const h = header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 32769 });
+  await f.sink.accept(h, new Uint8Array(32768));
+  f.visibility('VISIBLE');
+  await flush();
+  assert.equal(f.fences.at(-1).afterPacketId, 2);
+  const pending = f.sink.accept(header(4, { ...h, creditId: 4, offset: 32768 }), new Uint8Array(1));
+  await flush();
+  f.ack();
+  await pending;
+  f.paint();
+  await flush();
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('old pending CONSUMED releases exactly once across hidden epoch but duplicate fails closed', async () => {
+  const f = fixture();
+  await configured(f);
+  const pending = f.sink.accept(
+    header(3, { configId: 1, packetId: 2, kind: 'KEY', ptsUs: 1, totalBytes: 1 }),
+    new Uint8Array(1),
+  );
+  await flush();
+  f.visibility('HIDDEN');
+  await flush();
+  f.ack();
+  await pending;
+  assert.equal(f.stops, 0);
+  f.ack();
+  await flush();
+  assert.equal(f.stops, 1);
+  await f.close();
+});
+test('unavailable ownership, future or duplicate fence ACK and backward clock fail closed', async () => {
+  for (const reason of ['unavailable', 'future', 'duplicate', 'clock']) {
+    const f = fixture();
+    await ready(f);
+    if (reason === 'unavailable') f.visibility('UNAVAILABLE');
+    if (reason === 'future') f.fenceAck(20);
+    if (reason === 'duplicate') f.fenceAck(1);
+    if (reason === 'clock') {
+      f.advance(100);
+      f.message({ version: 2, videoId: VIDEO, kind: 'VISIBILITY_HINT' });
+      await flush();
+      f.advance(50);
+      f.message({ version: 2, videoId: VIDEO, kind: 'VISIBILITY_HINT' });
+    }
+    await flush();
+    assert.equal(f.stops, 1, reason);
+    assert.equal(f.listeners.size, 0);
+    await f.close();
+  }
+});
+
+// Run the production adapter body, replacing only the Electron window instance.
+const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const observerStart = mainSource.indexOf(
+  '(event) => {\n            const captured = platformToolsWindow;',
+);
+assert.ok(observerStart >= 0);
+const observerEnd = mainSource.indexOf('\n        );', observerStart);
+const observerExpression = mainSource.slice(observerStart, observerEnd).trim().replace(/,$/, '');
+const loadWindowAdapter =
+  new Function(`${stripTypeScriptTypes(`function factory() { return ${observerExpression}; }`)}
+return function rig(window) {
+  platformToolsWindow = window; lifecycle = {}; closing = false;
+  return { capture: factory(), replace(value) { platformToolsWindow = value; }, close() { closing = true; } };
+};
+var platformToolsWindow, lifecycle, closing;`)();
+function observerWindow() {
+  const win = new EventEmitter();
+  win.webContents = {};
+  win.destroyed = false;
+  win.visible = true;
+  win.minimized = false;
+  win.isDestroyed = () => win.destroyed;
+  win.isVisible = () => win.visible;
+  win.isMinimized = () => win.minimized;
+  return win;
+}
+test('production owned-window adapter captures identity, reads actual getters, ignores blur and removes every listener', () => {
+  const win = observerWindow(),
+    rig = loadWindowAdapter(win);
+  assert.equal(rig.capture({ sender: {} }), null);
+  const observation = rig.capture({ sender: win.webContents });
+  let events = 0;
+  const remove = observation.subscribe(() => events++);
+  assert.equal(observation.read(), 'VISIBLE');
+  win.emit('blur');
+  assert.equal(events, 0);
+  win.visible = false;
+  win.emit('show'); // Event names do not supply authority.
+  assert.equal(observation.read(), 'HIDDEN');
+  win.visible = true;
+  win.minimized = true;
+  win.emit('restore');
+  assert.equal(observation.read(), 'HIDDEN');
+  win.minimized = false;
+  win.emit('hide');
+  assert.equal(observation.read(), 'VISIBLE');
+  assert.equal(events, 3);
+  remove();
+  remove();
+  for (const event of ['hide', 'show', 'minimize', 'restore', 'closed'])
+    assert.equal(win.listenerCount(event), 0);
+  rig.replace(observerWindow());
+  assert.equal(observation.read(), 'UNAVAILABLE');
+});
+test('production observer invalidates destroyed/closing owners and propagates getter failure', () => {
+  for (const condition of ['destroyed', 'closing', 'getter']) {
+    const win = observerWindow(),
+      rig = loadWindowAdapter(win);
+    const observation = rig.capture({ sender: win.webContents });
+    if (condition === 'destroyed') win.destroyed = true;
+    if (condition === 'closing') rig.close();
+    if (condition === 'getter') {
+      win.isVisible = () => {
+        throw Error('GETTER');
+      };
+      assert.throws(() => observation.read(), /GETTER/);
+    } else assert.equal(observation.read(), 'UNAVAILABLE');
+  }
+});
+test('production observer rolls back partially installed listeners if subscription fails', () => {
+  const win = observerWindow(),
+    rig = loadWindowAdapter(win);
+  const original = win.on;
+  win.on = function (event, listener) {
+    if (event === 'minimize') throw Error('SUBSCRIBE');
+    return original.call(this, event, listener);
+  };
+  const observation = rig.capture({ sender: win.webContents });
+  assert.throws(() => observation.subscribe(() => {}), /SUBSCRIBE/);
+  for (const event of ['hide', 'show', 'minimize', 'restore', 'closed'])
+    assert.equal(win.listenerCount(event), 0, event);
+});
+
+const joinedConfig = Uint8Array.from([
+  0, 0, 0, 1, 103, 66, 0, 30, 244, 75, 32, 0, 0, 0, 1, 104, 206, 60, 128,
+]);
+const joinedKey = Uint8Array.from([0, 0, 0, 1, 101, 188]);
+const joinedDelta = Uint8Array.from([0, 0, 0, 1, 65, 240]);
+async function joinedFixture({ hideBeforeReady = false } = {}) {
+  const { createTileVideoDecoder } = await import('../src/video-decoder.ts');
+  const f = fixture({ holdFence: true });
+  assert.equal((await f.start()).code, 'PENDING');
+  let drawn = 0,
+    closedFrames = 0,
+    supportCalls = 0;
+  const codecs = [],
+    states = [],
+    consumed = [],
+    paints = [],
+    localTimers = new Map();
+  const decoder = createTileVideoDecoder(
+    {
+      videoId: VIDEO,
+      deviceId: DEVICE,
+      generation: 7,
+      deadlineUtc: 31000,
+      canvas: {
+        width: 0,
+        height: 0,
+        style: {},
+        getContext: () => ({
+          clearRect() {},
+          drawImage() {
+            drawn++;
+          },
+        }),
+      },
+      current: () => f.stops === 0,
+      onPresentationAck: (value) => f.message(value),
+      onConsumed: (value) => {
+        consumed.push(value);
+        f.message(value);
+      },
+      onPainted: (value) => {
+        paints.push(value);
+        f.message(value);
+      },
+      onState: (value) => states.push(value),
+    },
+    {
+      now: () => 0,
+      utc: () => 1000,
+      set: (fn, ms) => {
+        const token = {};
+        localTimers.set(token, { fn, ms });
+        return token;
+      },
+      clear: (token) => localTimers.delete(token),
+      supported: async () => {
+        supportCalls++;
+        return true;
+      },
+      chunk: (value) => value,
+      create(output) {
+        const codec = {
+          decodeQueueSize: 0,
+          chunks: [],
+          closed: false,
+          configure() {},
+          decode(value) {
+            this.chunks.push(value);
+          },
+          close() {
+            this.closed = true;
+          },
+          paint() {
+            const chunk = this.chunks.at(-1);
+            output({
+              timestamp: chunk.timestamp,
+              rotation: 0,
+              flip: false,
+              codedWidth: 32,
+              codedHeight: 32,
+              visibleRect: { x: 0, y: 0, width: 32, height: 32 },
+              displayWidth: 32,
+              displayHeight: 32,
+              close() {
+                closedFrames++;
+              },
+            });
+          },
+        };
+        codecs.push(codec);
+        return codec;
+      },
+    },
+  );
+  f.channels[0].port2.on('message', ({ data }) => {
+    if (data.kind === 'PRESENTATION') decoder.presentation(data);
+    else decoder.receive(data);
+  });
+  if (hideBeforeReady) f.visibility('HIDDEN');
+  f.ready();
+  await flush();
+  let credit = 0,
+    packetId = 0,
+    pts = 0;
+  return {
+    f,
+    decoder,
+    codecs,
+    states,
+    consumed,
+    paints,
+    get drawn() {
+      return drawn;
+    },
+    get closedFrames() {
+      return closedFrames;
+    },
+    get supportCalls() {
+      return supportCalls;
+    },
+    async send(kind) {
+      const bytes =
+        kind === 'SESSION'
+          ? new Uint8Array()
+          : kind === 'CONFIG'
+            ? joinedConfig
+            : kind === 'KEY'
+              ? joinedKey
+              : joinedDelta;
+      const h = header(++credit, {
+        width: 32,
+        height: 32,
+        kind,
+        configId: kind === 'SESSION' ? 0 : 1,
+        packetId: kind === 'SESSION' ? 0 : ++packetId,
+        ptsUs: kind === 'KEY' || kind === 'DELTA' ? ++pts : null,
+        totalBytes: bytes.length,
+      });
+      await f.sink.accept(h, bytes);
+      await flush();
+    },
+    async close() {
+      decoder.close();
+      await f.close();
+    },
+  };
+}
+test('joined actual bridge and decoder preserve session across hidden draining and fresh IDR resume', async () => {
+  const j = await joinedFixture();
+  try {
+    assert.equal(j.f.begins, 1);
+    await j.send('SESSION');
+    await j.send('CONFIG');
+    await j.send('KEY');
+    j.codecs.at(-1).paint();
+    await flush();
+    assert.equal(j.drawn, 1);
+    assert.equal(j.paints.length, 1);
+    j.f.visibility('HIDDEN');
+    await flush();
+    assert.equal(j.states.at(-1), 'PAUSED_HIDDEN');
+    const supports = j.supportCalls;
+    for (let i = 0; i < 12; i++) await j.send(i % 2 ? 'KEY' : 'DELTA');
+    assert.equal(j.supportCalls, supports);
+    assert.equal(j.decoder.accounting().hidden, 12);
+    assert.equal(j.decoder.accounting().outstanding, 0);
+    assert.equal(j.f.stops, 0);
+    j.f.visibility('VISIBLE');
+    await flush();
+    await j.send('DELTA');
+    assert.equal(j.drawn, 1);
+    await j.send('KEY');
+    j.codecs.at(-1).paint();
+    await flush();
+    assert.equal(j.drawn, 2);
+    assert.equal(j.closedFrames, 2);
+    assert.equal(j.paints.length, 2);
+    assert.equal(j.f.stops, 0);
+    assert.equal(j.f.calls, 1);
+    assert.equal(j.f.begins, 1);
+    assert.equal(new Set(j.consumed.map((v) => v.deliveryId)).size, j.consumed.length);
+  } finally {
+    await j.close();
+  }
+});
+test('joined decoder accepts hide after reservation before READY without losing the initial startup owner', async () => {
+  const j = await joinedFixture({ hideBeforeReady: true });
+  try {
+    assert.equal(j.states.includes('DECODE_FAILED'), false);
+    assert.equal(j.f.fences[0].state, 'VISIBLE');
+    assert.equal(j.f.fences.at(-1).state, 'HIDDEN');
+    assert.equal(j.states.at(-1), 'PAUSED_HIDDEN');
+    assert.equal(j.f.begins, 1);
+    j.f.advance(30000);
+    assert.equal(j.f.stops, 1);
+  } finally {
+    await j.close();
+  }
+});
+
+test('observer subscription/read race rejects hidden admission without reserving and cleans subscription', async () => {
+  const f = fixture({ onSubscribe: (owner) => owner.visibility('HIDDEN') });
+  try {
+    assert.equal((await f.start()).code, 'UNAVAILABLE');
+    assert.equal(f.calls, 0);
+    assert.equal(f.listeners.size, 0);
+  } finally {
+    await f.close();
+  }
+});
+test('production observer rechecks captured identity after visibility getters', () => {
+  const win = observerWindow(),
+    rig = loadWindowAdapter(win);
+  const observation = rig.capture({ sender: win.webContents });
+  win.isVisible = () => {
+    rig.replace(observerWindow());
+    return true;
+  };
+  assert.equal(observation.read(), 'UNAVAILABLE');
+});
+test('closed bridge owner ignores stale captured visibility callback after listener removal', async () => {
+  const f = fixture();
+  await ready(f);
+  const stale = [...f.listeners][0];
+  f.drained.resolve(true);
+  assert.equal((await f.stop()).code, 'STOPPED');
+  const before = f.fences.length;
+  stale();
+  await flush();
+  assert.equal(f.listeners.size, 0);
+  assert.equal(f.fences.length, before);
   assert.equal(f.stops, 1);
   await f.close();
 });

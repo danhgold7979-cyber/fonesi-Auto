@@ -22,14 +22,14 @@ export type VideoPortMetadata = Readonly<{
 }>;
 /** Notification only: cleanup proof still comes exclusively from STOPPED. */
 export type VideoRefusal = Readonly<{
-  version: 1;
+  version: 2;
   videoId: string;
   kind: 'REFUSED';
   reason: 'BUSY' | 'QUOTA' | 'STALE_TARGET' | 'REJECTED';
 }>;
 export function snapshotVideoRefusal(raw: unknown): VideoRefusal | null {
   const v = record(raw, ['version', 'videoId', 'kind', 'reason']);
-  return v?.version === 1 &&
+  return v?.version === 2 &&
     uuid(v.videoId) &&
     v.kind === 'REFUSED' &&
     ['BUSY', 'QUOTA', 'STALE_TARGET', 'REJECTED'].includes(v.reason as string)

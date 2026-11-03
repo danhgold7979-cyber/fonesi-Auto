@@ -539,6 +539,24 @@ try {
             };
           },
         }),
+        (event) => {
+          const owned = window;
+          if (!owned || owned.isDestroyed() || owned.webContents !== event.sender) return null;
+          return {
+            read: () => {
+              if (window !== owned || owned.isDestroyed() || owned.webContents !== event.sender)
+                return 'UNAVAILABLE';
+              return owned.isMinimized() || !owned.isVisible() ? 'HIDDEN' : 'VISIBLE';
+            },
+            subscribe: (listener) => {
+              const events = ['hide', 'show', 'minimize', 'restore', 'closed'];
+              for (const name of events) owned.on(name, listener);
+              return () => {
+                for (const name of events) owned.removeListener(name, listener);
+              };
+            },
+          };
+        },
       );
       window.webContents.once('did-finish-load', () => {
         if (

@@ -157,6 +157,8 @@ function rig({
     decodeHook = null,
     chunkHook = null;
   const calls = { now: 0, current: 0, set: 0, clear: 0 };
+  const presentationAcks = [];
+  let epoch = 0;
   const consumed = [],
     painted = [],
     states = [],
@@ -187,6 +189,7 @@ function rig({
         return current;
       },
       onConsumed: (v) => consumed.push(v),
+      onPresentationAck: (v) => presentationAcks.push(v),
       onPainted: (v) => {
         painted.push(v);
         paintHook?.();
@@ -266,9 +269,22 @@ function rig({
       bytes,
       ...extra,
     };
-    owner.receive(v);
+    owner.receive({ version: 2, videoId: id, kind: 'MEDIA', epoch, delivery: v });
     return v;
   };
+  const fence = (state = 'VISIBLE', extra = {}) =>
+    owner.presentation({
+      version: 2,
+      videoId: id,
+      kind: 'PRESENTATION',
+      epoch: ++epoch,
+      state,
+      afterDeliveryId: delivery,
+      afterPacketId: packet,
+      remainingMs: 30000,
+      ...extra,
+    });
+  fence();
   const frame = (decoder, pts, extra = {}) => {
     const f = {
       timestamp: pts,
@@ -290,6 +306,8 @@ function rig({
   };
   return {
     owner,
+    fence,
+    presentationAcks,
     canvas,
     calls,
     setStateHook: (hook) => {
@@ -817,6 +835,7 @@ const counterKeys = [
   'waitingKey',
   'reset',
   'stopped',
+  'hidden',
   'outstanding',
   'pending',
   'held',
@@ -831,7 +850,7 @@ function accounting(r, expected = {}) {
     assert.ok(s[key] >= 0, `${key} is nonnegative`);
   }
   assert.equal(s.admitted, s.drawn + s.discarded + s.outstanding);
-  assert.equal(s.discarded, s.waitingKey + s.reset + s.stopped);
+  assert.equal(s.discarded, s.waitingKey + s.reset + s.stopped + s.hidden);
   assert.ok(s.submitted <= s.admitted);
   assert.ok(s.drawn <= s.submitted);
   assert.ok(s.outstanding <= 3, 'accounting retains at most three admitted delivery identities');
@@ -1077,15 +1096,15 @@ for (const [name, extra, reason] of [
   ['wrong configuration', { configId: 2 }, 'DELIVERY'],
   ['malformed AVC contents', { bytes: Uint8Array.of(0), totalBytes: 1 }, 'SUBMISSION'],
 ]) {
-  test(`process rejection (${name}) admits then discards, without a decode API call`, async () => {
+  test(`wire rejection (${name}) never admits malformed media or calls decode`, async () => {
     const r = await configuredRig();
     r.send('KEY', extra);
     accounting(r, {
-      admitted: 1,
+      admitted: 0,
       submitted: 0,
       drawn: 0,
-      discarded: 1,
-      stopped: 1,
+      discarded: 0,
+      stopped: 0,
       outstanding: 0,
     });
     assert.equal(r.owner.snapshot().failureReason, reason);
@@ -1093,11 +1112,11 @@ for (const [name, extra, reason] of [
   });
 }
 
-test('duplicate PTS is admitted at receive then discards both affected submissions', async () => {
+test('duplicate PTS is rejected before admission and retires the earlier submission', async () => {
   const r = await configuredRig();
   const key = r.send('KEY');
   r.send('DELTA', { ptsUs: key.ptsUs });
-  accounting(r, { admitted: 2, submitted: 1, drawn: 0, discarded: 2, stopped: 2, outstanding: 0 });
+  accounting(r, { admitted: 1, submitted: 1, drawn: 0, discarded: 1, stopped: 1, outstanding: 0 });
   assert.equal(r.owner.snapshot().failureReason, 'DELIVERY');
 });
 
@@ -1367,7 +1386,11 @@ async function accountingSourceFactory({ seed = {}, storage = false, entry = '' 
       '    accounting: accountingSnapshot,',
       '    accounting: accountingSnapshot,\n    accountingStorage: () => accounting.size,',
     );
-  for (const dependency of ['./h264-video.ts', './video-media-contract.ts'])
+  for (const dependency of [
+    './h264-video.ts',
+    './video-media-contract.ts',
+    './video-presentation-contract.ts',
+  ])
     replaceOnce(`from '${dependency}'`, `from '${new URL(dependency, url).href}'`);
   const code = stripTypeScriptTypes(source, { mode: 'strip' });
   return (await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`))
@@ -1416,6 +1439,7 @@ for (const key of [
   'waitingKey',
   'reset',
   'stopped',
+  'hidden',
 ]) {
   test(`source-only ${key} counter overflow clears accounting storage without adding media effects`, async () => {
     const boundary = await accountingSourceFactory({
@@ -1433,6 +1457,7 @@ for (const key of [
           r.send('CONFIG', { configId: 2 });
           await flush();
         } else if (key === 'stopped') r.owner.close();
+        else if (key === 'hidden') r.fence('HIDDEN');
       }
     }
     assert.equal(measured.owner.accounting(), null);
@@ -1450,7 +1475,7 @@ for (const key of [
     });
     assert.deepEqual(state(measured), state(control));
     for (const r of [measured, control]) {
-      if (!r.owner.snapshot().closed) {
+      if (!r.owner.snapshot().closed && key !== 'hidden') {
         const d = r.decoders.at(-1);
         for (const chunk of [...d.chunks])
           if (!r.painted.some((p) => p.ptsUs === chunk.timestamp)) r.frame(d, chunk.timestamp);
@@ -1507,5 +1532,213 @@ test('source-only retained in-flight record exercises the real capacity-three un
   assert.equal(r.painted.length, 3);
   assert.equal(r.consumed.length, 5);
   assert.equal(r.owner.accounting(), null);
+  r.owner.close();
+});
+
+test('hidden decoder retires pending and held work once, drains bounded traffic, then requires a fresh IDR', async () => {
+  const r = await configuredRig();
+  const old = r.send('KEY');
+  r.send('DELTA');
+  const held = r.send('DELTA');
+  accounting(r, { admitted: 3, submitted: 2, outstanding: 3, pending: 2, held: 1 });
+  r.fence('HIDDEN');
+  accounting(r, { admitted: 3, hidden: 3, outstanding: 0, pending: 0, held: 0 });
+  assert.equal(r.consumed.filter((v) => v.deliveryId === held.deliveryId).length, 1);
+  assert.equal(r.owner.snapshot().state, 'PAUSED_HIDDEN');
+  for (let i = 0; i < 20; i++) r.send(i % 3 ? 'DELTA' : 'KEY');
+  accounting(r, { admitted: 23, hidden: 23, submitted: 2, outstanding: 0 });
+  assert.equal(r.decoders.length, 1);
+  r.fence('VISIBLE');
+  r.send('DELTA');
+  accounting(r, { admitted: 24, waitingKey: 1, outstanding: 0 });
+  assert.equal(r.owner.snapshot().state, 'WAITING_FRESH_KEY');
+  const fresh = r.send('KEY');
+  await flush();
+  r.frame(r.decoders[1], fresh.ptsUs);
+  accounting(r, { admitted: 25, submitted: 3, drawn: 1, hidden: 23, waitingKey: 1 });
+  assert.equal(r.frame(r.decoders[0], old.ptsUs).closed, 1);
+  assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+  assert.equal(new Set(r.consumed.map((v) => v.deliveryId)).size, r.consumed.length);
+  r.owner.close();
+});
+
+test('stale decoder output cannot erase a newer resumed paint', async () => {
+  const r = await configuredRig();
+  let clears = 0;
+  const original = r.canvas.getContext;
+  r.canvas.getContext = (...args) => ({
+    ...original(...args),
+    clearRect() {
+      clears++;
+    },
+  });
+  const old = r.send('KEY');
+  r.frame(r.decoders[0], old.ptsUs);
+  r.fence('HIDDEN');
+  r.fence('VISIBLE');
+  const fresh = r.send('KEY');
+  await flush();
+  r.frame(r.decoders[1], fresh.ptsUs);
+  const before = clears;
+  assert.equal(r.frame(r.decoders[0], old.ptsUs).closed, 1);
+  assert.equal(clears, before, 'stale output must close without touching the new canvas');
+  assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+  assert.equal(r.painted.length, 2);
+  r.owner.close();
+});
+
+for (const rejection of [false, true]) {
+  test(`hidden CONFIG support ${rejection ? 'rejection' : 'resolution'} stays bounded and cannot steal fresh-key ownership`, async () => {
+    const checks = [];
+    const r = rig({
+      support: () => new Promise((resolve, reject) => checks.push({ resolve, reject })),
+    });
+    r.send('SESSION');
+    const config = r.send('CONFIG');
+    assert.equal(checks.length, 1);
+    r.fence('HIDDEN');
+    assert.equal(r.consumed.filter((v) => v.deliveryId === config.deliveryId).length, 1);
+    r.fence('VISIBLE');
+    const abandoned = r.send('KEY');
+    await flush();
+    assert.equal(r.owner.snapshot().held, true);
+    r.fence('HIDDEN');
+    assert.equal(r.consumed.filter((v) => v.deliveryId === abandoned.deliveryId).length, 1);
+    r.fence('VISIBLE');
+    const fresh = r.send('KEY');
+    await flush();
+    assert.equal(checks.length, 1, 'invalidating a check does not cancel its promise');
+    if (rejection) checks[0].reject(Error('obsolete support'));
+    else checks[0].resolve(true);
+    await flush();
+    assert.equal(checks.length, 2);
+    assert.equal(r.decoders.length, 0);
+    assert.equal(r.owner.snapshot().closed, false);
+    assert.equal(
+      r.consumed.some((v) => v.deliveryId === fresh.deliveryId),
+      false,
+    );
+    checks[1].resolve(true);
+    await flush();
+    assert.equal(r.decoders.length, 1);
+    assert.equal(r.decoders[0].chunks.length, 1);
+    r.frame(r.decoders[0], fresh.ptsUs);
+    accounting(r, { admitted: 2, submitted: 1, drawn: 1, hidden: 1, outstanding: 0 });
+    assert.equal(new Set(r.consumed.map((v) => v.deliveryId)).size, r.consumed.length);
+    r.owner.close();
+  });
+}
+
+test('hide before first paint never suspends the original startup deadline', async () => {
+  const r = await configuredRig();
+  r.setNow(29000);
+  r.fence('HIDDEN');
+  assert.equal([...r.timers.values()][0].ms, 1000);
+  r.setNow(30000);
+  [...r.timers.values()][0].fn();
+  assert.equal(r.owner.snapshot().failureReason, 'DEADLINE');
+  assert.equal(r.owner.snapshot().closed, true);
+});
+
+test('hide and repeated fences preserve the remaining visible second instead of renewing it', async () => {
+  const r = await configuredRig();
+  const first = r.send('KEY');
+  r.frame(r.decoders[0], first.ptsUs);
+  r.setNow(29000);
+  r.fence('HIDDEN');
+  assert.equal(r.timers.size, 0);
+  r.setNow(100000);
+  r.fence('VISIBLE');
+  assert.equal([...r.timers.values()][0].ms, 1000);
+  r.send('CONFIG', { configId: 2 });
+  await flush();
+  r.fence('HIDDEN');
+  r.fence('VISIBLE');
+  assert.equal([...r.timers.values()][0].ms, 1000);
+  r.setNow(101000);
+  [...r.timers.values()][0].fn();
+  assert.equal(r.owner.snapshot().failureReason, 'DEADLINE');
+});
+
+for (const throws of [false, true]) {
+  test(`hide during ${throws ? 'failed' : 'successful'} draw settles once and cannot publish PAINTED`, async () => {
+    const r = await configuredRig();
+    const key = r.send('KEY');
+    r.send('DELTA');
+    const canvasEvents = [];
+    const original = r.canvas.getContext;
+    r.canvas.getContext = (...args) => ({
+      ...original(...args),
+      clearRect() {
+        canvasEvents.push('clear');
+      },
+    });
+    r.setDrawHook(() => {
+      r.fence('HIDDEN');
+      canvasEvents.push('draw-after-hide');
+      if (throws) throw Error('synthetic hidden draw');
+    });
+    assert.equal(r.frame(r.decoders[0], key.ptsUs).closed, 1);
+    assert.equal(
+      canvasEvents.at(-1),
+      'clear',
+      'an invalidated draw must clear after returning or throwing',
+    );
+    accounting(r, {
+      admitted: 2,
+      submitted: 2,
+      drawn: throws ? 0 : 1,
+      hidden: throws ? 2 : 1,
+      outstanding: 0,
+    });
+    assert.equal(r.owner.snapshot().state, 'PAUSED_HIDDEN');
+    assert.equal(r.painted.length, 0);
+    r.owner.close();
+  });
+}
+
+test('hidden media still rejects a KEY label containing a delta NAL', async () => {
+  const r = await configuredRig();
+  r.fence('HIDDEN');
+  r.send('KEY', { bytes: media(false), totalBytes: media(false).length });
+  assert.equal(r.owner.snapshot().failureReason, 'SUBMISSION');
+  accounting(r, { admitted: 0, hidden: 0 });
+});
+
+test('visible frontier rejects an already assembling KEY but admits a later same-config IDR', async () => {
+  const r = await configuredRig();
+  r.fence('HIDDEN');
+  r.fence('VISIBLE', { afterPacketId: 2 });
+  r.send('KEY');
+  accounting(r, { admitted: 1, waitingKey: 1, submitted: 0 });
+  assert.equal(r.decoders.length, 1);
+  const later = r.send('KEY');
+  await flush();
+  r.frame(r.decoders[1], later.ptsUs);
+  accounting(r, { admitted: 2, waitingKey: 1, drawn: 1 });
+  r.owner.close();
+});
+
+test('nested VISIBLE fence from decoder close preserves the held delivery ACK exactly once', async () => {
+  const r = await configuredRig();
+  r.send('KEY');
+  r.send('DELTA');
+  const held = r.send('DELTA');
+  accounting(r, { admitted: 3, submitted: 2, outstanding: 3, held: 1 });
+  r.decoders[0].close = function () {
+    this.closed = true;
+    r.fence('VISIBLE');
+  };
+  r.fence('HIDDEN');
+  assert.equal(r.owner.snapshot().closed, false);
+  assert.equal(r.owner.snapshot().state, 'WAITING_FRESH_KEY');
+  assert.equal(r.consumed.filter((v) => v.deliveryId === held.deliveryId).length, 1);
+  accounting(r, { admitted: 3, hidden: 3, outstanding: 0, pending: 0, held: 0 });
+  const fresh = r.send('KEY');
+  await flush();
+  assert.equal(r.decoders.length, 2);
+  r.frame(r.decoders[1], fresh.ptsUs);
+  assert.equal(r.owner.snapshot().state, 'DISPLAYING');
+  assert.equal(new Set(r.consumed.map((v) => v.deliveryId)).size, r.consumed.length);
   r.owner.close();
 });

@@ -14,31 +14,21 @@ import {
   videoStreamResponse,
 } from './video-stream-contract.ts';
 import type { VideoMediaDelivery, VideoMediaHeader } from './video-media-contract.ts';
+import {
+  snapshotVideoPresentationControl,
+  type VideoPresentationState,
+} from './video-presentation-contract.ts';
 const mono = performance.now.bind(performance);
-function exact(raw: unknown, keys: readonly string[]): Record<string, unknown> | null {
-  try {
-    if (
-      !raw ||
-      typeof raw !== 'object' ||
-      ![Object.prototype, null].includes(Object.getPrototypeOf(raw))
-    )
-      return null;
-    const d = Object.getOwnPropertyDescriptors(raw);
-    if (
-      Reflect.ownKeys(d).length !== keys.length ||
-      keys.some((k) => !d[k]?.enumerable || !Object.hasOwn(d[k], 'value'))
-    )
-      return null;
-    return Object.fromEntries(keys.map((k) => [k, d[k]?.value]));
-  } catch {
-    return null;
-  }
-}
+export type VideoWindowObservation = Readonly<{
+  read(): 'VISIBLE' | 'HIDDEN' | 'UNAVAILABLE';
+  subscribe(listener: () => void): () => void;
+}>;
 export function installVideoStreamBridge(
   ipc: Pick<IpcMain, 'handle' | 'removeHandler'>,
   admit: (event: IpcMainInvokeEvent) => Admission,
   admitCleanup: (event: IpcMainInvokeEvent) => Admission,
   service: () => DiscoverySessionService | null,
+  captureWindow: (event: IpcMainInvokeEvent) => VideoWindowObservation | null,
 ) {
   let disposed = false,
     quotaClosed = false;
@@ -54,6 +44,7 @@ export function installVideoStreamBridge(
   const requests = new Set<string>();
   ipc.handle(VIDEO_STREAM_CHANNEL, async (event, raw: unknown, ...extra: unknown[]) => {
     let release: (() => void) | undefined;
+    let releaseObservation: (() => void) | undefined;
     let requestId: string | null = null;
     try {
       if (disposed) return videoStreamResponse(null, 'CLOSED');
@@ -84,6 +75,13 @@ export function installVideoStreamBridge(
         frame.url !== 'auto-foundation://app/status.html'
       )
         return videoStreamResponse(requestId, 'CLOSED');
+      const capturedObservation = captureWindow(event);
+      if (!capturedObservation) return videoStreamResponse(requestId, 'UNAVAILABLE');
+      const observation = capturedObservation;
+      let observeChanged = () => {};
+      releaseObservation = observation.subscribe(() => observeChanged());
+      if (observation.read() !== 'VISIBLE' || !admission.current())
+        return videoStreamResponse(requestId, 'UNAVAILABLE');
       const admissionMono = mono();
       if (!Number.isFinite(admissionMono)) return videoStreamResponse(requestId, 'UNAVAILABLE');
       const candidate = service()?.reserveVideo(request.deviceId, request.expectedRegistryRevision);
@@ -112,7 +110,24 @@ export function installVideoStreamBridge(
       let stopWork: Promise<boolean> | null = null;
       let timer: ReturnType<typeof setTimeout> | null = null;
       let rejectDelivery: (() => void) | null = null;
-      let pendingDelivery: { delivery: VideoMediaDelivery; resolve(): void } | null = null;
+      let pendingDelivery: {
+        delivery: VideoMediaDelivery;
+        epoch: number;
+        deadline: number;
+        posted: boolean;
+        resolve(): void;
+      } | null = null;
+      let observed: VideoPresentationState = 'VISIBLE';
+      let fenced: VideoPresentationState | null = null;
+      let epoch = 0,
+        retiredEpoch = 0,
+        frontier = 0,
+        postedDeliveryId = 0;
+      let fence: { epoch: number; state: VideoPresentationState; deadline: number } | null = null;
+      let begun = false,
+        firstPaint = false;
+      let unsubscribe: (() => void) | undefined = releaseObservation;
+      releaseObservation = undefined;
       let packet: { header: VideoMediaHeader; bytes: Uint8Array; offset: number } | null = null;
       let credit = 0,
         deliveryId = 0,
@@ -128,11 +143,13 @@ export function installVideoStreamBridge(
       const paints = new Map<number, VideoMediaDelivery>();
       const startedMono = admissionMono;
       let lastMono = mono();
-      let drawDeadline = Math.min(
+      const drawDeadline = Math.min(
         startedMono + 30000,
         lastMono + Math.max(0, Math.min(30000, reservation.deadlineUtc - Date.now())),
       );
       const startupDeadline = drawDeadline;
+      let remainingVisible = drawDeadline - lastMono;
+      let chargedMono = lastMono;
       let portRetired = false,
         portTeardownStarted = false;
       let refusalTimer: ReturnType<typeof setTimeout> | null = null;
@@ -154,21 +171,135 @@ export function installVideoStreamBridge(
         lastMono = value;
         return value;
       }
+      function charge() {
+        const t = now();
+        if (observed === 'VISIBLE') remainingVisible -= t - chargedMono;
+        chargedMono = t;
+        if (
+          !current() ||
+          (!firstPaint && t >= startupDeadline) ||
+          remainingVisible <= 0 ||
+          (fence && t >= fence.deadline) ||
+          (pendingDelivery?.posted && t >= pendingDelivery.deadline)
+        )
+          throw Error('VIDEO_EXPIRED');
+        return t;
+      }
+      function refreshWindow() {
+        charge(); // A late hide never saves an expired visible owner.
+        const state = observation.read();
+        if (state !== 'VISIBLE' && state !== 'HIDDEN') throw Error('VIDEO_WINDOW');
+        if (!current()) throw Error('VIDEO_CLOSED');
+        if (state !== observed) {
+          observed = state;
+          retiredEpoch = epoch;
+          paints.clear();
+          waitingKey = true;
+        }
+      }
       function arm() {
         if (timer !== null) clearTimeout(timer);
-        const remaining = drawDeadline - now();
-        if (remaining <= 0 || !current()) {
-          void stop();
-          return;
-        }
-        timer = setTimeout(() => {
-          try {
-            if (!current() || now() >= drawDeadline) void stop();
-            else arm();
-          } catch {
+        timer = null;
+        const t = charge();
+        const due = Math.min(
+          firstPaint ? Infinity : startupDeadline,
+          observed === 'VISIBLE' ? t + remainingVisible : Infinity,
+          fence?.deadline ?? Infinity,
+          pendingDelivery?.posted ? pendingDelivery.deadline : Infinity,
+        );
+        if (Number.isFinite(due))
+          timer = setTimeout(
+            () => {
+              try {
+                refreshWindow();
+                pump();
+              } catch {
+                void stop();
+              }
+            },
+            Math.max(0, due - t),
+          );
+      }
+      function pump() {
+        if (!ready || !port || !current()) return;
+        refreshWindow();
+        if (!fence && (fenced !== observed || epoch === 0 || retiredEpoch === epoch)) {
+          if (epoch >= 65536) throw Error('VIDEO_TRANSITION_LIMIT');
+          const t = charge();
+          // Bootstrap is always VISIBLE. If the window hid after admission,
+          // coalesce HIDDEN behind this ACK before beginning the native session.
+          const state = epoch === 0 ? 'VISIBLE' : observed;
+          const next = ++epoch;
+          frontier = Math.max(
+            frontier,
+            lastPacket,
+            packet?.header.packetId ?? 0,
+            pendingDelivery?.delivery.packetId ?? 0,
+          );
+          fence = {
+            epoch: next,
+            state,
+            deadline: Math.min(t + 30000, firstPaint ? Infinity : startupDeadline),
+          };
+          port.postMessage({
+            version: 2,
+            videoId: reservation.videoId,
+            kind: 'PRESENTATION',
+            epoch: next,
+            state,
+            afterDeliveryId: postedDeliveryId,
+            afterPacketId: frontier,
+            remainingMs: Math.min(
+              30000,
+              remainingVisible,
+              firstPaint ? Infinity : startupDeadline - t,
+            ),
+          });
+          if (!current()) {
             void stop();
+            return;
           }
-        }, remaining);
+        }
+        if (!fence && fenced === observed && retiredEpoch < epoch) {
+          if (!begun) {
+            begun = true;
+            begin();
+            if (!current()) {
+              void stop();
+              return;
+            }
+          }
+          const pending = pendingDelivery;
+          if (pending && !pending.posted) {
+            const d = pending.delivery;
+            const t = charge();
+            pending.epoch = epoch;
+            pending.deadline = Math.min(t + 30000, firstPaint ? Infinity : startupDeadline);
+            pending.posted = true;
+            postedDeliveryId = d.deliveryId;
+            if (
+              observed === 'VISIBLE' &&
+              d.packetId > frontier &&
+              (d.kind === 'KEY' || (d.kind === 'DELTA' && !waitingKey))
+            ) {
+              waitingKey = false;
+              if (paints.size >= 3) throw Error('VIDEO_PAINT_LIMIT');
+              paints.set(d.deliveryId, { ...d, bytes: new Uint8Array() });
+            }
+            port.postMessage({
+              version: 2,
+              videoId: reservation.videoId,
+              kind: 'MEDIA',
+              epoch,
+              delivery: d,
+            });
+            if (!current()) {
+              void stop();
+              return;
+            }
+          }
+        }
+        arm();
       }
       function teardownPort() {
         if (portTeardownStarted) return;
@@ -195,6 +326,13 @@ export function installVideoStreamBridge(
           return stopWork;
         }
         stopped = true;
+        const remove = unsubscribe;
+        unsubscribe = undefined;
+        try {
+          remove?.();
+        } catch {
+          /* Owner remains terminal even if listener removal fails. */
+        }
         let settle: (value: boolean) => void = () => {};
         stopWork = new Promise<boolean>((resolve) => {
           settle = resolve;
@@ -231,25 +369,23 @@ export function installVideoStreamBridge(
       });
       owners.set(entry.videoId, entry);
       owner = entry; // Distinct owner after proven retirement; old tombstone remains single-use.
+      observeChanged = () => {
+        if (stopped) return;
+        try {
+          refreshWindow();
+          pump();
+        } catch {
+          void stop();
+        }
+      };
       const send = (delivery: VideoMediaDelivery): Promise<void> => {
         if (!current() || !ready || !port || pendingDelivery)
           return Promise.reject(Error('VIDEO_CLOSED'));
-        const capturedPort = port;
         return new Promise<void>((resolve, reject) => {
-          pendingDelivery = { delivery, resolve };
+          pendingDelivery = { delivery, epoch: 0, deadline: Infinity, posted: false, resolve };
           rejectDelivery = () => reject(Error('VIDEO_CLOSED'));
-          if (delivery.kind === 'KEY' || (delivery.kind === 'DELTA' && !waitingKey)) {
-            waitingKey = false;
-            if (paints.size >= 3) {
-              void stop();
-              return;
-            }
-            // Only immutable scalar identity is retained; packet bytes remain in this one delivery.
-            paints.set(delivery.deliveryId, { ...delivery, bytes: new Uint8Array() });
-          }
           try {
-            capturedPort.postMessage(delivery);
-            if (!current()) void stop();
+            pump();
           } catch {
             void stop();
           }
@@ -377,6 +513,51 @@ export function installVideoStreamBridge(
           }
         },
       });
+      function begin() {
+        const session = reservation.begin(sink);
+        void session.started.then(
+          (rawResult) => {
+            startResolved = true;
+            const result = rawResult === null ? null : snapshotVideoRecoveryResult(rawResult);
+            if (rawResult !== null && (!result || result.videoId !== reservation.videoId)) {
+              void stop();
+              return;
+            }
+            if (result?.refusal === 'QUOTA') quotaClosed = true;
+            if (!current()) {
+              void stop();
+              return;
+            }
+            if (result?.handoff === 'OWNED') {
+              if (lowerMediaClosed) void stop();
+              return;
+            }
+            refusal = result?.refusal ?? 'REJECTED';
+            if (refusal === 'QUOTA') quotaClosed = true;
+            void stop(true); // Cancel media/lower work now; notification is not retirement.
+            try {
+              const remaining = startupDeadline - now();
+              if (remaining <= 0 || !port) {
+                teardownPort();
+                return;
+              }
+              refusalTimer = setTimeout(teardownPort, remaining);
+              port.postMessage({
+                version: 2,
+                videoId: reservation.videoId,
+                kind: 'REFUSED',
+                reason: refusal,
+              });
+            } catch {
+              teardownPort();
+            }
+          },
+          () => {
+            startResolved = true;
+            void stop();
+          },
+        );
+      }
       try {
         const channel = new MessageChannelMain();
         port = channel.port1;
@@ -387,156 +568,86 @@ export function installVideoStreamBridge(
               void stop();
               return;
             }
-            const rawMessage = event.data;
+            refreshWindow();
+            const message = snapshotVideoPresentationControl(event.data);
+            if (!message || message.videoId !== reservation.videoId) throw Error('VIDEO_CONTROL');
             if (!ready) {
-              const v = exact(rawMessage, ['version', 'videoId', 'kind']);
-              if (v?.version !== 1 || v.videoId !== reservation.videoId || v.kind !== 'READY')
-                throw Error();
+              if (message.kind !== 'READY') throw Error('VIDEO_READY');
               ready = true;
-              const session = reservation.begin(sink);
-              void session.started.then(
-                (rawResult) => {
-                  startResolved = true;
-                  const result = rawResult === null ? null : snapshotVideoRecoveryResult(rawResult);
-                  if (rawResult !== null && (!result || result.videoId !== reservation.videoId)) {
-                    void stop();
-                    return;
-                  }
-                  if (result?.refusal === 'QUOTA') quotaClosed = true;
-                  if (!current()) {
-                    void stop();
-                    return;
-                  }
-                  if (result?.handoff === 'OWNED') {
-                    if (lowerMediaClosed) void stop();
-                    return;
-                  }
-                  refusal = result?.refusal ?? 'REJECTED';
-                  if (refusal === 'QUOTA') quotaClosed = true;
-                  void stop(true); // Cancel media/lower work now; notification is not retirement.
-                  try {
-                    const remaining = startupDeadline - now();
-                    if (remaining <= 0 || !port) {
-                      teardownPort();
-                      return;
-                    }
-                    refusalTimer = setTimeout(teardownPort, remaining);
-                    port.postMessage({
-                      version: 1,
-                      videoId: reservation.videoId,
-                      kind: 'REFUSED',
-                      reason: refusal,
-                    });
-                  } catch {
-                    teardownPort();
-                  }
-                },
-                () => {
-                  startResolved = true;
-                  void stop();
-                },
-              );
+              pump();
               return;
             }
-            const ack = exact(rawMessage, ['version', 'videoId', 'deliveryId', 'kind']);
-            if (ack?.kind === 'CONSUMED') {
+            if (message.kind === 'PRESENTATION_ACK') {
+              if (!fence || message.epoch !== fence.epoch) throw Error('VIDEO_FENCE');
+              fenced = fence.state;
+              fence = null;
+              pump();
+              return;
+            }
+            if (message.kind === 'VISIBILITY_HINT') {
+              pump();
+              return;
+            }
+            if (message.kind === 'CONSUMED') {
               if (
-                ack.version !== 1 ||
-                ack.videoId !== reservation.videoId ||
-                !pendingDelivery ||
-                ack.deliveryId !== pendingDelivery.delivery.deliveryId
+                !pendingDelivery?.posted ||
+                message.epoch !== pendingDelivery.epoch ||
+                message.deliveryId !== pendingDelivery.delivery.deliveryId
               )
-                throw Error();
+                throw Error('VIDEO_CONSUMED');
               const captured = pendingDelivery;
               pendingDelivery = null;
               rejectDelivery = null;
               captured.resolve();
+              pump();
               return;
             }
-            const paint = exact(rawMessage, [
-              'version',
-              'videoId',
-              'kind',
-              'deliveryId',
-              'geometryId',
-              'configId',
-              'packetId',
-              'ptsUs',
-              'width',
-              'height',
-            ]);
-            if (paint?.kind === 'PAINTED') {
-              const scalars = [
-                'deliveryId',
-                'geometryId',
-                'configId',
-                'packetId',
-                'ptsUs',
-                'width',
-                'height',
-              ];
+            if (message.kind === 'PAINTED') {
               if (
-                paint.version !== 1 ||
-                paint.videoId !== reservation.videoId ||
-                scalars.some(
-                  (k) =>
-                    typeof paint[k] !== 'number' ||
-                    !Number.isSafeInteger(paint[k]) ||
-                    (paint[k] as number) < 0 ||
-                    Object.is(paint[k], -0),
-                ) ||
-                !paint.deliveryId ||
-                !paint.geometryId ||
-                !paint.configId ||
-                !paint.packetId ||
-                !paint.width ||
-                !paint.height ||
-                (paint.deliveryId as number) > deliveryId
+                message.epoch > epoch ||
+                message.deliveryId > deliveryId ||
+                message.geometryId > geometry ||
+                message.configId > lastConfiguration ||
+                message.packetId > lastPacket
               )
-                throw Error();
-              if (
-                (paint.geometryId as number) > geometry ||
-                (paint.configId as number) > lastConfiguration ||
-                (paint.packetId as number) > lastPacket ||
-                (paint.width as number) > 4096 ||
-                (paint.height as number) > 4096 ||
-                (paint.width as number) * (paint.height as number) > 8_388_608
-              )
-                throw Error();
-              // Old geometry/config observations cannot renew health or become a current paint.
-              if (
-                (paint.deliveryId as number) <= lastPaint ||
-                (paint.geometryId as number) < geometry ||
-                (paint.geometryId === geometry && (paint.configId as number) < configuration)
-              )
+                throw Error('VIDEO_PAINT_FUTURE');
+              if (message.epoch < epoch || message.epoch <= retiredEpoch) {
+                pump();
                 return;
-              const d = paints.get(paint.deliveryId as number);
+              }
+              if (observed !== 'VISIBLE' || fence || fenced !== 'VISIBLE')
+                throw Error('VIDEO_PAINT_HIDDEN');
+              if (
+                message.deliveryId <= lastPaint ||
+                message.geometryId < geometry ||
+                (message.geometryId === geometry && message.configId < configuration)
+              ) {
+                pump();
+                return;
+              }
+              const d = paints.get(message.deliveryId);
               if (
                 !d ||
-                paint.version !== 1 ||
-                paint.videoId !== reservation.videoId ||
-                d.deliveryId <= lastPaint ||
                 d.geometryId !== geometry ||
                 d.configId !== configuration ||
                 ['geometryId', 'configId', 'packetId', 'ptsUs', 'width', 'height'].some(
-                  (k) => paint[k] !== (d as unknown as Record<string, unknown>)[k],
+                  (k) =>
+                    (message as unknown as Record<string, unknown>)[k] !==
+                    (d as unknown as Record<string, unknown>)[k],
                 )
               )
-                throw Error();
-              if (now() >= drawDeadline) throw Error();
+                throw Error('VIDEO_PAINT_IDENTITY');
+              charge();
               paints.delete(d.deliveryId);
               lastPaint = d.deliveryId;
-              drawDeadline = now() + 30000;
-              arm();
+              firstPaint = true;
+              remainingVisible = 30000;
+              chargedMono = now();
+              pump();
               return;
             }
-            const failure = exact(rawMessage, ['version', 'videoId', 'kind']);
-            if (
-              failure?.version !== 1 ||
-              failure.videoId !== reservation.videoId ||
-              !['STOP', 'DECODER_UNAVAILABLE', 'DECODE_FAILED'].includes(failure.kind as string)
-            )
-              throw Error();
+            if (!['STOP', 'DECODER_UNAVAILABLE', 'DECODE_FAILED'].includes(message.kind))
+              throw Error('VIDEO_CONTROL');
             void stop();
           } catch {
             void stop();
@@ -546,6 +657,7 @@ export function installVideoStreamBridge(
           void stop();
         });
         port.start();
+        refreshWindow();
         arm();
         if (!current()) throw Error();
         frame.postMessage(
@@ -570,6 +682,7 @@ export function installVideoStreamBridge(
     } catch {
       return videoStreamResponse(requestId, 'UNAVAILABLE');
     } finally {
+      releaseObservation?.();
       release?.();
     }
   });

@@ -65,6 +65,7 @@ export const inputs = [
   'src/h264-video.ts',
   'src/video-decoder.ts',
   'src/video-media-contract.ts',
+  'src/video-presentation-contract.ts',
   'src/video-stream-contract.ts',
   'src/video-stream-client.ts',
   'src/video-stream-bridge.ts',

@@ -144,6 +144,7 @@ export const TEST_FILES = Object.freeze([
   'tests/video-contract.test.mjs',
   'tests/video-decoder.test.mjs',
   'tests/video-media-contract.test.mjs',
+  'tests/video-presentation-contract.test.mjs',
   'tests/video-stream-bridge.test.mjs',
   'tests/video-stream-client.test.mjs',
   'tests/work-pages.test.mjs',

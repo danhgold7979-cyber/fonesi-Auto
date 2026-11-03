@@ -1,8 +1,8 @@
 import { createTileVideoDecoder, type VideoAccounting } from './video-decoder.ts';
+import { snapshotVideoPresentationMessage } from './video-presentation-contract.ts';
 import {
   parseVideoStreamResponse,
   snapshotVideoPortMetadata,
-  snapshotVideoRefusal,
   VIDEO_WINDOW_ORIGIN,
   type VideoPortMetadata,
 } from './video-stream-contract.ts';
@@ -837,6 +837,7 @@ function Diagnostic() {
     metadata: VideoPortMetadata | null;
     decoder: ReturnType<typeof createTileVideoDecoder> | null;
     canvas: HTMLCanvasElement | null;
+    disposeVisibility: (() => void) | null;
   };
   const [videoView, setVideoView] = useState<{
     deviceId: string;
@@ -920,6 +921,8 @@ function Diagnostic() {
     const r = videoSession.current;
     if (!r) return;
     r.stopped = true;
+    r.disposeVisibility?.();
+    r.disposeVisibility = null;
     if (videoAlive.current) setPreviewCapture(null);
     r.decoder?.close();
     r.decoder = null;
@@ -978,12 +981,18 @@ function Diagnostic() {
         !r.stopped &&
         eligibleVideo(r.deviceId, r.generation) &&
         videoFleet.current.fleet?.registryRevision === r.registryRevision,
+      visible: () => !document.hidden,
+      onPresentationAck: (value) => port.postMessage(value),
       onConsumed: (value) => port.postMessage(value),
       onPainted: (value) => port.postMessage(value),
       onState: (state) => {
         if (videoSession.current !== r || !videoAlive.current || r.failure?.startsWith('REFUSED:'))
           return;
-        setVideoView({ deviceId: r.deviceId, generation: r.generation, state });
+        setVideoView({
+          deviceId: r.deviceId,
+          generation: r.generation,
+          state: state === 'PAUSED_HIDDEN' ? 'PAUSED_HIDDEN:WINDOW_HIDDEN' : state,
+        });
         if (state === 'DECODE_FAILED' || state === 'DECODER_UNAVAILABLE') {
           const geometry = r.decoder?.snapshot().geometryFailure;
           if (geometry && r.canvas) r.canvas.dataset.videoGeometry = JSON.stringify(geometry);
@@ -1001,21 +1010,39 @@ function Diagnostic() {
     }
     port.onmessage = (event) => {
       if (videoSession.current !== r || r.stopped) return;
-      const refused = snapshotVideoRefusal(event.data);
-      if (refused) {
-        if (refused.videoId !== r.videoId) return;
-        if (refused.reason === 'QUOTA') videoQuotaClosed.current = true;
-        r.failure = `REFUSED:${refused.reason}`;
+      const message = snapshotVideoPresentationMessage(event.data);
+      if (message?.kind === 'REFUSED') {
+        if (message.videoId !== r.videoId) return;
+        if (message.reason === 'QUOTA') videoQuotaClosed.current = true;
+        r.failure = `REFUSED:${message.reason}`;
         void videoActions.current.stopVideo();
         return;
       }
-      r.decoder?.receive(event.data);
+      if (message?.kind === 'PRESENTATION') r.decoder?.presentation(message);
+      else r.decoder?.receive(message ?? event.data);
     };
     port.onmessageerror = () => {
-      void videoActions.current.stopVideo();
+      if (videoSession.current === r && !r.stopped && r.port === port)
+        void videoActions.current.stopVideo();
     };
-    port.start();
-    port.postMessage({ version: 1, videoId: r.videoId, kind: 'READY' });
+    const visibility = () => {
+      if (videoSession.current !== r || r.stopped || r.port !== port || !videoAlive.current) return;
+      try {
+        // This is a wake-up hint only. Main independently reads its captured BrowserWindow.
+        port.postMessage({ version: 2, videoId: r.videoId, kind: 'VISIBILITY_HINT' });
+      } catch {
+        void videoActions.current.stopVideo();
+      }
+    };
+    r.disposeVisibility = () => document.removeEventListener('visibilitychange', visibility);
+    try {
+      document.addEventListener('visibilitychange', visibility);
+      port.start();
+      if (!r.stopped && videoSession.current === r && r.port === port)
+        port.postMessage({ version: 2, videoId: r.videoId, kind: 'READY' });
+    } catch {
+      void videoActions.current.stopVideo();
+    }
   };
   const videoAttach = useRef(attachVideo);
   videoAttach.current = attachVideo;
@@ -1056,6 +1083,7 @@ function Diagnostic() {
       metadata: null,
       decoder: null,
       canvas: null,
+      disposeVisibility: null,
     };
     videoSession.current = r;
     setPreviewCapture(null);
@@ -1079,6 +1107,8 @@ function Diagnostic() {
         !result.videoId
       ) {
         r.stopped = true;
+        r.disposeVisibility?.();
+        r.disposeVisibility = null;
         r.decoder?.close();
         r.port?.close();
         if (videoAlive.current)
@@ -1099,6 +1129,8 @@ function Diagnostic() {
     } catch {
       if (videoSession.current === r) {
         r.stopped = true;
+        r.disposeVisibility?.();
+        r.disposeVisibility = null;
         r.port?.close();
         r.decoder?.close();
         if (videoAlive.current) setVideoView({ deviceId, generation, state: 'UNCERTAIN' });
@@ -1380,7 +1412,8 @@ function Diagnostic() {
               </div>
               <div>
                 Bỏ: {previewSample.discarded} (chờ key {previewSample.waitingKey}, reset{' '}
-                {previewSample.reset}, stop/lỗi {previewSample.stopped})
+                {previewSample.reset}, stop/lỗi {previewSample.stopped}, ẩn cửa sổ{' '}
+                {previewSample.hidden})
               </div>
               <div>
                 Canvas:{' '}

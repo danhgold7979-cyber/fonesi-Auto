@@ -1,4 +1,5 @@
 import { generateVideoDecoderFixture } from '../verification/video-decoder-fixture.mjs';
+import * as presentationContract from '../src/video-presentation-contract.ts';
 import * as videoContract from '../src/video-stream-contract.ts';
 import * as videoClient from '../src/video-stream-client.ts';
 import * as videoDecoder from '../src/video-decoder.ts';
@@ -50,6 +51,15 @@ function mount(
   const effects = [],
     cleanups = [],
     events = new Map();
+  const documentEvents = new Map();
+  const hostDocument = {
+    hidden: false,
+    getElementById: () => ({}),
+    addEventListener: (name, fn) => documentEvents.set(name, fn),
+    removeEventListener: (name, fn) => {
+      if (documentEvents.get(name) === fn) documentEvents.delete(name);
+    },
+  };
   const hostWindow = {
     innerWidth: width,
     videoStream: videoApi,
@@ -147,6 +157,7 @@ function mount(
           snapshotVideoPortMetadata: (raw) =>
             videoContract.snapshotVideoPortMetadata(JSON.parse(JSON.stringify(raw))),
         }; // VM realm marshaling only
+      if (name === './video-presentation-contract.ts') return presentationContract;
       if (name === './video-stream-client.ts') return videoClient;
       if (name === './video-decoder.ts')
         return videoBindings
@@ -184,7 +195,7 @@ function mount(
     },
     clearTimeout: (id) => hostTimers.delete(id),
     window: hostWindow,
-    document: { getElementById: () => ({}) },
+    document: hostDocument,
   });
   const render = () => {
     cursor = 0;
@@ -207,6 +218,8 @@ function mount(
   return {
     render,
     hostWindow,
+    hostDocument,
+    documentEvents,
     find,
     hostTimers,
     hostTime: (value) => {
@@ -2182,14 +2195,14 @@ for (const stopFailure of [false, true])
       await flush();
       port.onmessage({
         data: {
-          version: 1,
+          version: 2,
           videoId: '00000000-0000-4000-8000-000000000098',
           kind: 'REFUSED',
           reason: 'QUOTA',
         },
       });
       assert.equal(calls.length, 1);
-      port.onmessage({ data: { version: 1, videoId, kind: 'REFUSED', reason } });
+      port.onmessage({ data: { version: 2, videoId, kind: 'REFUSED', reason } });
       assert.equal(m.render().props.video.canStart(fleetId, 1), false);
       await flush();
       assert.equal(calls[1].kind, 'STOP');
@@ -2198,7 +2211,7 @@ for (const stopFailure of [false, true])
         `REFUSED:${reason} / ${stopFailure ? 'UNCERTAIN' : 'STOPPED'}`,
       );
       assert.equal(m.render().props.video.canStart(fleetId, 1), !stopFailure && reason === 'BUSY');
-      port.onmessage({ data: { version: 1, videoId, kind: 'REFUSED', reason: 'QUOTA' } });
+      port.onmessage({ data: { version: 2, videoId, kind: 'REFUSED', reason: 'QUOTA' } });
       assert.equal(m.render().props.video.canStart(fleetId, 1), !stopFailure && reason === 'BUSY');
       assert.ok(port.closed > 0);
       m.dispose();
@@ -2322,21 +2335,40 @@ test('actual renderer reads scoped preview counts without IPC and invalidates st
   assert.ok(show().includes('UNKNOWN'));
   assert.equal(calls.length, 1);
   const fixture = generateVideoDecoderFixture('LANDSCAPE');
+  port.onmessage({
+    data: {
+      version: 2,
+      videoId,
+      kind: 'PRESENTATION',
+      epoch: 1,
+      state: 'VISIBLE',
+      afterDeliveryId: 0,
+      afterPacketId: 0,
+      remainingMs: 20000,
+    },
+  });
+  let epoch = 1;
   const send = (kind, deliveryId, packetId, bytes) =>
     port.onmessage({
       data: {
-        version: 1,
+        version: 2,
         videoId,
-        deliveryId,
-        geometryId: 1,
-        configId: kind === 'SESSION' ? 0 : 1,
-        packetId,
-        kind,
-        ptsUs: kind === 'KEY' ? 1 : null,
-        totalBytes: bytes.length,
-        width: 32,
-        height: 16,
-        bytes,
+        kind: 'MEDIA',
+        epoch,
+        delivery: {
+          version: 1,
+          videoId,
+          deliveryId,
+          geometryId: 1,
+          configId: kind === 'SESSION' ? 0 : 1,
+          packetId,
+          kind,
+          ptsUs: kind === 'KEY' ? packetId : null,
+          totalBytes: bytes.length,
+          width: 32,
+          height: 16,
+          bytes,
+        },
       },
     });
   send('SESSION', 1, 0, new Uint8Array());
@@ -2366,6 +2398,68 @@ test('actual renderer reads scoped preview counts without IPC and invalidates st
   assert.match(text, /Chưa kết thúc: 0/);
   assert.match(text, /Canvas: 32×16/);
 
+  assert.equal(m.documentEvents.size, 1);
+  const visibility = m.documentEvents.get('visibilitychange');
+  m.hostDocument.hidden = true;
+  visibility();
+  assert.equal(posts.at(-1).kind, 'VISIBILITY_HINT');
+  assert.equal(posts.at(-1).version, 2);
+  assert.deepEqual(Object.keys(posts.at(-1)).sort(), ['kind', 'version', 'videoId']);
+  // Document hints do not manufacture a main fence or a paused state.
+  assert.equal(m.render().props.video.view.state, 'DISPLAYING');
+  epoch = 2;
+  port.onmessage({
+    data: {
+      version: 2,
+      videoId,
+      kind: 'PRESENTATION',
+      epoch,
+      state: 'HIDDEN',
+      afterDeliveryId: 3,
+      afterPacketId: 2,
+      remainingMs: 30000,
+    },
+  });
+  assert.equal(m.render().props.video.view.state, 'PAUSED_HIDDEN:WINDOW_HIDDEN');
+  for (let id = 4; id <= 12; id++) send('KEY', id, id - 1, fixture.key);
+  await flush();
+  m.render().props.onPreviewAccountingRead();
+  let hiddenText = renderedText(m.render().props.previewAccounting);
+  assert.match(hiddenText, /Media nhận: 10/);
+  assert.match(hiddenText, /Lần gọi decode: 1/);
+  assert.match(hiddenText, /ẩn cửa sổ 9/);
+  assert.match(hiddenText, /Chưa kết thúc: 0/);
+  assert.equal(posts.filter((v) => v.kind === 'CONSUMED').length, 12);
+  assert.equal(calls.length, 1);
+  m.hostDocument.hidden = false;
+  visibility();
+  epoch = 3;
+  port.onmessage({
+    data: {
+      version: 2,
+      videoId,
+      kind: 'PRESENTATION',
+      epoch,
+      state: 'VISIBLE',
+      afterDeliveryId: 12,
+      afterPacketId: 11,
+      remainingMs: 30000,
+    },
+  });
+  assert.equal(m.render().props.video.view.state, 'WAITING_FRESH_KEY');
+  send('KEY', 13, 12, fixture.key);
+  await flush();
+  assert.equal(m.render().props.video.view.state, 'DISPLAYING');
+  m.render().props.onPreviewAccountingRead();
+  hiddenText = renderedText(m.render().props.previewAccounting);
+  assert.match(hiddenText, /Media nhận: 11/);
+  assert.match(hiddenText, /Canvas đã vẽ: 2/);
+  assert.match(hiddenText, /ẩn cửa sổ 9/);
+  assert.deepEqual(
+    posts.filter((v) => v.kind === 'PRESENTATION_ACK').map((v) => v.epoch),
+    [1, 2, 3],
+  );
+
   assert.equal(calls.length, 1);
   assert.equal(timers.size, timerCount);
   m.render().props.onHostResourcesClose();
@@ -2392,5 +2486,122 @@ test('actual renderer reads scoped preview counts without IPC and invalidates st
   assert.ok(!show().includes('CAPTURED'));
   assert.equal(m.render().props.video.view.state, 'STOPPED');
   assert.ok(port.closed > 0);
+  assert.equal(m.documentEvents.size, 0);
+  const postCount = posts.length;
+  visibility();
+  assert.equal(posts.length, postCount);
   m.dispose();
 });
+
+for (const terminal of [
+  'pagehide',
+  'unmount',
+  'canvas-removed',
+  'port-error',
+  'explicit-stop',
+  'start-rejected',
+  'ready-throws',
+]) {
+  test(`renderer visibility observation retires on ${terminal} and stale callbacks cannot send`, async () => {
+    const calls = [],
+      posts = [];
+    let finishStart;
+    const f = fleetState(0, [fleetId]);
+    f.devices[0].state = 'DEVICE';
+    const m = mount(
+      { read: async () => contract.settingsSuccess('p1', 'OBSERVED', settings(), 'AVAILABLE') },
+      1600,
+      { read: async () => fleetContract.fleetSuccess('f1', 'OBSERVED', f, 'AVAILABLE') },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        invoke(raw) {
+          const r = JSON.parse(raw);
+          calls.push(r);
+          return r.kind === 'START'
+            ? new Promise((resolve) => {
+                finishStart = resolve;
+              })
+            : Promise.resolve(videoContract.videoStreamResponse(r.requestId, 'STOPPED', r.videoId));
+        },
+      },
+    );
+    m.effects();
+    await flush();
+    m.effects();
+    await flush();
+    m.render().props.video.onStart(fleetId, 1);
+    const videoId = '00000000-0000-4000-8000-000000000099';
+    const port = {
+      onmessage: null,
+      onmessageerror: null,
+      start() {},
+      close() {},
+      postMessage(value) {
+        if (terminal === 'ready-throws' && value.kind === 'READY') throw Error('fixture');
+        posts.push(value);
+      },
+    };
+    m.events.get('message')({
+      source: m.hostWindow,
+      origin: videoContract.VIDEO_WINDOW_ORIGIN,
+      data: {
+        type: 'AUTO_VIDEO_PORT_V1',
+        version: 1,
+        videoId,
+        requestId: calls[0].requestId,
+        deviceId: fleetId,
+        generation: 1,
+        deadlineUtc: Date.now() + 20000,
+      },
+      ports: [port],
+    });
+    m.render().props.video.canvasRef({
+      dataset: {},
+      width: 0,
+      height: 0,
+      style: {},
+      getContext: () => ({ clearRect() {}, drawImage() {} }),
+    });
+    const visibility = m.documentEvents.get('visibilitychange');
+    if (terminal !== 'ready-throws') assert.equal(typeof visibility, 'function');
+    const oldMessage = port.onmessage,
+      oldError = port.onmessageerror;
+    if (terminal === 'pagehide') m.events.get('pagehide')();
+    if (terminal === 'unmount') m.dispose();
+    if (terminal === 'canvas-removed') m.render().props.video.canvasRef(null);
+    if (terminal === 'port-error') oldError();
+    if (terminal === 'explicit-stop') m.render().props.video.onStop();
+    finishStart(
+      videoContract.videoStreamResponse(
+        calls[0].requestId,
+        terminal === 'start-rejected' ? 'FAILED' : 'PENDING',
+        videoId,
+      ),
+    );
+    await flush();
+    assert.equal(m.documentEvents.size, 0);
+    const before = posts.length;
+    visibility?.();
+    oldError();
+    oldMessage({
+      data: {
+        version: 2,
+        videoId,
+        kind: 'PRESENTATION',
+        epoch: 1,
+        state: 'VISIBLE',
+        afterDeliveryId: 0,
+        afterPacketId: 0,
+        remainingMs: 20000,
+      },
+    });
+    assert.equal(posts.length, before);
+    assert.equal(calls.filter((v) => v.kind === 'START').length, 1);
+    m.dispose();
+  });
+}

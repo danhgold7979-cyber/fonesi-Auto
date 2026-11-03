@@ -77,9 +77,9 @@ free-space equality is required. Only fixed result markers leave the harness.
 A 15s watchdog fails explicitly, owned cleanup is nonrecursive and actual retirement
 is required. Windows Node 24.22.1/x64 only, no runtime pin changes.
 
-Hosted exact-head result is **PENDING publication** at this preparation checkpoint.
-It will not establish Electron worker or actual production persistence ownership
-integration: `HOST_DISK_ELECTRON_RUNTIME_NOT_RUN` is explicit. No user computer or
+Hosted exact-head result was pending at the publication-preparation checkpoint.
+The later verified result is recorded below. It does not establish Electron worker
+or actual production persistence ownership integration: `HOST_DISK_ELECTRON_RUNTIME_NOT_RUN` is explicit. No user computer or
 phone is used. Existing native/video failures are separate and are not rerun here.
 
 Equal-viewport Dark/Light screenshots: **NOT_RUN**. The existing owned
@@ -95,3 +95,29 @@ criterion review keeps the fixed B cell uncredited because no supported disk-I/O
 adapter is implemented. The fixed 100-cell ledger remains N71/S5/I24: source 29/100,
 integrated 24/100; task acceptance 0/19. No denominator changes, invented completion,
 benchmark/capacity claim, P1-06 clearance or Phase/hardware/legal acceptance.
+
+
+## Exact-head hosted closure observed 2026-11-03 22:58 UTC
+
+Published non-force commit `2b5085939184ccd0b6c4088186f5993904572f3d`,
+tree `eac36ebf3e3340206125cb85503ea6047315bc45`, sole parent
+`3b2ed1746cea2ff111d251d1c2699b420ce53d2b`; public ref and clean local branch match.
+[Windows source run 41734597404](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41734597404)
+completed SUCCESS at 22:57:49 UTC, job 126260403841. Actual log: desktop
+**1903/1903**, foundation **109/109**, Python **383/383**, production and synthetic
+qualifier builds PASS. Windows 2022 image win22/20261026.347.1, Node 24.22.1,
+npm 11.19.1 and Python 3.12.10 were observed, not assumed equivalent to local Linux.
+
+Actual bundled-worker scenarios **4/4 PASS** at 22:56:14–16 UTC: owned directory
+available/total read, absent root, missing root and cancel/drain. Final owned
+directory retirement PASS. `HOST_DISK_ELECTRON_RUNTIME_NOT_RUN`,
+`DEVICE_HARDWARE_NOT_RUN` and `P106_CROSS_USER_UNMET_NOT_RERUN` remain explicit;
+all optional native/device/runtime jobs were skipped rather than credited.
+
+Separate [legacy PR desktop-stack run 41734605727](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41734605727)
+failed at its bounded launch with RUNTIME_OR_CONTAINMENT_FAILED, runtime exit 1,
+installer/runtime cleanup true. It checked synthetic merge
+`1aea9bbd17b758229191c8e0c0bbf47fdd2550fc`, not the source job's exact commit.
+No legacy repair/rerun occurred and no all-checks-green claim is made. Collector,
+SQLite, telemetry and secret legacy runs succeeded. This closure is batched with
+later meaningful source work, not published as a separate status-only change.

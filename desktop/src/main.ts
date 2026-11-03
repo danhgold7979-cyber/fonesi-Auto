@@ -662,6 +662,61 @@ try {
           bridge.admitPreferences,
           bridge.admitCleanup,
           () => discoverySessionService ?? null,
+          (event) => {
+            const captured = platformToolsWindow;
+            const valid = () =>
+              !closing &&
+              !!lifecycle &&
+              !!captured &&
+              platformToolsWindow === captured &&
+              !captured.isDestroyed() &&
+              captured.webContents === event.sender;
+            if (!valid() || !captured) return null;
+            return Object.freeze({
+              read() {
+                if (!valid()) return 'UNAVAILABLE' as const;
+                const hidden = captured.isMinimized() || !captured.isVisible();
+                if (!valid()) return 'UNAVAILABLE' as const;
+                return hidden ? ('HIDDEN' as const) : ('VISIBLE' as const);
+              },
+              subscribe(listener: () => void) {
+                const removers = [
+                  () => captured.removeListener('hide', listener),
+                  () => captured.removeListener('show', listener),
+                  () => captured.removeListener('minimize', listener),
+                  () => captured.removeListener('restore', listener),
+                  () => captured.removeListener('closed', listener),
+                ];
+                let removed = false;
+                const remove = () => {
+                  if (removed) return;
+                  removed = true;
+                  let failed = false;
+                  for (const detach of removers) {
+                    try {
+                      detach();
+                    } catch {
+                      failed = true;
+                    }
+                  }
+                  if (failed) throw Error('VIDEO_OBSERVER_REMOVE');
+                };
+                try {
+                  captured.on('hide', listener);
+                  captured.on('show', listener);
+                  captured.on('minimize', listener);
+                  captured.on('restore', listener);
+                  captured.on('closed', listener);
+                } catch (error) {
+                  try {
+                    remove();
+                  } catch {}
+                  throw error;
+                }
+                return remove;
+              },
+            });
+          },
         );
         inputBridge = installInputInteractionBridge(
           ipcMain,

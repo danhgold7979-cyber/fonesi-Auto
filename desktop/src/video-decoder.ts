@@ -1,14 +1,17 @@
 import { parseAvcConfiguration, prepareAvcChunk, type AvcConfiguration } from './h264-video.ts';
-import { snapshotVideoMediaDelivery, type VideoMediaDelivery } from './video-media-contract.ts';
+import type { VideoMediaDelivery } from './video-media-contract.ts';
+import { snapshotVideoPresentationMessage } from './video-presentation-contract.ts';
 type VideoDelivery = VideoMediaDelivery;
 export type VideoConsumed = Readonly<{
-  version: 1;
+  version: 2;
+  epoch: number;
   videoId: string;
   deliveryId: number;
   kind: 'CONSUMED';
 }>;
 export type VideoPainted = Readonly<{
-  version: 1;
+  version: 2;
+  epoch: number;
   videoId: string;
   kind: 'PAINTED';
   deliveryId: number;
@@ -22,6 +25,8 @@ export type VideoPainted = Readonly<{
 export type TileVideoState =
   | 'STARTING'
   | 'WAITING_KEY'
+  | 'WAITING_FRESH_KEY'
+  | 'PAUSED_HIDDEN'
   | 'DECODING'
   | 'DISPLAYING'
   | 'STOPPED'
@@ -88,6 +93,7 @@ export type VideoAccounting = Readonly<{
   waitingKey: number;
   reset: number;
   stopped: number;
+  hidden: number;
   outstanding: number;
   pending: number;
   held: number;
@@ -118,6 +124,10 @@ export function createTileVideoDecoder(
     canvas: HTMLCanvasElement;
     current: () => boolean;
     onConsumed: (value: VideoConsumed) => void;
+    onPresentationAck: (
+      value: Readonly<{ version: 2; videoId: string; kind: 'PRESENTATION_ACK'; epoch: number }>,
+    ) => void;
+    visible?: () => boolean;
     onPainted: (value: VideoPainted) => void;
     onState: (state: TileVideoState) => void;
   }>,
@@ -149,17 +159,34 @@ export function createTileVideoDecoder(
     delivery = 0,
     pts = -1,
     lastPaint = -1;
+  type Work = { value: VideoDelivery; epoch: number; consumed: boolean };
+  type Operation = {
+    work: Work;
+    generation: number;
+    epoch: number;
+    config: AvcConfiguration | null;
+  };
   let width = 0,
     height = 0,
-    held: VideoDelivery | null = null,
-    busy = false,
+    held: Work | null = null,
+    inflight: Work | null = null,
+    operation: Operation | null = null,
+    supportSlot: Promise<boolean> | null = null,
     timer: unknown = null;
-  const pending = new Map<number, VideoDelivery>();
+  let epoch = 0,
+    visible = true,
+    freshKey = true,
+    frontier = 0,
+    fencePacket = 0,
+    firstPaint = false,
+    remainingVisible = 30000;
+  const pending = new Map<number, Work>();
   const admitted = native.now(),
     remaining = options.deadlineUtc - native.utc();
+  let startupUntil = admitted + Math.min(30000, remaining);
   let lastNow = admitted,
-    until = admitted + Math.min(30000, remaining);
-  type Outcome = 'drawn' | 'waitingKey' | 'reset' | 'stopped';
+    chargedAt = admitted;
+  type Outcome = 'drawn' | 'waitingKey' | 'reset' | 'stopped' | 'hidden';
   type Record = { drawing: boolean; deferred: Outcome | null };
   const accounting = new Map<number, Record>();
   const counts = {
@@ -170,6 +197,7 @@ export function createTileVideoDecoder(
     waitingKey: 0,
     reset: 0,
     stopped: 0,
+    hidden: 0,
   };
   let accountingAvailable = true,
     observedAt = admitted;
@@ -197,7 +225,7 @@ export function createTileVideoDecoder(
     increment(outcome);
     if (outcome !== 'drawn') increment('discarded');
   }
-  function discard(outcome: 'reset' | 'stopped') {
+  function discard(outcome: 'reset' | 'stopped' | 'hidden') {
     for (const id of accounting.keys()) settle(id, outcome);
   }
   function account(v: VideoDelivery) {
@@ -222,7 +250,7 @@ export function createTileVideoDecoder(
       !Number.isFinite(now) ||
       now < observedAt ||
       counts.admitted !== counts.drawn + counts.discarded + accounting.size ||
-      counts.discarded !== counts.waitingKey + counts.reset + counts.stopped ||
+      counts.discarded !== counts.waitingKey + counts.reset + counts.stopped + counts.hidden ||
       counts.submitted > counts.admitted ||
       counts.drawn > counts.submitted
     ) {
@@ -282,6 +310,9 @@ export function createTileVideoDecoder(
     discard('stopped');
     generation++;
     held = null;
+    inflight = null;
+    operation = null;
+    config = null;
     pending.clear();
     native.clear(timer);
     try {
@@ -294,14 +325,24 @@ export function createTileVideoDecoder(
       options.onState(next);
     } catch {}
   }
+  // Only main-attested VISIBLE time spends the post-paint allowance. Startup never pauses.
+  function budget() {
+    const now = clock();
+    if (firstPaint && visible) remainingVisible -= now - chargedAt;
+    chargedAt = now;
+    const wait = firstPaint ? remainingVisible : startupUntil - now;
+    if (!Number.isFinite(wait) || wait <= 0) {
+      stop('DECODE_FAILED', 'DEADLINE');
+      return 0;
+    }
+    return wait;
+  }
   function schedule() {
     native.clear(timer);
+    timer = null;
     if (closed) return;
-    const wait = until - clock();
-    if (wait <= 0) {
-      stop('DECODE_FAILED', 'DEADLINE');
-      return;
-    }
+    const wait = budget();
+    if (closed || (firstPaint && !visible)) return;
     timer = native.set(() => {
       try {
         schedule();
@@ -310,40 +351,125 @@ export function createTileVideoDecoder(
       }
     }, wait);
   }
-  function acknowledge(v: VideoDelivery) {
+  function current(op: Operation) {
+    if (closed || generation !== op.generation || epoch !== op.epoch || config !== op.config)
+      return false;
+    if (!live()) {
+      stop();
+      return false;
+    }
+    return budget() > 0 && !closed;
+  }
+  function identityOnly(value: VideoDelivery): VideoDelivery {
+    return Object.freeze({ ...value, bytes: new Uint8Array() });
+  }
+  function acknowledge(work: Work) {
+    if (work.consumed || closed) return;
     if (!live()) return stop();
+    work.consumed = true;
+    work.value = identityOnly(work.value);
+    if (inflight === work) inflight = null;
+    if (held === work) held = null;
+    if (operation?.work === work) operation = null;
     options.onConsumed(
       Object.freeze({
-        version: 1,
+        version: 2,
+        epoch: work.epoch,
         videoId: options.videoId,
-        deliveryId: v.deliveryId,
+        deliveryId: work.value.deliveryId,
         kind: 'CONSUMED',
       }),
     );
-    if (closed) return;
   }
-  function reset() {
-    discard('reset');
+  function invalidate(outcome: 'reset' | 'hidden', dropConfig: boolean) {
     generation++;
-    try {
-      decoder?.close();
-    } catch {}
+    operation = null;
+    discard(outcome);
+    const old = decoder;
     decoder = null;
     pending.clear();
-    config = null;
-    pts = -1;
     lastPaint = -1;
+    freshKey = true;
+    if (dropConfig) config = null;
     clear();
+    try {
+      old?.close();
+    } catch {}
+    // close/getContext can synchronously reenter Stop or another fence.
+  }
+  function presentation(raw: unknown) {
+    if (closed) return;
+    try {
+      const value = snapshotVideoPresentationMessage(raw);
+      if (
+        value?.kind !== 'PRESENTATION' ||
+        value.videoId !== options.videoId ||
+        value.epoch !== epoch + 1 ||
+        value.epoch > 65536 ||
+        value.afterDeliveryId !== delivery ||
+        value.afterPacketId < packet ||
+        value.afterPacketId < fencePacket ||
+        (epoch === 0 && value.state !== 'VISIBLE')
+      )
+        return stop('DECODE_FAILED', 'DELIVERY');
+      if (!live()) return stop();
+      const wait = budget();
+      if (closed) return;
+      remainingVisible = Math.min(firstPaint ? wait : remainingVisible, value.remainingMs);
+      if (!firstPaint) startupUntil = Math.min(startupUntil, lastNow + value.remainingMs);
+      epoch = value.epoch;
+      visible = value.state === 'VISIBLE';
+      fencePacket = value.afterPacketId;
+      if (visible) frontier = value.afterPacketId;
+      const previous = inflight;
+      held = null;
+      const token = generation + 1;
+      invalidate(visible ? 'reset' : 'hidden', false);
+      if (closed || generation !== token || epoch !== value.epoch) return;
+      if (previous) acknowledge(previous);
+      if (closed || generation !== token || epoch !== value.epoch) return;
+      publish(visible ? 'WAITING_FRESH_KEY' : 'PAUSED_HIDDEN');
+      if (closed || generation !== token || epoch !== value.epoch) return;
+      options.onPresentationAck(
+        Object.freeze({
+          version: 2,
+          videoId: options.videoId,
+          kind: 'PRESENTATION_ACK',
+          epoch,
+        }),
+      );
+      if (closed || generation !== token || epoch !== value.epoch) return;
+      schedule();
+    } catch {
+      stop('DECODE_FAILED', 'DELIVERY');
+    }
+  }
+  function resumeHeld() {
+    if (!closed && held && operation === null) {
+      const next = held;
+      held = null;
+      void process(next);
+    }
   }
   function output(frame: Frame, token: number) {
     let completed: number | null = null;
+    let drawAttempted = false;
     let failureContext: TileVideoFailureReason = 'OUTPUT_IDENTITY';
     try {
       if (closed || token !== generation) return;
-      const v = pending.get(frame.timestamp);
-      if (!v || !config || !live() || token !== generation)
+      const work = pending.get(frame.timestamp);
+      const v = work?.value;
+      if (
+        !v ||
+        !work ||
+        work.epoch !== epoch ||
+        !visible ||
+        !config ||
+        !live() ||
+        token !== generation
+      )
         return stop('DECODE_FAILED', 'OUTPUT_IDENTITY');
-      if (clock() >= until) return stop('DECODE_FAILED', 'DEADLINE');
+      if (budget() <= 0) return;
       const rect = frame.visibleRect;
       // WebCodecs allocation may contain padding or a relocated visible surface.
       // Canvas consumes visible/display space, so do not apply the SPS crop twice.
@@ -400,15 +526,28 @@ export function createTileVideoDecoder(
       }
       if (frame.timestamp <= lastPaint) return stop('DECODE_FAILED', 'OUTPUT_IDENTITY');
       failureContext = 'PAINT';
+      if (options.visible && !options.visible()) {
+        settle(v.deliveryId, 'hidden');
+        completed = frame.timestamp;
+        clear();
+        return;
+      }
       const context = options.canvas.getContext('2d');
-      if (!context || !live() || token !== generation || closed) return stop();
+      if (!context) return stop('DECODE_FAILED', 'PAINT');
+      if (closed || token !== generation) return;
+      if (!live()) return stop();
       options.canvas.width = config.displayWidth;
       options.canvas.height = config.displayHeight;
       options.canvas.style.aspectRatio = `${config.displayWidth} / ${config.displayHeight}`;
-      if (!live() || token !== generation || closed) return stop();
+      if (closed || token !== generation) {
+        clear();
+        return;
+      }
+      if (!live()) return stop();
       const record = accounting.get(v.deliveryId);
       if (record) record.drawing = true;
       try {
+        drawAttempted = true;
         context.drawImage(frame as VideoFrame, 0, 0, config.displayWidth, config.displayHeight);
         settle(v.deliveryId, 'drawn');
       } finally {
@@ -418,12 +557,17 @@ export function createTileVideoDecoder(
         }
       }
       completed = frame.timestamp;
+      if (closed || token !== generation) {
+        clear();
+        return;
+      }
+      if (!live()) return stop();
       lastPaint = frame.timestamp;
-      if (!live() || token !== generation || closed) return stop();
       failureContext = 'PAINT_ACK';
       options.onPainted(
         Object.freeze({
-          version: 1,
+          version: 2,
+          epoch: work.epoch,
           videoId: options.videoId,
           kind: 'PAINTED',
           deliveryId: v.deliveryId,
@@ -436,11 +580,13 @@ export function createTileVideoDecoder(
         }),
       );
       if (closed || token !== generation) return;
-      until = clock() + 30000;
+      chargedAt = clock();
+      remainingVisible = 30000;
+      firstPaint = true;
       publish('DISPLAYING');
       schedule();
     } catch {
-      stop('DECODE_FAILED', failureContext);
+      if (!closed && token === generation) stop('DECODE_FAILED', failureContext);
     } finally {
       try {
         frame.close();
@@ -448,104 +594,212 @@ export function createTileVideoDecoder(
         stop('DECODE_FAILED', 'FRAME_CLOSE');
       }
       if (!closed && token === generation && completed !== null) pending.delete(completed);
-      if (!closed && held && !busy) {
-        const next = held;
-        held = null;
-        void process(next);
-      }
+      // A reentrant hide/Stop may happen inside a draw that then throws. Clear
+      // that attempted draw, but never erase a newer canvas for an old callback.
+      if (drawAttempted && token !== generation) clear();
+      resumeHeld();
     }
   }
-  async function process(v: VideoDelivery) {
-    if (closed) return;
-    busy = true;
+  function decoderConfig(value: AvcConfiguration): VideoDecoderConfig {
+    return {
+      codec: value.codec,
+      codedWidth: value.codedWidth,
+      codedHeight: value.codedHeight,
+      hardwareAcceleration: 'no-preference',
+      optimizeForLatency: true,
+    };
+  }
+  async function configure(op: Operation): Promise<boolean> {
+    if (!op.config) return false;
+    // Invalidated capability work still occupies this one slot until it settles.
+    if (supportSlot) {
+      held = op.work;
+      return false;
+    }
+    if (!current(op) || !visible) return false;
+    const cfg = decoderConfig(op.config);
+    let settle: (value: boolean) => void = () => {};
+    const check = new Promise<boolean>((resolve) => {
+      settle = resolve;
+    });
+    supportSlot = check;
+    // Reserve before invoking the binding: even a synchronous visibility callback
+    // cannot start a second unresolved capability probe.
+    void check.then(() => {
+      if (supportSlot !== check) return;
+      supportSlot = null;
+      resumeHeld();
+    });
+    try {
+      void Promise.resolve(native.supported(cfg)).then(
+        (v) => settle(v === true),
+        () => settle(false),
+      );
+    } catch {
+      settle(false);
+    }
+    const supported = await check;
+    if (!current(op) || !visible) return false;
+    if (!supported) {
+      stop('DECODER_UNAVAILABLE', 'CAPABILITY');
+      return false;
+    }
+    const created = native.create(
+      (frame) => output(frame, op.generation),
+      () => {
+        if (!closed && op.generation === generation) stop('DECODE_FAILED', 'NATIVE_ERROR');
+      },
+    );
+    if (!current(op) || !visible) {
+      try {
+        created.close();
+      } catch {}
+      return false;
+    }
+    decoder = created;
+    created.configure(cfg);
+    return current(op) && visible && decoder === created;
+  }
+  async function process(work: Work) {
+    if (closed || work.consumed) return;
+    let v = identityOnly(work.value);
+    const op: Operation = { work, generation, epoch, config };
+    operation = op;
     let failureContext: TileVideoFailureReason = 'DELIVERY';
     try {
-      if (!live() || clock() >= until) return stop();
+      if (!current(op)) return;
       if (v.kind === 'SESSION') {
-        if (v.geometryId !== geometry + 1) return stop('DECODE_FAILED', 'DELIVERY');
-        reset();
-        geometry = v.geometryId;
-        configId = 0;
-        width = v.width;
-        height = v.height;
-        publish('WAITING_KEY');
-        acknowledge(v);
+        publish(visible ? 'WAITING_FRESH_KEY' : 'PAUSED_HIDDEN');
+        if (!current(op)) return;
+        acknowledge(work);
         return;
       }
-      if (
-        v.geometryId !== geometry ||
-        v.width !== width ||
-        v.height !== height ||
-        v.packetId !== packet + 1
-      )
-        return stop('DECODE_FAILED', 'DELIVERY');
       if (v.kind === 'CONFIG') {
-        if (v.configId !== lastConfig + 1) return stop('DECODE_FAILED', 'DELIVERY');
-        reset();
-        const token = generation;
-        failureContext = 'CONFIGURATION';
-        config = parseAvcConfiguration(v.bytes, width, height);
-        configId = v.configId;
-        lastConfig = configId;
-        packet = v.packetId;
-        const cfg: VideoDecoderConfig = {
-          codec: config.codec,
-          codedWidth: config.codedWidth,
-          codedHeight: config.codedHeight,
-          hardwareAcceleration: 'no-preference',
-          optimizeForLatency: true,
-        };
-        let supported = false;
-        try {
-          supported = await native.supported(cfg);
-        } catch {}
-        if (!supported) {
-          if (token === generation) stop('DECODER_UNAVAILABLE', 'CAPABILITY');
-          return;
+        // Startup CONFIG may probe capability. After a visibility transition, wait
+        // for a later IDR before using native APIs or retaining support work.
+        if (visible && epoch === 1) {
+          failureContext = 'CAPABILITY';
+          if (!(await configure(op))) return;
         }
-        if (closed || token !== generation) return;
-        if (!live() || clock() >= until) return stop();
-        decoder = native.create(
-          (f) => output(f, token),
-          () => {
-            if (token === generation) stop('DECODE_FAILED', 'NATIVE_ERROR');
-          },
-        );
-        decoder.configure(cfg);
-        if (closed || token !== generation) return;
-        publish('WAITING_KEY');
-        acknowledge(v);
+        if (!current(op)) return;
+        publish(visible ? 'WAITING_FRESH_KEY' : 'PAUSED_HIDDEN');
+        if (!current(op)) return;
+        acknowledge(work);
         return;
       }
-      if (v.configId !== configId || !config || !decoder || v.ptsUs === null || v.ptsUs <= pts)
-        return stop('DECODE_FAILED', 'DELIVERY');
-      if (pending.size >= 2 || decoder.decodeQueueSize >= 2) {
-        held = v;
+      if (!visible) {
+        settle(v.deliveryId, 'hidden');
+        acknowledge(work);
         return;
       }
       const key = v.kind === 'KEY';
-      if (pts < 0 && !key) {
+      if (freshKey && (!key || v.packetId <= frontier)) {
         settle(v.deliveryId, 'waitingKey');
-        packet = v.packetId;
-        acknowledge(v);
+        acknowledge(work);
+        return;
+      }
+      if (!decoder) {
+        failureContext = 'CAPABILITY';
+        if (!(await configure(op))) return;
+      }
+      if (!current(op) || !decoder) return;
+      if (pending.size >= 2 || decoder.decodeQueueSize >= 2) {
+        held = work;
         return;
       }
       failureContext = 'SUBMISSION';
+      v = work.value;
+      if (!config || v.ptsUs === null) return stop('DECODE_FAILED', 'DELIVERY');
       const bytes = prepareAvcChunk(v.bytes, key, config);
       const chunk = native.chunk({ type: key ? 'key' : 'delta', timestamp: v.ptsUs, data: bytes });
-      if (!live() || closed) return stop();
-      pts = v.ptsUs;
-      packet = v.packetId;
-      pending.set(v.ptsUs, v);
+      if (!current(op)) return;
+      freshKey = false;
+      pending.set(v.ptsUs, work);
       increment('submitted');
       decoder.decode(chunk);
-      if (closed) return;
+      if (!current(op)) return;
       if (pending.has(v.ptsUs)) publish('DECODING');
-      acknowledge(v);
+      if (!current(op)) return;
+      acknowledge(work);
     } catch {
-      stop('DECODE_FAILED', failureContext);
+      if (!closed && generation === op.generation && epoch === op.epoch)
+        stop('DECODE_FAILED', failureContext);
     } finally {
-      busy = false;
+      if (operation === op) operation = null;
+    }
+  }
+  function receive(raw: unknown) {
+    if (closed) return;
+    let reason: TileVideoFailureReason = 'DELIVERY';
+    try {
+      const message = snapshotVideoPresentationMessage(raw);
+      if (
+        message?.kind !== 'MEDIA' ||
+        message.videoId !== options.videoId ||
+        message.epoch !== epoch ||
+        epoch === 0 ||
+        inflight !== null
+      )
+        return stop('DECODE_FAILED', 'DELIVERY');
+      const v = message.delivery;
+      if (v.deliveryId !== delivery + 1 || !live()) return stop('DECODE_FAILED', 'DELIVERY');
+      if (budget() <= 0) return;
+      let replacement: AvcConfiguration | null = null;
+      if (v.kind === 'SESSION') {
+        if (v.geometryId !== geometry + 1) return stop('DECODE_FAILED', 'DELIVERY');
+      } else {
+        if (
+          v.geometryId !== geometry ||
+          v.width !== width ||
+          v.height !== height ||
+          v.packetId !== packet + 1
+        )
+          return stop('DECODE_FAILED', 'DELIVERY');
+        if (v.kind === 'CONFIG') {
+          if (v.configId !== lastConfig + 1) return stop('DECODE_FAILED', 'DELIVERY');
+          reason = 'CONFIGURATION';
+          replacement = parseAvcConfiguration(v.bytes, width, height);
+        } else {
+          if (!config || v.configId !== configId || v.ptsUs === null || v.ptsUs <= pts)
+            return stop('DECODE_FAILED', 'DELIVERY');
+          reason = 'SUBMISSION';
+          // Hidden and pre-fresh packets receive the same full AVC validation.
+          prepareAvcChunk(v.bytes, v.kind === 'KEY', config);
+        }
+      }
+      // Commit wire cursors once before close, observers, support or decode can reenter.
+      delivery = v.deliveryId;
+      const work: Work = {
+        value: v.kind === 'CONFIG' ? identityOnly(v) : v,
+        epoch,
+        consumed: false,
+      };
+      inflight = work;
+      if (v.kind === 'SESSION' || v.kind === 'CONFIG') {
+        if (v.kind === 'SESSION') {
+          geometry = v.geometryId;
+          configId = 0;
+          width = v.width;
+          height = v.height;
+          config = null;
+        } else {
+          packet = v.packetId;
+          configId = v.configId;
+          lastConfig = v.configId;
+          config = replacement;
+        }
+        pts = -1;
+        const token = generation + 1;
+        invalidate('reset', false);
+        if (closed || generation !== token || epoch !== work.epoch || work.consumed) return;
+      } else {
+        packet = v.packetId;
+        pts = v.ptsUs as number;
+        account(v);
+      }
+      void process(work);
+    } catch {
+      stop('DECODE_FAILED', reason);
     }
   }
   if (
@@ -565,17 +819,8 @@ export function createTileVideoDecoder(
       stop('DECODE_FAILED');
     }
   return Object.freeze({
-    receive(raw: unknown) {
-      if (closed) return;
-      const v = snapshotVideoMediaDelivery(raw);
-      if (!v || v.videoId !== options.videoId || v.deliveryId !== delivery + 1 || busy || held) {
-        stop('DECODE_FAILED', 'DELIVERY');
-        return;
-      }
-      delivery = v.deliveryId;
-      account(v);
-      void process(v);
-    },
+    receive,
+    presentation,
     close: () => stop(),
     accounting: accountingSnapshot,
     snapshot: () =>
@@ -584,6 +829,8 @@ export function createTileVideoDecoder(
         closed,
         pending: pending.size,
         held: held !== null,
+        epoch,
+        presentationReason: state === 'PAUSED_HIDDEN' ? 'WINDOW_HIDDEN' : null,
         failureReason,
         geometryFailure,
       }),

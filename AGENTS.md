@@ -244,3 +244,16 @@ No disk-I/O support, user-device use, hardware/task acceptance, main merge or
 legal/security waiver follows. Independent final review and exact-head tests
 precede phase-branch publication. Historical sequential rules remain for all
 other scope.
+
+
+## P3-09.C owned-window decode suspension — 2026-11-03 23:05 UTC
+
+After the disk checkpoint's exact-head Windows PASS, coordinator adopted the
+independently CLEAR [bounded source entry](docs/phases/P3-HIDDEN-DECODE-SOURCE-ENTRY.md). Main-attested window
+hide/minimize may suspend decoder presentation only, retaining validated encoded
+draining, exact ACK deadlines, remaining visible budget and fresh-key barriers.
+Private port v2 and actual renderer/main/decoder integration are scoped; native
+producer, actor, public Start/Stop, target authority and stream settings remain
+unchanged. Only P3/P10 lanes are active. No whole C-cell, visual, native, device,
+P1-06 or Phase acceptance follows. Independent review and serialized full checks
+precede publication; no user computer or phone is accessed.
