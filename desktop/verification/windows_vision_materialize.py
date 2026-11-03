@@ -90,7 +90,22 @@ def checked_names(names):
 
 
 def _identity(s):
-    return (s.st_dev, s.st_ino, s.st_mode, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+    return (s.st_dev, s.st_ino, s.st_mode, s.st_nlink, s.st_size,
+            s.st_mtime_ns, s.st_ctime_ns, getattr(s, 'st_birthtime_ns', None),
+            getattr(s, 'st_file_attributes', 0))
+
+
+def _cross_identity(s, windows):
+    if not windows:
+        return _identity(s)
+    # CPython Windows path stat uses creation time for legacy ctime and adds
+    # extension-derived execute bits; fd stat can use ChangeTime/no extension.
+    # Compare common fields across channels, full snapshots within each one.
+    birth = getattr(s, 'st_birthtime_ns', None)
+    if type(birth) is not int:
+        fail('FILE_IDENTITY_UNAVAILABLE')
+    return (s.st_dev, s.st_ino, s.st_mode & ~0o111, s.st_nlink, s.st_size,
+            s.st_mtime_ns, birth, s.st_file_attributes)
 
 
 def _kind(s, directory):
@@ -117,17 +132,23 @@ def guarded_path(path, directory=False):
 def _opened(path):
     path = guarded_path(path)
     before = path.lstat()
+    _kind(before, False)
+    windows = os.name == 'nt'
     flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0)
     descriptor = os.open(path, flags)
     try:
         current = os.fstat(descriptor)
         _kind(current, False)
-        if _identity(before) != _identity(current):
+        if _cross_identity(before, windows) != _cross_identity(current, windows):
             fail('FILE_CHANGED')
         with os.fdopen(descriptor, 'rb', closefd=False) as stream:
             yield stream
-        if (_identity(current) != _identity(os.fstat(descriptor))
-                or _identity(current) != _identity(path.lstat())):
+        final_fd, final_path = os.fstat(descriptor), path.lstat()
+        _kind(final_fd, False)
+        _kind(final_path, False)
+        if (_identity(current) != _identity(final_fd)
+                or _identity(before) != _identity(final_path)
+                or _cross_identity(final_fd, windows) != _cross_identity(final_path, windows)):
             fail('FILE_CHANGED')
     finally:
         os.close(descriptor)

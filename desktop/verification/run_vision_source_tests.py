@@ -49,7 +49,7 @@ FILES = (
     'test_windows_vision_prepare.py',
 )
 SEPARATE = ('test_ocr_evaluation_worker.py', 'test_preprocess_worker.py')
-EXPECTED_CASES = 499
+EXPECTED_CASES = 507
 
 
 def main():
@@ -69,7 +69,7 @@ def main():
         return 1
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     passed = result.wasSuccessful() and not result.skipped and result.testsRun == EXPECTED_CASES
-    print('VISION_PORTABLE_SOURCE_499_PASS' if passed else 'VISION_PORTABLE_SOURCE_FAILED')
+    print('VISION_PORTABLE_SOURCE_507_PASS' if passed else 'VISION_PORTABLE_SOURCE_FAILED')
     return 0 if passed else 1
 
 

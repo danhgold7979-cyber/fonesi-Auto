@@ -146,6 +146,76 @@ class ArtifactTests(Case):
                 path.write_bytes(b'xyz')
 
 
+class IdentityTests(Case):
+    @staticmethod
+    def state(**changes):
+        from types import SimpleNamespace
+        values = dict(st_dev=12, st_ino=34, st_mode=stat.S_IFREG | 0o666,
+                      st_nlink=1, st_size=3, st_mtime_ns=400, st_ctime_ns=200,
+                      st_birthtime_ns=100, st_file_attributes=32)
+        values.update(changes)
+        return SimpleNamespace(**values)
+
+    def opened(self, before, current, final_fd=None, final_path=None):
+        path = self.file('identity.exe', b'abc')
+        cross = M._cross_identity
+        with mock.patch.object(M, 'guarded_path', return_value=path), \
+                mock.patch.object(Path, 'lstat', side_effect=[before, final_path or before]), \
+                mock.patch.object(M.os, 'fstat', side_effect=[current, final_fd or current]), \
+                mock.patch.object(M, '_cross_identity', side_effect=lambda s, _: cross(s, True)):
+            with M._opened(path) as stream:
+                self.assertEqual(stream.read(), b'abc')
+
+    def test_windows_path_fd_legacy_ctime_and_execute_bits_are_distinct(self):
+        self.opened(self.state(st_ctime_ns=100, st_mode=stat.S_IFREG | 0o777), self.state())
+
+    def test_windows_cross_identity_preserves_every_other_field(self):
+        for name, changed in dict(st_dev=13, st_ino=35, st_size=4,
+                                  st_mtime_ns=401, st_birthtime_ns=101,
+                                  st_nlink=2, st_mode=stat.S_IFREG | 0o444,
+                                  st_file_attributes=33).items():
+            with self.subTest(field=name):
+                self.assertNotEqual(M._cross_identity(self.state(), True),
+                                    M._cross_identity(self.state(**{name: changed}), True))
+                with self.assertRaises(ValueError):
+                    self.opened(self.state(), self.state(**{name: changed}))
+
+    def test_windows_birthtime_missing_or_noninteger_refuses(self):
+        state = self.state()
+        del state.st_birthtime_ns
+        for value in [state, self.state(st_birthtime_ns=None), self.state(st_birthtime_ns=True)]:
+            with self.assertRaisesRegex(ValueError, 'FILE_IDENTITY_UNAVAILABLE'):
+                M._cross_identity(value, True)
+
+    def test_posix_cross_identity_retains_ctime_and_execute_bits(self):
+        for changed in [dict(st_ctime_ns=201), dict(st_mode=stat.S_IFREG | 0o777)]:
+            self.assertNotEqual(M._cross_identity(self.state(), False),
+                                M._cross_identity(self.state(**changed), False))
+
+    def test_fd_same_channel_ctime_and_mode_mutations_refuse(self):
+        for changes in [dict(st_ctime_ns=201), dict(st_mode=stat.S_IFREG | 0o777)]:
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, 'FILE_CHANGED'):
+                self.opened(self.state(), self.state(), final_fd=self.state(**changes))
+
+    def test_path_same_channel_ctime_and_mode_mutations_refuse(self):
+        for changes in [dict(st_ctime_ns=201), dict(st_mode=stat.S_IFREG | 0o777)]:
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, 'FILE_CHANGED'):
+                self.opened(self.state(), self.state(), final_path=self.state(**changes))
+
+    def test_final_fd_and_path_link_reparse_type_faults_refuse(self):
+        for changes in [dict(st_nlink=2), dict(st_file_attributes=0x400), dict(st_mode=stat.S_IFDIR)]:
+            for channel in ['final_fd', 'final_path']:
+                with self.subTest(changes=changes, channel=channel), self.assertRaisesRegex(ValueError, 'LINK_OR_TYPE'):
+                    self.opened(self.state(), self.state(), **{channel: self.state(**changes)})
+
+    def test_initial_path_and_fd_link_reparse_type_faults_refuse(self):
+        for changes in [dict(st_nlink=2), dict(st_file_attributes=0x400), dict(st_mode=stat.S_IFDIR)]:
+            for path_first in [True, False]:
+                with self.subTest(changes=changes, path_first=path_first), self.assertRaisesRegex(ValueError, 'LINK_OR_TYPE'):
+                    bad = self.state(**changes)
+                    self.opened(bad if path_first else self.state(), self.state() if path_first else bad)
+
+
 class WheelTests(Case):
     def test_record_every_file_zero_bytes_and_report_entrypoints(self):
         path, expected = self.wheel()
