@@ -195,6 +195,63 @@ export function validateVideoGeometry(v) {
     )
   );
 }
+export const VIDEO_OBSERVATION_STEPS = Object.freeze([
+  'WAIT_FRAME',
+  'LAYOUT',
+  'CONTAIN',
+  'CHROME',
+  'CAPTURE',
+  'CAPTURE_SIZE',
+  'SAMPLE',
+  'PIXELS',
+  'LETTERBOX_SIZE',
+  'LETTERBOX_SAMPLE',
+  'LETTERBOX',
+]);
+export const VIDEO_OBSERVATION_FIELDS = Object.freeze([
+  'step',
+  'backing',
+  'box',
+  'parent',
+  'dpr',
+  'tile',
+  'chrome',
+  'baseline',
+  'capture',
+  'backingDark',
+  'backingLight',
+  'dark',
+  'light',
+  'letterbox',
+]);
+export function validateVideoObservation(v) {
+  return (
+    exact(v, VIDEO_OBSERVATION_FIELDS) &&
+    VIDEO_OBSERVATION_STEPS.includes(v.step) &&
+    VIDEO_OBSERVATION_FIELDS.filter((k) => k !== 'step').every((k) => {
+      if (v[k] === null) return true;
+      const pixels = ['backingDark', 'backingLight', 'dark', 'light', 'letterbox'].includes(k);
+      const size = ['backing', 'capture'].includes(k);
+      return (
+        Array.isArray(v[k]) &&
+        v[k].length === (k === 'baseline' ? 8 : k === 'dpr' ? 1 : size ? 2 : 4) &&
+        v[k].every(
+          (n) =>
+            typeof n === 'number' &&
+            Number.isFinite(n) &&
+            !Object.is(n, -0) &&
+            (k === 'dpr'
+              ? n > 0 && n <= 8
+              : pixels
+                ? Number.isInteger(n) && n >= 0 && n <= 255
+                : size
+                  ? Number.isInteger(n) && n >= 0 && n <= 4096
+                  : n >= -4096 && n <= 4096),
+        )
+      );
+    })
+  );
+}
 export function validateVideoDiagnostic(v) {
   return (
     exact(v, [
@@ -205,6 +262,7 @@ export function validateVideoDiagnostic(v) {
       'stage',
       'rendererState',
       'geometry',
+      'observation',
       'cases',
     ]) &&
     v.version === 1 &&
@@ -217,6 +275,9 @@ export function validateVideoDiagnostic(v) {
     (v.geometry === null ||
       (v.rendererState.startsWith('DECODE_FAILED:OUTPUT_GEOMETRY / ') &&
         validateVideoGeometry(v.geometry))) &&
+    (v.observation === null ||
+      (['LANDSCAPE_OUTPUT', 'PORTRAIT_OUTPUT'].includes(v.stage) &&
+        validateVideoObservation(v.observation))) &&
     exact(v.cases, VIDEO_QUALIFICATION_CASES) &&
     VIDEO_QUALIFICATION_CASES.every((k) => typeof v.cases[k] === 'boolean')
   );

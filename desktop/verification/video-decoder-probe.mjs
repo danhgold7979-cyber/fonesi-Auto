@@ -34,6 +34,8 @@ import {
   VIDEO_DIAGNOSTIC_STATES,
   validateVideoDiagnostic,
   validateVideoGeometry,
+  validateVideoObservation,
+  VIDEO_OBSERVATION_FIELDS,
 } from './video-decoder-contract.mjs';
 const ENTRY = 'auto-foundation://app/status.html',
   ORIGIN = 'auto-foundation://app';
@@ -105,7 +107,8 @@ let control, landscape, portrait;
 let diagnosticBound = false,
   stage = 'ADMISSION',
   rendererState = 'UNOBSERVED',
-  failureGeometry = null;
+  failureGeometry = null,
+  observation = null;
 function fail() {
   if (done) return;
   done = true;
@@ -123,6 +126,7 @@ function fail() {
         stage,
         rendererState,
         geometry: failureGeometry,
+        observation,
         cases,
       };
       if (validateVideoDiagnostic(diagnostic))
@@ -201,7 +205,7 @@ async function send(kind, fixture) {
   );
 }
 let baselineChrome = null;
-const canvasFacts = `(()=>{const c=document.querySelector('canvas[aria-label="Video Device 0001"]');if(!c)return null;const r=c.getBoundingClientRect(),s=getComputedStyle(c),t=c.closest('.tile-footprint').getBoundingClientRect(),p=c.parentElement.querySelector('p').getBoundingClientRect();return {geometry:c.dataset.videoGeometry?.slice(0,513)??null,tile:[t.x,t.y,t.width,t.height],chrome:[p.x,p.y,p.width,p.height],width:c.width,height:c.height,x:r.x,y:r.y,w:r.width,h:r.height,fit:s.objectFit,visible:s.visibility==='visible'&&s.display!=='none',state:c.parentElement.querySelector('small')?.textContent,clear:Array.from(c.getContext('2d').getImageData(0,0,1,1).data).every(v=>v===0)};})()`;
+const canvasFacts = `(()=>{const c=document.querySelector('canvas[aria-label="Video Device 0001"]');if(!c)return null;const r=c.getBoundingClientRect(),s=getComputedStyle(c),t=c.closest('.tile-footprint').getBoundingClientRect(),p=c.parentElement.querySelector('p').getBoundingClientRect(),a=c.parentElement.getBoundingClientRect();const px=(x,y)=>Array.from(c.getContext('2d').getImageData(x,y,1,1).data);return {parent:[a.x,a.y,a.width,a.height],dpr:[devicePixelRatio],backingDark:c.width>=32||c.height>=32?px(8,8):null,backingLight:c.width>=32||c.height>=32?px(c.width===32?24:8,c.height===32?24:8):null,geometry:c.dataset.videoGeometry?.slice(0,513)??null,tile:[t.x,t.y,t.width,t.height],chrome:[p.x,p.y,p.width,p.height],width:c.width,height:c.height,x:r.x,y:r.y,w:r.width,h:r.height,fit:s.objectFit,visible:s.visibility==='visible'&&s.display!=='none',state:c.parentElement.querySelector('small')?.textContent,clear:Array.from(c.getContext('2d').getImageData(0,0,1,1).data).every(v=>v===0)};})()`;
 function observeState(v) {
   failureGeometry = null;
   rendererState = VIDEO_DIAGNOSTIC_STATES.includes(v?.state) ? v.state : 'UNRECOGNIZED';
@@ -212,14 +216,35 @@ function observeState(v) {
     } catch {}
   }
 }
+function observationFacts(facts) {
+  for (const [key, value] of Object.entries(facts)) {
+    const candidate = { ...observation, [key]: value };
+    observation[key] = validateVideoObservation(candidate) ? value : null;
+  }
+}
 async function observe(fixture) {
+  observation = Object.fromEntries(
+    VIDEO_OBSERVATION_FIELDS.map((k) => [k, k === 'step' ? 'WAIT_FRAME' : null]),
+  );
   const f = await until(async () => {
     const v = await js(canvasFacts);
     observeState(v);
+    observationFacts({
+      backing: [v?.width, v?.height],
+      box: [v?.x, v?.y, v?.w, v?.h],
+      parent: v?.parent,
+      dpr: v?.dpr,
+      tile: v?.tile,
+      chrome: v?.chrome,
+      baseline: baselineChrome,
+      backingDark: v?.backingDark,
+      backingLight: v?.backingLight,
+    });
     return v?.state === 'DISPLAYING' && v.width === fixture.width && v.height === fixture.height
       ? v
       : null;
   });
+  observation.step = 'LAYOUT';
   if (
     !f.visible ||
     f.fit !== 'contain' ||
@@ -232,6 +257,7 @@ async function observe(fixture) {
     f.h > 1000
   )
     throw Error();
+  observation.step = 'CONTAIN';
   const scale = Math.min(f.w / fixture.width, f.h / fixture.height),
     cw = fixture.width * scale,
     ch = fixture.height * scale;
@@ -239,6 +265,7 @@ async function observe(fixture) {
     offsetY = (f.h - ch) / 2;
   if (Math.abs(cw / ch - fixture.width / fixture.height) > 0.00001 || offsetX < 0 || offsetY < 0)
     throw Error();
+  observation.step = 'CHROME';
   const chrome = [...f.tile, ...f.chrome];
   if (!chrome.every(Number.isFinite) || f.tile[2] <= 0 || f.tile[3] <= 0) throw Error();
   if (baselineChrome && chrome.some((v, i) => Math.abs(v - baselineChrome[i]) > 1)) throw Error();
@@ -249,9 +276,12 @@ async function observe(fixture) {
     width: Math.ceil(f.w + 1),
     height: Math.ceil(f.h + 1),
   };
+  observation.step = 'CAPTURE';
   const image = await window.webContents.capturePage(rect),
     size = image.getSize(),
     bitmap = image.toBitmap();
+  observationFacts({ capture: [size.width, size.height] });
+  observation.step = 'CAPTURE_SIZE';
   if (
     size.width < 1 ||
     size.height < 1 ||
@@ -267,8 +297,11 @@ async function observe(fixture) {
     return [...bitmap.subarray((py * size.width + px) * 4, (py * size.width + px) * 4 + 4)];
   };
   const sample = (x, y) => boxSample(offsetX + x * scale, offsetY + y * scale);
+  observation.step = 'SAMPLE';
   const dark = sample(8, 8),
     light = sample(fixture.width === 32 ? 24 : 8, fixture.height === 32 ? 24 : 8);
+  observationFacts({ dark, light });
+  observation.step = 'PIXELS';
   if (
     !dark.slice(0, 3).every((v) => v <= 8) ||
     !light.slice(0, 3).every((v) => v >= 247) ||
@@ -278,11 +311,15 @@ async function observe(fixture) {
     throw Error();
   // Existing V9 gradient is blue, unlike the synthetic neutral grayscale. Sample
   // letterbox on the dark half, so an actual stretched image cannot pass.
+  observation.step = 'LETTERBOX_SIZE';
   if (Math.max(offsetX, offsetY) < 3) throw Error();
+  observation.step = 'LETTERBOX_SAMPLE';
   const letterbox =
     offsetX >= offsetY
       ? boxSample(offsetX / 2, offsetY + ch / 4)
       : boxSample(offsetX + cw / 4, offsetY / 2);
+  observationFacts({ letterbox });
+  observation.step = 'LETTERBOX';
   if (
     Math.max(...letterbox.slice(0, 3)) < 245 ||
     Math.min(...letterbox.slice(0, 3)) < 225 ||
@@ -290,6 +327,7 @@ async function observe(fixture) {
     letterbox[3] !== 255
   )
     throw Error();
+  observation = null;
   return {
     width: fixture.width,
     height: fixture.height,

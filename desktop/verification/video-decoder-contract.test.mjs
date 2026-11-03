@@ -13,6 +13,9 @@ import {
   validPixels,
   validateVideoDiagnostic,
   validateVideoGeometry,
+  validateVideoObservation,
+  VIDEO_OBSERVATION_FIELDS,
+  VIDEO_OBSERVATION_STEPS,
   VIDEO_GEOMETRY_FIELDS,
   validateVideoSupervisor,
   validateVideoEvidence,
@@ -174,6 +177,7 @@ test('failure diagnostics admit only fixed stages, states, cases and bound diges
       stage: 'LANDSCAPE_OUTPUT',
       rendererState: 'WAITING_KEY',
       geometry: null,
+      observation: null,
       cases: base.cases,
     };
   for (const stage of VIDEO_DIAGNOSTIC_STAGES)
@@ -224,6 +228,7 @@ test('sanitized aggregate cannot promote failed or missing pixel evidence to pas
       stage: 'LANDSCAPE_OUTPUT',
       rendererState: 'DECODING',
       geometry: null,
+      observation: null,
       cases: result.cases,
     };
   for (const process of [
@@ -296,6 +301,7 @@ test('geometry failure facts admit only fixed bounded scalars and matching cause
     stage: 'LANDSCAPE_OUTPUT',
     rendererState: 'DECODE_FAILED:OUTPUT_GEOMETRY / STOPPED',
     geometry,
+    observation: null,
     cases: Object.fromEntries(cases.map((k) => [k, false])),
   };
   assert.equal(validateVideoDiagnostic(diagnostic), true);
@@ -316,6 +322,9 @@ test('probe bounds serialized geometry and never reuses absent or malformed fact
   const ctx = {
     VIDEO_DIAGNOSTIC_STATES,
     validateVideoGeometry,
+    validateVideoObservation,
+    VIDEO_OBSERVATION_FIELDS,
+    VIDEO_OBSERVATION_STEPS,
     rendererState: 'UNOBSERVED',
     failureGeometry: null,
   };
@@ -335,4 +344,96 @@ test('probe bounds serialized geometry and never reuses absent or malformed fact
     ctx.observeState({ state, geometry });
     assert.equal(ctx.failureGeometry, null);
   }
+});
+
+test('fixed observation facts reject arbitrary, malformed and out-of-budget values', () => {
+  const empty = Object.fromEntries(
+    VIDEO_OBSERVATION_FIELDS.map((k) => [k, k === 'step' ? 'WAIT_FRAME' : null]),
+  );
+  for (const step of VIDEO_OBSERVATION_STEPS)
+    assert.equal(validateVideoObservation({ ...empty, step }), true);
+  for (const change of [
+    { step: 'raw exception' },
+    { extra: 0 },
+    { box: [0, 0, 5000, 1] },
+    { parent: [0, NaN, 1, 1] },
+    { dark: [0, 0, 0, 256] },
+    { light: [0, 0, 0] },
+    { capture: [1.5, 1] },
+    { baseline: [0, 0, 0, 0] },
+    { dpr: [9] },
+    { box: [-0, 0, 1, 1] },
+  ])
+    assert.equal(validateVideoObservation({ ...empty, ...change }), false);
+  const diagnostic = {
+    version: 1,
+    scope,
+    head: 'a'.repeat(40),
+    inputs: Object.fromEntries(inputs.map((k) => [k, 'b'.repeat(64)])),
+    stage: 'PORTRAIT_OUTPUT',
+    rendererState: 'DISPLAYING',
+    geometry: null,
+    observation: empty,
+    cases: Object.fromEntries(cases.map((k) => [k, false])),
+  };
+  assert.equal(validateVideoDiagnostic(diagnostic), true);
+  assert.equal(validateVideoDiagnostic({ ...diagnostic, stage: 'STOP' }), false);
+});
+test('actual observation records failed chrome or pixel facts before throwing without weakening oracle', async () => {
+  const text = readFileSync(new URL('./video-decoder-probe.mjs', import.meta.url), 'utf8');
+  const source = text.slice(
+    text.indexOf('function observationFacts(facts)'),
+    text.indexOf('\ntry {\n  if (\n    process.platform'),
+  );
+  const facts = {
+    width: 16,
+    height: 32,
+    x: 0,
+    y: 0,
+    w: 160,
+    h: 400,
+    fit: 'contain',
+    visible: true,
+    state: 'DISPLAYING',
+    tile: [0, 0, 160, 400],
+    chrome: [0, 0, 30, 10],
+    parent: [0, 0, 160, 400],
+    dpr: [1],
+    backingDark: [0, 0, 0, 255],
+    backingLight: [255, 255, 255, 255],
+  };
+  const bitmap = Buffer.alloc(161 * 401 * 4);
+  for (let i = 3; i < bitmap.length; i += 4) bitmap[i] = 255;
+  const make = (baselineChrome) => {
+    const ctx = {
+      observation: null,
+      baselineChrome,
+      VIDEO_OBSERVATION_FIELDS,
+      validateVideoObservation,
+      canvasFacts: 'fixed',
+      js: async () => facts,
+      observeState() {},
+      until: async (fn) => fn(),
+      window: {
+        webContents: {
+          capturePage: async () => ({
+            getSize: () => ({ width: 161, height: 401 }),
+            toBitmap: () => bitmap,
+          }),
+        },
+      },
+    };
+    runInNewContext(`${source};globalThis.observe=observe;`, ctx);
+    return ctx;
+  };
+  const c = make([1, 1, 160, 400, 10, 10, 30, 10]);
+  await assert.rejects(c.observe({ width: 16, height: 32 }));
+  assert.equal(c.observation.step, 'CHROME');
+  assert.deepEqual(c.observation.chrome, facts.chrome);
+  const p = make(null);
+  await assert.rejects(p.observe({ width: 16, height: 32 }));
+  assert.equal(p.observation.step, 'PIXELS');
+  assert.deepEqual(p.observation.backingLight, facts.backingLight);
+  assert.deepEqual(Array.from(p.observation.light), [0, 0, 0, 255]);
+  assert.equal(validateVideoObservation(p.observation), true);
 });
