@@ -1,0 +1,137 @@
+--- a/server/src/main/java/com/genymobile/scrcpy/Options.java
++++ b/server/src/main/java/com/genymobile/scrcpy/Options.java
+@@ -1,4 +1,6 @@
+ package com.genymobile.scrcpy;
++
++// Modified by Fonesi-Auto: AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1 (2026-11-02).
+ 
+ import com.genymobile.scrcpy.audio.AudioCodec;
+ import com.genymobile.scrcpy.audio.AudioSource;
+@@ -23,6 +25,8 @@
+ public class Options {
+ 
+     private Ln.Level logLevel = Ln.Level.DEBUG;
++    // Auto-derived protocol; not compatible with the stock scrcpy client.
++    private byte[] autoVideoNonce;
+     private int scid = -1; // 31-bit non-negative value, or -1
+     private boolean video = true;
+     private boolean audio = true;
+@@ -91,6 +95,10 @@
+         return logLevel;
+     }
+ 
++    public byte[] getAutoVideoNonce() {
++        return autoVideoNonce.clone();
++    }
++
+     public int getScid() {
+         return scid;
+     }
+@@ -342,6 +350,15 @@
+             String key = arg.substring(0, equalIndex);
+             String value = arg.substring(equalIndex + 1);
+             switch (key) {
++                case "auto_video_nonce":
++                    if (options.autoVideoNonce != null || value.length() != 64 || !value.matches("[0-9a-f]{64}")) {
++                        throw new IllegalArgumentException("Invalid Auto video nonce");
++                    }
++                    options.autoVideoNonce = new byte[32];
++                    for (int j = 0; j < 32; ++j) {
++                        options.autoVideoNonce[j] = (byte) Integer.parseInt(value.substring(j * 2, j * 2 + 2), 16);
++                    }
++                    break;
+                 case "scid":
+                     int scid = Integer.parseInt(value, 0x10);
+                     if (scid < -1) {
+@@ -572,6 +589,17 @@
+                     Ln.w("Unknown server option: " + key);
+                     break;
+             }
++        }
++
++        // Enforce the fixed Auto headless/video-only profile before cleanup or socket effects.
++        if (options.autoVideoNonce == null || options.scid < 0 || !options.video || options.audio || options.control
++                || !options.tunnelForward || options.cleanup || options.powerOn || options.powerOffScreenOnClose
++                || options.showTouches || options.stayAwake || options.screenOffTimeout != -1 || options.clipboardAutosync
++                || options.downsizeOnError || options.sendDeviceMeta || !options.sendDummyByte || !options.sendStreamMeta
++                || !options.sendFrameMeta || options.videoCodec != VideoCodec.H264 || options.videoSource != VideoSource.DISPLAY
++                || options.displayId != 0 || options.newDisplay != null || options.displayImePolicy != -1 || options.keepActive
++                || options.getList()) {
++            throw new IllegalArgumentException("Invalid Auto video profile");
+         }
+ 
+         if (options.newDisplay != null) {
+--- a/server/src/main/java/com/genymobile/scrcpy/Server.java
++++ b/server/src/main/java/com/genymobile/scrcpy/Server.java
+@@ -1,4 +1,6 @@
+ package com.genymobile.scrcpy;
++
++// Modified by Fonesi-Auto: AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1 (2026-11-02).
+ 
+ import com.genymobile.scrcpy.audio.AudioCapture;
+ import com.genymobile.scrcpy.audio.AudioCodec;
+@@ -102,7 +104,7 @@
+ 
+         List<AsyncProcessor> asyncProcessors = new ArrayList<>();
+ 
+-        DesktopConnection connection = DesktopConnection.open(scid, tunnelForward, video, audio, control, sendDummyByte);
++        DesktopConnection connection = DesktopConnection.open(scid, tunnelForward, video, audio, control, sendDummyByte, options.getAutoVideoNonce());
+         try {
+             if (options.getSendDeviceMeta()) {
+                 connection.sendDeviceMeta(Device.getDeviceName());
+--- a/server/src/main/java/com/genymobile/scrcpy/device/DesktopConnection.java
++++ b/server/src/main/java/com/genymobile/scrcpy/device/DesktopConnection.java
+@@ -1,4 +1,6 @@
+ package com.genymobile.scrcpy.device;
++
++// Modified by Fonesi-Auto: AUTO_SCRCPY_5_0_1_VIDEO_NONCE_V1 (2026-11-02).
+ 
+ import com.genymobile.scrcpy.control.ControlChannel;
+ import com.genymobile.scrcpy.util.IO;
+@@ -10,10 +12,14 @@
+ 
+ import java.io.Closeable;
+ import java.io.FileDescriptor;
++import java.io.FileOutputStream;
+ import java.io.IOException;
+ import java.nio.charset.StandardCharsets;
+ 
+ public final class DesktopConnection implements Closeable {
++
++    // Retain the borrowed foreground stdout wrapper for the process lifetime; never close it.
++    private static final FileOutputStream AUTO_READY_OUTPUT = new FileOutputStream(FileDescriptor.out);
+ 
+     private static final int DEVICE_NAME_FIELD_LENGTH = 64;
+ 
+@@ -53,8 +59,11 @@
+         return SOCKET_NAME_PREFIX + String.format("_%08x", scid);
+     }
+ 
+-    public static DesktopConnection open(int scid, boolean tunnelForward, boolean video, boolean audio, boolean control, boolean sendDummyByte)
+-            throws IOException {
++    public static DesktopConnection open(int scid, boolean tunnelForward, boolean video, boolean audio, boolean control, boolean sendDummyByte,
++            byte[] autoVideoNonce) throws IOException {
++        if (autoVideoNonce == null || autoVideoNonce.length != 32 || scid < 0 || !tunnelForward || !video || audio || control || !sendDummyByte) {
++            throw new IOException("Invalid Auto video connection profile");
++        }
+         String socketName = getSocketName(scid);
+ 
+         LocalSocket videoSocket = null;
+@@ -63,11 +72,17 @@
+         try {
+             if (tunnelForward) {
+                 try (LocalServerSocket localServerSocket = new LocalServerSocket(socketName)) {
++                    // Ln disables System.out. Borrow the actual foreground descriptor; never close it here.
++                    AUTO_READY_OUTPUT.write("AUTOVID1_READY\n".getBytes(StandardCharsets.US_ASCII));
++                    AUTO_READY_OUTPUT.flush();
+                     if (video) {
+                         videoSocket = localServerSocket.accept();
+                         if (sendDummyByte) {
+                             // send one byte so the client may read() to detect a connection error
+                             videoSocket.getOutputStream().write(0);
++                            videoSocket.getOutputStream().write("AUTOVID1".getBytes(StandardCharsets.US_ASCII));
++                            videoSocket.getOutputStream().write(autoVideoNonce);
++                            videoSocket.getOutputStream().flush();
+                             sendDummyByte = false;
+                         }
+                     }

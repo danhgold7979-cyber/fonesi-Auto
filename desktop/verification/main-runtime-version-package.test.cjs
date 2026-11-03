@@ -1,0 +1,410 @@
+'use strict';
+const test = require('node:test'),
+  assert = require('node:assert/strict'),
+  fs = require('node:fs'),
+  path = require('node:path'),
+  os = require('node:os'),
+  vm = require('node:vm'),
+  { createHash } = require('node:crypto');
+const admission = require('../launch/package-admission.cjs');
+const helperFile = path.join(__dirname, 'main-runtime-version-package.cjs'),
+  hash = (b) => createHash('sha256').update(b).digest('hex'),
+  id = '00000000-0000-4000-8000-000000000001',
+  head = 'a'.repeat(40),
+  tree = 'b'.repeat(40);
+function fixture(electron = false) {
+  const temp = fs.realpathSync.native(
+      fs.mkdtempSync(
+        path.join(fs.realpathSync.native(process.env.RUNNER_TEMP || os.tmpdir()), 'pkv-'),
+      ),
+    ),
+    desktop = path.join(temp, 'd'),
+    root = path.join(desktop, '.retained-host-runtime', 'r'),
+    candidateRoot = path.join(desktop, '.package-build'),
+    container = path.join(candidateRoot, 'Fonesi-Auto-' + id),
+    original = path.join(container, 'package'),
+    extracted = path.join(root, 'relocated-package');
+  for (const dir of [
+    root,
+    original,
+    extracted,
+    path.join(desktop, 'verification'),
+    path.join(desktop, 'build'),
+  ])
+    fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(root, '.owner'), id);
+  const manifest = { sourceHead: head, sourceTree: tree },
+    build = JSON.stringify({
+      version: 1,
+      outputs: {
+        'main.cjs': hash('module.exports={source:"PACKAGE"};'),
+        'log-contract.cjs': hash('module.exports={source:"PACKAGED_ENCODER"};'),
+      },
+    });
+  for (const base of [original, extracted]) {
+    fs.mkdirSync(path.join(base, 'app/build'), { recursive: true });
+    fs.mkdirSync(path.join(base, 'app/launch'), { recursive: true });
+    fs.mkdirSync(path.join(base, 'runtime/electron/resources'), { recursive: true });
+    fs.writeFileSync(
+      path.join(base, 'runtime/electron/resources/default_app.asar'),
+      Buffer.from('physical synthetic ASAR bytes'),
+    );
+    fs.writeFileSync(path.join(base, 'package-manifest.json'), JSON.stringify(manifest));
+    fs.writeFileSync(path.join(base, 'app/build/.verified-build.json'), build);
+    fs.writeFileSync(path.join(base, 'app/build/main.cjs'), 'module.exports={source:"PACKAGE"};');
+    fs.writeFileSync(
+      path.join(base, 'app/build/log-contract.cjs'),
+      'module.exports={source:"PACKAGED_ENCODER"};',
+    );
+    fs.writeFileSync(
+      path.join(base, 'app/launch/persistence-initialize.cjs'),
+      'module.exports={source:"INITIALIZER"};',
+    );
+  }
+  fs.writeFileSync(path.join(desktop, 'build/.verified-build.json'), build);
+  fs.writeFileSync(
+    path.join(desktop, 'build/main.cjs'),
+    'module.exports={source:"SOURCE_MUST_NOT_LOAD"};',
+  );
+  const zip = path.join(container, 'Fonesi-Auto.zip'),
+    bytes = Buffer.from('synthetic archive bytes; ZIP extraction separately tested');
+  fs.writeFileSync(zip, bytes);
+  fs.writeFileSync(zip + '.sha256', hash(bytes) + '\n');
+  fs.writeFileSync(
+    path.join(candidateRoot, 'candidate.json'),
+    JSON.stringify({ directory: original, zip, sha256: hash(bytes), bytes: bytes.length }) + '\n',
+  );
+  const module = { exports: {} };
+  let semanticCalls = 0,
+    originalFsLoads = 0,
+    virtualFsReads = 0;
+  vm.runInNewContext(
+    fs.readFileSync(helperFile, 'utf8'),
+    {
+      module,
+      exports: module.exports,
+      __dirname: path.join(desktop, 'verification'),
+      process: { versions: electron ? { electron: '45.1.0' } : {} },
+      Buffer,
+      TextDecoder,
+      require(name) {
+        if (name === 'original-fs') {
+          originalFsLoads++;
+          return fs;
+        }
+        if (electron && name === 'node:fs')
+          return {
+            ...fs,
+            lstatSync(file) {
+              if (String(file).endsWith('.asar')) {
+                virtualFsReads++;
+                throw Error('VIRTUAL_ASAR_NOT_PHYSICAL');
+              }
+              return fs.lstatSync(file);
+            },
+          };
+        if (name === '../launch/package-admission.cjs')
+          return {
+            ...admission,
+            verifyPackage(p) {
+              semanticCalls++;
+              return JSON.parse(fs.readFileSync(path.join(p, 'package-manifest.json'), 'utf8'));
+            },
+          };
+        return require(name);
+      },
+    },
+    { filename: helperFile },
+  );
+  // Shared semantic fixtures must satisfy the real startup budget before any case-specific fault.
+  try {
+    assert.equal(module.exports.pathBudget(root, extracted), true);
+  } catch (error) {
+    fs.rmSync(temp, { recursive: true, force: false });
+    throw error;
+  }
+  return {
+    api: module.exports,
+    root,
+    desktop,
+    extracted,
+    original,
+    zip,
+    get originalFsLoads() {
+      return originalFsLoads;
+    },
+    get virtualFsReads() {
+      return virtualFsReads;
+    },
+    get semanticCalls() {
+      return semanticCalls;
+    },
+    close() {
+      fs.rmSync(temp, { recursive: true, force: true });
+    },
+  };
+}
+test('owned package proof binds original/extracted bytes and loads only packaged outputs with synthetic semantic admission', () => {
+  const f = fixture();
+  try {
+    assert.ok(
+      fs
+        .readFileSync(path.join(__dirname, 'package-build-entry.mjs'), 'utf8')
+        .includes("JSON.stringify(candidate) + '\\n'"),
+    );
+    const a = f.api.prepareBinding(f.root, head, tree);
+    assert.equal(a.packageRoot, f.extracted);
+    assert.equal(a.sourceHead, head);
+    assert.equal(f.api.loadBuild(a, 'main.cjs').source, 'PACKAGE');
+    assert.equal(f.api.loadBuild(a, 'log-contract.cjs').source, 'PACKAGED_ENCODER');
+    assert.equal(
+      f.api.initializer(a),
+      path.join(f.extracted, 'app/launch/persistence-initialize.cjs'),
+    );
+    assert.ok(f.semanticCalls >= 4);
+    assert.throws(() => f.api.loadBuild({ ...a }, 'main.cjs'));
+    assert.throws(() => f.api.loadBuild(a, '../main.cjs'));
+    assert.throws(() => f.api.prepareBinding(f.root, head, tree));
+  } finally {
+    f.close();
+  }
+});
+test('wrong source tuple, modified package or ZIP, and noncanonical binding never admit', () => {
+  for (const fault of ['head', 'extracted', 'zip', 'binding', 'candidateLf']) {
+    const f = fixture();
+    try {
+      if (fault === 'head') {
+        assert.throws(() => f.api.prepareBinding(f.root, 'c'.repeat(40), tree));
+        assert.equal(fs.existsSync(path.join(f.root, 'package-binding.json')), false);
+        continue;
+      }
+      f.api.prepareBinding(f.root, head, tree);
+      if (fault === 'candidateLf')
+        fs.appendFileSync(path.join(f.desktop, '.package-build/candidate.json'), '\n');
+      if (fault === 'extracted')
+        fs.appendFileSync(path.join(f.extracted, 'app/build/main.cjs'), 'changed');
+      if (fault === 'zip') fs.appendFileSync(f.zip, 'changed');
+      if (fault === 'binding') fs.appendFileSync(path.join(f.root, 'package-binding.json'), '\n');
+      assert.throws(() => f.api.admitPackage(f.root));
+    } finally {
+      f.close();
+    }
+  }
+});
+test('branded output loading rechecks owned marker and exact module bytes with no checkout fallback', () => {
+  for (const fault of ['owner', 'module']) {
+    const f = fixture();
+    try {
+      const a = f.api.prepareBinding(f.root, head, tree);
+      if (fault === 'owner')
+        fs.writeFileSync(path.join(f.root, '.owner'), '00000000-0000-4000-8000-000000000002');
+      else fs.unlinkSync(path.join(f.extracted, 'app/build/main.cjs'));
+      assert.throws(() => f.api.loadBuild(a, 'main.cjs'));
+      assert.equal(fs.existsSync(path.join(f.desktop, 'build/main.cjs')), true);
+    } finally {
+      f.close();
+    }
+  }
+});
+test('hardlinked package payload is refused before binding publication', () => {
+  const f = fixture();
+  try {
+    f.api.prepareBinding(f.root, head, tree); // Positive complete baseline before introducing a hardlink.
+    fs.unlinkSync(path.join(f.root, 'package-binding.json'));
+    const file = path.join(f.extracted, 'app/build/main.cjs');
+    fs.linkSync(file, path.join(f.root, 'held'));
+    assert.throws(() => f.api.prepareBinding(f.root, head, tree));
+    assert.equal(fs.existsSync(path.join(f.root, 'package-binding.json')), false);
+  } finally {
+    f.close();
+  }
+});
+test('projected helper and packaged file limits refuse unsupported roots before package reads or binding writes', () => {
+  const f = fixture();
+  try {
+    assert.equal(f.api.pathBudget(f.root, f.extracted), true);
+    assert.throws(() => f.api.pathBudget(path.join(f.root, 'x'.repeat(80)), f.extracted));
+    assert.throws(() => f.api.pathBudget(f.root, path.join(f.extracted, 'x'.repeat(260))));
+    assert.equal(fs.existsSync(path.join(f.root, 'package-binding.json')), false);
+    const windows = { exports: {} };
+    vm.runInNewContext(fs.readFileSync(helperFile, 'utf8'), {
+      module: windows,
+      exports: windows.exports,
+      process,
+      __dirname: 'D:\\a\\fonesi-Auto\\fonesi-Auto\\desktop\\verification',
+      Buffer,
+      TextDecoder,
+      require(name) {
+        return name === 'node:path' ? path.win32 : require(name);
+      },
+    });
+    const rootAt = (base) =>
+      path.win32.join(base, 'pkv-abcdef', 'd', '.retained-host-runtime', 'r');
+    const short = rootAt('D:\\a\\_temp'),
+      deep = rootAt('C:\\Users\\RUNNER~1\\AppData\\Local\\Temp');
+    assert.equal(
+      windows.exports.pathBudget(short, path.win32.join(short, 'relocated-package')),
+      true,
+    );
+    assert.throws(() =>
+      windows.exports.pathBudget(deep, path.win32.join(deep, 'relocated-package')),
+    );
+  } finally {
+    f.close();
+  }
+});
+
+test('initializer probe resolves original packaged filename only from exact PACKAGE control and proof', () => {
+  const f = fixture();
+  try {
+    const admitted = f.api.prepareBinding(f.root, head, tree),
+      launch = path.join(f.root, 'first-use', 'Fonesi-Auto-' + id, 'launch-' + id);
+    fs.mkdirSync(launch, { recursive: true });
+    const controlFile = path.join(launch, 'provision-control.json');
+    for (const fault of [
+      'none',
+      'mode',
+      'root',
+      'downgrade',
+      'source',
+      'rollback-package',
+      'rollback-seed',
+      'rollback-downgrade',
+      'rollback-root',
+    ]) {
+      const rollback = fault.startsWith('rollback-');
+      const campaignFile = path.join(f.root, 'campaign.json');
+      if (rollback) fs.writeFileSync(campaignFile, JSON.stringify({ version: 1 }));
+      else if (fs.existsSync(campaignFile)) fs.unlinkSync(campaignFile);
+      fs.writeFileSync(
+        controlFile,
+        JSON.stringify({
+          version: ['downgrade', 'source', 'rollback-seed', 'rollback-downgrade'].includes(fault)
+            ? 2
+            : 3,
+          root: path.dirname(launch),
+          stage: 'provision',
+          packageRoot: fault === 'root' ? f.original : f.extracted,
+        }),
+      );
+      fs.writeFileSync(
+        path.join(f.root, 'copy.json'),
+        JSON.stringify({
+          version: 2,
+          mode: ['mode', 'source'].includes(fault) ? 'MAIN_VERSION' : 'PACKAGE_VERSION',
+        }),
+      );
+      let selected = 0,
+        sourceSelected = 0,
+        exited = false;
+      vm.runInNewContext(
+        fs.readFileSync(path.join(__dirname, 'persistence-launch-init-probe.cjs'), 'utf8'),
+        {
+          process: { env: { FONESI_PERSISTENCE_LAUNCH_CONTROL: controlFile } },
+          TextDecoder,
+          Buffer,
+          console: { error() {} },
+          require(name) {
+            if (name === 'electron')
+              return {
+                app: {
+                  on() {},
+                  exit(code) {
+                    assert.equal(code, 1);
+                    exited = true;
+                  },
+                },
+                dialog: {},
+              };
+            if (name === './persistence-launch-e2e-control.cjs')
+              return {
+                witnessPath() {
+                  throw Error('NOT_CALLED');
+                },
+              };
+            if (name === './retained-host-contract.cjs')
+              return {
+                rootForLaunch(value) {
+                  assert.equal(value, launch);
+                  return f.root;
+                },
+              };
+            if (name === './retained-rollback-contract.cjs')
+              return {
+                stageForLaunch(value) {
+                  assert.equal(value, launch);
+                  assert.equal(rollback, true);
+                  return {
+                    root: fault === 'rollback-root' ? f.original : f.root,
+                    packageMode: fault !== 'rollback-seed',
+                  };
+                },
+              };
+            if (name === './main-runtime-version-package.cjs')
+              return {
+                admitPackage(root) {
+                  assert.equal(root, f.root);
+                  return admitted;
+                },
+                initializer: f.api.initializer,
+              };
+            if (name === f.api.initializer(admitted)) {
+              selected++;
+              return {};
+            }
+            if (
+              name === '../launch/persistence-initialize.cjs' &&
+              ['source', 'rollback-seed'].includes(fault)
+            ) {
+              sourceSelected++;
+              return {};
+            }
+            if (name.includes('persistence-initialize')) throw Error('SOURCE_FALLBACK');
+            return require(name);
+          },
+        },
+      );
+      assert.equal(selected, ['none', 'rollback-package'].includes(fault) ? 1 : 0);
+      assert.equal(sourceSelected, ['source', 'rollback-seed'].includes(fault) ? 1 : 0);
+      assert.equal(
+        exited,
+        !['none', 'source', 'rollback-package', 'rollback-seed'].includes(fault),
+      );
+    }
+  } finally {
+    f.close();
+  }
+});
+
+test('Electron package checks use physical original-fs for actual ASAR bytes, never virtual-fs stat', () => {
+  const f = fixture(true);
+  try {
+    const admitted = f.api.prepareBinding(f.root, head, tree);
+    assert.equal(admitted.packageRoot, f.extracted);
+    assert.equal(f.originalFsLoads, 1);
+    assert.equal(f.virtualFsReads, 0);
+    assert.equal(
+      f.api.fileProof(path.join(f.extracted, 'runtime/electron/resources/default_app.asar')).sha256,
+      hash(Buffer.from('physical synthetic ASAR bytes')),
+    );
+  } finally {
+    f.close();
+  }
+});
+test('missing Electron original-fs is fatal without virtual filesystem fallback', () => {
+  let virtual = 0;
+  assert.throws(
+    () =>
+      vm.runInNewContext(fs.readFileSync(helperFile, 'utf8'), {
+        module: { exports: {} },
+        process: { versions: { electron: '45.1.0' } },
+        require(name) {
+          if (name === 'original-fs') throw Error('MISSING_ORIGINAL_FS');
+          if (name === 'node:fs') virtual++;
+          return require(name);
+        },
+      }),
+    /MISSING_ORIGINAL_FS/,
+  );
+  assert.equal(virtual, 0);
+});

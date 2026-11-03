@@ -1,0 +1,15 @@
+# Keep executable source bytes stable across Linux authoring and Windows CI.
+# Windows PowerShell accepts LF; the scripts currently contain ASCII source.
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.cs text eol=lf
+# Reviewed desktop provenance and fixed asset bytes must survive Windows checkout.
+desktop/** text=auto eol=lf
+tools/phase-00/desktop-stack-lab/package-lock.json text eol=lf
+tools/phase-00/desktop-stack-lab/dependency-review.json text eol=lf
+
+# Active Phase 1 formatter/config bytes must be identical on Windows and Linux.
+biome.json text eol=lf
+foundation/** text=auto eol=lf
+# P1-08 verification loads the exact approved reference bytes; never normalize at runtime.
+ui-reference/Fonesi-Auto-V9-UI-Reference.html text eol=lf

@@ -1,0 +1,88 @@
+# Main-owned runtime VERSION verification / Help integration
+
+Date:2026-11-01 13:31 UTC. Status:SOURCE ENTRY CLEAR after independent finite contract review at13:39 UTC under standing reviewed software-work authority. No new hosted execution is authorized by this document. Base:accepted SOURCE VERSION/EOF public `c955d1ca5e5e99de37de5480f9ba4775e630ff00`, tree `cccd766d93dfcacabb9d0e8966bfb8cea856f190`; strict evidence in [campaign closure](../evidence/P2-retained-windows-campaign-2026-11-01.md).
+
+## 1. Useful result and authority
+
+Map to P2-01 exact app-local runtime/version and P2-02 invocation ownership/lifetime subcriteria. A user who genuinely provisioned the exact candidate can explicitly verify its version from the existing V9 Help surface. Byte-only VERIFIED_LOCAL remains distinct from an actual VERSION observation. No server START/HEALTH, devices/scan, shell text, argv/path/URL input, package promotion, recipient-grant synthesis or legacy license-boolean promotion.
+
+Reuse the reviewed default factory, shared runtime custody, launcher parent receipt, exact VERSION plan/observation and helper-close proofs. No new supervisor/native implementation/library. Keep launcher `-EnableRetainedHost` explicit; ordinary anonymous/maintenance/recovery routes are not silently changed. Without the opt-in native context, Help truthfully reports verification unavailable and does not spawn. No helper starts merely by opening Help or reading status.
+
+## 2. Exact separate wire and single budget
+
+Add a private main bridge/channel `foundation:runtime-version:v1`, admitted through the same existing ViewSession/8-slot budget as setup/preferences/fleet. Preload adds only `platformTools.readVersion()` and `platformTools.verifyVersion(expectedRevision, expectedInstallationRevision)`; renderer never receives paths, runtime tokens or generic invocation access. Existing setup wire/schema and methods remain unchanged.
+
+Requests are canonical bounded JSON strings <=8192 UTF-8 bytes; one argument only, exact keys/order not required for transport but duplicate keys rejected. Fields:
+- READ: `{version:1,requestId,method:'runtimeVersion.get'}`.
+- REQUEST: `{version:1,requestId,method:'runtimeVersion.request',expectedRevision,expectedInstallationRevision}`.
+- requestId uses the existing exact `p[1-9][0-9]{0,15}` safe-integer grammar. Revisions are safe nonnegative integers excluding negative zero; installationRevision must be positive. No caller deadline/owner/command/correlation UUID.
+
+Responses are canonical JSON <=16384 bytes:
+- success `{version:1,requestId,ok:true,outcome:'OBSERVED'|'PENDING',snapshot,diagnosticId,loggingHealth}`;
+- error `{version:1,requestId:string|null,ok:false,outcome:'NOT_STARTED'|'OUTCOME_UNKNOWN',code,diagnosticId,loggingHealth}`.
+Use actual known requestId if valid even when another field is invalid; otherwise null, never arbitrary invalid text. DiagnosticId is a main-generated canonical UUID or null when allocation fails. loggingHealth is AVAILABLE/DEGRADED; null diagnosticId always requires DEGRADED, while an allocated UUID may accompany either health value. Exact snapshot:
+`{revision,installationRevision,state,operationId,code,candidateVersion:'37.0.1',verifiedAtUtc}`.
+State is UNAVAILABLE/IDLE/PENDING/VERIFIED/FAILED/OUTCOME_UNKNOWN. operationId is canonical UUID only while an operation is reserved or its uncertain result retained; otherwise null. verifiedAtUtc is a safe nonnegative integer millisecond timestamp only for VERIFIED, otherwise null. Installation revision is positive or null; VERIFIED requires a positive current revision and code null. IDLE/PENDING code null; UNAVAILABLE/FAILED/OUTCOME_UNKNOWN require a fixed code. Revision is process-local interaction revision, never persisted core-ledger revision. No live verification authority is restored from DB/backup.
+
+Exact code set: INVALID_TRANSPORT/PAYLOAD_TOO_LARGE/INVALID_JSON/INVALID_SHAPE/UNSUPPORTED_VERSION/UNKNOWN_METHOD/UNTRUSTED_SENDER/SESSION_UNAVAILABLE/SESSION_REVOKED/BUSY/STALE_REVISION/STALE_INSTALLATION/NOT_PROVISIONED/RETAINED_HOST_DISABLED/UNSUPPORTED_PATH/OWNER_REVOKED/AUDIT_UNAVAILABLE/INTERNAL_FAILURE/TIMEOUT/TRANSPORT_FAILED/INVALID_OBSERVATION/RECOVERY_REQUIRED/OUTCOME_UNKNOWN/CLOSED. Unknown native exceptions map to INTERNAL_FAILURE or OUTCOME_UNKNOWN according to effect boundary, never raw data. Existing native factory codes are mapped through an exact allowlist; no generic exception-message echo.
+
+## 3. Reservation, audit and execution
+
+One service operation at a time. Both revalidating READ and REQUEST synchronously reserve the same service lane before any injected callback/await; a concurrent call returns NOT_STARTED/BUSY without overwriting state. During a native PENDING operation, READ may synchronously capture that PENDING snapshot without byte inspection or state mutation. Capture the admitted ViewSession generation. Fresh explicit READ reconciliation is a client-generation readiness rule, not an additional main capability; main independently enforces current installation, exact process-local revision CAS and the shared lane. Recheck CAS, lane generation, owner and session after every admission/audit await before transition or effect. Do not let a read dispatched before a request/timeout/revocation restore client readiness: reuse the reviewed local reconciliation-generation pattern. READ can inspect bytes/current installation but never execute VERSION.
+
+REQUEST allocates distinct operation/diagnostic IDs, flushes REQUEST/INTENT before any factory construction or executable effect, then captures PENDING and returns it promptly. IPC has the existing2-second client observation budget; long operation continues only under captured operationCurrent (slot release alone does not revoke the generation). No await of the full native run in the RPC. Intent failure produces NOT_STARTED/AUDIT_UNAVAILABLE, no factory/spawn; result-log failure after reservation is PENDING/DEGRADED, never an invented no-effect claim. After dispatch, lost session/owner/disposed bridge or ambiguous error yields OUTCOME_UNKNOWN; pre-admission denials remain NOT_STARTED.
+
+Main resolves only its current launch from the bounded canonical owned `.launcher-current.json` pointer and exact parent path, then reuses readHostContext/factory checks including marker/dev/ino, receipt/READY/native image/build assets and supported path budgets. Missing opt-in receipt maps RETAINED_HOST_DISABLED; malformed present receipt/current pointer remains RECOVERY_REQUIRED, never a fallback to another launch. No scan/adopt of historical launch directories. Read status does not construct/start a helper.
+
+Native VERSION starts only after a separately flushed VERIFY/INTENT barrier and all final owner/session/custody fences. Exact reviewed factory argv/environment and30-second host operation deadline remain; fixed method only, no user-specified flags. A fresh factory is used for the single verification and closed via its existing bounded EOF path after completion. Success requires actual OBSERVED/OK VERSION, exact current installation, actual factory close RETIRED, clean owned helper removal and continued ownership. A process exit0 alone is not success. Pending native/stdio/cleanup retains uncertainty and blocks another verification; no synthetic retirement/release.
+
+Setup and verification share actual runtime custody. Setup can never replace bytes during an active native read holder. Main always passes the captured expectedInstallationRevision to the fixed factory; the optional private factory expectation is validated/captured once, checked on the actual admitted holder before provider reserve/spawn and again at runtime admission. A replacement between REQUEST release and VERIFY therefore refuses before native effects, without a competing service holder. After native retirement, any intervening setup invalidates final current-installation verification; service acquires a fresh exact read holder after helper close, matches installation revision, and retains that holder through final synchronous assertRead/owner/session/internal fences and immutable snapshot capture. No await occurs between the final fence and capture. Only then releaseRead is awaited; failed/uncertain release exposes no success response and latches OUTCOME_UNKNOWN. VERIFIED means verified at the captured time/installation revision, not continuous monitoring: later setup may change bytes after release. Never await release and then manufacture a supposedly current snapshot from cached admission. READ uses the same held-token capture boundary before reporting prior VERIFIED; BUSY/replacement/tamper cannot retain a falsely current success. An idle/closing helper is cleanup-only, not cached execution authority. No additional setup grant or long-held generic read capability is introduced.
+
+## 4. Audit schema7 and failure semantics
+
+Add schemaVersion7 without changing historical1–6. Common fields are runId/sequence/utc/severity/component MAIN/task P2-01/event RUNTIME_VERSION, plus exact `{operation:'READ'|'REQUEST'|'VERIFY',phase:'INTENT'|'RESULT',diagnosticId,operationId,expectedRevision,resultingRevision,installationRevision,outcome,code}`. No path/serial/build output/recipient identifier. IDs are distinct canonical UUIDs; operationId is null only for READ. expected/resulting revision follows the exact table below; installationRevision is null or positive. INTENT requires REQUEST/VERIFY, outcome INTENT/code OK/resultingRevision null. READ RESULT is OBSERVED/OK with resultingRevision, or FAILED/fixed nonOK with null revision. REQUEST RESULT is PENDING/OK or FAILED/fixed nonOK or OUTCOME_UNKNOWN. VERIFY RESULT is VERIFIED/OK only after the full success boundary, otherwise FAILED/fixed nonOK or OUTCOME_UNKNOWN. Successful code OK has INFO severity, all fixed errors WARN. Logging writes use the actual owned flush barrier; allocation failure returns diagnosticId null/DEGRADED with no native dispatch. Post-effect logging failure never rewrites native outcome or claims rollback.
+
+### Exact snapshot tuples and revision limits
+
+All fields are present. `revision` starts0, advances once for each changed service snapshot (PENDING admission, terminal transition or reconciled installation/state change), and never advances for an identical READ. No wrap/coercion: reject new work with CLOSED before safe-integer exhaustion; reserve two remaining revision values before REQUEST so PENDING and terminal can both be recorded. Client request-ID exhaustion closes that client with SESSION_UNAVAILABLE instead of reusing IDs. The process UUID uniqueness set is capped at65536 entries; exhaustion rejects before allocation/effects with INTERNAL_FAILURE and null diagnostic/DEGRADED. UUID allocation must yield distinct canonical IDs; duplicate/invalid/throwing allocation fails before effects with INTERNAL_FAILURE and null diagnostic/DEGRADED.
+
+| state | installationRevision | operationId | code | verifiedAtUtc |
+|---|---|---|---|---|
+| UNAVAILABLE | null or positive if bytes known but opt-in unavailable | null | NOT_PROVISIONED, RETAINED_HOST_DISABLED, UNSUPPORTED_PATH, RECOVERY_REQUIRED, OWNER_REVOKED or CLOSED | null |
+| IDLE | positive | null | null | null |
+| PENDING | positive admitted revision | nonnull reserved UUID | null | null |
+| VERIFIED | positive captured revision | null | null | safe nonnegative captured time |
+| FAILED | positive attempted revision | null (all work actually retired) | STALE_INSTALLATION, SESSION_REVOKED, OWNER_REVOKED, AUDIT_UNAVAILABLE, INTERNAL_FAILURE, TIMEOUT, TRANSPORT_FAILED, INVALID_OBSERVATION or RECOVERY_REQUIRED | null |
+| OUTCOME_UNKNOWN | positive attempted revision | nonnull retained UUID | OUTCOME_UNKNOWN or RECOVERY_REQUIRED | null |
+
+Initial snapshot is revision0/UNAVAILABLE/null installation/null operation/NOT_PROVISIONED/null time, explicitly not an inspection. Revalidating READ BUSY is an error response NOT_STARTED/BUSY, not a fabricated snapshot or state mutation; READ of a pending native operation is OBSERVED/PENDING. Request success is only PENDING with a PENDING snapshot; VERIFIED can only be returned by READ after reconciliation, never optimistic REQUEST. A stale installation on a later READ reconciles to IDLE for a different valid installation or UNAVAILABLE for missing/refused bytes, clearing old verification. A fully retired failed operation may be retried only after explicit current READ and matching CAS. Retained uncertainty never becomes IDLE merely because a client times out.
+
+Post-service bridge revocation may conservatively return OUTCOME_UNKNOWN even if the service returned a known NOT_STARTED result: this denotes inability to deliver an admitted response, not proof a native process ran. Before entering service, denials remain NOT_STARTED. Log/result failure after captured state is returned as DEGRADED with the truthful state; it neither extends native authority nor rolls back committed state. READ cannot publish a success after uncertain read-holder release.
+
+### Exact schema7 audit tuples
+
+DiagnosticId is always a valid allocated UUID in a written record; allocation failure emits no malformed audit record and returns null/DEGRADED. OperationId is null for READ and the reserved operation UUID for REQUEST/VERIFY. InstallationRevision is null or positive on READ, positive for REQUEST/VERIFY after admission. Early malformed/pre-admission bridge denials need not allocate an operation/audit record. `expectedRevision` is null for READ and the captured request CAS for REQUEST/VERIFY. All non-OK codes come from the exact wire list.
+
+| operation/phase | outcome/code | resultingRevision |
+|---|---|---|
+| REQUEST or VERIFY / INTENT | INTENT / OK | null |
+| READ / RESULT | OBSERVED / OK | captured snapshot revision |
+| READ / RESULT | FAILED / fixed non-OK | null |
+| REQUEST / RESULT | PENDING / OK | PENDING revision |
+| REQUEST / RESULT | FAILED / fixed non-OK | null (no admitted transition) |
+| REQUEST / RESULT | OUTCOME_UNKNOWN / OUTCOME_UNKNOWN or RECOVERY_REQUIRED | retained PENDING revision |
+| VERIFY / RESULT | VERIFIED / OK | captured VERIFIED revision |
+| VERIFY / RESULT | FAILED / one FAILED-state code above | terminal FAILED revision |
+| VERIFY / RESULT | OUTCOME_UNKNOWN / OUTCOME_UNKNOWN or RECOVERY_REQUIRED | retained UNKNOWN revision |
+
+A later RESULT audit await must never overwrite a newer snapshot. Capture the immutable result/revision under its lane and log that historical tuple; failed result logging only degrades response health. No fresh execution authority follows from logging/readback completion.
+
+## 5. Lifecycle and V9
+
+Bridge/session revocation prevents new authority; cleanup-only close remains allowed. The factory receives an actual persistence-lease/resource-location ownership fence that remains valid while main is closing, not a window/session/closing Boolean. New grant/execute admission adds the stricter operationCurrent/service-closing fences; cleanup does not reuse those revoked effect capabilities. Main keeps persistence resources alive until actual retirement. The service outer deadline bounds shutdown without changing the existing factory internal deadline. Main shutdown closes/revokes version service before shared custody and persistence release. The version service captures one monotonic shutdown deadline of120000ms at its first shutdown call and returns the same latched Promise on repeats. All pending operation, factory.close and read-release waits share that deadline, never sequential fresh120s waits. The main lifecycle starts setup and version shutdown concurrently, then closes custody only after both actually retire, all under the same outer120000ms deadline. A logical deadline leaves the actual promise/factory/read holder retained and reports UNRETIRED; it never clears the active object or releases persistence. Late actual settlement can establish retirement internally without reopening admissions. UNRETIRED prevents release/cleanup claims and preserves owned evidence. No PID polling/reopen, kill-all, lease abandonment or wider shutdown deadline.
+
+Use the existing compact Help panel and native setup controls. Add status/read/explicit “Verify local version” action, disabled while pending or without fresh read/current installation/opt-in context. No fake fleet rows, monitor redesign, auto-launch on render, automatic retries or optimistic VERIFIED. Renderer uses textContent/React text, not raw HTML. Retain pending/unknown reconciliation guidance and inherited contrast/polish ledger. Fix the redundant observer `.host-session` absence predicate in this source checkpoint, without changing historical accepted evidence.
+
+## 6. One coherent source batch and evidence gates
+
+Implementation includes exact contract/client/bridge/service/audit, main lifecycle, preload/Help UI and closed module/build/package inventory updates. Targeted tests cover wire duplicates/getters/bounds, sender/subframe/shared-budget generation, CAS/reload/read races, two concurrent requests, intent/result log failures, actual factory-bound injected completion/EOF and setup contention, stale installation, owner loss before/after dispatch, delayed close/UNRETIRED, main shutdown ordering, original V9/setup behavior and no automatic effects. Use existing real owned files/SQLite/custody where feasible; synthetic OS facts remain labeled. One aggregate owner at coherent integration freeze; no rerun of unchanged24-case native campaign merely for source docs. Any future actual main/Help or PACKAGE campaign requires exact reviewed runner and separately recorded bounded execution scope, not this source design.
