@@ -20,6 +20,7 @@ SOURCE_NAMES = frozenset((
     'windows_vision_host.py', 'windows_vision_catalog.py',
     'windows_vision_materialize.py', 'windows_vision_prepare.py',
     'windows_materialization_catalog.json', 'windows_python_members.json',
+    'windows_reproduction_baseline.json',
     'preprocess-requirements-windows.lock', 'ocr-requirements-windows.lock',
 ))
 
@@ -89,6 +90,9 @@ def run():
     material.guarded_path(source, True)
     _STAGE = 'SOURCE_INDEX'
     hashes = source_index(source, os.environ.get('FONESI_VISION_HOST_INDEX_SHA256'))
+    baseline = prepare.load_reproduction_baseline(
+        source / 'windows_reproduction_baseline.json',
+        hashes['windows_reproduction_baseline.json'], hashes)
     work = Path.cwd()
     material.guarded_path(work, True)
     try:
@@ -126,9 +130,10 @@ def run():
         digest = write_report(reports, 'installed-inventory.json', result['inventory'])
         if digest != result['inventorySha256']:
             raise ValueError('INVENTORY_HASH')
+        comparison = prepare.compare_reproduction(result['inventory'], baseline['inventory'])
         summary = {'files': len(result['inventory']['files']),
                    'runtimeBytes': result['inventory']['runtimeBytes'],
-                   'comparison': 'NOT_REQUESTED'}
+                   **comparison}
     return receipt(identity, stage, digest, summary)
 
 
@@ -140,7 +145,10 @@ def receipt(identity, stage, digest, summary):
             'wheelCount': summary.get('wheelCount'), 'pythonFiles': summary.get('pythonFiles'),
             'modelFiles': summary.get('modelFiles'), 'acquiredBytes': summary.get('acquiredBytes'),
             'runtimeFiles': summary.get('files'), 'runtimeBytes': summary.get('runtimeBytes'),
-            'comparison': summary.get('comparison'), 'candidateInference': 'NOT_RUN'}
+            'comparison': summary.get('comparison'),
+            'inventoryBytes': summary.get('inventoryBytes'),
+            'expectedInventorySha256': summary.get('expectedInventorySha256'),
+            'candidateInference': 'NOT_RUN'}
 
 
 def main():

@@ -313,3 +313,199 @@ test('Windows compiler array entries retain complete output/reference tokens bef
       source.indexOf('[Fonesi.Phase00.NativeProbe]::Run($script:compiler'),
   );
 });
+
+// Source-contract checks only: these do not run PowerShell, compile assemblies or admit Runtime.
+function closedRuntimeFixtureSource(source) {
+  const runtimeAdmission = source.slice(
+    source.indexOf("  if($RuntimeRoot -ceq '')"),
+    source.indexOf(" $failureStage='COMPILE'"),
+  );
+  const ordered = [
+    "throw 'RUNTIME_NOT_ADMITTED'",
+    '$runtimeCustody=NewRuntimeDirectoryCustody',
+    '$runtimeCustody.HoldRoot($root)',
+    'GuardSource $inventoryPath 16777216',
+    "throw 'RUNTIME_INVENTORY_REJECTED'",
+    '$inventory=Get-Content',
+    "throw 'INVENTORY_SCHEMA'",
+    '$runtimeHashes.Add([string]$entry.path,[string]$entry.sha256)',
+    '$runtimeCustody.ReserveFixture()',
+  ];
+  let last = -1;
+  for (const token of ordered) {
+    const index = runtimeAdmission.indexOf(token);
+    assert(index > last, `Missing or out-of-order Runtime admission: ${token}`);
+    last = index;
+  }
+  assert(
+    runtimeAdmission.includes("'^(python|preprocess-runtime|ocr-runtime|source|tooling|model)/'"),
+  );
+  const custody = source.slice(
+    source.indexOf('function NewRuntimeDirectoryCustody'),
+    source.indexOf('function AssertRuntimeFixture'),
+  );
+  for (const token of [
+    'PRELOADED_RUNTIME_CUSTODY',
+    'static readonly List<RuntimeDirectoryCustody> retained',
+    'retained.Add(this)',
+    String.raw`const string Root = @"D:\a\_temp\fonesi-p4-windows-candidate-v1";`,
+    String.raw`new string[] { @"D:\", @"D:\a", @"D:\a\_temp", Root }`,
+    'String.Equals(root, Root, StringComparison.Ordinal)',
+    'CreateFile(path, 0x80, 3, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero)',
+    'handles.Add(handle)',
+    '(info.Attributes & 0x410) != 0x10',
+    'GetFinalPathNameByHandle(handle, final',
+    'length == 0 || length >= final.Capacity',
+    'if(!CreateDirectory(path, IntPtr.Zero))',
+    'Hold(path);',
+    'if(Directory.GetFileSystemEntries(path).Length != 0) throw new IOException("RUNTIME_FIXTURE_NOT_EMPTY")',
+    'if(!CloseHandle(handles[i])) return false;',
+    'handles.RemoveAt(i)',
+    'retained.Remove(this)',
+  ])
+    assert(custody.includes(token), `Missing Runtime directory custody: ${token}`);
+  assert(
+    custody.indexOf('handles.Add(handle)') <
+      custody.indexOf('GetFileInformationByHandle(handle, out info)'),
+  );
+  assert(
+    custody.indexOf('if(!CloseHandle(handles[i])) return false;') <
+      custody.indexOf('handles.RemoveAt(i)'),
+  );
+  assert(source.includes("if($Mode -ceq 'Runtime'){$runtimeCustody.ReserveCompile()}else{"));
+  assert(
+    source.includes(
+      'if($report.retired){try{if(-not $runtimeCustody.Release()){$report.retired=$false;$report.passed=$false}}',
+    ),
+  );
+  const guard = source.slice(
+    source.indexOf('function AssertRuntimeFixture('),
+    source.indexOf('function Compiler('),
+  );
+  for (const token of [
+    '-not $item.PSIsContainer',
+    '$item.Attributes -band [IO.FileAttributes]::ReparsePoint',
+    '$entries=@(Get-ChildItem -LiteralPath $directory -Force)',
+    '$entries.Count -ne 2',
+    '$entry.PSIsContainer',
+    '$entry.Attributes -band [IO.FileAttributes]::ReparsePoint',
+    "$entry.Name -cnotin @('VisionProcess.dll','VisionProcessFixture.exe')",
+    '-not $script:before.ContainsKey($entry.FullName)',
+    '(HashFile $entry.FullName) -cne $script:before[$entry.FullName]',
+    'foreach($p in $script:before.Keys)',
+    "throw 'FIXTURE_INPUT_CHANGED'",
+  ])
+    assert(guard.includes(token), `Missing fixture custody check: ${token}`);
+  assert(!guard.includes('-Recurse'));
+  const compile = source.slice(
+    source.indexOf(' $dll=Join-Path'),
+    source.indexOf(" if($Mode -cne 'Compile')"),
+  );
+  let previous = -1;
+  for (const token of [
+    "Compiler ($common+@('/target:library'",
+    'GuardSource $dll 1048576',
+    "Compiler ($common+@('/target:exe'",
+    'GuardSource $exe 1048576',
+    "if($Mode -ceq 'Runtime'){AssertRuntimeFixture (Join-Path $root 'fixture')}",
+    '$report.compiled=$true',
+  ]) {
+    const index = compile.indexOf(token);
+    assert(index > previous, `Missing or out-of-order same-run compilation custody: ${token}`);
+    previous = index;
+  }
+  const runtime = source.slice(source.indexOf("  $failureStage='RUNTIME_PIPELINE'"));
+  assert(runtime.includes("AssertRuntimeFixture (Join-Path $root 'fixture')"));
+  assert(
+    runtime.includes(
+      'foreach($entry in $runtimeHashes.GetEnumerator()){$hashes.Add($entry.Key,$entry.Value)}',
+    ),
+  );
+  assert(runtime.includes("$hashes.Add('fixture/VisionProcess.dll',$before[$dll])"));
+  assert(runtime.includes("$hashes.Add('fixture/VisionProcessFixture.exe',$before[$exe])"));
+  assert(!runtime.includes('HashTree'));
+  assert(!runtime.includes('$inventory=Get-Content'));
+}
+
+test('future Runtime reserves a fresh separate fixture layer after exact held inventory admission', () => {
+  const source = readFileSync(
+    new URL('../verification/Invoke-VisionQualification.ps1', import.meta.url),
+    'utf8',
+  );
+  closedRuntimeFixtureSource(source);
+  const manifest = JSON.parse(
+    readFileSync(new URL('../vision/windows_qualification_manifest.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(manifest.approvedInstalledInventorySha256, null);
+  assert.equal(manifest.prerequisitesVerifiedOnHost, false);
+  const managed = source.slice(
+    source.indexOf(" if($Mode -ceq 'Managed'){"),
+    source.indexOf("  $failureStage='RUNTIME_PIPELINE'"),
+  );
+  assert(managed.includes("HashTree (Join-Path $root 'fixture') 'fixture' $hashes"));
+  assert(
+    managed.includes(
+      "[IO.File]::WriteAllBytes((Join-Path $root 'fixture/empty'),(New-Object byte[] 0))",
+    ),
+  );
+  assert(managed.includes("throw 'EMPTY_TAMPER_ACCEPTED'"));
+});
+
+test('synthetic source mutations reject preexisting, missing, extra or unheld Runtime fixture code', () => {
+  const source = readFileSync(
+    new URL('../verification/Invoke-VisionQualification.ps1', import.meta.url),
+    'utf8',
+  );
+  const mutations = [
+    ['$runtimeCustody.HoldRoot($root)', ''],
+    [
+      'CreateFile(path, 0x80, 3, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero)',
+      'CreateFile(path, 0x80, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero)',
+    ],
+    ['(info.Attributes & 0x410) != 0x10', 'false'],
+    ['handles.Add(handle)', '// handle not held'],
+    ['if(!CloseHandle(handles[i])) return false;', 'CloseHandle(handles[i]);'],
+    ['Directory.GetFileSystemEntries(path).Length != 0', 'false'],
+    [
+      'if($report.retired){try{if(-not $runtimeCustody.Release())',
+      'if($true){try{if(-not $runtimeCustody.Release())',
+    ],
+
+    [
+      '$runtimeCustody.ReserveFixture()',
+      "[IO.Directory]::CreateDirectory((Join-Path $root 'fixture'))",
+    ],
+    ["throw 'RUNTIME_INVENTORY_REJECTED'", "throw 'IGNORED_INVENTORY'"],
+    [
+      "'^(python|preprocess-runtime|ocr-runtime|source|tooling|model)/'",
+      "'^(python|preprocess-runtime|ocr-runtime|source|tooling|model|fixture)/'",
+    ],
+    ['$entries.Count -ne 2', '$entries.Count -gt 2'],
+    [
+      "$entry.Name -cnotin @('VisionProcess.dll','VisionProcessFixture.exe')",
+      "$entry.Name -notlike '*.dll'",
+    ],
+    ['$entry.PSIsContainer -or ', ''],
+    ['$entry.Attributes -band [IO.FileAttributes]::ReparsePoint', '$false'],
+    ['-not $script:before.ContainsKey($entry.FullName)', '$false'],
+    ['(HashFile $entry.FullName) -cne $script:before[$entry.FullName]', '$false'],
+    ["throw 'FIXTURE_INPUT_CHANGED'", "Write-Output 'IGNORED_INPUT_CHANGE'"],
+    [' GuardSource $dll 1048576\n', ''],
+    [' GuardSource $exe 1048576\n', ''],
+    ["if($Mode -ceq 'Runtime'){AssertRuntimeFixture (Join-Path $root 'fixture')}", ''],
+    [
+      "$hashes.Add('fixture/VisionProcess.dll',$before[$dll])",
+      "HashTree (Join-Path $root 'fixture') 'fixture' $hashes",
+    ],
+    ["$hashes.Add('fixture/VisionProcessFixture.exe',$before[$exe])", ''],
+  ];
+  for (const [from, to] of mutations) {
+    assert(source.includes(from), `Mutation must target real source: ${from}`);
+    assert.throws(() => closedRuntimeFixtureSource(source.replace(from, to)), undefined, from);
+  }
+  const reservation = '  $runtimeCustody.ReserveFixture()\n';
+  const earlyReservation = source
+    .replace(reservation, '')
+    .replace('  $inventory=Get-Content', `${reservation}  $inventory=Get-Content`);
+  assert.throws(() => closedRuntimeFixtureSource(earlyReservation));
+});

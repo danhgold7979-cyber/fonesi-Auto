@@ -415,3 +415,50 @@ test('artifact mutations cannot widen paths, accept missing evidence or lengthen
     assert.throws(() => contract(changed), before);
   }
 });
+
+test('reproduction source: complete mismatch is diagnostic, never index handoff or success', () => {
+  const source = readFileSync(
+    new URL('../verification/Invoke-VisionMaterialization.ps1', import.meta.url),
+    'utf8',
+  );
+  const contract = (value) => {
+    for (const token of [
+      "'windows_reproduction_baseline.json'",
+      "$v.comparison -cnotin @('MATCH','MISMATCH')",
+      "$mismatch=$value.reproductionDisposition -ceq 'OBSERVED_MISMATCH_NOT_ADMITTED'",
+      'if($value.passed -or $mismatch)',
+      "$value.failure -cne 'REPRODUCTION_MISMATCH'",
+      '$inventory.Length -ne $value.inventoryBytes',
+      "if($frozen.comparison -ceq 'MISMATCH'){",
+      "$report.failure='REPRODUCTION_MISMATCH';$report.failureStage='REPRODUCTION';$failed=$true",
+      '$handoffHash=$lease.WriteReproducedInventory($inventoryBytes,$frozen.expectedInventorySha256)',
+      '$handoffHash -cne $frozen.expectedInventorySha256 -or -not $lease.ReproducedInventoryWritten',
+      'if($report.indexHandoff -and -not $lease.ReproducedInventoryWritten)',
+      "candidateInference='NOT_RUN'",
+    ])
+      assert.ok(value.includes(token), token);
+    assert.ok(
+      value.indexOf('$inventoryBytes=ReadHeldInventory') <
+        value.indexOf('$lease.WriteReproducedInventory'),
+    );
+    assert.ok(
+      value.indexOf("if($frozen.comparison -ceq 'MISMATCH'){") <
+        value.indexOf('$lease.WriteReproducedInventory'),
+    );
+  };
+  contract(source);
+  for (const [before, after] of [
+    ["$value.failure -cne 'REPRODUCTION_MISMATCH'", '$false'],
+    ['$inventory.Length -ne $value.inventoryBytes', '$false'],
+    ['if($value.passed -or $mismatch)', 'if($value.passed)'],
+    [
+      '$lease.WriteReproducedInventory($inventoryBytes,$frozen.expectedInventorySha256)',
+      '[IO.File]::WriteAllBytes($path,$inventoryBytes)',
+    ],
+    ["candidateInference='NOT_RUN'", "candidateInference='READY'"],
+  ]) {
+    const changed = source.replaceAll(before, after);
+    assert.notEqual(changed, source);
+    assert.throws(() => contract(changed));
+  }
+});

@@ -128,7 +128,7 @@ class PrepareTests(unittest.TestCase):
         result = P._prepare_at(self.root, self.acq, self.catalog, self.members,
                                self.locks, 700, self.ops, host_context=context)
         self.assertEqual(result['wheelCount'], 2)
-        self.assertEqual(len(list((self.acq / 'host-source').iterdir())), 9)
+        self.assertEqual(len(list((self.acq / 'host-source').iterdir())), 10)
         self.assertEqual(list((self.root / 'work').iterdir()), [])
         for name in P.HOST_WORK_DIRECTORIES:
             self.assertEqual(list((self.acq / context['currentWork'] / name).iterdir()), [])
@@ -346,6 +346,59 @@ class PrepareTests(unittest.TestCase):
         self.assertFalse((self.root / 'installed-inventory.json').exists())
         with self.assertRaisesRegex(ValueError, 'APPROVED_INVENTORY_HASH'):
             P._freeze_at(self.root, approved_sha256='0' * 64)
+
+    def reproduction_summary(self, inventory):
+        raw = M.canonical(inventory)
+        return {'sha256': pin(raw).sha256, 'bytes': len(raw),
+                'files': len(inventory['files']), 'runtimeBytes': inventory['runtimeBytes']}
+
+    def test_reproduction_full_match_and_each_summary_dimension(self):
+        self.complete_tree()
+        observed = P._freeze_at(self.root)['inventory']
+        expected = self.reproduction_summary(observed)
+        result = P.compare_reproduction(observed, expected)
+        self.assertEqual(result['comparison'], 'MATCH')
+        self.assertEqual(result['inventoryBytes'], len(M.canonical(observed)))
+        self.assertEqual(result['expectedInventorySha256'], expected['sha256'])
+        for field in expected:
+            changed = dict(expected)
+            changed[field] = '0' * 64 if field == 'sha256' else expected[field] + 1
+            with self.subTest(field=field):
+                self.assertEqual(P.compare_reproduction(observed, changed)['comparison'], 'MISMATCH')
+        self.assertFalse((self.root / 'installed-inventory.json').exists())
+
+    def test_reproduction_byte_file_and_generated_launcher_changes_are_diagnostic(self):
+        self.complete_tree()
+        launcher = self.root / 'ocr-runtime/Scripts/generated.exe'
+        launcher.parent.mkdir()
+        launcher.write_bytes(b'fixture launcher A')
+        first = P._freeze_at(self.root)['inventory']
+        expected = self.reproduction_summary(first)
+        launcher.write_bytes(b'fixture launcher B')
+        changed = P._freeze_at(self.root)['inventory']
+        self.assertEqual(P.compare_reproduction(changed, expected)['comparison'], 'MISMATCH')
+        self.assertEqual(len(changed['files']), len(first['files']))
+        (self.root / 'source/fixture.txt').write_bytes(b'X')
+        self.assertEqual(P.compare_reproduction(P._freeze_at(self.root)['inventory'], expected)
+                         ['comparison'], 'MISMATCH')
+        (self.root / 'source/extra.py').write_bytes(b'# synthetic')
+        extra = P._freeze_at(self.root)['inventory']
+        self.assertEqual(len(extra['files']), len(first['files']) + 1)
+        self.assertEqual(P.compare_reproduction(extra, expected)['comparison'], 'MISMATCH')
+
+    def test_reproduction_refuses_malformed_summary_and_observation(self):
+        self.complete_tree()
+        observed = P._freeze_at(self.root)['inventory']
+        expected = self.reproduction_summary(observed)
+        for field in expected:
+            malformed = dict(expected)
+            malformed[field] = True
+            with self.assertRaisesRegex(ValueError, 'BASELINE_INVENTORY_SCHEMA'):
+                P.compare_reproduction(observed, malformed)
+        with self.assertRaises(ValueError):
+            P.compare_reproduction({'files': []}, expected)
+        with self.assertRaises(ValueError):
+            P.compare_reproduction(observed, {**expected, 'extra': 1})
 
     def test_freeze_forwards_exact_original_special_map_without_normalization(self):
         self.complete_tree()

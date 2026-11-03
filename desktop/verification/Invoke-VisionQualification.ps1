@@ -6,6 +6,7 @@ $desktop=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $report=[ordered]@{version=1;scope=$(if($Mode -ceq 'Compile'){'WINDOWS_VISION_COMPILE_ONLY'}else{'WINDOWS_VISION_DEVELOPMENT_ONLY'});mode=$Mode;compiled=$false;generatedAssemblies=@();compile=@();compilerDiagnostics=@();cases=@();observation=$null;runtime=$null;retired=$true;sourceUnchanged=$false;passed=$false;failure=$null}
 $guards=New-Object 'System.Collections.Generic.List[IDisposable]'
 $owners=New-Object 'System.Collections.Generic.List[object]'
+$runtimeCustody=$null
 $before=@{};$root=$null;$failureStage='ADMISSION'
 $originalEnvironment=[Environment]::GetEnvironmentVariables('Process')
 $utf8=New-Object Text.UTF8Encoding($false,$true)
@@ -45,6 +46,100 @@ function HashTree([string]$tree,[string]$relative,$map){
   if($i.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'INVENTORY_REPARSE'}
   if(-not $i.PSIsContainer){$key=$relative+'/'+$i.FullName.Substring($tree.Length+1).Replace('\','/');$map.Add($key,(HashFile $i.FullName))}
  }
+}
+function NewRuntimeDirectoryCustody {
+ if('Fonesi.Development.Qualification.RuntimeDirectoryCustody' -as [type]){throw 'PRELOADED_RUNTIME_CUSTODY'}
+ # Runtime-only harness helper. No candidate assembly is loaded to guard compilation.
+ Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+namespace Fonesi.Development.Qualification {
+ public sealed class RuntimeDirectoryCustody {
+  const string Root = @"D:\a\_temp\fonesi-p4-windows-candidate-v1";
+  static readonly List<RuntimeDirectoryCustody> retained = new List<RuntimeDirectoryCustody>();
+  readonly List<IntPtr> handles = new List<IntPtr>();
+  bool rootHeld, fixtureHeld, compileHeld;
+  [StructLayout(LayoutKind.Sequential)] struct Info {
+   public uint Attributes;
+   public System.Runtime.InteropServices.ComTypes.FILETIME Creation, Access, Write;
+   public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+  }
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  static extern IntPtr CreateFile(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  static extern bool CreateDirectory(string path, IntPtr security);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandle(IntPtr handle, out Info info);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  static extern uint GetFinalPathNameByHandle(IntPtr handle, StringBuilder path, uint length, uint flags);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
+  public RuntimeDirectoryCustody() { retained.Add(this); }
+  void Hold(string path) {
+   // READ_ATTRIBUTES, READ|WRITE sharing only, OPEN_EXISTING, BACKUP_SEMANTICS|OPEN_REPARSE_POINT.
+   IntPtr handle = CreateFile(path, 0x80, 3, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
+   if(handle == new IntPtr(-1)) throw new IOException("RUNTIME_DIRECTORY_OPEN");
+   handles.Add(handle); // Retain even when validation or later acquisition fails.
+   Info info;
+   if(!GetFileInformationByHandle(handle, out info) || (info.Attributes & 0x410) != 0x10)
+    throw new IOException("RUNTIME_DIRECTORY_REJECTED");
+   StringBuilder final = new StringBuilder(32768);
+   uint length = GetFinalPathNameByHandle(handle, final, (uint)final.Capacity, 0);
+   if(length == 0 || length >= final.Capacity) throw new IOException("RUNTIME_DIRECTORY_PATH");
+   string actual = final.ToString();
+   if(actual.StartsWith(@"\\?\", StringComparison.Ordinal)) actual = actual.Substring(4);
+   if(!String.Equals(actual.TrimEnd('\\'), path.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+    throw new IOException("RUNTIME_DIRECTORY_PATH");
+  }
+  public void HoldRoot(string root) {
+   if(rootHeld || !String.Equals(root, Root, StringComparison.Ordinal)) throw new IOException("RUNTIME_ROOT_REJECTED");
+   // Top-down ancestor custody precedes reading inventory or any candidate-root write.
+   foreach(string path in new string[] { @"D:\", @"D:\a", @"D:\a\_temp", Root }) Hold(path);
+   rootHeld = true;
+  }
+  public void ReserveFixture() {
+   if(!rootHeld || fixtureHeld) throw new IOException("RUNTIME_FIXTURE_STATE");
+   string path = Path.Combine(Root, "fixture");
+   if(!CreateDirectory(path, IntPtr.Zero)) throw new IOException("RUNTIME_FIXTURE_EXISTS");
+   Hold(path);
+   if(Directory.GetFileSystemEntries(path).Length != 0) throw new IOException("RUNTIME_FIXTURE_NOT_EMPTY");
+   fixtureHeld = true;
+  }
+  public void ReserveCompile() {
+   if(!fixtureHeld || compileHeld) throw new IOException("RUNTIME_COMPILE_STATE");
+   Hold(Path.Combine(Root, "work"));
+   string path = Path.Combine(Root, "work", "compile");
+   if(!CreateDirectory(path, IntPtr.Zero)) throw new IOException("RUNTIME_COMPILE_EXISTS");
+   Hold(path);
+   if(Directory.GetFileSystemEntries(path).Length != 0) throw new IOException("RUNTIME_COMPILE_NOT_EMPTY");
+   compileHeld = true;
+  }
+  public bool Release() {
+   // A failed close retains that exact handle and its ancestors, without blind disposal.
+   for(int i = handles.Count - 1; i >= 0; i--) {
+    if(!CloseHandle(handles[i])) return false;
+    handles.RemoveAt(i);
+   }
+   retained.Remove(this); return true;
+  }
+ }
+}
+'@
+ return New-Object Fonesi.Development.Qualification.RuntimeDirectoryCustody
+}
+function AssertRuntimeFixture([string]$directory){
+ # A separate same-run harness layer, never an installed-inventory namespace.
+ $item=Get-Item -LiteralPath $directory -Force
+ if(-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'FIXTURE_DIRECTORY_REJECTED'}
+ $entries=@(Get-ChildItem -LiteralPath $directory -Force)
+ if($entries.Count -ne 2){throw 'FIXTURE_INVENTORY_REJECTED'}
+ foreach($entry in $entries){
+  if($entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $entry.Name -cnotin @('VisionProcess.dll','VisionProcessFixture.exe')){throw 'FIXTURE_INVENTORY_REJECTED'}
+  if(-not $script:before.ContainsKey($entry.FullName) -or (HashFile $entry.FullName) -cne $script:before[$entry.FullName]){throw 'FIXTURE_HASH_REJECTED'}
+ }
+ # Source, compiler, references and generated outputs remain held through use.
+ foreach($p in $script:before.Keys){if((HashFile $p) -cne $script:before[$p]){throw 'FIXTURE_INPUT_CHANGED'}}
 }
 function Compiler([string[]]$arguments){
  # Reject incomplete option tokens before launching the fixed compiler.
@@ -99,21 +194,35 @@ try {
   $root=[IO.Path]::GetFullPath($RuntimeRoot)
   $candidate=Get-Content -LiteralPath (Join-Path $desktop 'vision/windows_qualification_manifest.json') -Raw|ConvertFrom-Json
   if($null -eq $candidate.approvedInstalledInventorySha256 -or -not $candidate.prerequisitesVerifiedOnHost){throw 'RUNTIME_NOT_ADMITTED'}
+  $runtimeCustody=NewRuntimeDirectoryCustody
+  $runtimeCustody.HoldRoot($root)
   $inventoryPath=Join-Path $root 'installed-inventory.json'
   GuardSource $inventoryPath 16777216
   if((HashFile $inventoryPath) -cne $candidate.approvedInstalledInventorySha256){throw 'RUNTIME_INVENTORY_REJECTED'}
+  $inventory=Get-Content -LiteralPath $inventoryPath -Raw|ConvertFrom-Json
+  if($inventory.version -ne 1 -or $inventory.files.Count -gt 50000 -or $inventory.runtimeBytes -lt 1){throw 'INVENTORY_SCHEMA'}
+  $runtimeHashes=New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
+  foreach($entry in $inventory.files){
+   if($entry.path -cnotmatch '^(python|preprocess-runtime|ocr-runtime|source|tooling|model)/' -or $entry.path.Contains('..') -or $entry.sha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'INVENTORY_SCHEMA'}
+   $runtimeHashes.Add([string]$entry.path,[string]$entry.sha256)
+  }
+  # No existing fixture tree is adopted. Reserve only after held inventory admission.
+  $runtimeCustody.ReserveFixture()
  }
  $failureStage='COMPILE'
  $systemRoot=[IO.Path]::GetFullPath($env:SystemRoot)
- $compileTemp=Join-Path $root 'work/compile';[Fonesi.Phase00.NativeProbe]::ReserveDirectory($compileTemp)
+ $compileTemp=Join-Path $root 'work/compile'
+ if($Mode -ceq 'Runtime'){$runtimeCustody.ReserveCompile()}else{[Fonesi.Phase00.NativeProbe]::ReserveDirectory($compileTemp)}
  foreach($key in @($originalEnvironment.Keys)){[Environment]::SetEnvironmentVariable([string]$key,$null,'Process')}
  foreach($pair in @(@('SystemRoot',$systemRoot),@('WINDIR',$systemRoot),@('PATH',(Join-Path $systemRoot 'System32')),@('TEMP',$compileTemp),@('TMP',$compileTemp))){[Environment]::SetEnvironmentVariable($pair[0],$pair[1],'Process')}
 
  $dll=Join-Path $root 'fixture/VisionProcess.dll';$exe=Join-Path $root 'fixture/VisionProcessFixture.exe'
  $common=@('/nologo','/noconfig','/nostdlib+','/platform:x64','/optimize+')+@($refs|ForEach-Object{'/reference:'+$_})
  Compiler ($common+@('/target:library',('/out:'+$dll),$native,$bootstrap))
+ GuardSource $dll 1048576
  Compiler ($common+@('/target:exe',('/out:'+$exe),('/reference:'+$dll),$fixture))
- GuardSource $dll 1048576;GuardSource $exe 1048576
+ GuardSource $exe 1048576
+ if($Mode -ceq 'Runtime'){AssertRuntimeFixture (Join-Path $root 'fixture')}
  $report.generatedAssemblies=@([ordered]@{name='VisionProcess.dll';sha256=$before[$dll]},[ordered]@{name='VisionProcessFixture.exe';sha256=$before[$exe]})
  $report.compiled=$true
  if($Mode -cne 'Compile'){
@@ -160,13 +269,11 @@ try {
   $report.cases+=@([ordered]@{name='EmptyFileTamper';passed=$true})
  }else{
   $failureStage='RUNTIME_PIPELINE'
-  $inventory=Get-Content -LiteralPath $inventoryPath -Raw|ConvertFrom-Json
-  if($inventory.version -ne 1 -or $inventory.files.Count -gt 50000 -or $inventory.runtimeBytes -lt 1){throw 'INVENTORY_SCHEMA'}
-  foreach($entry in $inventory.files){
-   if($entry.path -cnotmatch '^(python|preprocess-runtime|ocr-runtime|source|tooling|model)/' -or $entry.path.Contains('..') -or $entry.sha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'INVENTORY_SCHEMA'}
-   $hashes.Add([string]$entry.path,[string]$entry.sha256)
-  }
-  HashTree (Join-Path $root 'fixture') 'fixture' $hashes
+  # Merge only the exact held outputs of this invocation, not a recursively discovered tree.
+  AssertRuntimeFixture (Join-Path $root 'fixture')
+  foreach($entry in $runtimeHashes.GetEnumerator()){$hashes.Add($entry.Key,$entry.Value)}
+  $hashes.Add('fixture/VisionProcess.dll',$before[$dll])
+  $hashes.Add('fixture/VisionProcessFixture.exe',$before[$exe])
   $deadline=[Fonesi.Development.Vision.VisionProcess]::NewDeadline();$clock=[Diagnostics.Stopwatch]::StartNew();$bytes=New-Object byte[] 0
   foreach($name in @('Decoder','Preprocess','OcrRequest','English','OcrResult')){
    $profile=[Enum]::Parse([Fonesi.Development.Vision.VisionProfile],$name)
@@ -197,6 +304,10 @@ try {
 finally{
  foreach($owned in $owners){
   try{$r=$owned.Poll();if(-not $r.Retired){$owned.Cancel()|Out-Null;$r=$owned.Reconcile(5000)};if(-not $r.Retired){$report.retired=$false;$report.passed=$false}}catch{$report.retired=$false;$report.passed=$false}
+ }
+ if($null -ne $runtimeCustody){
+  if($report.retired){try{if(-not $runtimeCustody.Release()){$report.retired=$false;$report.passed=$false}}catch{$report.retired=$false;$report.passed=$false}}
+  else{$report.passed=$false} # Keep directory custody while a child may still be live.
  }
  foreach($g in $guards){$g.Dispose()}
  $current=[Environment]::GetEnvironmentVariables('Process')

@@ -9,7 +9,7 @@ $checkout=[IO.Path]::GetFullPath((Join-Path $desktop '..'))
 $guards=New-Object 'System.Collections.Generic.List[IDisposable]'
 $owners=New-Object 'System.Collections.Generic.List[object]'
 $before=@{};$lease=$null;$failed=$false;$compiledRoot=$null;$failureStage='ADMISSION';$inventoryBytes=$null;$evidence=$null;$evidenceReady=$false
-$report=[ordered]@{version=1;scope='WINDOWS_MATERIALIZATION_ONLY';hostTrust='EXISTING_HOSTED_CI_TOOLCHAIN';compiled=$false;sourceOwnerSha256=$null;compiledOwnerSha256=$null;compilerExecutableSha256=$null;hostVersion=$null;hostExecutableSha256=$null;hostPathPolicy='OBSERVED_CANONICAL_RUNNER_TOOL_CACHE';hostPrerequisites=@();hostPrerequisitesScope='STATIC_ONLY_NOT_RUNTIME_ADMISSION';runtimeFiles=$null;runtimeBytes=$null;stages=@();installedInventorySha256=$null;retired=$true;sourceUnchanged=$false;passed=$false;candidateInference='NOT_RUN';failure=$null;failureStage=$null;hostDiagnostic=$null}
+$report=[ordered]@{version=1;scope='WINDOWS_MATERIALIZATION_ONLY';hostTrust='EXISTING_HOSTED_CI_TOOLCHAIN';compiled=$false;sourceOwnerSha256=$null;compiledOwnerSha256=$null;compilerExecutableSha256=$null;hostVersion=$null;hostExecutableSha256=$null;hostPathPolicy='OBSERVED_CANONICAL_RUNNER_TOOL_CACHE';hostPrerequisites=@();hostPrerequisitesScope='STATIC_ONLY_NOT_RUNTIME_ADMISSION';runtimeFiles=$null;runtimeBytes=$null;stages=@();installedInventorySha256=$null;expectedInventorySha256=$null;inventoryBytes=$null;reproductionDisposition='NOT_OBSERVED';indexHandoff=$false;retired=$true;sourceUnchanged=$false;passed=$false;candidateInference='NOT_RUN';failure=$null;failureStage=$null;hostDiagnostic=$null}
 function Hash([string]$path){return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()}
 function Hold([string]$path,[long]$cap){
  $i=Get-Item -LiteralPath $path -Force
@@ -61,17 +61,19 @@ function MetadataHash($value,[bool]$nullable){
  if($value -isnot [string] -or $value -cnotmatch '^[0-9a-f]{64}$'){throw 'EVIDENCE_HASH'}
 }
 function MetadataSchema($value){
- $keys=@('version','scope','hostTrust','compiled','sourceOwnerSha256','compiledOwnerSha256','compilerExecutableSha256','hostVersion','hostExecutableSha256','hostPathPolicy','hostPrerequisites','hostPrerequisitesScope','runtimeFiles','runtimeBytes','stages','installedInventorySha256','retired','sourceUnchanged','passed','candidateInference','failure','failureStage','hostDiagnostic')
+ $keys=@('version','scope','hostTrust','compiled','sourceOwnerSha256','compiledOwnerSha256','compilerExecutableSha256','hostVersion','hostExecutableSha256','hostPathPolicy','hostPrerequisites','hostPrerequisitesScope','runtimeFiles','runtimeBytes','stages','installedInventorySha256','expectedInventorySha256','inventoryBytes','reproductionDisposition','indexHandoff','retired','sourceUnchanged','passed','candidateInference','failure','failureStage','hostDiagnostic')
  ClosedMetadata $value $keys
  MetadataInteger $value.version 1 1 $false
  foreach($key in @('scope','hostTrust','hostPathPolicy','hostPrerequisitesScope','candidateInference')){if($value[$key] -isnot [string]){throw 'EVIDENCE_POLICY'}}
  if($value.scope -cne 'WINDOWS_MATERIALIZATION_ONLY' -or $value.hostTrust -cne 'EXISTING_HOSTED_CI_TOOLCHAIN' -or $value.hostPathPolicy -cne 'OBSERVED_CANONICAL_RUNNER_TOOL_CACHE' -or $value.hostPrerequisitesScope -cne 'STATIC_ONLY_NOT_RUNTIME_ADMISSION' -or $value.candidateInference -cne 'NOT_RUN'){throw 'EVIDENCE_POLICY'}
- foreach($key in @('compiled','retired','sourceUnchanged','passed')){if($value[$key] -isnot [bool]){throw 'EVIDENCE_BOOLEAN'}}
- foreach($key in @('sourceOwnerSha256','compiledOwnerSha256','compilerExecutableSha256','hostExecutableSha256','installedInventorySha256')){MetadataHash $value[$key] $true}
+ foreach($key in @('compiled','retired','sourceUnchanged','passed','indexHandoff')){if($value[$key] -isnot [bool]){throw 'EVIDENCE_BOOLEAN'}}
+ foreach($key in @('sourceOwnerSha256','compiledOwnerSha256','compilerExecutableSha256','hostExecutableSha256','installedInventorySha256','expectedInventorySha256')){MetadataHash $value[$key] $true}
+ MetadataInteger $value.inventoryBytes 2 16777216 $true
+ if($value.reproductionDisposition -isnot [string] -or $value.reproductionDisposition -cnotin @('NOT_OBSERVED','MATCH','OBSERVED_MISMATCH_NOT_ADMITTED')){throw 'EVIDENCE_REPRODUCTION'}
  if($null -ne $value.hostVersion -and ($value.hostVersion -isnot [string] -or $value.hostVersion.Length -gt 20 -or $value.hostVersion -cnotmatch '^3\.12\.[0-9]+$')){throw 'EVIDENCE_HOST_VERSION'}
  MetadataInteger $value.runtimeFiles 0 50000 $true;MetadataInteger $value.runtimeBytes 0 4294967296 $true
- if($null -ne $value.failure -and ($value.failure -isnot [string] -or $value.failure -cnotin @('MATERIALIZATION_UNAVAILABLE','EVIDENCE_EXPORT_UNAVAILABLE'))){throw 'EVIDENCE_FAILURE'}
- if($null -ne $value.failureStage -and ($value.failureStage -isnot [string] -or $value.failureStage -cnotin @('ADMISSION','COMPILE','RESERVE','HOST_SOURCE','HOST_PREPARE','HOST_BUNDLE','CANDIDATE_BOOTSTRAP','HOST_FREEZE','EVIDENCE'))){throw 'EVIDENCE_FAILURE_STAGE'}
+ if($null -ne $value.failure -and ($value.failure -isnot [string] -or $value.failure -cnotin @('MATERIALIZATION_UNAVAILABLE','EVIDENCE_EXPORT_UNAVAILABLE','REPRODUCTION_MISMATCH'))){throw 'EVIDENCE_FAILURE'}
+ if($null -ne $value.failureStage -and ($value.failureStage -isnot [string] -or $value.failureStage -cnotin @('ADMISSION','COMPILE','RESERVE','HOST_SOURCE','HOST_PREPARE','HOST_BUNDLE','CANDIDATE_BOOTSTRAP','HOST_FREEZE','REPRODUCTION','INDEX_HANDOFF','EVIDENCE'))){throw 'EVIDENCE_FAILURE_STAGE'}
  if($value.hostPrerequisites -isnot [array] -or $value.hostPrerequisites.Count -gt 4 -or $value.stages -isnot [array] -or $value.stages.Count -gt 21){throw 'EVIDENCE_ARRAY'}
  $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
  foreach($item in $value.hostPrerequisites){
@@ -107,12 +109,17 @@ function EvidencePayload($value,[byte[]]$inventory){
   if($entry.observation -ceq 'TERMINAL'){$terminal+=@($entry)}
   if($entry.observation -ceq 'FINAL_RECONCILIATION'){$finals+=@($entry)}
  }
- if($value.passed){
+ $mismatch=$value.reproductionDisposition -ceq 'OBSERVED_MISMATCH_NOT_ADMITTED'
+ if($value.passed -or $mismatch){
+  if($value.passed){
+   if($value.reproductionDisposition -cne 'MATCH' -or -not $value.indexHandoff -or $value.expectedInventorySha256 -cne $value.installedInventorySha256 -or $null -ne $value.failure){throw 'EVIDENCE_REPRODUCTION'}
+  }elseif($value.indexHandoff -or $value.failure -cne 'REPRODUCTION_MISMATCH' -or $value.failureStage -cne 'REPRODUCTION' -or $value.expectedInventorySha256 -ceq $value.installedInventorySha256){throw 'EVIDENCE_REPRODUCTION'}
+  MetadataHash $value.expectedInventorySha256 $false
   foreach($key in @('sourceOwnerSha256','compiledOwnerSha256','compilerExecutableSha256','hostExecutableSha256','installedInventorySha256')){MetadataHash $value[$key] $false}
   if(-not $value.compiled -or $null -eq $value.hostVersion -or $value.runtimeFiles -lt 3354 -or $value.runtimeBytes -lt 152074886 -or $value.hostPrerequisites.Count -ne 4){throw 'EVIDENCE_INCOMPLETE'}
-  if(-not $value.retired -or -not $value.sourceUnchanged -or $null -ne $value.failure -or $terminal.Count -ne 7 -or $finals.Count -ne 7 -or $null -eq $inventory){throw 'EVIDENCE_INCOMPLETE'}
+  if(-not $value.retired -or -not $value.sourceUnchanged -or $terminal.Count -ne 7 -or $finals.Count -ne 7 -or $null -eq $inventory){throw 'EVIDENCE_INCOMPLETE'}
   foreach($observations in @($terminal,$finals)){for($i=0;$i -lt 7;$i++){$entry=$observations[$i];if($entry.profile -cne $profiles[$i] -or $entry.result.status -cne 'SUCCESS' -or $entry.result.exitCode -ne 0 -or -not $entry.result.retired -or $entry.result.stdoutOverflow -or $entry.result.stderrOverflow){throw 'EVIDENCE_INCOMPLETE'}}}
-  if($inventory.Length -lt 2 -or $inventory.Length -gt 16777216 -or (HashBytes $inventory) -cne $value.installedInventorySha256){throw 'EVIDENCE_INVENTORY'}
+  if($inventory.Length -ne $value.inventoryBytes -or $inventory.Length -lt 2 -or $inventory.Length -gt 16777216 -or (HashBytes $inventory) -cne $value.installedInventorySha256){throw 'EVIDENCE_INVENTORY'}
  }else{$inventory=$null}
  $bytes=$utf8.GetBytes(($value|ConvertTo-Json -Depth 10 -Compress)+"`n")
  if($bytes.Length -gt 65536){throw 'EVIDENCE_REPORT_LIMIT'}
@@ -131,18 +138,18 @@ function HostReceipt([byte[]]$bytes,[string]$stage,[string]$version,[string]$exe
  $offset=0
  while($true){$m=$regex.Match($text,$offset);if(-not $m.Success){break};if(-not $keys.Add($m.Groups['key'].Value)){throw 'RECEIPT_DUPLICATE'};$offset+=$m.Length}
  if($text.Substring($offset) -cnotin @('}',"}`n","}`r`n")){throw 'RECEIPT_JSON'}
- $expected=@('version','scope','stage','hostVersion','hostExecutableSha256','hostIsolated','hostSiteDisabled','hostBytecodeDisabled','hostTrust','reportSha256','wheelCount','pythonFiles','modelFiles','acquiredBytes','runtimeFiles','runtimeBytes','comparison','candidateInference')
+ $expected=@('version','scope','stage','hostVersion','hostExecutableSha256','hostIsolated','hostSiteDisabled','hostBytecodeDisabled','hostTrust','reportSha256','wheelCount','pythonFiles','modelFiles','acquiredBytes','runtimeFiles','runtimeBytes','inventoryBytes','expectedInventorySha256','comparison','candidateInference')
  if($keys.Count -ne $expected.Count){throw 'RECEIPT_SCHEMA'}
  foreach($key in $expected){if(-not $keys.Contains($key)){throw 'RECEIPT_SCHEMA'}}
  $v=$text|ConvertFrom-Json
  if($v.version -isnot [int] -and $v.version -isnot [long]){throw 'RECEIPT_TYPE'}
  foreach($key in @('hostIsolated','hostSiteDisabled','hostBytecodeDisabled')){if($v.$key -isnot [bool]){throw 'RECEIPT_TYPE'}}
- foreach($key in @('wheelCount','pythonFiles','modelFiles','acquiredBytes','runtimeFiles','runtimeBytes')){if($null -ne $v.$key -and $v.$key -isnot [int] -and $v.$key -isnot [long]){throw 'RECEIPT_TYPE'}}
+ foreach($key in @('wheelCount','pythonFiles','modelFiles','acquiredBytes','runtimeFiles','runtimeBytes','inventoryBytes')){if($null -ne $v.$key -and $v.$key -isnot [int] -and $v.$key -isnot [long]){throw 'RECEIPT_TYPE'}}
  if($v.version -ne 1 -or $v.scope -cne 'TRUSTED_HOST_STAGING_ONLY' -or $v.stage -cne $stage -or $v.hostVersion -cne $version -or $v.hostExecutableSha256 -cne $exeHash -or $v.hostIsolated -cne $true -or $v.hostSiteDisabled -cne $true -or $v.hostBytecodeDisabled -cne $true -or $v.hostTrust -cne 'EXISTING_HOSTED_CI_TOOLCHAIN' -or $v.candidateInference -cne 'NOT_RUN' -or $v.reportSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'RECEIPT_IDENTITY'}
  if($stage -ceq 'PREPARE'){
-  if($v.wheelCount -ne 74 -or $v.pythonFiles -ne 3354 -or $v.modelFiles -ne 3 -or $v.acquiredBytes -ne 328203212 -or $null -ne $v.runtimeFiles -or $null -ne $v.runtimeBytes -or $null -ne $v.comparison){throw 'PREPARE_INCOMPLETE'}
+  if($v.wheelCount -ne 74 -or $v.pythonFiles -ne 3354 -or $v.modelFiles -ne 3 -or $v.acquiredBytes -ne 328203212 -or $null -ne $v.runtimeFiles -or $null -ne $v.runtimeBytes -or $null -ne $v.comparison -or $null -ne $v.inventoryBytes -or $null -ne $v.expectedInventorySha256){throw 'PREPARE_INCOMPLETE'}
  }else{
-  if($null -ne $v.wheelCount -or $null -ne $v.pythonFiles -or $null -ne $v.modelFiles -or $null -ne $v.acquiredBytes -or $v.runtimeFiles -lt 3354 -or $v.runtimeFiles -gt 50000 -or $v.runtimeBytes -lt 152074886 -or $v.runtimeBytes -gt 4294967296 -or $v.comparison -cne 'NOT_REQUESTED'){throw 'FREEZE_INCOMPLETE'}
+  if($null -ne $v.wheelCount -or $null -ne $v.pythonFiles -or $null -ne $v.modelFiles -or $null -ne $v.acquiredBytes -or $v.runtimeFiles -lt 3354 -or $v.runtimeFiles -gt 50000 -or $v.runtimeBytes -lt 152074886 -or $v.runtimeBytes -gt 4294967296 -or $v.comparison -cnotin @('MATCH','MISMATCH') -or $v.inventoryBytes -lt 2 -or $v.inventoryBytes -gt 16777216 -or $v.expectedInventorySha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'FREEZE_INCOMPLETE'}
  }
  return $v
 }
@@ -192,7 +199,7 @@ try {
  $failureStage='HOST_SOURCE'
  $hostSource=Join-Path $acquisition 'host-source';[IO.Directory]::CreateDirectory($hostSource)|Out-Null
  $hostHashes=Dictionary;$indexFiles=[ordered]@{}
- foreach($name in @('windows_vision_host.py','windows_vision_catalog.py','windows_vision_materialize.py','windows_vision_prepare.py','windows_materialization_catalog.json','windows_python_members.json','preprocess-requirements-windows.lock','ocr-requirements-windows.lock')){
+ foreach($name in @('windows_vision_host.py','windows_vision_catalog.py','windows_vision_materialize.py','windows_vision_prepare.py','windows_materialization_catalog.json','windows_python_members.json','preprocess-requirements-windows.lock','ocr-requirements-windows.lock','windows_reproduction_baseline.json')){
   $directory=if($name.EndsWith('.py')){'verification'}else{'vision'}
   $source=Join-Path $desktop ($directory+'/'+$name);Hold $source 2097152
   $target=Join-Path $hostSource $name;[IO.File]::Copy($source,$target,$false);Hold $target 2097152
@@ -255,12 +262,24 @@ try {
  }
  $report.installedInventorySha256=$frozen.reportSha256;$report.hostVersion=$version;$report.hostExecutableSha256=$pythonHash
  $report.runtimeFiles=$frozen.runtimeFiles;$report.runtimeBytes=$frozen.runtimeBytes
- if(-not $lease.Ready){throw 'OVERALL_DEADLINE'}
- $report.passed=$true
+ $report.expectedInventorySha256=$frozen.expectedInventorySha256;$report.inventoryBytes=$frozen.inventoryBytes
+ if($inventoryBytes.Length -ne $frozen.inventoryBytes){throw 'INVENTORY_CAPTURE_CHANGED'}
+ $failureStage='REPRODUCTION'
+ if($frozen.comparison -ceq 'MISMATCH'){
+  $report.reproductionDisposition='OBSERVED_MISMATCH_NOT_ADMITTED'
+  $report.failure='REPRODUCTION_MISMATCH';$report.failureStage='REPRODUCTION';$failed=$true
+ }else{
+  if($frozen.reportSha256 -cne $frozen.expectedInventorySha256){throw 'REPRODUCTION_IDENTITY'}
+  $report.reproductionDisposition='MATCH';$failureStage='INDEX_HANDOFF'
+  if(-not $lease.Ready){throw 'OVERALL_DEADLINE'}
+  $handoffHash=$lease.WriteReproducedInventory($inventoryBytes,$frozen.expectedInventorySha256)
+  if($handoffHash -cne $frozen.expectedInventorySha256 -or -not $lease.ReproducedInventoryWritten){throw 'INDEX_HANDOFF_REJECTED'}
+  $report.indexHandoff=$true;$report.passed=$true
+ }
 }catch{$failed=$true;$report.failure='MATERIALIZATION_UNAVAILABLE';$report.failureStage=$failureStage}
 finally{
  foreach($owned in $owners){$owner=$owned.owner;try{$r=$owner.Poll();if(-not $r.Retired){$r=$owner.Cancel();if(-not $r.Retired){$r=$owner.Reconcile(10000)}};if(-not $r.Retired){$report.retired=$false};$report.stages+=@([ordered]@{profile=$owned.profile;observation='FINAL_RECONCILIATION';result=NativeSummary $r})}catch{$report.retired=$false}}
- if($null -ne $lease){try{if(-not $lease.Release()){$report.retired=$false}}catch{$report.retired=$false}}
+ if($null -ne $lease){try{if(-not $lease.Release()){$report.retired=$false};if($report.indexHandoff -and -not $lease.ReproducedInventoryWritten){$report.indexHandoff=$false;$failed=$true}}catch{$report.retired=$false;$report.indexHandoff=$false}}
  try{$report.sourceUnchanged=$true;foreach($p in $before.Keys){if((Hash $p) -cne $before[$p]){$report.sourceUnchanged=$false}}}catch{$report.sourceUnchanged=$false}
  foreach($guard in $guards){try{$guard.Dispose()}catch{$report.retired=$false}}
  if(-not $report.retired -or -not $report.sourceUnchanged){$failed=$true;$report.passed=$false}

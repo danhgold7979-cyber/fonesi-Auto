@@ -278,7 +278,7 @@ test('host staging source: Python disables site and inherited startup overrides'
   assert.ok(bootstrap.includes("run_name='__main__'"));
   assert.doesNotMatch(bootstrap, /context|argv|format/);
 });
-test('host staging source: exact nine held helper inputs include externally pinned index', () => {
+test('host staging source: exact ten held helper inputs include externally pinned index', () => {
   const files = section(
     'static readonly string[] HostSourceNames',
     'static readonly string[] BundleSourceNames',
@@ -294,6 +294,7 @@ test('host staging source: exact nine held helper inputs include externally pinn
       'windows_python_members.json',
       'preprocess-requirements-windows.lock',
       'ocr-requirements-windows.lock',
+      'windows_reproduction_baseline.json',
       'source-index.json',
     ].sort(),
   );
@@ -503,13 +504,102 @@ test('metadata wrapper: closed report fields and bounded serialized report manif
   ])
     assert.ok(materializer.includes(token));
 });
-test('metadata tests: pure AST functions and twenty-seven bounded evidence cases', () => {
+test('metadata tests: pure AST functions and thirty-six bounded evidence cases', () => {
   assert.ok(
     pureMetadataTests.includes(
       "@('HostReceipt','HashBytes','ReadHeldInventory','ClosedMetadata','MetadataInteger','MetadataHash','MetadataSchema','EvidencePayload')",
     ),
   );
-  assert.ok(pureMetadataTests.includes('$evidenceCount -ne 27'));
-  assert.ok(pureMetadataTests.includes('VISION_MATERIALIZER_EVIDENCE_27_PASS'));
+  assert.ok(pureMetadataTests.includes('$evidenceCount -ne 36'));
+  assert.ok(pureMetadataTests.includes('VISION_MATERIALIZER_EVIDENCE_36_PASS'));
   assert.doesNotMatch(pureMetadataTests, /ReserveEvidence\(|ReviewedMaterialization|Add-Type/);
+});
+
+// Lexical checks only: native write/identity/close failure behavior remains NOT_RUN.
+const stagingCustody = section(
+  'public sealed class StagingCustody',
+  '\n        VisionBootstrapProcess()',
+);
+const inventoryWrite = section('public string WriteReproducedInventory', 'public bool Release()');
+test('reproduced index source: handoff follows all seven retired stages and live custody', () => {
+  for (const token of [
+    'this != staging || !Ready || releaseStarted || HostStep != 3 || NextProfile != 4',
+    'admissionReserved || retained.Count != 0 || inventoryFile != null || inventoryWritten',
+  ])
+    assert.ok(inventoryWrite.includes(token));
+  assert.ok(inventoryWrite.indexOf('INVENTORY_NOT_READY') < inventoryWrite.indexOf('CreateFile('));
+});
+test('reproduced index source: cloned bounded bytes and exact digest are checked before creating', () => {
+  for (const token of [
+    'bytes == null || bytes.Length == 0 || bytes.Length > 16777216',
+    'Regex.IsMatch(expectedSha256, "\\\\A[0-9a-f]{64}\\\\z")',
+    'byte[] owned = (byte[])bytes.Clone()',
+    'InventoryDigest(owned) != expectedSha256',
+  ])
+    assert.ok(inventoryWrite.includes(token), token);
+  assert.ok(
+    inventoryWrite.indexOf('InventoryDigest(owned)') < inventoryWrite.indexOf('CreateFile('),
+  );
+});
+test('reproduced index source: sole fixed CREATE_NEW target forbids overwrite and write/delete sharing', () => {
+  assert.ok(
+    inventoryWrite.includes(
+      'CreateFile(Path.Combine(CandidateRoot, "installed-inventory.json"), 0xc0000000, 1, ref security, 1, 0x00200000, IntPtr.Zero)',
+    ),
+  );
+  assert.equal([...inventoryWrite.matchAll(/CreateFile\(/g)].length, 1);
+  assert.doesNotMatch(inventoryWrite, /\bFile\.Write|\bFile\.Copy|\bFile\.Delete|FileMode\.Create/);
+  assert.ok(
+    inventoryWrite.indexOf('holder.admission.Add(lease)') <
+      inventoryWrite.indexOf('new FileStream('),
+  );
+});
+test('reproduced index source: held root and file identities plus readback are revalidated', () => {
+  for (const token of [
+    'GetFileInformationByHandle(inventoryRoot, out current)',
+    'CheckFinal(inventoryRoot, CandidateRoot)',
+    'SameIdentity(inventoryRootIdentity, current)',
+    'CheckFinal(inventoryFile.SafeFileHandle, Path.Combine(CandidateRoot, "installed-inventory.json"))',
+    'info.Links != 1',
+    'string digest = ReadInventoryDigest()',
+    'SameFile(inventoryIdentity, before)',
+    'SameFile(before, after)',
+    'digest != inventorySha256',
+  ])
+    assert.ok(stagingCustody.includes(token), token);
+  assert.ok(
+    inventoryWrite.indexOf('inventoryFile.Flush(true)') <
+      inventoryWrite.indexOf('CheckInventory();'),
+  );
+});
+test('reproduced index source: original deadline applies before create and after verification', () => {
+  assert.equal(
+    [...inventoryWrite.matchAll(/Stopwatch.GetTimestamp\(\) >= OverallDeadline/g)].length,
+    2,
+  );
+  assert.ok(
+    inventoryWrite.indexOf('CheckInventory();') < inventoryWrite.indexOf('inventoryWritten = true'),
+  );
+  assert.doesNotMatch(inventoryWrite, /NewOverallDeadline|OverallDeadline\s*=/);
+});
+test('reproduced index source: write failure retains handles without promoting handoff', () => {
+  assert.ok(
+    inventoryWrite.includes(
+      'catch { Failed = true; ready = false; inventoryWritten = false; throw; }',
+    ),
+  );
+  assert.doesNotMatch(inventoryWrite, /ReleaseAdmission|CloseHandle|\.Dispose\(/);
+  assert.ok(stagingCustody.includes('return inventoryWritten && !Failed;'));
+});
+test('reproduced index source: release revalidates before checked close and invalidates uncertain claims', () => {
+  const release = stagingCustody.slice(stagingCustody.indexOf('public bool Release()'));
+  assert.ok(release.indexOf('CheckInventory()') < release.indexOf('holder.ReleaseAdmission()'));
+  assert.ok(release.includes('if (!releaseStarted)'));
+  assert.ok(
+    release.includes(
+      'if (!holder.ReleaseAdmission()) { Failed = true; inventoryWritten = false; return false; }',
+    ),
+  );
+  assert.ok(release.includes('catch { Failed = true; inventoryWritten = false; return false; }'));
+  assert.ok(release.indexOf('holder.ReleaseAdmission()') < release.indexOf('staging = null'));
 });

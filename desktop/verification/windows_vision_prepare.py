@@ -20,6 +20,7 @@ MODEL_NAMES = frozenset(('inference.pdiparams', 'inference.json', 'inference.yml
 HOST_SOURCE_NAMES = frozenset(('windows_vision_host.py', 'windows_vision_prepare.py',
     'windows_vision_catalog.py', 'windows_vision_materialize.py',
     'windows_materialization_catalog.json', 'windows_python_members.json',
+    'windows_reproduction_baseline.json',
     'preprocess-requirements-windows.lock', 'ocr-requirements-windows.lock', 'source-index.json'))
 HOST_WORK_DIRECTORIES = frozenset(('home', 'tmp', 'appdata', 'localappdata'))
 
@@ -46,6 +47,47 @@ def _read_bound(path, expected_sha256, limit=material.MAX_INVENTORY):
     if len(raw) > limit or hashlib.sha256(raw).hexdigest() != expected_sha256:
         raise ValueError('SOURCE_IDENTITY')
     return raw
+
+
+# Exact reviewed baseline identity. It is provenance, never runtime admission.
+REPRODUCTION_BASELINE_SHA256 = '59325ca94cd4faa5bdb4db2f1a0e0fe39215ac4b032586cb548a17415cd2f0be'
+
+
+def load_reproduction_baseline(path, expected_sha256, source_hashes):
+    """Reject replacement baselines even if a caller re-pins a modified file."""
+    if expected_sha256 != REPRODUCTION_BASELINE_SHA256:
+        raise ValueError('BASELINE_IDENTITY')
+    raw = _read_bound(path, expected_sha256, 16384)
+    value = material._json(raw)
+    # The fixed digest closes every field, type, source pin, root and epoch.
+    # Also bind current admitted inputs so a changed closure cannot reuse it.
+    if any(source_hashes.get(name) != digest for name, digest in value['inputs'].items()):
+        raise ValueError('BASELINE_INPUTS')
+    if value['root'] != catalog_api.ROOT or value['acquisition'] != catalog_api.ACQUISITION:
+        raise ValueError('BASELINE_ROOTS')
+    return value
+
+
+def compare_reproduction(observed, expected):
+    """Compare complete validated inventory; explicit expected summary is a test seam.
+
+    A mismatch is complete diagnostic evidence, not admission or an exception.
+    The production caller obtains expected only from load_reproduction_baseline.
+    """
+    material.validate_inventory(observed)
+    if (type(expected) is not dict
+            or set(expected) != {'sha256', 'bytes', 'files', 'runtimeBytes'}
+            or type(expected['sha256']) is not str
+            or material.SHA.fullmatch(expected['sha256']) is None
+            or any(type(expected[name]) is not int or expected[name] <= 0
+                   for name in ('bytes', 'files', 'runtimeBytes'))):
+        raise ValueError('BASELINE_INVENTORY_SCHEMA')
+    raw = material.canonical(observed)
+    actual = {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw),
+              'files': len(observed['files']), 'runtimeBytes': observed['runtimeBytes']}
+    return {'comparison': 'MATCH' if actual == expected else 'MISMATCH',
+            'inventorySha256': actual['sha256'], 'inventoryBytes': actual['bytes'],
+            'expectedInventorySha256': expected['sha256']}
 
 
 def load_members(path, expected_sha256):

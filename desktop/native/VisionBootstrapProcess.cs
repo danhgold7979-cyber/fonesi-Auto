@@ -176,7 +176,12 @@ namespace Fonesi.Development.VisionBootstrap
             internal readonly long OverallDeadline;
             internal int NextProfile, HostStep;
             internal bool Failed;
-            bool ready, released;
+            bool ready, released, releaseStarted, inventoryWritten;
+            SafeFileHandle inventoryRoot;
+            FILE_INFO inventoryRootIdentity, inventoryIdentity;
+            FileStream inventoryFile;
+            string inventorySha256;
+            int inventoryLength;
             internal StagingCustody(long deadlineTicks)
             {
                 OverallDeadline = deadlineTicks;
@@ -192,16 +197,114 @@ namespace Fonesi.Development.VisionBootstrap
                 Require(CreateDirectory(Path.Combine(CandidateRoot, "work"), IntPtr.Zero));
                 holder.HoldDirectories(Path.Combine(CandidateRoot, "work"));
                 Require(CreateDirectory(Path.Combine(AcquisitionRoot, "work"), IntPtr.Zero));
-                holder.HoldDirectories(Path.Combine(AcquisitionRoot, "work")); ready = true;
+                holder.HoldDirectories(Path.Combine(AcquisitionRoot, "work"));
+                SECURITY_ATTRIBUTES security = new SECURITY_ATTRIBUTES(); security.nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES));
+                IntPtr raw = CreateFile(CandidateRoot, 0x80, 3, ref security, 3, 0x02200000, IntPtr.Zero);
+                Require(raw != InvalidHandle);
+                AdmissionLease lease = new AdmissionLease(raw, null); holder.admission.Add(lease);
+                inventoryRoot = new SafeFileHandle(raw, false); lease.Resource = inventoryRoot;
+                Require(GetFileInformationByHandle(inventoryRoot, out inventoryRootIdentity));
+                CheckInventoryRoot(); ready = true;
             }
             public bool Ready { get { lock (retained) { return ready && !released && !Failed && Stopwatch.GetTimestamp() < OverallDeadline; } } }
+            // This is metadata custody, never runtime/loader admission. The wrapper must
+            // first compare the complete canonical inventory with the fixed baseline.
+            public bool ReproducedInventoryWritten { get { lock (retained) { return inventoryWritten && !Failed; } } }
+            static bool SameIdentity(FILE_INFO before, FILE_INFO after)
+            {
+                return before.Volume == after.Volume && before.IndexHigh == after.IndexHigh && before.IndexLow == after.IndexLow &&
+                    before.Attributes == after.Attributes && before.Links == after.Links;
+            }
+            static bool SameFile(FILE_INFO before, FILE_INFO after)
+            {
+                return SameIdentity(before, after) && before.SizeHigh == after.SizeHigh && before.SizeLow == after.SizeLow &&
+                    before.Write.dwHighDateTime == after.Write.dwHighDateTime && before.Write.dwLowDateTime == after.Write.dwLowDateTime;
+            }
+            static string InventoryDigest(byte[] bytes)
+            {
+                using (SHA256 hash = SHA256.Create())
+                    return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+            }
+            void CheckInventoryRoot()
+            {
+                FILE_INFO current; Require(GetFileInformationByHandle(inventoryRoot, out current));
+                CheckFinal(inventoryRoot, CandidateRoot);
+                if (GetFileType(inventoryRoot) != 1 || (current.Attributes & 0x400) != 0 || (current.Attributes & 0x10) == 0 ||
+                    !SameIdentity(inventoryRootIdentity, current)) throw new IOException("INVENTORY_ROOT_CHANGED");
+            }
+            FILE_INFO InspectInventory(int length)
+            {
+                FILE_INFO info; Require(GetFileInformationByHandle(inventoryFile.SafeFileHandle, out info));
+                CheckFinal(inventoryFile.SafeFileHandle, Path.Combine(CandidateRoot, "installed-inventory.json"));
+                if (GetFileType(inventoryFile.SafeFileHandle) != 1 || (info.Attributes & 0x450) != 0 || info.Links != 1 ||
+                    info.SizeHigh != 0 || info.SizeLow != length || inventoryFile.Length != length || length > 16777216)
+                    throw new IOException("INVENTORY_FILE_REJECTED");
+                return info;
+            }
+            string ReadInventoryDigest()
+            {
+                inventoryFile.Position = 0;
+                using (SHA256 hash = SHA256.Create())
+                    return BitConverter.ToString(hash.ComputeHash(inventoryFile)).Replace("-", "").ToLowerInvariant();
+            }
+            void CheckInventory()
+            {
+                CheckInventoryRoot();
+                FILE_INFO before = InspectInventory(inventoryLength);
+                string digest = ReadInventoryDigest();
+                FILE_INFO after = InspectInventory(inventoryLength);
+                CheckInventoryRoot();
+                if (!SameFile(inventoryIdentity, before) || !SameFile(before, after) || digest != inventorySha256)
+                    throw new IOException("INVENTORY_FILE_CHANGED");
+            }
+            public string WriteReproducedInventory(byte[] bytes, string expectedSha256)
+            {
+                lock (retained) {
+                    try {
+                        if (this != staging || !Ready || releaseStarted || HostStep != 3 || NextProfile != 4 ||
+                            admissionReserved || retained.Count != 0 || inventoryFile != null || inventoryWritten)
+                            throw new InvalidOperationException("INVENTORY_NOT_READY");
+                        if (bytes == null || bytes.Length == 0 || bytes.Length > 16777216 || expectedSha256 == null ||
+                            !System.Text.RegularExpressions.Regex.IsMatch(expectedSha256, "\\A[0-9a-f]{64}\\z"))
+                            throw new ArgumentException("INVENTORY_BYTES_REJECTED");
+                        byte[] owned = (byte[])bytes.Clone();
+                        if (InventoryDigest(owned) != expectedSha256) throw new IOException("INVENTORY_HASH_REJECTED");
+                        CheckInventoryRoot();
+                        if (Stopwatch.GetTimestamp() >= OverallDeadline) throw new IOException("DEADLINE");
+                        SECURITY_ATTRIBUTES security = new SECURITY_ATTRIBUTES(); security.nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES));
+                        // READ | WRITE, SHARE_READ only, CREATE_NEW, OPEN_REPARSE_POINT.
+                        // Private stream is never exposed or written again; its retained
+                        // handle forbids all external write/delete opens through Release.
+                        IntPtr raw = CreateFile(Path.Combine(CandidateRoot, "installed-inventory.json"), 0xc0000000, 1, ref security, 1, 0x00200000, IntPtr.Zero);
+                        Require(raw != InvalidHandle);
+                        AdmissionLease lease = new AdmissionLease(raw, null); holder.admission.Add(lease);
+                        inventoryFile = new FileStream(new SafeFileHandle(raw, false), FileAccess.ReadWrite, 65536, false);
+                        lease.Resource = inventoryFile;
+                        InspectInventory(0);
+                        inventoryFile.Write(owned, 0, owned.Length); inventoryFile.Flush(true);
+                        inventoryLength = owned.Length; inventorySha256 = expectedSha256;
+                        inventoryIdentity = InspectInventory(inventoryLength);
+                        CheckInventory();
+                        if (Stopwatch.GetTimestamp() >= OverallDeadline) throw new IOException("DEADLINE");
+                        inventoryWritten = true; return inventorySha256;
+                    } catch { Failed = true; ready = false; inventoryWritten = false; throw; }
+                }
+            }
             public bool Release()
             {
                 lock (retained) {
                     if (released) return true;
                     if (admissionReserved || retained.Count != 0) return false;
                     ready = false;
-                    try { if (!holder.ReleaseAdmission()) return false; } catch { return false; }
+                    if (!releaseStarted) {
+                        releaseStarted = true;
+                        try { if (inventoryWritten && !Failed) CheckInventory(); }
+                        catch { Failed = true; inventoryWritten = false; }
+                    }
+                    // Retrying a partially failed close only retires resources. It can
+                    // never restore a handoff claim after custody became uncertain.
+                    try { if (!holder.ReleaseAdmission()) { Failed = true; inventoryWritten = false; return false; } }
+                    catch { Failed = true; inventoryWritten = false; return false; }
                     released = true; staging = null; return true;
                 }
             }
@@ -482,7 +585,7 @@ namespace Fonesi.Development.VisionBootstrap
         static readonly string[] HostSourceNames = {
             "windows_vision_host.py", "windows_vision_catalog.py", "windows_vision_materialize.py", "windows_vision_prepare.py",
             "windows_materialization_catalog.json", "windows_python_members.json", "preprocess-requirements-windows.lock",
-            "ocr-requirements-windows.lock", "source-index.json"
+            "ocr-requirements-windows.lock", "windows_reproduction_baseline.json", "source-index.json"
         };
         static readonly string[] BundleSourceNames = {
             "desktop/scripts/stage-vision-source.mjs", "desktop/scripts/verify-dependencies.mjs", "desktop/scripts/build-manifest.mjs",
