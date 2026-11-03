@@ -1,15 +1,25 @@
 # Phase Status — Fonesi-Auto
 
-## Current Phase10 bounded source work — 2026-11-03 22:47 UTC
+## Current Phase10 bounded source work — 2026-11-03 23:18 UTC
 
-The independently reviewed [P10-06 entry](phases/P10-FLEET-HEALTH-SOURCE-ENTRY.md)
-is implemented for captured registry records only; final independent implementation
-review CLEAR22:44 UTC and focused18/18 PASS. Frozen aggregate PASS1820/1820
-and DESKTOP_SOURCE_CHECK_PASS22:46 UTC. Publication/hosted CI remain pending. [Evidence](evidence/P10-06-fleet-health-source-2026-11-03.md). Base is exact public Phase09 `9befe4dc`, not the divergent local
-Phase09 commit. Phase07 is source-frozen and the old active-lane wording below is
-historical; the coordinator retains at most two source phases. Full P10-06 and
-Phase10 acceptance remain open; no measurement time, account login or freshness
-is inferred. Native/browser/visual/device campaigns are NOT_RUN.
+P10-06 internal fleet health is published at `766a675ff6aaa13bcf131fe1f697738ed2e53381`,
+matching reviewed local52748fb/tree d12c5119. Exact Windows source
+[CI41734027573](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41734027573)
+PASS1820/1820 plus DESKTOP_SOURCE_CHECK_PASS22:52 UTC.
+[Evidence](evidence/P10-06-fleet-health-source-2026-11-03.md).
+
+The independently adopted [P10-07 preview entry](phases/P10-CSV-PREVIEW-SOURCE-ENTRY.md)
+now adds in-memory CSV capture and an explicit accessible Tracking preview, covering
+all loaded registry records, never saved files or filtered account analytics.
+Independent implementation review CLEAR at 23:01 UTC with 64/64 targeted PASS.
+Recovery reverified all 18 frozen file hashes, and a fresh independent review at
+23:17 UTC was CLEAR with 37/37 focused tests PASS. The fresh complete source gate
+at 23:18 UTC passed 1829/1829 with DESKTOP_SOURCE_CHECK_PASS. Publication and new
+exact-head hosted source checks remain pending.
+[Current evidence](evidence/P10-07-csv-preview-source-2026-11-03.md).
+Main/history are preserved and at most two source phases are active. Full P10-06/07
+and Phase10 acceptance remain open. Measurement times/freshness/account login are
+not inferred; native/browser/visual/device campaigns remain NOT_RUN, P1-06 UNMET.
 
 ## Inherited Phase09 source checkpoint
 

@@ -56,6 +56,16 @@ Every modal reports per-device progress and result. A batch-level success is not
 - Double-click a device row may open the corresponding content setup or schedule view, with the device preselected.
 - Never label a mock snapshot as a real platform metric.
 
+### Bounded source-only fleet CSV preview — 2026-11-03
+
+The Tracking header action now previews captured internal fleet records in the
+existing accessible modal, not a saved report. Its all-loaded-registry scope matches
+the health table, not the phone/network/account filters. It names source/revisions,
+record count and missing observation/verification times, omitting unsupported
+metrics/private data. Cancel and context/source changes discard the capture; no
+background regeneration, native save or new layout/CSS. This is source mapping only,
+not screenshot/visual parity acceptance. [Entry](phases/P10-CSV-PREVIEW-SOURCE-ENTRY.md).
+
 ## 6. Setup & content
 
 Required selection order:

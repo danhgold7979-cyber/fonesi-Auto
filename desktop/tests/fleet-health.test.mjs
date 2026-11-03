@@ -744,17 +744,17 @@ test('phase10 workflow remains exact-branch source-only with pinned tools and ex
   }
 });
 
-test('module-map byte limit admits exact 66048 bytes and rejects 66049 before parsing', () => {
+test('module-map byte limit admits exact 66304 bytes and rejects 66305 before parsing', () => {
   const directory = mkdtempSync(join(tmpdir(), 'fleet-health-map-'));
   const path = join(directory, 'synthetic-map.json');
   try {
     const source = readFileSync(new URL('../module-map.json', import.meta.url));
-    assert.ok(source.length <= 66048);
-    writeFileSync(path, Buffer.concat([source, Buffer.alloc(66048 - source.length, 32)]), {
+    assert.ok(source.length <= 66304);
+    writeFileSync(path, Buffer.concat([source, Buffer.alloc(66304 - source.length, 32)]), {
       flag: 'wx',
     });
     assert.deepEqual(readMap(path), JSON.parse(source.toString('utf8')));
-    writeFileSync(path, Buffer.alloc(66049, 32));
+    writeFileSync(path, Buffer.alloc(66305, 32));
     assert.throws(() => readMap(path), /MAP_INVALID/);
   } finally {
     unlinkSync(path);

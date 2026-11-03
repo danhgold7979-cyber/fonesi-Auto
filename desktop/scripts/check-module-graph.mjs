@@ -289,7 +289,7 @@ export async function verifyRuntimeGraph(sources, map) {
 }
 export function readMap(path) {
   const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 66048) reject('MAP_INVALID');
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 66304) reject('MAP_INVALID');
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 export function inventory(sourceRoot) {

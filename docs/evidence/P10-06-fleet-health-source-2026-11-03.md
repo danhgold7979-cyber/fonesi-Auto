@@ -55,7 +55,15 @@ weakening assertions. An obsolete changed empty-state text was restored.
 
 ## Publication and retained gates
 
-Publication and exact-head hosted source CI are pending. The reviewed workflow is
+Published exact `766a675ff6aaa13bcf131fe1f697738ed2e53381`, tree
+`d12c5119f5c6340b355cec43b68fc896716a689d`, parent
+`9befe4dcd936fc7b399af0e77190bb0e9a94e47d`. Exact-head
+[CI41734027573](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41734027573)
+/source job126258436615 completed SUCCESS22:52 UTC. Coordinator independently read
+SOURCE_HEAD,1820/1820 and DESKTOP_SOURCE_CHECK_PASS22:52:04 plus all five
+source/captured/NOT_RUN/UNMET markers22:52:05. Hosted Windows2022 used pinned
+Node24.22.1 with admitted npm11.19.1; local evidence used npm11.9.0.
+The reviewed workflow is
 phase-10-only, pinned actions, read-only contents, no persisted credentials/cache,
 scripts-disabled dependency restore and finite timeout. It cannot activate native
 campaigns. Hosted source output must be read before any PASS claim.

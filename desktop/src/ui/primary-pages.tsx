@@ -1,7 +1,11 @@
-import { readFleetHealth } from './fleet-health.js';
-import { useState } from 'react';
+import {
+  readFleetHealth,
+  captureFleetCsvPreview,
+  isFleetCsvPreviewCurrent,
+} from './fleet-health.js';
+import { useState, useRef } from 'react';
 import { UI_EXPORT_ACTION, type PageProps } from './ui-model.js';
-import { UnavailableButton, EmptyPanel, PageHeader, StatCard } from './ui-shared.tsx';
+import { UnavailableButton, EmptyPanel, PageHeader, StatCard, UiModal } from './ui-shared.tsx';
 
 const networks = [
   'Facebook',
@@ -373,6 +377,39 @@ export function TrackingPage({
   const [network, setNetwork] = useState('facebook');
   const [query, setQuery] = useState('');
   const [accountId, setAccountId] = useState('');
+  const [csvPreview, setCsvPreview] = useState<Readonly<{
+    capture: NonNullable<ReturnType<typeof captureFleetCsvPreview>>;
+    phone: string;
+    network: string;
+    query: string;
+    accountId: string;
+  }> | null>(null);
+  const clickIntent = useRef<object | null>(null);
+  const currentPreview =
+    csvPreview &&
+    csvPreview.phone === selectedDeviceId &&
+    csvPreview.network === network &&
+    csvPreview.query === query &&
+    csvPreview.accountId === accountId &&
+    isFleetCsvPreviewCurrent(csvPreview.capture, snapshot)
+      ? csvPreview
+      : null;
+  // Hide before effects and clear permanently: returning to an old context cannot
+  // resurrect an earlier intent. Equivalent newly allocated projections may stay.
+  if (csvPreview && !currentPreview) setCsvPreview(null);
+  const intent = { open: currentPreview !== null };
+  clickIntent.current = intent;
+  const previewCsv = () => {
+    if (clickIntent.current !== intent || intent.open) return;
+    const capture = captureFleetCsvPreview(snapshot);
+    if (!capture) {
+      onUnavailable(UI_EXPORT_ACTION);
+      return;
+    }
+    intent.open = true;
+    setCsvPreview({ capture, phone: selectedDeviceId, network, query, accountId });
+  };
+
   const devices = snapshot.status === 'READY' ? snapshot.devices : [];
   const healthDevices = health || accountScopeKnown ? devices : [];
   const activePhone = devices.some((device) => device.id === selectedDeviceId)
@@ -413,16 +450,55 @@ export function TrackingPage({
             <UnavailableButton action="metrics-refresh" onUnavailable={onUnavailable} icon="scan">
               Check tất cả ({accountScopeKnown ? accounts.length : '—'})
             </UnavailableButton>
-            <UnavailableButton
-              action={UI_EXPORT_ACTION}
-              onUnavailable={onUnavailable}
-              icon="download"
-            >
-              Xuất CSV
-            </UnavailableButton>
+            {health ? (
+              <button type="button" className="btn" id="fleet-csv-preview" onClick={previewCsv}>
+                Xem trước CSV fleet nội bộ
+              </button>
+            ) : (
+              <UnavailableButton
+                action={UI_EXPORT_ACTION}
+                onUnavailable={onUnavailable}
+                icon="download"
+                title="Chưa có nguồn fleet đã được xác nhận để xem trước CSV"
+              >
+                Xem trước CSV fleet nội bộ · chưa có nguồn
+              </UnavailableButton>
+            )}
           </>
         }
       />
+      {currentPreview ? (
+        <UiModal
+          title="Xem trước CSV fleet nội bộ"
+          onClose={() => setCsvPreview((value) => (value === currentPreview ? null : value))}
+        >
+          <p className="notice" data-fleet-csv-scope>
+            Toàn bộ {currentPreview.capture.recordCount} bản ghi registry đã nhận, cùng phạm vi với
+            bảng sức khỏe. Bộ lọc điện thoại/mạng/tài khoản không thu hẹp CSV này. Không phải tổng
+            điều tra thiết bị vật lý.
+          </p>
+          <p data-fleet-csv-source>
+            Nguồn: {currentPreview.capture.source} · {currentPreview.capture.scope} · registry{' '}
+            {currentPreview.capture.registryRevision} · selection{' '}
+            {currentPreview.capture.selectionRevision}
+          </p>
+          <p className="notice warn">
+            Chỉ xem trong ứng dụng, chưa lưu tệp. Thời điểm quan sát/xác minh chưa được nguồn cung
+            cấp (NOT_PROVIDED_BY_SOURCE); không xác định độ mới. Xác minh registry không xác nhận
+            đăng nhập tài khoản. Không gồm serial, tài khoản, media, công việc, IP, pin, dung lượng,
+            transport, stream hoặc chỉ số nền tảng vì chưa có nguồn phù hợp.
+          </p>
+          <p className="muted">
+            CSV v1 · dấu phẩy · CRLF · {currentPreview.capture.utf8Bytes} byte UTF-8. Ô có nguy cơ
+            công thức được thêm dấu nháy đơn, không giữ nguyên biểu diễn gốc. Số giữ chuỗi thập
+            phân; chưa chứng nhận tự nhận dạng kiểu/số lớn trong bảng tính.
+          </p>
+          <div className="field">
+            <label htmlFor="fleet-csv-text">Nội dung CSV đã chụp</label>
+            <textarea id="fleet-csv-text" readOnly rows={12} value={currentPreview.capture.csv} />
+          </div>
+        </UiModal>
+      ) : null}
       <section className="content-card tracking-filters">
         <div className="formgrid">
           <div className="field">

@@ -38,6 +38,11 @@ function mount(name, snapshot) {
     require(id) {
       if (id === 'react')
         return {
+          useRef(initial) {
+            const n = cursor++;
+            if (!(n in slots)) slots[n] = { current: initial };
+            return slots[n];
+          },
           useState(initial) {
             const n = cursor++;
             if (!(n in slots)) slots[n] = initial;

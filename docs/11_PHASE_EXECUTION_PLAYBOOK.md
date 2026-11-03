@@ -587,3 +587,12 @@ Existing main/history/phase branches remain intact, with at most two active sour
 phases. Only captured registry records flow through existing Tracking geometry;
 unknown measurements/time stay unavailable. CSV and native/visual/device acceptance
 remain separately gated. No task/phase percentage is inferred from this source slice.
+
+## Bounded P10-07 CSV preview continuation — 2026-11-03 22:55 UTC
+
+Independent design CLEAR and coordinator adoption of the
+[in-app preview source entry](phases/P10-CSV-PREVIEW-SOURCE-ENTRY.md) permits only
+memory serialization and explicit preview on phase-10 after P10-06 source closure.
+Exact public base766a675f/tree d12c5119 has Windows source CI41734027573 PASS1820.
+No native save/overwrite, extra permission, physical test or third active phase is
+introduced. Original full P10-07 deliverables and predecessor acceptance stay open.

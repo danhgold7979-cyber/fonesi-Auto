@@ -66,9 +66,9 @@
     "src/ui/primary-pages.tsx": {
       "role": "renderer",
       "imports": {
-        "./fleet-health.js": {"readFleetHealth":"value"},
+        "./fleet-health.js": {"readFleetHealth":"value","captureFleetCsvPreview":"value","isFleetCsvPreviewCurrent":"value"},
         "react": {
-          "useState": "value"
+          "useState": "value", "useRef": "value"
         },
         "./ui-model.js": {
           "UI_EXPORT_ACTION": "value",
@@ -78,7 +78,7 @@
           "UnavailableButton": "value",
           "EmptyPanel": "value",
           "PageHeader": "value",
-          "StatCard": "value"
+          "StatCard": "value", "UiModal": "value"
         }
       }
     },

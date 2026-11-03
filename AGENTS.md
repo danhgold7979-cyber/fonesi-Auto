@@ -258,3 +258,12 @@ Phase07 is source-frozen; this replaces the historical Phase07/09 lane wording a
 At most two source phases remain active. Registry verification is device-record
 metadata, not current account login or freshness. No collection, commands, export,
 metrics, runtime/native/device campaign or predecessor acceptance is added.
+
+## Bounded P10-07 in-app preview entry — 2026-11-03 22:55 UTC
+
+The [independently reviewed CSV preview entry](docs/phases/P10-CSV-PREVIEW-SOURCE-ENTRY.md)
+permits deterministic in-memory serialization and explicit Tracking preview of the
+existing admitted all-loaded registry records. No file save, download, clipboard,
+network, new IPC/permission or native/device/visual campaign is added. Equivalent
+projections preserve a capture; meaningful context/source changes discard it without
+regeneration. Native CSV/XLSX delivery and full task/phase acceptance remain gated.
