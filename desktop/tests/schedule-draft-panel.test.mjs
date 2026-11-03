@@ -281,3 +281,182 @@ test('closed contract validation refuses malformed/mismatched successful respons
     h.unmount();
   }
 });
+
+function rule(h, value) {
+  const found = nodes(
+    h.render(),
+    (n) => n.type === 'select' && n.props['aria-label'] === 'Kiểu lặp',
+  );
+  assert.equal(found.length, 1);
+  if (value !== undefined) found[0].props.onChange({ target: { value } });
+  return found[0];
+}
+function weekday(h, label) {
+  const found = field(h, label);
+  assert.equal(found.props.type, 'checkbox');
+  found.props.onChange({ target: { checked: !found.props.checked } });
+}
+function resultText(h) {
+  const found = nodes(h.render(), (n) => n.props?.['aria-label'] === 'Kết quả bản nháp chưa lưu');
+  assert.equal(found.length, 1);
+  return text(found[0]);
+}
+
+test('UI explicit weekday selection is sorted, reports rule and bounds, and preserves inactive inputs on mode switches', async () => {
+  const inputs = [];
+  const h = mount({
+    preview: async (i) => {
+      inputs.push(i);
+      return success(i);
+    },
+    cancel() {},
+  });
+  prepare(h, '2024-01-02');
+  field(h, 'Xem trước đến ngày', '2024-01-09');
+  field(h, 'Chu kỳ đăng (ngày)', '-2');
+  field(h, 'Ngày kết thúc (bao gồm)', '2024-01-08');
+  field(h, 'Tối đa lần dự kiến', '3');
+  rule(h, 'WEEKDAYS');
+  const groups = nodes(h.render(), (n) => n.props?.['aria-label'] === 'Ngày trong tuần');
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].type, 'fieldset');
+  assert.equal(groups[0].props.className, 'field wide');
+  assert.deepEqual(Object.entries(groups[0].props.style), [
+    ['border', 0],
+    ['margin', 0],
+    ['padding', 0],
+  ]);
+  const legends = nodes(groups[0], (n) => n.type === 'legend');
+  assert.equal(legends.length, 1);
+  assert.equal(text(legends[0]), 'Chọn ít nhất một ngày trong tuần');
+  assert.equal(legends[0].props.style.padding, 0);
+  const weekdays = nodes(groups[0], (n) => n.props?.type === 'checkbox');
+  assert.equal(weekdays.length, 7);
+  for (const day of weekdays) assert.equal(day.props.style.width, 14);
+  assert.equal(weekdays.filter((day) => day.props.checked).length, 0);
+  button(h, 'Xem trước bản nháp').props.onClick();
+  await tick();
+  assert.equal(inputs.length, 0);
+  assert.match(text(h.render()), /INVALID_SHAPE/);
+  weekday(h, 'Thứ Tư');
+  weekday(h, 'Thứ Hai');
+  button(h, 'Xem trước bản nháp').props.onClick();
+  await tick();
+  assert.deepEqual(inputs[0].schedule.rule, { kind: 'WEEKDAYS', weekdays: [1, 3] });
+  assert.equal(inputs[0].schedule.endDate, '2024-01-08');
+  assert.equal(inputs[0].schedule.maxOccurrences, 3);
+  const summary = resultText(h);
+  assert.match(summary, /Các ngày trong tuần/);
+  assert.match(summary, /Thứ Hai, Thứ Tư/);
+  assert.match(summary, /Ngày kết thúc: 2024-01-08/);
+  assert.match(summary, /tối đa lần dự kiến: 3/);
+  rule(h, 'ONCE');
+  button(h, 'Xem trước bản nháp').props.onClick();
+  await tick();
+  assert.deepEqual(inputs[1].schedule.rule, { kind: 'ONCE' });
+  assert.match(resultText(h), /Một ngày/);
+  assert.equal(field(h, 'Giờ video 1').props.value, '09:00');
+  assert.equal(field(h, 'Giờ video 2').props.value, '09:29');
+  rule(h, 'EVERY_N_DAYS');
+  assert.equal(field(h, 'Chu kỳ đăng (ngày)').props.value, '-2');
+  button(h, 'Xem trước bản nháp').props.onClick();
+  await tick();
+  assert.equal(inputs.length, 2);
+  rule(h, 'WEEKDAYS');
+  assert.equal(field(h, 'Thứ Hai').props.checked, true);
+  assert.equal(field(h, 'Thứ Tư').props.checked, true);
+  assert.equal(field(h, 'Ngày kết thúc (bao gồm)').props.value, '2024-01-08');
+  assert.equal(field(h, 'Tối đa lần dự kiến').props.value, '3');
+  h.unmount();
+});
+
+test('UI optional bounds preserve invalid raw input, clear to unbounded and keep preview window independent', async () => {
+  const inputs = [];
+  const h = mount({
+    preview: async (i) => {
+      inputs.push(i);
+      return success(i);
+    },
+    cancel() {},
+  });
+  prepare(h);
+  field(h, 'Xem trước đến ngày', '2024-01-05');
+  field(h, 'Ngày kết thúc (bao gồm)', '2023-12-31');
+  field(h, 'Tối đa lần dự kiến', '1.5');
+  button(h, 'Xem trước bản nháp').props.onClick();
+  await tick();
+  assert.equal(inputs.length, 0);
+  assert.equal(field(h, 'Ngày kết thúc (bao gồm)').props.value, '2023-12-31');
+  assert.equal(field(h, 'Tối đa lần dự kiến').props.value, '1.5');
+  assert.match(text(h.render()), /INVALID_SHAPE/);
+  field(h, 'Ngày kết thúc (bao gồm)', '');
+  field(h, 'Tối đa lần dự kiến', '');
+  button(h, 'Xem trước bản nháp').props.onClick();
+  await tick();
+  assert.equal(inputs[0].schedule.endDate, null);
+  assert.equal(inputs[0].schedule.maxOccurrences, null);
+  assert.equal(inputs[0].request.throughDate, '2024-01-05');
+  assert.match(resultText(h), /Ngày kết thúc: không giới hạn/);
+  assert.match(resultText(h), /tối đa lần dự kiến: không giới hạn/);
+  field(h, 'Tối đa lần dự kiến', '1');
+  button(h, 'Xem trước bản nháp').props.onClick();
+  await tick();
+  assert.match(resultText(h), /1\/128/);
+  assert.match(resultText(h), /không tạo lần thay thế/);
+  h.unmount();
+});
+
+test('UI DST gap with planned maximum shows skipped slot rather than a replacement', async () => {
+  const h = mount({ preview: async (i) => success(i), cancel() {} });
+  prepare(h, '2024-03-10', 'America/New_York', '02:30', '03:30');
+  field(h, 'Xem trước đến ngày', '2024-03-12');
+  field(h, 'Tối đa lần dự kiến', '1');
+  button(h, 'Xem trước bản nháp').props.onClick();
+  await tick();
+  const summary = resultText(h);
+  assert.match(summary, /1\/128/);
+  assert.match(summary, /Bỏ qua giờ không tồn tại do DST/);
+  assert.match(summary, /Không có UTC/);
+  assert(!summary.includes('Mốc tiếp theo chưa hiển thị'));
+  h.unmount();
+});
+
+for (const [name, change] of [
+  ['mode', (h) => rule(h, 'ONCE')],
+  ['weekday', (h) => weekday(h, 'Thứ Tư')],
+  ['end', (h) => field(h, 'Ngày kết thúc (bao gồm)', '2024-01-02')],
+  ['maximum', (h) => field(h, 'Tối đa lần dự kiến', '1')],
+])
+  test(`UI ${name} change suppresses old pending result without automatic replay`, async () => {
+    let resolve,
+      input,
+      calls = 0;
+    const h = mount({
+      preview: (i) => {
+        input = i;
+        calls++;
+        return new Promise((r) => {
+          resolve = r;
+        });
+      },
+      cancel() {},
+    });
+    prepare(h);
+    if (name === 'weekday') {
+      rule(h, 'WEEKDAYS');
+      weekday(h, 'Thứ Hai');
+    }
+    button(h, 'Xem trước bản nháp').props.onClick();
+    change(h);
+    assert.equal(button(h, 'Xem trước bản nháp').props.disabled, true);
+    assert.equal(calls, 1);
+    resolve(success(input));
+    await tick();
+    assert.equal(
+      nodes(h.render(), (n) => n.props?.['aria-label'] === 'Kết quả bản nháp chưa lưu').length,
+      0,
+    );
+    assert.equal(calls, 1);
+    assert.equal(field(h, 'Giờ video 1').props.value, '09:00');
+    h.unmount();
+  });

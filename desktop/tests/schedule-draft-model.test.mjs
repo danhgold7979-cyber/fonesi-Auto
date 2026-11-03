@@ -436,7 +436,7 @@ test('every context edit invalidates staged reduction and subscriber cancellatio
   assert.equal(calls, 0);
   assert.equal(e.snapshot().pending, false);
 });
-test('request is detached, uses no persistent end/max and late rejection cannot replace newer edits', async () => {
+test('request is detached, default optional bounds are null and late rejection cannot replace newer edits', async () => {
   const d = deferred();
   let captured,
     calls = 0;
@@ -465,3 +465,234 @@ test('request is detached, uses no persistent end/max and late rejection cannot 
   assert.equal(e.snapshot().result.scope.draftRevision, e.snapshot().revision);
   assert.equal(calls, 2);
 });
+
+test('recurrence defaults are explicit and ONCE preserves every slot on only the selected date', async () => {
+  const f = actual();
+  try {
+    const initial = f.e.snapshot();
+    assert.equal(initial.ruleKind, 'EVERY_N_DAYS');
+    assert.deepEqual(initial.weekdays, []);
+    assert(Object.isFrozen(initial.weekdays));
+    assert.equal(initial.endDate, '');
+    assert.equal(initial.maximum, '');
+    dates(f.e, '2024-01-02', '2024-01-09');
+    f.e.setRule('ONCE');
+    assert.equal(f.calls(), 0);
+    assert.equal(f.e.snapshot().slots, initial.slots);
+    await f.e.preview();
+    const r = f.e.snapshot().result;
+    assert.deepEqual(
+      r.preview.occurrences.map((x) => [x.date, x.time]),
+      [
+        ['2024-01-02', '08:00'],
+        ['2024-01-02', '12:00'],
+        ['2024-01-02', '19:00'],
+      ],
+    );
+    assert.equal(r.coverage, 'COMPLETE_WINDOW');
+  } finally {
+    f.e.dispose();
+    f.close();
+  }
+});
+
+test('weekdays are explicit unique ascending ISO days and honor the start anchor', async () => {
+  const f = actual();
+  try {
+    dates(f.e, '2024-01-02', '2024-01-09');
+    times(f.e, ['09:00']);
+    f.e.setRule('WEEKDAYS');
+    await f.e.preview();
+    assert.equal(f.calls(), 0);
+    assert.equal(f.e.snapshot().code, 'INVALID_SHAPE');
+    f.e.toggleWeekday(7);
+    f.e.toggleWeekday(3);
+    f.e.toggleWeekday(1);
+    assert.deepEqual(f.e.snapshot().weekdays, [1, 3, 7]);
+    assert(Object.isFrozen(f.e.snapshot().weekdays));
+    f.e.toggleWeekday(7);
+    assert.deepEqual(f.e.snapshot().weekdays, [1, 3]);
+    await f.e.preview();
+    assert.deepEqual(
+      f.e.snapshot().result.preview.occurrences.map((x) => x.date),
+      ['2024-01-03', '2024-01-08'],
+    );
+    assert.equal(f.calls(), 1);
+  } finally {
+    f.e.dispose();
+    f.close();
+  }
+});
+
+test('rule switching retains inactive interval, weekdays and stable slots without wire leakage', async () => {
+  const inputs = [];
+  const e = editor({
+    preview: async (input) => {
+      inputs.push(input);
+      return success(input);
+    },
+    cancel() {},
+  });
+  dates(e, '2024-01-02', '2024-01-09');
+  const slots = e.snapshot().slots;
+  e.setField('every', '-2');
+  e.toggleWeekday(3);
+  e.toggleWeekday(1);
+  e.setRule('ONCE');
+  await e.preview();
+  assert.deepEqual(inputs[0].schedule.rule, { kind: 'ONCE' });
+  assert.equal(e.snapshot().every, '-2');
+  assert.equal(e.snapshot().slots, slots);
+  e.setRule('WEEKDAYS');
+  await e.preview();
+  assert.deepEqual(inputs[1].schedule.rule, { kind: 'WEEKDAYS', weekdays: [1, 3] });
+  assert.equal(e.snapshot().code, null);
+  e.setRule('EVERY_N_DAYS');
+  await e.preview();
+  assert.equal(e.snapshot().code, 'INVALID_SHAPE');
+  assert.equal(inputs.length, 2);
+  e.setField('every', '3');
+  await e.preview();
+  assert.deepEqual(inputs[2].schedule.rule, { kind: 'EVERY_N_DAYS', intervalDays: 3 });
+  assert.deepEqual(
+    [...new Set(e.snapshot().result.preview.occurrences.map((x) => x.date))],
+    ['2024-01-02', '2024-01-05', '2024-01-08'],
+  );
+  assert.deepEqual(e.snapshot().weekdays, [1, 3]);
+  assert.equal(e.snapshot().slots, slots);
+  e.dispose();
+});
+
+test('inclusive end and planned maximum stop at the first bound including within an active day', async () => {
+  const f = actual();
+  try {
+    dates(f.e, '2024-01-01', '2024-01-05');
+    times(f.e, ['09:00', '09:30']);
+    f.e.setField('endDate', '2024-01-02');
+    await f.e.preview();
+    assert.deepEqual(
+      f.e.snapshot().result.preview.occurrences.map((x) => x.date),
+      ['2024-01-01', '2024-01-01', '2024-01-02', '2024-01-02'],
+    );
+    f.e.setField('maximum', '3');
+    await f.e.preview();
+    assert.deepEqual(
+      f.e.snapshot().result.preview.occurrences.map((x) => [x.date, x.time, x.plannedOrdinal]),
+      [
+        ['2024-01-01', '09:00', 1],
+        ['2024-01-01', '09:30', 2],
+        ['2024-01-02', '09:00', 3],
+      ],
+    );
+    f.e.setField('endDate', '2024-01-01');
+    await f.e.preview();
+    assert.equal(f.e.snapshot().result.preview.occurrences.length, 2);
+    f.e.setField('maximum', '1');
+    await f.e.preview();
+    assert.equal(f.e.snapshot().result.preview.occurrences.length, 1);
+    f.e.setField('endDate', '');
+    f.e.setField('maximum', '');
+    await f.e.preview();
+    assert.equal(f.e.snapshot().result.preview.occurrences.length, 10);
+    assert.equal(f.e.snapshot().result.window.throughDate, '2024-01-05');
+  } finally {
+    f.e.dispose();
+    f.close();
+  }
+});
+
+test('DST gap consumes the planned maximum without generating a replacement occurrence', async () => {
+  const f = actual();
+  try {
+    dates(f.e, '2024-03-10', '2024-03-12');
+    times(f.e, ['02:30', '03:30']);
+    f.e.setField('zone', 'America/New_York');
+    f.e.setField('maximum', '1');
+    await f.e.preview();
+    const r = f.e.snapshot().result;
+    assert.equal(r.preview.occurrences.length, 1);
+    assert.equal(r.preview.occurrences[0].plannedOrdinal, 1);
+    assert.equal(r.preview.occurrences[0].resolution, 'SKIPPED_GAP');
+    assert.equal(r.preview.occurrences[0].utcMs, null);
+    assert.equal(r.preview.next, null);
+    assert.equal(r.preview.truncated, false);
+  } finally {
+    f.e.dispose();
+    f.close();
+  }
+});
+
+test('invalid raw optional bounds survive refusal; empty resets to null and safe integer maximum is admitted', async () => {
+  const inputs = [];
+  const e = editor({
+    preview: async (input) => {
+      inputs.push(input);
+      return success(input);
+    },
+    cancel() {},
+  });
+  dates(e);
+  for (const maximum of ['0', '-1', '1.5', '1e3', ' 3', '9007199254740992', 'NaN']) {
+    e.setField('maximum', maximum);
+    await e.preview();
+    assert.equal(e.snapshot().maximum, maximum);
+    assert.equal(e.snapshot().code, 'INVALID_SHAPE');
+    assert.equal(inputs.length, 0);
+  }
+  e.setField('maximum', '');
+  for (const endDate of ['2023-12-31', '2024-02-30', 'not-a-date']) {
+    e.setField('endDate', endDate);
+    await e.preview();
+    assert.equal(e.snapshot().endDate, endDate);
+    assert.equal(e.snapshot().code, 'INVALID_SHAPE');
+    assert.equal(inputs.length, 0);
+  }
+  e.setField('endDate', '');
+  e.setField('maximum', String(Number.MAX_SAFE_INTEGER));
+  await e.preview();
+  assert.equal(inputs[0].schedule.endDate, null);
+  assert.equal(inputs[0].schedule.maxOccurrences, Number.MAX_SAFE_INTEGER);
+  e.setField('maximum', '');
+  await e.preview();
+  assert.equal(inputs[1].schedule.maxOccurrences, null);
+  e.dispose();
+});
+
+for (const [name, change] of [
+  ['mode', (e) => e.setRule('ONCE')],
+  ['weekday', (e) => e.toggleWeekday(1)],
+  ['end', (e) => e.setField('endDate', '2024-01-02')],
+  ['maximum', (e) => e.setField('maximum', '1')],
+])
+  test(`${name} edit fences pending result and invalidates staged removal without changing slots`, async () => {
+    const d = deferred();
+    let input,
+      calls = 0;
+    const e = editor({
+      preview: (i) => {
+        calls++;
+        input = i;
+        return d.promise;
+      },
+      cancel() {},
+    });
+    dates(e);
+    const slots = e.snapshot().slots;
+    const p = e.preview();
+    const revision = e.snapshot().revision;
+    change(e);
+    assert.equal(e.snapshot().revision, revision + 1);
+    assert.equal(e.snapshot().pending, true);
+    assert.equal(e.snapshot().slots, slots);
+    assert.equal(calls, 1);
+    d.resolve(success(input));
+    await p;
+    assert.equal(e.snapshot().result, null);
+    assert.equal(e.snapshot().pending, false);
+    e.setCount('1');
+    change(e);
+    assert.equal(e.snapshot().removal, null);
+    assert.equal(e.snapshot().posts, '3');
+    assert.equal(e.snapshot().slots, slots);
+    e.dispose();
+  });

@@ -3,6 +3,20 @@ import { createScheduleDraftEditor, type ScheduleDraftPort } from './schedule-dr
 
 type Editor = ReturnType<typeof createScheduleDraftEditor>;
 type Snapshot = ReturnType<Editor['snapshot']>;
+const WEEKDAYS = Object.freeze([
+  'Thứ Hai',
+  'Thứ Ba',
+  'Thứ Tư',
+  'Thứ Năm',
+  'Thứ Sáu',
+  'Thứ Bảy',
+  'Chủ Nhật',
+]);
+const RULE_LABELS = Object.freeze({
+  ONCE: 'Một ngày',
+  WEEKDAYS: 'Các ngày trong tuần',
+  EVERY_N_DAYS: 'Cách N ngày',
+});
 function offset(seconds: number) {
   const value = Math.abs(seconds);
   return `UTC${seconds < 0 ? '-' : '+'}${String(Math.floor(value / 3600)).padStart(2, '0')}:${String(Math.floor((value % 3600) / 60)).padStart(2, '0')}${value % 60 ? `:${String(value % 60).padStart(2, '0')}` : ''}`;
@@ -56,15 +70,53 @@ export function ScheduleDraftPanel({
           <small>1–1440 ô giờ là giới hạn biểu diễn, không phải hạn mức đăng.</small>
         </label>
         <label className="field">
-          Chu kỳ đăng (ngày)
-          <input
-            aria-label="Chu kỳ đăng (ngày)"
-            inputMode="numeric"
-            value={draft.every}
-            onChange={(e) => owner.current?.setField('every', e.target.value)}
-          />
-          <small>Ngày bắt đầu là mốc lặp. Nhập số nguyên từ 1 đến 3652059.</small>
+          Kiểu lặp
+          <select
+            aria-label="Kiểu lặp"
+            value={draft.ruleKind}
+            onChange={(e) => owner.current?.setRule(e.target.value)}
+          >
+            <option value="EVERY_N_DAYS">Cách N ngày</option>
+            <option value="ONCE">Một ngày</option>
+            <option value="WEEKDAYS">Các ngày trong tuần</option>
+          </select>
+          <small>Một ngày dùng mọi ô giờ của ngày bắt đầu, không có nghĩa chỉ một bài.</small>
         </label>
+        {draft.ruleKind === 'EVERY_N_DAYS' && (
+          <label className="field">
+            Chu kỳ đăng (ngày)
+            <input
+              aria-label="Chu kỳ đăng (ngày)"
+              inputMode="numeric"
+              value={draft.every}
+              onChange={(e) => owner.current?.setField('every', e.target.value)}
+            />
+            <small>Ngày bắt đầu là mốc lặp. Nhập số nguyên từ 1 đến 3652059.</small>
+          </label>
+        )}
+        {draft.ruleKind === 'WEEKDAYS' && (
+          <fieldset
+            className="field wide"
+            style={{ border: 0, margin: 0, padding: 0 }}
+            aria-label="Ngày trong tuần"
+          >
+            <legend style={{ padding: 0 }}>Chọn ít nhất một ngày trong tuần</legend>
+            <div className="rowflex wrap">
+              {WEEKDAYS.map((label, index) => (
+                <label className="checkline" key={label}>
+                  <input
+                    aria-label={label}
+                    type="checkbox"
+                    style={{ width: 14 }}
+                    checked={draft.weekdays.includes(index + 1)}
+                    onChange={() => owner.current?.toggleWeekday(index + 1)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
         <label className="field">
           Ngày bắt đầu
           <input
@@ -75,6 +127,31 @@ export function ScheduleDraftPanel({
             value={draft.startDate}
             onChange={(e) => owner.current?.setField('startDate', e.target.value)}
           />
+        </label>
+        <label className="field">
+          Ngày kết thúc (bao gồm, tùy chọn)
+          <input
+            aria-label="Ngày kết thúc (bao gồm)"
+            type="date"
+            min="0001-01-01"
+            max="9999-12-31"
+            value={draft.endDate}
+            onChange={(e) => owner.current?.setField('endDate', e.target.value)}
+          />
+          <small>Để trống nếu không giới hạn ngày kết thúc. Không được trước ngày bắt đầu.</small>
+        </label>
+        <label className="field">
+          Tối đa lần dự kiến (tùy chọn)
+          <input
+            aria-label="Tối đa lần dự kiến"
+            inputMode="numeric"
+            value={draft.maximum}
+            onChange={(e) => owner.current?.setField('maximum', e.target.value)}
+          />
+          <small>
+            Để trống nếu không giới hạn. Số nguyên dương, tối đa 9007199254740991 theo giới hạn biểu
+            diễn; không phải hạn mức đăng. Mỗi ô giờ được tính, kể cả giờ DST bị bỏ qua.
+          </small>
         </label>
         <label className="field">
           Xem trước đến ngày (bao gồm)
@@ -203,8 +280,8 @@ export function ScheduleDraftPanel({
       )}
       {fail && (
         <p role="status">
-          Chưa có kết quả xem trước ({fail}). Kiểm tra ngày, múi giờ, chu kỳ và từng ô giờ. Dữ liệu
-          đang sửa được giữ nguyên.
+          Chưa có kết quả xem trước ({fail}). Kiểm tra ngày, múi giờ, kiểu lặp, ngày trong tuần, chu
+          kỳ, giới hạn số lần và từng ô giờ. Dữ liệu đang sửa được giữ nguyên.
         </p>
       )}
       {result && (
@@ -215,6 +292,15 @@ export function ScheduleDraftPanel({
           <p>
             {result.window.fromDate} đến {result.window.throughDate} · {result.preview.zone} ·{' '}
             {result.preview.occurrences.length}/{result.window.limit} dòng tối đa.
+          </p>
+          <p>
+            Quy tắc bản nháp: {RULE_LABELS[draft.ruleKind]}
+            {draft.ruleKind === 'EVERY_N_DAYS' ? ` · mỗi ${draft.every} ngày` : ''}
+            {draft.ruleKind === 'WEEKDAYS'
+              ? ` · ${draft.weekdays.map((day) => WEEKDAYS[day - 1]).join(', ')}`
+              : ''}
+            . Ngày kết thúc: {draft.endDate || 'không giới hạn'} · tối đa lần dự kiến:{' '}
+            {draft.maximum || 'không giới hạn'}. Dừng ở giới hạn đạt trước; không tạo lần thay thế.
           </p>
           <p>
             Múi giờ được phân giải: {result.preview.resolvedZone}. Quy tắc: {result.preview.policy}.

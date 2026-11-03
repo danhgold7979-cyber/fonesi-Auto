@@ -2,7 +2,17 @@
 
 **Phase07 — Scheduler and queue:** source6/47=12.8%, integrated6/47=12.8%, technical acceptance0/13. Exactly P7-04.A N→I: +1/47 (+2.13 percentage points) each versus10.6%; fixed47-cell denominator unchanged. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
 
-**Current Phase07 continuation — 2026-11-03 22:11 UTC:** the existing V9 Setup
+**Current Phase07 continuation — 2026-11-03 22:25 UTC:** unsaved preview now
+exposes all existing civil modes (one date, explicit weekdays, every N days),
+inclusive end-date and planned-occurrence maximum. Stable slots/input survive
+mode changes; DST skips consume the planned maximum with no replacements.
+Independent implementation review CLEAR; focused36/36 and full desktop aggregate
+**1833/1833 PASS**. No new IPC, persistence, jobs, device or native/visual campaign.
+[Recurrence controls evidence](evidence/P7-draft-recurrence-controls-2026-11-03.md).
+Publication and exact-head Windows source verification are pending for this slice.
+Fixed ledger source6/47, integrated6/47 and acceptance0/13 remain unchanged.
+
+**Previous Phase07 UI checkpoint — 2026-11-03 22:11 UTC:** the existing V9 Setup
 scheduling placeholder now has a bounded unsaved draft preview editor. Local slot
 identity, exact removal acknowledgment, blank new slots, explicit dates/zone,
 revision/context cancellation, resolved UTC/DST rows and warning-only elapsed gaps
@@ -11,7 +21,9 @@ Independent implementation review CLEAR; focused64/64 and full desktop aggregate
 **1816/1816 PASS**. Visual Dark/Light screenshots and actual Electron UI/IPC
 execution remain NOT_RUN; no new ledger credit or phase acceptance.
 [UI source evidence and parity limits](evidence/P7-draft-preview-ui-2026-11-03.md).
-Publication and exact-head hosted verification remain pending for this slice.
+Published80f3d15a matches local7b6c5c6 exactly; scheduler Windows source
+CI41728928994 passes1816/1816 on that exact push head. Native observation and
+report upload remain skipped. The separate legacy PR-merge lab failure is retained.
 
 **Previous Phase07 bridge checkpoint — 2026-11-03 21:42 UTC:** the read-only unsaved
 draft preview bridge is implemented, independently reviewed CLEAR and fully

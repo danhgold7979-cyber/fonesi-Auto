@@ -11,11 +11,16 @@ export type ScheduleDraftPort = Readonly<{
 }>;
 type Slot = Readonly<{ id: string; time: string }>;
 type Preview = Extract<ScheduleDraftResponse, { ok: true }>['preview'];
+type RuleKind = 'ONCE' | 'WEEKDAYS' | 'EVERY_N_DAYS';
 export type ScheduleDraftState = Readonly<{
   draftId: string;
   revision: number;
   posts: string;
   every: string;
+  ruleKind: RuleKind;
+  weekdays: readonly number[];
+  endDate: string;
+  maximum: string;
   startDate: string;
   throughDate: string;
   zone: string;
@@ -25,7 +30,7 @@ export type ScheduleDraftState = Readonly<{
   code: ScheduleDraftCode | null;
   result: Preview | null;
 }>;
-type Field = 'startDate' | 'throughDate' | 'zone' | 'every';
+type Field = 'startDate' | 'throughDate' | 'zone' | 'every' | 'endDate' | 'maximum';
 function integer(raw: string, maximum: number): number | null {
   if (!/^[0-9]+$/.test(raw)) return null;
   const n = Number(raw);
@@ -41,6 +46,10 @@ export function createScheduleDraftEditor(
     revision: 0,
     posts: '3',
     every: '1',
+    ruleKind: 'EVERY_N_DAYS',
+    weekdays: Object.freeze([]),
+    endDate: '',
+    maximum: '',
     startDate: '',
     throughDate: '',
     zone: 'Asia/Ho_Chi_Minh',
@@ -120,17 +129,29 @@ export function createScheduleDraftEditor(
     }
     const captured = state;
     const count = integer(captured.posts, 1440),
-      intervalDays = integer(captured.every, 3652059);
+      intervalDays = integer(captured.every, 3652059),
+      maximum = captured.maximum === '' ? null : integer(captured.maximum, Number.MAX_SAFE_INTEGER);
+    const rule =
+      captured.ruleKind === 'ONCE'
+        ? { kind: 'ONCE' as const }
+        : captured.ruleKind === 'WEEKDAYS'
+          ? { kind: 'WEEKDAYS' as const, weekdays: captured.weekdays }
+          : intervalDays === null
+            ? null
+            : { kind: 'EVERY_N_DAYS' as const, intervalDays };
     const input =
-      captured.removal === null && count === captured.slots.length && intervalDays !== null
+      captured.removal === null &&
+      count === captured.slots.length &&
+      rule !== null &&
+      (captured.maximum === '' || maximum !== null)
         ? snapshotScheduleDraftInput({
             schedule: {
               version: 1,
               kind: 'CIVIL_RULE',
               startDate: captured.startDate,
-              endDate: null,
-              maxOccurrences: null,
-              rule: { kind: 'EVERY_N_DAYS', intervalDays },
+              endDate: captured.endDate === '' ? null : captured.endDate,
+              maxOccurrences: maximum,
+              rule,
               postsPerActiveDay: count,
               slots: captured.slots,
             },
@@ -187,7 +208,31 @@ export function createScheduleDraftEditor(
     setField(field: Field, value: string) {
       edit({
         [field]: value,
-        code: field === 'every' && integer(value, 3652059) === null ? 'INVALID_SHAPE' : null,
+        code:
+          (field === 'every' &&
+            state.ruleKind === 'EVERY_N_DAYS' &&
+            integer(value, 3652059) === null) ||
+          (field === 'maximum' && value !== '' && integer(value, Number.MAX_SAFE_INTEGER) === null)
+            ? 'INVALID_SHAPE'
+            : null,
+      });
+    },
+    setRule(kind: string) {
+      if (kind === 'ONCE' || kind === 'WEEKDAYS' || kind === 'EVERY_N_DAYS')
+        edit({ ruleKind: kind });
+      else edit({ code: 'INVALID_SHAPE' });
+    },
+    toggleWeekday(day: number) {
+      if (!Number.isInteger(day) || day < 1 || day > 7) {
+        edit({ code: 'INVALID_SHAPE' });
+        return;
+      }
+      edit({
+        weekdays: Object.freeze(
+          state.weekdays.includes(day)
+            ? state.weekdays.filter((value) => value !== day)
+            : [...state.weekdays, day].sort((a, b) => a - b),
+        ),
       });
     },
     setCount,

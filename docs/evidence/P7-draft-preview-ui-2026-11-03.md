@@ -91,3 +91,27 @@ source6/47, integrated6/47 and technical acceptance0/13 is unchanged. Known
 Phase0 desktop-stack failure and P1-06 UNMET remain unwaived. No main merge,
 PR approval, device activation, private-data publication or new capability grant.
 Publication and exact-head hosted verification are pending at this checkpoint.
+
+
+## Publication and exact-head hosted closure
+
+Published commit `80f3d15abb90b4f6565cd737b79ffbbf79c8f8a7` is a lease-checked,
+non-force fast-forward of public1eaa2b9. Its tree
+`158cf2b5d4305dcba9e80dcbc9cc9e81edce30f1` exactly matches local
+`7b6c5c66214434cf84c7b47810b01f8158b7e673`. Parent, tree and public branch ref
+were read back. Local and public histories are preserved; main is untouched.
+
+[Scheduler source run41728928994](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41728928994)
+completed SUCCESS on that exact push head. Job126240875926 logs verify checkout
+80f3d15a and **1816/1816 PASS** plus DESKTOP_SOURCE_CHECK_PASS at22:17:06 UTC.
+Dedicated native observation and report upload were both SKIPPED under unchanged
+explicit gates. This is Windows source verification, not actual new UI/IPC
+execution, a screenshot or acceptance of any deferred evidence.
+
+Associated PR checks collector41728938754, SQLite41728938649,
+telemetry41728938716 and secret restart41728938789 succeeded. The separate
+legacy desktop-stack run41728938740 failed at install/launch with
+RUNTIME_OR_CONTAINMENT_FAILED, runtime exit1, installer/runtime cleanuptrue.
+It checked out merge b73bf76 (80f3d15a into main), not the direct phase head.
+That known failure is retained and unwaived; no repair or runtime rerun is
+claimed for this source slice.
