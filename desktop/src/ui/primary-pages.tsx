@@ -4,6 +4,7 @@ import {
   isFleetCsvPreviewCurrent,
 } from './fleet-health.js';
 import { useState, useRef } from 'react';
+import { trackingMetricPresentation } from './tracking-metric-presentation.js';
 import { UI_EXPORT_ACTION, type PageProps } from './ui-model.js';
 import { UnavailableButton, EmptyPanel, PageHeader, StatCard, UiModal } from './ui-shared.tsx';
 
@@ -427,18 +428,7 @@ export function TrackingPage({
         )
       : [];
   const active = accounts.find((account) => account.id === accountId);
-  const metricLabels: Readonly<Record<string, readonly string[]>> = {
-    facebook: ['Người theo dõi', 'Lượt thích', 'Bình luận', 'Chia sẻ', 'Lượt xem', 'Tiếp cận'],
-    instagram: ['Followers', 'Lượt thích', 'Bình luận', 'Chia sẻ', 'Lưu bài', 'Tiếp cận'],
-    threads: ['Followers', 'Lượt thích', 'Trả lời', 'Repost', 'Lượt xem'],
-    x: ['Followers', 'Lượt thích', 'Trả lời', 'Repost', 'Impressions'],
-    shopee: ['Followers shop', 'Lượt xem sản phẩm', 'Yêu thích', 'Lượt thích'],
-    zalo: ['Quan tâm / theo dõi', 'Lượt xem', 'Quan tâm', 'Chia sẻ', 'Bình luận'],
-    youtube: ['Người đăng ký', 'Lượt xem', 'Lượt thích', 'Bình luận', 'Chia sẻ', 'Giờ xem'],
-    telegram: ['Thành viên', 'Lượt xem', 'Reaction', 'Forward', 'Bình luận'],
-    tiktok: ['Followers', 'Lượt thích', 'Lượt xem video', 'Bình luận', 'Chia sẻ'],
-  };
-  const metrics = metricLabels[network] ?? [];
+  const metricPresentation = trackingMetricPresentation(network);
   return (
     <>
       <PageHeader
@@ -447,7 +437,12 @@ export function TrackingPage({
         subtitle="Chọn điện thoại và mạng xã hội để kiểm tra tài khoản, chỉ số tăng trưởng và hiệu quả bài đăng."
         actions={
           <>
-            <UnavailableButton action="metrics-refresh" onUnavailable={onUnavailable} icon="scan">
+            <UnavailableButton
+              action="metrics-refresh"
+              onUnavailable={onUnavailable}
+              icon="scan"
+              title={metricPresentation.detail}
+            >
               Check tất cả ({accountScopeKnown ? accounts.length : '—'})
             </UnavailableButton>
             {health ? (
@@ -562,7 +557,13 @@ export function TrackingPage({
               ? `${accounts.length} tài khoản mẫu đã tải`
               : 'Tài khoản: chưa có nguồn'}
           </span>
-          <span className="muted">Chỉ số chưa khả dụng · không phải quan sát trực tiếp</span>
+          <span
+            className="muted"
+            id="tracking-metric-availability"
+            data-tracking-availability={metricPresentation.reason}
+          >
+            {metricPresentation.detail}
+          </span>
         </div>
       </section>
       <div className="stat-grid">
@@ -751,12 +752,23 @@ export function TrackingPage({
             <b>Chỉ số tài khoản đang chọn</b>
             <small className="muted">{active?.name ?? 'Chưa chọn tài khoản'}</small>
           </div>
-          <span className="pill dark">UNAVAILABLE</span>
+          <span className="pill dark" aria-describedby="tracking-metric-availability">
+            {metricPresentation.availability}
+          </span>
         </div>
+        <small className="muted" data-tracking-catalog-notice>
+          {metricPresentation.catalogNotice}
+        </small>
         <div className="tracking-metrics-grid">
-          {metrics.map((label) => (
-            <div className="tracking-metric" key={label}>
-              <small>{label}</small>
+          {metricPresentation.metrics.map((metric) => (
+            <div
+              className="tracking-metric"
+              key={metric.key}
+              data-tracking-metric={metric.key}
+              title={metricPresentation.detail}
+              aria-describedby="tracking-metric-availability"
+            >
+              <small>{metric.label}</small>
               <b>—</b>
             </div>
           ))}
@@ -765,8 +777,8 @@ export function TrackingPage({
           <b>Tín hiệu phân phối</b>
           <span className="health-flag blue">Chưa có dữ liệu nguồn đề xuất</span>
           <small>
-            Nguồn: chưa khả dụng · Đo gần nhất: — · Độ mới: chưa xác định. Like/follow đơn lẻ không
-            đủ để kết luận.
+            Nguồn: chưa khả dụng · Đo gần nhất: — · Độ mới: chưa xác định.{' '}
+            {metricPresentation.growthDetail} {metricPresentation.recommendationDetail}
           </small>
         </div>
       </section>

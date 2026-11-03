@@ -18,6 +18,7 @@ export const sources = Object.freeze([
   'src/ui/icon-data.ts',
   'src/fleet-contract.ts',
   'src/ui/fleet-health.ts',
+  'src/ui/tracking-metric-presentation.ts',
   'src/ui/primary-pages.tsx',
   'src/ui/social-data.ts',
   'src/ui/tile-zoom.ts',

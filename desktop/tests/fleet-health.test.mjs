@@ -1,3 +1,4 @@
+import * as metricPresentation from '../src/ui/tracking-metric-presentation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs';
@@ -170,6 +171,7 @@ function harness(fleetApi = {}, effectful = false) {
       }),
     },
     './fleet-health.js': health,
+    './tracking-metric-presentation.js': metricPresentation,
     './ui/fleet-health.js': health,
     './ui-model.js': model,
     './tile-zoom.js': tileZoom,

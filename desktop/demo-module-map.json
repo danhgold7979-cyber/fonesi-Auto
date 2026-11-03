@@ -67,6 +67,7 @@
       "role": "renderer",
       "imports": {
         "./fleet-health.js": {"readFleetHealth":"value","captureFleetCsvPreview":"value","isFleetCsvPreviewCurrent":"value"},
+        "./tracking-metric-presentation.js": {"trackingMetricPresentation":"value"},
         "react": {
           "useState": "value", "useRef": "value"
         },
@@ -201,6 +202,7 @@
       }
     },
     "src/fleet-contract.ts": {"role":"contract","imports":{}},
+    "src/ui/tracking-metric-presentation.ts": {"role":"contract","imports":{}},
     "src/ui/fleet-health.ts": {"role":"contract","imports":{"../fleet-contract.ts":{"snapshotFleetSnapshot":"value","FleetSnapshot":"type"},"./ui-model.ts":{"UiSnapshot":"type"}}},
     "src/ui/tile-zoom.ts": {
       "role": "contract",

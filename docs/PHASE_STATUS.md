@@ -1,6 +1,6 @@
 # Phase Status — Fonesi-Auto
 
-## Current Phase10 bounded source work — 2026-11-03 23:18 UTC
+## Current Phase10 bounded source work — 2026-11-03 23:48 UTC
 
 P10-06 internal fleet health is published at `766a675ff6aaa13bcf131fe1f697738ed2e53381`,
 matching reviewed local52748fb/tree d12c5119. Exact Windows source
@@ -14,12 +14,25 @@ all loaded registry records, never saved files or filtered account analytics.
 Independent implementation review CLEAR at 23:01 UTC with 64/64 targeted PASS.
 Recovery reverified all 18 frozen file hashes, and a fresh independent review at
 23:17 UTC was CLEAR with 37/37 focused tests PASS. The fresh complete source gate
-at 23:18 UTC passed 1829/1829 with DESKTOP_SOURCE_CHECK_PASS. Publication and new
-exact-head hosted source checks remain pending.
+at 23:18 UTC passed 1829/1829 with DESKTOP_SOURCE_CHECK_PASS. The identical reviewed
+tree was published at `3bd3b06589d5dfa75c0a755a85add3a75021e413`; exact Windows
+[source CI41739163781](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41739163781)
+passed 1829/1829 at 23:29 UTC with the source marker.
 [Current evidence](evidence/P10-07-csv-preview-source-2026-11-03.md).
 Main/history are preserved and at most two source phases are active. Full P10-06/07
 and Phase10 acceptance remain open. Measurement times/freshness/account login are
 not inferred; native/browser/visual/device campaigns remain NOT_RUN, P1-06 UNMET.
+
+The independently reviewed/adopted [P10-04/08 presentation entry](phases/P10-METRIC-PRESENTATION-SOURCE-ENTRY.md)
+now separates planned V9 metric labels from real source capability. Selected-network
+reasons remain UNAVAILABLE: Facebook has no admitted permitted source; eight other
+networks remain deferred under C-01. No source permission, values, scope definitions,
+collector or derived formula is added. Focused 44/44, recovered focused/demo 52/52,
+and graph/quality boundary 40/40 PASS. Independent implementation reviews CLEAR;
+final frozen aggregate passed 1836/1836 with DESKTOP_SOURCE_CHECK_PASS at 23:48 UTC.
+Earlier registration/harness failures remain in evidence. Publication and exact-head
+hosted source verification are pending.
+[Current evidence](evidence/P10-04-08-metric-presentation-source-2026-11-03.md).
 
 ## Inherited Phase09 source checkpoint
 

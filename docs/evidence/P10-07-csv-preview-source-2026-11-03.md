@@ -105,3 +105,21 @@ files changed between the recovered freeze, independent review and fresh aggrega
 Only this evidence and the current status summary were reconciled afterward.
 Publication and the new exact-head hosted source result remain pending at this
 checkpoint. No browser/native/device or spreadsheet-application test was run.
+
+## Publication and exact-head hosted source closure — 23:29 UTC
+
+At 23:25 UTC the local worktree was clean at
+`c8452e1c284f4d67c51942939ba709dd540c6a53`; all 18 publication-freeze hashes matched.
+The public branch was still the P10-06 predecessor. Its already uploaded reviewed
+tree was reused without altering source. Publication through the authenticated
+connector created `3bd3b06589d5dfa75c0a755a85add3a75021e413` as a normal child of
+`766a675ff6aaa13bcf131fe1f697738ed2e53381` and advanced only phase-10 with expected
+head and force=false. Remote ref and tree were independently read back.
+
+Both local and public CSV commits have exact tree
+`74b86469d11c394fbd2b741ee02abf813f4f8eda`.
+[Hosted source run 41739163781](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41739163781),
+job 126276010462, completed SUCCESS at 23:29:11 UTC. Logs explicitly contain the
+exact public SOURCE_HEAD, TESTS_PASS 1829/1829 and DESKTOP_SOURCE_CHECK_PASS.
+This closes publication and hosted source verification only. It does not convert
+NOT_RUN visual/native/device checks or P1-06 UNMET into acceptance.

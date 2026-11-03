@@ -267,3 +267,12 @@ existing admitted all-loaded registry records. No file save, download, clipboard
 network, new IPC/permission or native/device/visual campaign is added. Equivalent
 projections preserve a capture; meaningful context/source changes discard it without
 regeneration. Native CSV/XLSX delivery and full task/phase acceptance remain gated.
+
+## Bounded P10-04/08 presentation entry — 2026-11-03 23:33 UTC
+
+The [reviewed metric presentation entry](docs/phases/P10-METRIC-PRESENTATION-SOURCE-ENTRY.md)
+permits immutable planned-label catalogs and truthful unavailable reasons in existing
+Tracking UI on phase-10. All networks remain UNAVAILABLE; no permitted source, runtime
+capability, account/post metric definition or derived formula is invented. No new
+collection, IPC, dependency, device, permission or visual/native campaign is admitted.
+Full task/phase acceptance and prior gates remain open; at most two source phases.

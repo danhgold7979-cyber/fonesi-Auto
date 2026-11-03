@@ -199,3 +199,14 @@ Section 9.1 is the single control/interaction specification for this same panel;
 - 2026-10-30 — 0.2-draft: consolidated duplicate resource-panel requirements without removing controls; aligned DEC-019/DEC-020, capability-derived ranges, import/schedule/metric states and acceptance traces. Canonical V9 HTML was not edited; proposed schema/scope details still require ADR/Phase approval.
 
 - 2026-10-30 — 0.3-draft: mapped accepted ownership/provisioning, scoped capabilities/proxy/USB, album/row override and exact calendar semantics from C-01–C-22; retained V9 geometry and backend/evidence gates. Canonical HTML unchanged.
+
+## P10-04/08 metric presentation source increment — 2026-11-03 23:37 UTC
+
+Tracking keeps the original nine per-network display catalogs and metric grid.
+A visible notice identifies those labels as planned presentation, not supported
+account/post metric definitions. All values remain em dashes and availability stays
+UNAVAILABLE. Selected-network reasons distinguish absent admitted Facebook sources
+from other-network implementation deferral; unknown inputs have no catalog. Growth
+and recommendation explain their separate missing prerequisites without formulas.
+Existing filters, unavailable refresh actions, phone focus and fleet CSV lifetime
+remain; no CSS or reference artifact changes. Source tests are not visual parity.

@@ -596,3 +596,12 @@ memory serialization and explicit preview on phase-10 after P10-06 source closur
 Exact public base766a675f/tree d12c5119 has Windows source CI41734027573 PASS1820.
 No native save/overwrite, extra permission, physical test or third active phase is
 introduced. Original full P10-07 deliverables and predecessor acceptance stay open.
+
+## Bounded P10-04/08 presentation continuation — 2026-11-03 23:33 UTC
+
+Independent design CLEAR and coordinator adoption of the
+[metric presentation entry](phases/P10-METRIC-PRESENTATION-SOURCE-ENTRY.md) permits
+planned-label catalogs and selected-network unavailable explanations, not runtime
+metric capabilities or collection. Public base3bd3b065/tree74b86469 passed exact
+Windows source CI41739163781 with1829/1829. No third active source phase, device or
+external action is introduced; original source-permission and acceptance gates remain.

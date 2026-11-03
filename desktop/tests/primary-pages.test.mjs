@@ -1,9 +1,10 @@
+import * as metricPresentation from '../src/ui/tracking-metric-presentation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
-import { readFleetHealth } from '../src/ui/fleet-health.ts';
+import { readFleetHealth, projectFleetUi } from '../src/ui/fleet-health.ts';
 
 const code = transformSync(
   readFileSync(new URL('../src/ui/primary-pages.tsx', import.meta.url), 'utf8'),
@@ -56,6 +57,7 @@ function mount(name, snapshot) {
         };
       if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (id === './ui-shared.tsx') return shared;
+      if (id === './tracking-metric-presentation.js') return metricPresentation;
       if (id === './fleet-health.js') return { readFleetHealth };
       if (id === './ui-model.js') return { UI_EXPORT_ACTION: 'export' };
       throw Error('UNEXPECTED_MODULE');
@@ -74,7 +76,15 @@ function mount(name, snapshot) {
       onNavigate: (page, deviceId) => pages.push({ page, deviceId }),
     });
   };
-  return { render, actions, pages, focuses };
+  return {
+    render,
+    actions,
+    pages,
+    focuses,
+    updateSnapshot: (next) => {
+      snapshot = next;
+    },
+  };
 }
 function nodes(value) {
   if (value === null || value === undefined || typeof value === 'boolean') return [];
@@ -295,6 +305,125 @@ test('tracking preserves the reference platform-specific metric catalogue, never
       labels.map((label) => `${label} —`),
     );
   }
+});
+
+test('tracking composes selected-network reasons and keeps every refresh unavailable', () => {
+  const view = mount('TrackingPage', ready);
+  change(view, 'tracking-phone', 'd1');
+  change(view, 'tracking-account', 'a1');
+  const expected = [
+    ['facebook', 'NO_ADMITTED_PERMITTED_SOURCE'],
+    ['threads', 'NETWORK_IMPLEMENTATION_DEFERRED'],
+    ['instagram', 'NETWORK_IMPLEMENTATION_DEFERRED'],
+    ['x', 'NETWORK_IMPLEMENTATION_DEFERRED'],
+    ['shopee', 'NETWORK_IMPLEMENTATION_DEFERRED'],
+    ['zalo', 'NETWORK_IMPLEMENTATION_DEFERRED'],
+    ['youtube', 'NETWORK_IMPLEMENTATION_DEFERRED'],
+    ['telegram', 'NETWORK_IMPLEMENTATION_DEFERRED'],
+    ['tiktok', 'NETWORK_IMPLEMENTATION_DEFERRED'],
+    ['facebook', 'NO_ADMITTED_PERMITTED_SOURCE'],
+    ['__proto__', 'UNKNOWN_NETWORK'],
+  ];
+  for (const [network, reason] of expected) {
+    change(view, 'tracking-network', network);
+    const tree = view.render(),
+      all = nodes(tree);
+    const description = all.find((node) => node.props?.id === 'tracking-metric-availability');
+    assert.equal(description.props['data-tracking-availability'], reason);
+    assert.match(
+      text(description),
+      network === 'facebook' ? /Ứng dụng chưa có nguồn/ : /chưa khả dụng/,
+    );
+    assert.ok(
+      text(tree).includes('Nhãn hiển thị dự kiến · chưa phải định nghĩa chỉ số được hỗ trợ'),
+    );
+    assert.equal(all.find((node) => node.props?.id === 'tracking-account').props.value, '');
+    assert.equal(all.find((node) => node.props?.id === 'tracking-phone').props.value, 'd1');
+    const refresh = all.find(
+      (node) => node.type === 'button' && text(node).startsWith('Check tất cả'),
+    );
+    assert.equal(refresh.props['aria-disabled'], true);
+    assert.equal(refresh.props.title, text(description));
+    refresh.props.onClick();
+    for (const cell of all.filter((node) => node.props?.className === 'tracking-metric')) {
+      assert.equal(cell.props.title, text(description));
+      assert.equal(cell.props['aria-describedby'], 'tracking-metric-availability');
+      assert.equal(nodes(cell).find((node) => node.type === 'b').props.children, '—');
+    }
+    if (network === '__proto__')
+      assert.equal(all.filter((node) => node.props?.className === 'tracking-metric').length, 0);
+  }
+  assert.deepEqual(
+    view.actions,
+    expected.map(() => 'metrics-refresh'),
+  );
+  assert.deepEqual(view.focuses, ['d1']);
+});
+
+test('snapshot transitions including admitted verified fleet cannot promote metric presentation', () => {
+  const deviceId = '20000000-0000-4000-8000-000000000001';
+  // Synthetic contract fixture; no live observation or device was collected.
+  const observed = projectFleetUi(
+    {
+      registryRevision: 2,
+      availability: 'OBSERVED',
+      reason: null,
+      devices: [
+        {
+          deviceId,
+          generation: 1,
+          label: 'Device 0001',
+          state: 'DEVICE',
+          verification: 'VERIFIED',
+        },
+      ],
+      selection: {
+        revision: 3,
+        selectedDeviceIds: [deviceId],
+        activeDeviceId: deviceId,
+        groups: [],
+      },
+    },
+    'READY',
+  );
+  assert.ok(readFleetHealth(observed));
+  const view = mount('TrackingPage', ready);
+  change(view, 'tracking-phone', 'd1');
+  change(view, 'tracking-account', 'a1');
+  for (const snapshot of [
+    ready,
+    empty('LOADING'),
+    observed,
+    empty('ERROR'),
+    empty('UNAVAILABLE'),
+    ready,
+  ]) {
+    view.updateSnapshot(snapshot);
+    const tree = view.render(),
+      all = nodes(tree);
+    assert.equal(
+      all.find((node) => node.props?.id === 'tracking-metric-availability').props[
+        'data-tracking-availability'
+      ],
+      'NO_ADMITTED_PERMITTED_SOURCE',
+    );
+    assert.equal(
+      all.find((node) => node.props?.className === 'pill dark' && node.props['aria-describedby'])
+        .props.children,
+      'UNAVAILABLE',
+    );
+    assert.equal(all.filter((node) => node.props?.className === 'tracking-metric').length, 6);
+    for (const cell of all.filter((node) => node.props?.className === 'tracking-metric'))
+      assert.equal(nodes(cell).find((node) => node.type === 'b').props.children, '—');
+    const explanation = all.find((node) => node.props?.className === 'tracking-recommendation');
+    assert.match(text(explanation), /Tăng trưởng chưa khả dụng:.*snapshot.*so sánh/);
+    assert.match(
+      text(explanation),
+      /Đề xuất chưa khả dụng:.*nguồn phân phối được phép.*định nghĩa đã duyệt/,
+    );
+    assert.match(text(explanation), /Đo gần nhất: — · Độ mới: chưa xác định/);
+  }
+  assert.deepEqual(view.actions, []);
 });
 
 test('tracking fits required account selector into existing filter rows and retains all six health columns', () => {

@@ -561,6 +561,8 @@ test('native empty-domain observation preserves the actual Overview header and r
         if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
         if (name === './ui-model.js') return { UI_EXPORT_ACTION: 'export' };
         if (name === './fleet-health.js') return { readFleetHealth: () => null };
+        if (name === './tracking-metric-presentation.js')
+          return require('../src/ui/tracking-metric-presentation.ts');
         if (name === './ui-shared.tsx')
           return Object.fromEntries(
             ['UnavailableButton', 'EmptyPanel', 'PageHeader', 'StatCard'].map((k) => [

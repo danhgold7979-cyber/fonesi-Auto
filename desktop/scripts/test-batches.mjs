@@ -141,6 +141,7 @@ export const TEST_FILES = Object.freeze([
   'tests/test-batches.test.mjs',
   'tests/test-diagnostics.test.mjs',
   'tests/tile-zoom.test.mjs',
+  'tests/tracking-metric-presentation.test.mjs',
   'tests/transport-metadata.test.mjs',
   'tests/transport-registry.test.mjs',
   'tests/ui-shell.test.mjs',

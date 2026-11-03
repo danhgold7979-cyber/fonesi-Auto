@@ -1151,6 +1151,7 @@
    "role": "renderer",
    "imports": {
     "./fleet-health.js": {"readFleetHealth":"value","captureFleetCsvPreview":"value","isFleetCsvPreviewCurrent":"value"},
+    "./tracking-metric-presentation.js": {"trackingMetricPresentation":"value"},
     "react": {
      "useState": "value", "useRef": "value"
     },
@@ -2642,6 +2643,7 @@
   "schedule-gap-contract.ts": {"role":"contract","imports":{"./schedule-zone-contract.js":{"resolveCivilPreview":"value","ZoneCode":"type","ZonePreviewResult":"type"}}},
   "workflow-manifest-contract.ts": {"role":"contract","imports":{}},
   "facebook-denial-contract.ts": {"role":"contract","imports":{}},
+  "ui/tracking-metric-presentation.ts": {"role":"contract","imports":{}},
   "ui/fleet-health.ts": {"role":"contract","imports":{"../fleet-contract.ts":{"snapshotFleetSnapshot":"value","FleetSnapshot":"type"},"./ui-model.ts":{"UiSnapshot":"type"}}}
  }
 }

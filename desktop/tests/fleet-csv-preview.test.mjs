@@ -1,3 +1,4 @@
+import * as metricPresentation from '../src/ui/tracking-metric-presentation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -299,6 +300,7 @@ function mount(snapshot = project()) {
     react: hooks,
     'react/jsx-runtime': { jsx: hooks.createElement, jsxs: hooks.createElement },
     './fleet-health.js': health,
+    './tracking-metric-presentation.js': metricPresentation,
     './ui-model.js': { UI_EXPORT_ACTION: 'export' },
     './icon-data.js': { ICONS: {} },
     './social-data.js': { SOCIAL_ICONS: {} },
