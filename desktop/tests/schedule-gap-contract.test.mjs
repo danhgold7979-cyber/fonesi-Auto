@@ -19,9 +19,8 @@ const zone = data(
     ),
 );
 const source = readFileSync(new URL('../src/schedule-gap-contract.ts', import.meta.url), 'utf8');
-const { evaluateScheduleGapPreview: evaluate } = await import(
-  data(source.replaceAll("'./schedule-zone-contract.js'", JSON.stringify(zone)))
-);
+const { evaluateScheduleGapPreview: evaluate, evaluateUnboundScheduleGapPreview: evaluateUnbound } =
+  await import(data(source.replaceAll("'./schedule-zone-contract.js'", JSON.stringify(zone))));
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const schedule = (date, times) => ({
   version: 1,
@@ -307,4 +306,230 @@ test('dense warnings are exact and cross-day end and maximum stop at first bound
     assert.equal(bounded.coverage, 'COMPLETE_WINDOW');
     assert.equal(bounded.preview.next, null);
   }
+});
+
+const unboundRequest = (date, patch = {}) => ({
+  ...request(date),
+  scope: { kind: 'UNBOUND_DRAFT', draftId: id(50), draftRevision: 0 },
+  ...patch,
+});
+const unboundRun = (s, r) => {
+  const out = evaluateUnbound(s, r);
+  assert.equal(out.ok, true, JSON.stringify(out));
+  return out;
+};
+test('unbound draft carries only local editing attribution and never crosses legacy scope', () => {
+  const s = schedule('2024-01-01', ['09:00', '09:29']),
+    r = unboundRequest(s.startDate);
+  const out = unboundRun(s, r);
+  assert.equal(out.kind, 'UNBOUND_SCHEDULE_GAP_ADVISORY');
+  assert.deepEqual(out.scope, r.scope);
+  assert.deepEqual(Object.keys(out.scope), ['kind', 'draftId', 'draftRevision']);
+  assert.deepEqual(evaluate(s, r), { ok: false, code: 'INVALID_SCHEMA' });
+  assert.deepEqual(evaluateUnbound(s, request(s.startDate)), { ok: false, code: 'INVALID_SCHEMA' });
+  for (const key of [
+    'scheduleId',
+    'deviceId',
+    'accountId',
+    'targetId',
+    'dispatchAllowed',
+    'saveAllowed',
+  ]) {
+    assert.equal(key in out, false);
+    assert.equal(key in out.scope, false);
+    assert.deepEqual(evaluateUnbound(s, { ...r, scope: { ...r.scope, [key]: id(1) } }), {
+      ok: false,
+      code: 'INVALID_SCHEMA',
+    });
+    assert.deepEqual(evaluateUnbound(s, { ...r, [key]: id(1) }), {
+      ok: false,
+      code: 'INVALID_SCHEMA',
+    });
+  }
+});
+test('unbound actual composition retains 29/30 boundary midnight DST and bounded coverage', () => {
+  for (const [date, times, patch] of [
+    ['2024-01-01', ['09:00', '09:29'], {}],
+    ['2024-01-01', ['09:00', '09:30'], {}],
+    ['2024-01-01', ['00:19', '23:50'], { throughDate: '2024-01-02' }],
+    ['2024-03-10', ['01:59', '02:15', '03:00'], { zone: 'America/New_York' }],
+    ['2024-11-03', ['01:45', '02:00'], { zone: 'America/New_York' }],
+    ['2024-10-06', ['01:59', '02:15', '02:30'], { zone: 'Australia/Lord_Howe' }],
+    ['2024-01-01', ['09:00', '09:01'], { limit: 1 }],
+  ]) {
+    const s = schedule(date, times),
+      before = JSON.stringify(s);
+    const bound = run(s, request(date, patch)),
+      unbound = unboundRun(s, unboundRequest(date, patch));
+    const { kind: boundKind, scope: boundScope, ...boundData } = bound;
+    const { kind: draftKind, scope: draftScope, ...draftData } = unbound;
+    assert.equal(boundKind, 'SCHEDULE_GAP_ADVISORY');
+    assert.equal(draftKind, 'UNBOUND_SCHEDULE_GAP_ADVISORY');
+    assert.notDeepEqual(draftScope, boundScope);
+    assert.deepEqual(draftData, boundData);
+    assert.equal(JSON.stringify(s), before);
+  }
+  const warn = unboundRun(schedule('2024-01-01', ['09:00', '09:29']), unboundRequest('2024-01-01'));
+  assert.equal(warn.warnings[0].gapMs, 1740000);
+  assert.equal(warn.preview.occurrences[1].time, '09:29');
+  assert.equal(
+    unboundRun(schedule('2024-01-01', ['09:00', '09:30']), unboundRequest('2024-01-01')).warnings
+      .length,
+    0,
+  );
+});
+test('unbound closed schemas reject missing extra symbols prototypes and foreign kinds', () => {
+  const s = schedule('2024-01-01', ['09:00']),
+    r = unboundRequest(s.startDate);
+  const bad = [
+    null,
+    [],
+    Object.create(r),
+    { ...r, version: 2 },
+    { ...r, [Symbol('extra')]: 1 },
+    { ...r, scope: Object.create(r.scope) },
+    { ...r, scope: { ...r.scope, [Symbol('extra')]: 1 } },
+    { ...r, scope: { ...r.scope, kind: 'BOUND' } },
+    ...Object.keys(r).map((key) => {
+      const x = { ...r };
+      delete x[key];
+      return x;
+    }),
+    ...Object.keys(r.scope).map((key) => {
+      const scope = { ...r.scope };
+      delete scope[key];
+      return { ...r, scope };
+    }),
+  ];
+  for (const value of bad)
+    assert.deepEqual(evaluateUnbound(s, value), { ok: false, code: 'INVALID_SCHEMA' });
+});
+test('unbound draft identity and revision are exact bounded scalars without coercion', () => {
+  const s = schedule('2024-01-01', ['09:00']),
+    r = unboundRequest(s.startDate);
+  for (const draftRevision of [0, 1, Number.MAX_SAFE_INTEGER]) {
+    const out = unboundRun(s, { ...r, scope: { ...r.scope, draftRevision } });
+    assert.equal(out.scope.draftRevision, draftRevision);
+  }
+  for (const draftRevision of [-0, -1, 0.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1, '0', null])
+    assert.deepEqual(evaluateUnbound(s, { ...r, scope: { ...r.scope, draftRevision } }), {
+      ok: false,
+      code: 'INVALID_SCHEMA',
+    });
+  for (const draftId of [
+    '',
+    id(50) + 'x',
+    ' ' + id(50),
+    'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF',
+    50,
+    null,
+  ])
+    assert.deepEqual(evaluateUnbound(s, { ...r, scope: { ...r.scope, draftId } }), {
+      ok: false,
+      code: 'INVALID_SCHEMA',
+    });
+  const supplied = 'abcdef01-2345-f678-0123-456789abcdef';
+  assert.equal(
+    unboundRun(s, { ...r, scope: { ...r.scope, draftId: supplied } }).scope.draftId,
+    supplied,
+  );
+});
+test('unbound hostile descriptors and proxy traps never leak exceptions or invoke accessors', () => {
+  const s = schedule('2024-01-01', ['09:00']);
+  let calls = 0;
+  for (const nested of [false, true]) {
+    const r = unboundRequest(s.startDate);
+    Object.defineProperty(nested ? r.scope : r, nested ? 'draftRevision' : 'scope', {
+      enumerable: true,
+      get() {
+        calls++;
+        throw Error('private');
+      },
+    });
+    assert.deepEqual(evaluateUnbound(s, r), { ok: false, code: 'INVALID_SCHEMA' });
+  }
+  for (const trap of ['getPrototypeOf', 'ownKeys', 'getOwnPropertyDescriptor']) {
+    for (const nested of [false, true]) {
+      const r = unboundRequest(s.startDate),
+        handler = {
+          [trap]() {
+            throw Error('private');
+          },
+        };
+      const value = nested ? { ...r, scope: new Proxy(r.scope, handler) } : new Proxy(r, handler);
+      assert.deepEqual(evaluateUnbound(s, value), { ok: false, code: 'INVALID_SCHEMA' });
+    }
+  }
+  const r = unboundRequest(s.startDate);
+  r.scope.draftId = {
+    toString() {
+      calls++;
+      return id(50);
+    },
+  };
+  assert.deepEqual(evaluateUnbound(s, r), { ok: false, code: 'INVALID_SCHEMA' });
+  Object.defineProperty(r.scope, 'draftId', { value: id(50), enumerable: false });
+  assert.deepEqual(evaluateUnbound(s, r), { ok: false, code: 'INVALID_SCHEMA' });
+  assert.equal(calls, 0);
+});
+test('unbound snapshots stay immutable across later editing without retained mutable state', () => {
+  const s = schedule('2024-01-01', ['09:00', '09:01', '09:02']);
+  const r = unboundRequest(s.startDate, { limit: 2 }),
+    before = unboundRun(s, r),
+    encoded = JSON.stringify(before);
+  r.scope.draftRevision = 1;
+  s.slots[0].time = '08:00';
+  const after = unboundRun(s, r);
+  assert.equal(before.scope.draftRevision, 0);
+  assert.equal(before.preview.occurrences[0].time, '09:00');
+  assert.equal(after.scope.draftRevision, 1);
+  assert.equal(after.preview.occurrences[0].time, '08:00');
+  assert.equal(JSON.stringify(before), encoded);
+  assert.equal(before.coverage, 'TRUNCATED_PREFIX');
+  assert.equal(before.preview.next.plannedOrdinal, 3);
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') return;
+    assert.ok(Object.isFrozen(value));
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(before);
+  visit(after);
+});
+test('unbound actual resolver failures remain exact and invalid context precedes resolution', () => {
+  const s = schedule('2024-01-01', ['09:00']);
+  for (const [model, patch] of [
+    [{ ...s, postsPerActiveDay: 2 }, {}],
+    [{ ...s, startDate: 'not-a-date' }, {}],
+    [s, { zone: 'Unknown/Zone' }],
+    [s, { fromDate: '1969-01-01' }],
+    [s, { limit: 0 }],
+    [s, { limit: 4097 }],
+    [s, { fromDate: 'not-a-date' }],
+  ]) {
+    const actual = evaluateUnbound(model, unboundRequest(s.startDate, patch));
+    assert.equal(actual.ok, false);
+    assert.deepEqual(actual, evaluate(model, request(s.startDate, patch)));
+    assert.ok(Object.isFrozen(actual));
+  }
+  const previous = process.env.NODE_ICU_DATA;
+  try {
+    process.env.NODE_ICU_DATA = '';
+    assert.deepEqual(evaluateUnbound(s, unboundRequest(s.startDate)), {
+      ok: false,
+      code: 'RUNTIME_UNAVAILABLE',
+    });
+    assert.deepEqual(evaluateUnbound(s, unboundRequest(s.startDate, { scope: null })), {
+      ok: false,
+      code: 'INVALID_SCHEMA',
+    });
+  } finally {
+    if (previous === undefined) delete process.env.NODE_ICU_DATA;
+    else process.env.NODE_ICU_DATA = previous;
+  }
+});
+test('bound and unbound exports share the sole real resolver and warning implementation', () => {
+  assert.equal((source.match(/resolveCivilPreview\(schedule,/g) ?? []).length, 1);
+  assert.equal((source.match(/resolveAndWarn\(schedule, r\)/g) ?? []).length, 2);
+  assert.equal((source.match(/gapMs < 1800000/g) ?? []).length, 1);
+  assert.doesNotMatch(source, /node:|setTimeout|setInterval|randomUUID|createHash/);
 });

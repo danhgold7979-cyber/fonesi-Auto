@@ -16,20 +16,38 @@ type Warning = Readonly<{
   laterPlannedOrdinal: number;
   gapMs: number;
 }>;
+type GapFailure = Readonly<{ ok: false; code: ZoneCode }>;
+type GapData = Readonly<{
+  window: Readonly<{ fromDate: string; throughDate: string; limit: number }>;
+  thresholdMs: 1800000;
+  comparison: 'CONSECUTIVE_RESOLVED_INSTANTS';
+  preview: Extract<ZonePreviewResult, { ok: true }>;
+  coverage: 'COMPLETE_WINDOW' | 'TRUNCATED_PREFIX';
+  warnings: readonly Warning[];
+}>;
+type UnboundScope = Readonly<{
+  kind: 'UNBOUND_DRAFT';
+  draftId: string;
+  draftRevision: number;
+}>;
 export type GapPreviewResult =
-  | Readonly<{ ok: false; code: ZoneCode }>
-  | Readonly<{
+  | GapFailure
+  | (Readonly<{
       ok: true;
       version: 1;
       kind: 'SCHEDULE_GAP_ADVISORY';
       scope: Scope;
-      window: Readonly<{ fromDate: string; throughDate: string; limit: number }>;
-      thresholdMs: 1800000;
-      comparison: 'CONSECUTIVE_RESOLVED_INSTANTS';
-      preview: Extract<ZonePreviewResult, { ok: true }>;
-      coverage: 'COMPLETE_WINDOW' | 'TRUNCATED_PREFIX';
-      warnings: readonly Warning[];
-    }>;
+    }> &
+      GapData);
+export type UnboundGapPreviewResult =
+  | GapFailure
+  | (Readonly<{
+      ok: true;
+      version: 1;
+      kind: 'UNBOUND_SCHEDULE_GAP_ADVISORY';
+      scope: UnboundScope;
+    }> &
+      GapData);
 const uuid = (v: unknown): v is string =>
   typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v);
 function record(value: unknown, keys: readonly string[]): Record<string, unknown> {
@@ -72,6 +90,57 @@ export function evaluateScheduleGapPreview(schedule: unknown, request: unknown):
   } catch {
     return Object.freeze({ ok: false, code: 'INVALID_SCHEMA' });
   }
+  const result = resolveAndWarn(schedule, r);
+  if (!result.ok) return result;
+  return Object.freeze({
+    ok: true,
+    version: 1,
+    kind: 'SCHEDULE_GAP_ADVISORY',
+    scope,
+    ...result.data,
+  });
+}
+/** Unsaved local intent only: no stored schedule, device or principal binding. */
+export function evaluateUnboundScheduleGapPreview(
+  schedule: unknown,
+  request: unknown,
+): UnboundGapPreviewResult {
+  let r: Record<string, unknown>, scope: UnboundScope;
+  try {
+    r = record(request, ['version', 'scope', 'zone', 'fromDate', 'throughDate', 'limit']);
+    const s = record(r.scope, ['kind', 'draftId', 'draftRevision']);
+    if (
+      r.version !== 1 ||
+      s.kind !== 'UNBOUND_DRAFT' ||
+      !uuid(s.draftId) ||
+      typeof s.draftRevision !== 'number' ||
+      !Number.isSafeInteger(s.draftRevision) ||
+      s.draftRevision < 0 ||
+      Object.is(s.draftRevision, -0)
+    )
+      throw null;
+    scope = Object.freeze({
+      kind: 'UNBOUND_DRAFT',
+      draftId: s.draftId,
+      draftRevision: s.draftRevision,
+    });
+  } catch {
+    return Object.freeze({ ok: false, code: 'INVALID_SCHEMA' });
+  }
+  const result = resolveAndWarn(schedule, r);
+  if (!result.ok) return result;
+  return Object.freeze({
+    ok: true,
+    version: 1,
+    kind: 'UNBOUND_SCHEDULE_GAP_ADVISORY',
+    scope,
+    ...result.data,
+  });
+}
+function resolveAndWarn(
+  schedule: unknown,
+  r: Record<string, unknown>,
+): GapFailure | Readonly<{ ok: true; data: GapData }> {
   const preview = resolveCivilPreview(schedule, {
     version: 1,
     zone: r.zone,
@@ -101,18 +170,17 @@ export function evaluateScheduleGapPreview(schedule: unknown, request: unknown):
   }
   return Object.freeze({
     ok: true,
-    version: 1,
-    kind: 'SCHEDULE_GAP_ADVISORY',
-    scope,
-    window: Object.freeze({
-      fromDate: r.fromDate as string,
-      throughDate: r.throughDate as string,
-      limit: r.limit as number,
+    data: Object.freeze({
+      window: Object.freeze({
+        fromDate: r.fromDate as string,
+        throughDate: r.throughDate as string,
+        limit: r.limit as number,
+      }),
+      thresholdMs: 1800000,
+      comparison: 'CONSECUTIVE_RESOLVED_INSTANTS',
+      preview,
+      coverage: preview.truncated ? 'TRUNCATED_PREFIX' : 'COMPLETE_WINDOW',
+      warnings: Object.freeze(warnings),
     }),
-    thresholdMs: 1800000,
-    comparison: 'CONSECUTIVE_RESOLVED_INSTANTS',
-    preview,
-    coverage: preview.truncated ? 'TRUNCATED_PREFIX' : 'COMPLETE_WINDOW',
-    warnings: Object.freeze(warnings),
   });
 }

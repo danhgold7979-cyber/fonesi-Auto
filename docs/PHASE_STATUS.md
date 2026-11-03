@@ -2,9 +2,20 @@
 
 **Phase07 — Scheduler and queue:** source6/47=12.8%, integrated6/47=12.8%, technical acceptance0/13. Exactly P7-04.A N→I: +1/47 (+2.13 percentage points) each versus10.6%; fixed47-cell denominator unchanged. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
 
-**Current local Phase07 milestone:** resolved below-30-minute advisory composes the actual civil/timezone resolver, preserves intent and skipped-gap facts, handles elapsed UTC across midnight/DST, and truthfully qualifies truncated previews. Independent source review CLEAR; targeted12/12 and final uninterrupted source aggregate1718/1718 PASS. Earlier failures and recoveries remain recorded in [evidence](evidence/P7-04-gap-advisory-2026-11-02.md). No Electron, persistence, queue, UI or dispatch activation; P7-04.B remains unimplemented. Sole local `phase-07`; no remote publication or task acceptance claimed. **Stop reason / required action:** none for this source milestone; next functional entry requires its own reviewed integration scope.
+**Current Phase07 continuation — 2026-11-03:** exact public production corpus
+run41493281269 at3a7689e3 is independently audited CLEAR, with three host zones
+and matching4284-assertion production/candidate corpora. The next pure unbound
+draft API is implemented and independently CLEAR: local draft identity/revision
+only, no invented account/device binding, one shared real resolver/advisory path.
+Focused20/20 and full1761/1761 source aggregate PASS. No new ledger credit, UI,
+IPC, storage or dispatch activation; native invocation of this new API NOT_RUN.
+[Exact evidence and retained prior failures](evidence/P7-unbound-draft-preview-2026-11-03.md).
+Main and other phase histories remain unchanged.
 
-**Phase07 runtime observation prerequisite:** Dedicated verification-only packaged observer/manual CI source is independently CLEAR; final source aggregate1736/1736 PASS. [Evidence](evidence/P7-runtime-observation-harness-2026-11-02.md). Actual Windows observation remains NOT_RUN pending reviewed publication/dispatch; no Electron tuple, bridge, persistence, UI or additional functional-cell credit is inferred. Production resolver remains Node-only.
+
+**Historical Phase07 gap milestone (2026-11-02):** resolved below-30-minute advisory composes the actual civil/timezone resolver, preserves intent and skipped-gap facts, handles elapsed UTC across midnight/DST, and truthfully qualifies truncated previews. Independent source review CLEAR; targeted12/12 and final uninterrupted source aggregate1718/1718 PASS. Earlier failures and recoveries remain recorded in [evidence](evidence/P7-04-gap-advisory-2026-11-02.md). No Electron, persistence, queue, UI or dispatch activation; P7-04.B remains unimplemented. Sole local `phase-07`; no remote publication or task acceptance claimed. **Stop reason / required action:** none for this source milestone; next functional entry requires its own reviewed integration scope.
+
+**Historical Phase07 pre-observation checkpoint (2026-11-02):** Dedicated verification-only packaged observer/manual CI source is independently CLEAR; final source aggregate1736/1736 PASS. [Evidence](evidence/P7-runtime-observation-harness-2026-11-02.md). Actual Windows observation remains NOT_RUN pending reviewed publication/dispatch; no Electron tuple, bridge, persistence, UI or additional functional-cell credit is inferred. Production resolver remains Node-only.
 
 ## Inherited Phase03 history at branch base
 
