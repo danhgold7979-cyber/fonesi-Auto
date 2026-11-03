@@ -2640,6 +2640,7 @@
    "imports": {}
   },
   "schedule-zone-contract.ts": {"role":"contract","imports":{"@js-temporal/polyfill":{"Temporal":"value"},"node:process":{"versions":"value","env":"value","execArgv":"value","platform":"value","arch":"value"},"node:crypto":{"createHash":"value"},"./schedule-civil-contract.js":{"previewCivilOccurrences":"value","CivilOccurrence":"type","PreviewCode":"type"}}},
-  "schedule-gap-contract.ts": {"role":"contract","imports":{"./schedule-zone-contract.js":{"resolveCivilPreview":"value","ZoneCode":"type","ZonePreviewResult":"type"}}}
+  "schedule-gap-contract.ts": {"role":"contract","imports":{"./schedule-zone-contract.js":{"resolveCivilPreview":"value","ZoneCode":"type","ZonePreviewResult":"type"}}},
+  "workflow-manifest-contract.ts": {"role":"contract","imports":{}}
  }
 }

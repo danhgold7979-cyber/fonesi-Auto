@@ -13,3 +13,5 @@ biome.json text eol=lf
 foundation/** text=auto eol=lf
 # P1-08 verification loads the exact approved reference bytes; never normalize at runtime.
 ui-reference/Fonesi-Auto-V9-UI-Reference.html text eol=lf
+# Phase 08 source-only CI fixture uses the same exact bytes on every checkout.
+.github/workflows/phase-08-workflow-source.yml text eol=lf

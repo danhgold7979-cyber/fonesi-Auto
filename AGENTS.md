@@ -232,3 +232,10 @@ parallel work while P1-06 cross-user evidence remains UNMET; no formal dependenc
 Phase 0 waiver. Legacy IPC/old schema evidence remains; no secret/device/job service
 or V9 redesign. Scoped source/native review precedes publication/execution, and no
 unchanged identity acquisition is retried as part of settings CI.
+
+## Bounded P8-01 source entry — 2026-11-03 21:15 UTC
+
+The [reviewed P8-01 manifest entry](docs/phases/P8-MANIFEST-SOURCE-ENTRY.md)
+permits only the independent non-executing immutable declaration/version leaf on
+`phase-08` under the user’s continued-independent-work direction and maximum two
+active phases. Earlier acceptance gates stay open; no runtime or device authority.

@@ -65,6 +65,7 @@ export const inputs = [
   'src/schedule-civil-contract.ts',
   'src/schedule-zone-contract.ts',
   'src/schedule-gap-contract.ts',
+  'src/workflow-manifest-contract.ts',
   'src/input-interaction-contract.ts',
   'src/input-interaction-client.ts',
   'src/input-interaction-bridge.ts',

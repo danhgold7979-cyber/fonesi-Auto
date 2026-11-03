@@ -1,5 +1,21 @@
 # Phase Status — Fonesi-Auto
 
+**Phase 08 — bounded P8-01 manifest source:** immutable unverified declarations,
+strict fixed-step requirements and exact historical version retention are locally
+implemented and independently reviewed CLEAR. Focused 28/28, foundation 109/109
+and portable Python 375/375 PASS. Final frozen complete source aggregate including
+the new source-CI guard PASS 1781/1781 + DESKTOP_SOURCE_CHECK_PASS. No executor, UI/IPC/DB/device activation;
+canonical acceptance remains **0/14**, and no implementation denominator is claimed.
+[Exact source evidence and limitations](evidence/P8-01-manifest-source-2026-11-03.md).
+
+Opened 2026-11-03 21:10:45 UTC on `phase-08` from public Phase 07
+`3a7689e3c70435f673d53b21a2f713d5ac1a53ca`, preserving the unaccepted predecessor
+and main history. [Independent source entry](phases/P8-MANIFEST-SOURCE-ENTRY.md).
+Publication/actual hosted checks remain pending; generated/private test files are
+excluded. Earlier phase statements below describe the inherited development base.
+
+## Inherited Phase 07 checkpoint at branch base
+
 **Phase07 — Scheduler and queue:** source6/47=12.8%, integrated6/47=12.8%, technical acceptance0/13. Exactly P7-04.A N→I: +1/47 (+2.13 percentage points) each versus10.6%; fixed47-cell denominator unchanged. [Exact cells](phases/P7-IMPLEMENTATION-SUBDELIVERABLES-v1.md).
 
 **Current local Phase07 milestone:** resolved below-30-minute advisory composes the actual civil/timezone resolver, preserves intent and skipped-gap facts, handles elapsed UTC across midnight/DST, and truthfully qualifies truncated previews. Independent source review CLEAR; targeted12/12 and final uninterrupted source aggregate1718/1718 PASS. Earlier failures and recoveries remain recorded in [evidence](evidence/P7-04-gap-advisory-2026-11-02.md). No Electron, persistence, queue, UI or dispatch activation; P7-04.B remains unimplemented. Sole local `phase-07`; no remote publication or task acceptance claimed. **Stop reason / required action:** none for this source milestone; next functional entry requires its own reviewed integration scope.

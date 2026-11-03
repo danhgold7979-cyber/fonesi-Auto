@@ -560,3 +560,11 @@ while P1-06 cross-user remains UNMET; this is not predecessor or formal acceptan
 Migration 3, bounded preferences IPC, native-window ownership, audit and scoped CI
 must follow the approved exact contract. No identity fallback or unchanged context
 retry, device/job/secret expansion or V9 redesign is granted. Review before execution.
+
+## Bounded P8-01 independent entry — 2026-11-03 21:15 UTC
+
+The user directed continued independent phase coding when blocked, with at most
+two active phases. The [reviewed manifest entry](phases/P8-MANIFEST-SOURCE-ENTRY.md)
+records exact public development base, owned files, dependency limits and checks.
+This supersedes only the historical software-entry restriction for that pure leaf;
+no predecessor acceptance, runtime/device action or missing-result PASS follows.

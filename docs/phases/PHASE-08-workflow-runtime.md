@@ -1,5 +1,9 @@
 # PHASE-08 — Workflow runtime and safety
 
+> Current bounded source entry: [P8-01 immutable declarations](P8-MANIFEST-SOURCE-ENTRY.md),
+> adopted 2026-11-03. The historical draft below remains the full canonical scope.
+> No full P8-01/Phase acceptance or runtime activation is inferred.
+
 **Revision:** 0.1-draft · **Date:** 2026-10-30
 **Status:** DRAFT — NOT AUTHORIZED FOR IMPLEMENTATION; P8-01..14 NOT_STARTED
 **Proposed branch:** `phase-08` — not created

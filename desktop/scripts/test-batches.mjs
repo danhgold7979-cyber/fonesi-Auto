@@ -145,6 +145,7 @@ export const TEST_FILES = Object.freeze([
   'tests/vault-context.test.mjs',
   'tests/video-contract.test.mjs',
   'tests/work-pages.test.mjs',
+  'tests/workflow-manifest-contract.test.mjs',
   'verification/demo-contract.test.cjs',
   'verification/derived-pair-wrapper.test.cjs',
   'verification/fetch-retained-archives.test.cjs',
