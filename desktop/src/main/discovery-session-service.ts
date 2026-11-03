@@ -1,3 +1,9 @@
+import { performance } from 'node:perf_hooks';
+import {
+  createDeviceDiagnosticEncoder,
+  DIAGNOSTIC_REJECTION,
+  type DeviceDiagnosticInput,
+} from './device-diagnostics.ts';
 // Main-owned explicit lifecycle facade. No implicit start, acquisition, retry or epoch reset.
 import {
   snapshotDiscoveryRequest,
@@ -75,6 +81,7 @@ type Policy =
   | 'RECOVERY_REQUIRED'
   | 'CLOSED';
 export type DiscoverySessionOptions = Readonly<{
+  captureDiagnosticObserver?(): ((record: DeviceDiagnosticInput) => void) | null;
   custody: PlatformToolsRuntimeCustody;
   fleet?: ReturnType<typeof createFleetService>;
   logger?: unknown;
@@ -131,6 +138,23 @@ class AssociationFault extends Error {
     associationFaults.set(this, code);
   }
 }
+// Source-owned monotonic timing; never a renderer/request clock or health inference.
+const diagnosticNow = performance.now.bind(performance);
+function diagnosticSample(): number | null {
+  try {
+    const value = diagnosticNow();
+    return Number.isFinite(value) && !Object.is(value, -0) && value >= 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+function diagnosticElapsed(start: number | null, end: number | null): number | null {
+  if (start === null || end === null) return null;
+  const elapsed = end - start;
+  return Number.isFinite(elapsed) && elapsed >= 0 && elapsed <= 86400000
+    ? Math.floor(elapsed)
+    : null;
+}
 export function createDiscoverySessionService(options: DiscoverySessionOptions) {
   const custody = options.custody,
     owned = options.assertOwnedSync.bind(options),
@@ -141,6 +165,58 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     readRevision = options.readDurableRevision.bind(options),
     buildServer = options.createServer.bind(options),
     buildIngestion = options.createIngestion.bind(options);
+  const captureObserver = () => {
+    try {
+      const captured = options.captureDiagnosticObserver?.();
+      return typeof captured === 'function' ? captured : null;
+    } catch {
+      return null;
+    }
+  };
+  const diagnosticRecord = (
+    deviceId: string,
+    operation: DeviceDiagnosticInput['operation'],
+    actor: unknown,
+    durationMs: number | null,
+  ): DeviceDiagnosticInput | null => {
+    try {
+      if (!actor || typeof actor !== 'object') return null;
+      const d = Object.getOwnPropertyDescriptors(actor);
+      if (
+        ['commandId', 'correlationId', 'outcome', 'code'].some(
+          (k) => !d[k] || !Object.hasOwn(d[k], 'value'),
+        )
+      )
+        return null;
+      const record = Object.freeze({
+        version: 1,
+        deviceId,
+        commandId: d.commandId?.value,
+        correlationId: d.correlationId?.value,
+        operation,
+        outcome: d.outcome?.value,
+        code: d.code?.value,
+        health: 'UNKNOWN',
+        durationMs,
+      });
+      if (createDeviceDiagnosticEncoder().encode(record) === DIAGNOSTIC_REJECTION) return null;
+      return record as DeviceDiagnosticInput;
+    } catch {
+      return null;
+    }
+  };
+  const notifyDiagnostic = (
+    observer: ReturnType<typeof captureObserver>,
+    record: DeviceDiagnosticInput | null,
+  ) => {
+    if (record && observer) {
+      try {
+        observer(record);
+      } catch {
+        /* Optional diagnostics never change command result. */
+      }
+    }
+  };
   const acquire = custody.acquireRead.bind(custody),
     assertRead = custody.assertRead.bind(custody),
     release = custody.releaseRead.bind(custody),
@@ -1291,6 +1367,8 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
         },
         Math.max(1, deadline - admittedAt),
       );
+      const diagnosticObserver = captureObserver();
+      let commandDiagnostic: DeviceDiagnosticInput | null = null;
       const continuation = Promise.resolve().then(async () => {
         try {
           if (preOwnerExpired) throw new MetadataFault('DEADLINE_EXCEEDED');
@@ -1319,13 +1397,21 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
           entered = true;
           clearTimeout(admissionTimer);
           // The actor owns this same absolute deadline; no competing facade timeout.
+          const diagnosticStarted = diagnosticSample();
           const raw = await owner.input.press(request.action, deadline, intent);
+          const diagnosticFinished = diagnosticSample();
           const receipt = snapshotInputInteractionReceipt(raw);
           if (!receipt) {
             uncertain = true;
             void startCleanup();
             return;
           }
+          commandDiagnostic = diagnosticRecord(
+            request.deviceId,
+            request.action === 'HOME' || request.action === 'BACK' ? request.action : 'KEY',
+            receipt.actor,
+            diagnosticElapsed(diagnosticStarted, diagnosticFinished),
+          );
           if (receipt.actor.outcome === 'OUTCOME_UNKNOWN') {
             uncertain = true;
             void startCleanup();
@@ -1383,6 +1469,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
               uncertain = true;
             }
           busy = false;
+          notifyDiagnostic(diagnosticObserver, commandDiagnostic);
         }
       });
       retained = true;
@@ -1474,7 +1561,9 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
     baseRevision: number,
     finish: () => void,
     settled: { candidate: MetadataSnapshot | null },
+    diagnosticObserver: ReturnType<typeof captureObserver>,
   ) {
+    let commandDiagnostic: DeviceDiagnosticInput | null = null;
     let diagnostic: string | null = null,
       resultWritten = false;
     let resultCandidate: MetadataSnapshot | null = null;
@@ -1523,7 +1612,15 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       const owner = metadataOwner;
       if (!owner) throw new MetadataFault('INTERNAL_FAILURE');
       metadataFence(g, current, expected, proof, deadline);
+      const diagnosticStarted = diagnosticSample();
       const result = await owner.metadata.read(request.field, deadline);
+      const diagnosticFinished = diagnosticSample();
+      commandDiagnostic = diagnosticRecord(
+        request.deviceId,
+        request.field,
+        result.actor,
+        diagnosticElapsed(diagnosticStarted, diagnosticFinished),
+      );
       outcome = result.actor.outcome;
       code = result.actor.code === 'OK' ? 'OK' : metadataActorCode(result.actor.code);
       // Capture the actual logical result before owner snapshot/audit callbacks can reenter.
@@ -1636,6 +1733,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
       }
       busy = false;
       finish();
+      notifyDiagnostic(diagnosticObserver, commandDiagnostic);
     }
   }
   function metadataRead(
@@ -1738,6 +1836,8 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
         operationId = allocate();
         metadataFence(g, current, expected, proof, deadline);
         const baseRevision = metadataState.revision;
+        const diagnosticObserver = captureObserver();
+        metadataFence(g, current, expected, proof, deadline);
         const fields = {
           operation: 'READ' as const,
           stage: 'REQUEST' as const,
@@ -1807,6 +1907,7 @@ export function createDiscoverySessionService(options: DiscoverySessionOptions) 
             baseRevision,
             finish,
             settled,
+            diagnosticObserver,
           ),
         );
         return pendingWire;

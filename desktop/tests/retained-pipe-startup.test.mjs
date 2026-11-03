@@ -42,9 +42,19 @@ function dependencies(modes, calls) {
     validateExecutable() {},
     setTimeout: (fn, ms) => {
       assert.equal(ms, 10000);
-      return setTimeout(fn, 15);
+      // Deterministic synthetic phases, not an accelerated wall-clock deadline.
+      // Allow injected write/output, then injected close, before an uncancelled deadline.
+      const timer = { cancelled: false };
+      setImmediate(() =>
+        setImmediate(() => {
+          if (!timer.cancelled) fn();
+        }),
+      );
+      return timer;
     },
-    clearTimeout,
+    clearTimeout: (timer) => {
+      if (timer) timer.cancelled = true;
+    },
     spawn(exe, args, options) {
       const mode = modes[calls.length] ?? 'normal';
       calls.push({ exe, args, options });
@@ -306,4 +316,16 @@ test('final ownership callback cannot replace the fixed materialized script befo
     fs.readFileSync(path.join(f.root, 'retained-pipe-plain001', 'fixture.ps1'), 'utf8'),
     'private replacement',
   );
+});
+
+test('synthetic deadline orders two event turns and cancellation suppresses it', async () => {
+  const timers = dependencies([], []),
+    order = [];
+  timers.setTimeout(() => order.push('deadline'), 10000);
+  setImmediate(() => order.push('first-turn'));
+  await new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
+  assert.deepEqual(order, ['first-turn', 'deadline']);
+  const cancelled = timers.setTimeout(() => assert.fail('cancelled deadline'), 10000);
+  timers.clearTimeout(cancelled);
+  await new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
 });

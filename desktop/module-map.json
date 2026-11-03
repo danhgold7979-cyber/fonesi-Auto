@@ -4,6 +4,10 @@
   "renderer.tsx": {
    "role": "renderer",
    "imports": {
+    "./diagnostics-report-contract.js": {
+     "parseDiagnosticsExportResponse": "value",
+     "DiagnosticsExportSnapshot": "type"
+    },
     "./input-interaction-contract.js": {
      "INPUT_ACTIONS": "value",
      "parseInputInteractionResponse": "value",
@@ -61,6 +65,12 @@
   "preload.ts": {
    "role": "preload",
    "imports": {
+    "./diagnostics-export-client.js": {
+     "createDiagnosticsExportClient": "value"
+    },
+    "./diagnostics-report-contract.js": {
+     "DIAGNOSTICS_EXPORT_CHANNEL": "value"
+    },
     "./input-interaction-client.js": {
      "createInputInteractionClient": "value"
     },
@@ -171,6 +181,12 @@
   "main.ts": {
    "role": "main",
    "imports": {
+    "./diagnostics-export-bridge.js": {
+     "installDiagnosticsExportBridge": "value"
+    },
+    "./main/diagnostics-export-service.js": {
+     "createDiagnosticsExportService": "value"
+    },
     "./input-interaction-bridge.ts": {
      "installInputInteractionBridge": "value"
     },
@@ -2215,6 +2231,11 @@
   "main/discovery-session-service.ts": {
    "role": "main-adapter",
    "imports": {
+    "./device-diagnostics.ts": {
+     "createDeviceDiagnosticEncoder": "value",
+     "DIAGNOSTIC_REJECTION": "value",
+     "DeviceDiagnosticInput": "type"
+    },
     "../discovery-contract.ts": {
      "snapshotDiscoveryRequest": "value",
      "discoverySuccess": "value",
@@ -2299,6 +2320,9 @@
     },
     "./association-confirmation.ts": {
      "confirmAssociationInteraction": "value"
+    },
+    "node:perf_hooks": {
+     "performance": "value"
     }
    }
   },
@@ -2557,6 +2581,106 @@
      "inputInteractionError": "value",
      "InputInteractionRequest": "type",
      "InputInteractionCode": "type"
+    }
+   }
+  },
+  "main/device-diagnostic-collector.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "./device-diagnostics.ts": {
+     "createDeviceDiagnosticEncoder": "value",
+     "DIAGNOSTIC_REJECTION": "value"
+    }
+   }
+  },
+  "main/device-diagnostic-export.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "node:fs/promises": {
+     "lstat": "value",
+     "realpath": "value",
+     "mkdir": "value",
+     "open": "value",
+     "unlink": "value",
+     "rmdir": "value",
+     "readdir": "value",
+     "FileHandle": "type"
+    },
+    "node:path": {
+     "isAbsolute": "value",
+     "join": "value",
+     "resolve": "value"
+    },
+    "node:crypto": {
+     "createHash": "value"
+    },
+    "./device-diagnostic-collector.ts": {
+     "isOpenDeviceDiagnosticCollector": "value",
+     "DeviceDiagnosticCollector": "type"
+    }
+   }
+  },
+  "diagnostics-report-contract.ts": {
+   "role": "contract",
+   "imports": {}
+  },
+  "diagnostics-export-client.ts": {
+   "role": "client",
+   "imports": {
+    "./invocation-budget.ts": {
+     "createInvocationBudget": "value",
+     "InvocationBudget": "type"
+    },
+    "./diagnostics-report-contract.ts": {
+     "diagnosticExportId": "value",
+     "diagnosticExportRevision": "value",
+     "parseDiagnosticsExportRequest": "value",
+     "parseDiagnosticsExportResponse": "value",
+     "diagnosticsExportError": "value",
+     "DiagnosticsExportRequest": "type"
+    }
+   }
+  },
+  "diagnostics-export-bridge.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "electron": {
+     "IpcMain": "type",
+     "IpcMainInvokeEvent": "type"
+    },
+    "./view-session.ts": {
+     "Admission": "type"
+    },
+    "./diagnostics-report-contract.ts": {
+     "DIAGNOSTICS_EXPORT_CHANNEL": "value",
+     "DIAGNOSTICS_EXPORT_CODES": "value",
+     "parseDiagnosticsExportRequest": "value",
+     "diagnosticsExportError": "value",
+     "DiagnosticsExportCode": "type"
+    }
+   }
+  },
+  "main/diagnostics-export-service.ts": {
+   "role": "main-adapter",
+   "imports": {
+    "node:crypto": {
+     "randomUUID": "value"
+    },
+    "./device-diagnostic-collector.ts": {
+     "createDeviceDiagnosticCollector": "value"
+    },
+    "./device-diagnostic-export.ts": {
+     "createDeviceDiagnosticExporter": "value"
+    },
+    "./device-diagnostics.ts": {
+     "DeviceDiagnosticInput": "type"
+    },
+    "../diagnostics-report-contract.ts": {
+     "parseDiagnosticsExportRequest": "value",
+     "diagnosticsExportError": "value",
+     "diagnosticsExportSuccess": "value",
+     "diagnosticExportId": "value",
+     "DiagnosticsExportSnapshot": "type"
     }
    }
   }

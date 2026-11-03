@@ -1,3 +1,5 @@
+import { installDiagnosticsExportBridge } from './diagnostics-export-bridge.js';
+import { createDiagnosticsExportService } from './main/diagnostics-export-service.js';
 import { installInputInteractionBridge } from './input-interaction-bridge.ts';
 import { installAssociationBridge } from './association-bridge.ts';
 import { installRuntimeVersionBridge } from './runtime-version-bridge.js';
@@ -94,6 +96,28 @@ let runtimeVersionBridge: ReturnType<typeof installRuntimeVersionBridge> | undef
 let discoverySessionService: DiscoverySessionService | undefined;
 let discoveryBridge: ReturnType<typeof installDiscoveryBridge> | undefined;
 let inputBridge: ReturnType<typeof installInputInteractionBridge> | undefined;
+let diagnosticsBridge: ReturnType<typeof installDiagnosticsExportBridge> | undefined;
+let diagnosticsService: ReturnType<typeof createDiagnosticsExportService> | undefined;
+const diagnosticsDrains = new Set<Promise<boolean>>();
+const retiredDiagnostics = new WeakSet<object>();
+function retireDiagnostics(service: ReturnType<typeof createDiagnosticsExportService> | undefined) {
+  if (!service || retiredDiagnostics.has(service)) return;
+  retiredDiagnostics.add(service);
+  if (diagnosticsService === service) diagnosticsService = undefined;
+  const drain = service.close();
+  diagnosticsDrains.add(drain);
+  void drain
+    .then(
+      (clean) => {
+        if (!clean) cleanupComplete = false;
+      },
+      () => {
+        cleanupComplete = false;
+      },
+    )
+    .finally(() => diagnosticsDrains.delete(drain));
+}
+
 let associationBridge: ReturnType<typeof installAssociationBridge> | undefined;
 let platformToolsService: PlatformToolsSetupService | undefined;
 let platformToolsBridge: ReturnType<typeof installPlatformToolsSetupBridge> | undefined;
@@ -128,6 +152,8 @@ function cleanup(): boolean {
   closing = true;
   if (backupTimer !== undefined) clearInterval(backupTimer);
   const disposed = disposeResources([
+    () => retireDiagnostics(diagnosticsService),
+    () => diagnosticsBridge?.dispose(),
     () => discoverySessionService?.revoke(),
     () => discoveryBridge?.dispose(),
     () => inputBridge?.dispose(),
@@ -516,6 +542,7 @@ try {
           return durable.readDurable().meta.revision;
         };
         discoverySessionService = createDiscoverySessionService({
+          captureDiagnosticObserver: () => diagnosticsService?.observer() ?? null,
           fleet: ownedFleetService,
           logger,
           custody: runtimeCustody,
@@ -619,6 +646,12 @@ try {
             },
           };
         });
+        diagnosticsBridge = installDiagnosticsExportBridge(
+          ipcMain,
+          bridge.admitPreferences,
+          bridge.admitCleanup,
+          () => diagnosticsService,
+        );
         runtimeVersionBridge = installRuntimeVersionBridge(
           ipcMain,
           bridge.admitPreferences,
@@ -669,6 +702,32 @@ try {
           },
         });
         platformToolsWindow = window;
+        let windowDiagnostics: ReturnType<typeof createDiagnosticsExportService> | undefined;
+        if (persistenceEntry && persistence && !persistence.restored) {
+          const entry = persistenceEntry;
+          windowDiagnostics = createDiagnosticsExportService({
+            current: () => {
+              if (closing || resourcesDisposed || window.isDestroyed()) return false;
+              assertPreparedPersistenceLease(entry);
+              return true;
+            },
+            chooseDirectory: async () => {
+              if (closing || resourcesDisposed || window.isDestroyed()) return null;
+              assertPreparedPersistenceLease(entry);
+              const picked = await dialog.showOpenDialog(window, {
+                title: 'Xuất chẩn đoán thiết bị',
+                properties: ['openDirectory'],
+              });
+              return picked.canceled || picked.filePaths.length !== 1
+                ? null
+                : (picked.filePaths[0] ?? null);
+            },
+          });
+          retireDiagnostics(diagnosticsService);
+          diagnosticsService = windowDiagnostics;
+          window.once('closed', () => retireDiagnostics(windowDiagnostics));
+        }
+
         installWindowPolicy(window);
         if (settingsDb && persistenceEntry) {
           let windowTracking = false;
@@ -760,7 +819,10 @@ try {
             () => undefined,
           );
         }
-        const view = bridge.attach(window, () => discoverySessionService?.revoke());
+        const view = bridge.attach(window, () => {
+          retireDiagnostics(windowDiagnostics);
+          discoverySessionService?.revoke();
+        });
         window.webContents.on('render-process-gone', () => {
           if (!closing) logger?.emit('RENDERER_LOST', 'RENDERER_LOSS');
           fail();
@@ -795,6 +857,8 @@ try {
   const shutdown = createLogShutdown({
     stop: () => {
       closing = true;
+      retireDiagnostics(diagnosticsService);
+      diagnosticsBridge?.dispose();
       discoverySessionService?.revoke();
       discoveryBridge?.dispose();
       inputBridge?.dispose();
@@ -812,6 +876,7 @@ try {
     },
     flush: async () => {
       try {
+        await Promise.all([...diagnosticsDrains]);
         await platformToolsLifecycle.stop();
         await fleetLifecycle.stop();
         await settingsLifecycle.stop();

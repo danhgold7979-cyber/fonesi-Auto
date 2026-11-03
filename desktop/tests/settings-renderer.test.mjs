@@ -1,3 +1,4 @@
+import * as diagnosticsContract from '../src/diagnostics-report-contract.ts';
 import * as inputContract from '../src/input-interaction-contract.ts';
 import * as associationContract from '../src/association-contract.ts';
 import * as metadataContract from '../src/metadata-contract.ts';
@@ -34,6 +35,7 @@ function mount(
   metadataApi = null,
   associationApi = null,
   inputApi = null,
+  diagnosticsApi = null,
 ) {
   let component,
     cursor = 0;
@@ -41,7 +43,18 @@ function mount(
   const effects = [],
     cleanups = [],
     events = new Map();
+  const diagnosticTimers = new Map();
+  let diagnosticTimerId = 0;
   const hostWindow = {
+    setTimeout: (fn) => {
+      const id = ++diagnosticTimerId;
+      diagnosticTimers.set(id, fn);
+      return id;
+    },
+    clearTimeout: (id) => diagnosticTimers.delete(id),
+    deviceDiagnostics: diagnosticsApi ?? {
+      get: async () => diagnosticsContract.diagnosticsExportError(null, 'SESSION_UNAVAILABLE'),
+    },
     innerWidth: width,
     preferences: api,
     discovery: discoveryApi,
@@ -125,6 +138,7 @@ function mount(
             },
           }),
         };
+      if (name === './diagnostics-report-contract.js') return diagnosticsContract;
       if (name === './input-interaction-contract.js') return inputContract;
       if (name === './association-contract.js') return associationContract;
       if (name === './metadata-contract.js') return metadataContract;
@@ -155,6 +169,14 @@ function mount(
   return {
     render,
     find,
+    timers: diagnosticTimers,
+    runTimers: () => {
+      const pending = [...diagnosticTimers.values()];
+      diagnosticTimers.clear();
+      pending.forEach((fn) => {
+        fn();
+      });
+    },
     effects: () => {
       render();
       for (const effect of effects.splice(0)) cleanups.push(effect());
@@ -1785,4 +1807,125 @@ test('late input STATUS cannot rearm after ACTIVE selection or Stop invalidation
     assert.equal(m.find('input-home').props.disabled, true);
     m.dispose();
   }
+});
+
+test('diagnostic UI requires explicit export, blocks repeated click and reconciles timed-out mutation without retry', async () => {
+  let exports = 0,
+    reads = 0,
+    finish;
+  const empty = {
+    revision: 0,
+    state: 'IDLE',
+    operationId: null,
+    records: 0,
+    dropped: 0,
+    bytes: 0,
+    sha256: null,
+    code: null,
+  };
+  const m = mount(
+    { read: async () => contract.settingsError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED') },
+    1600,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    {
+      get: async () => {
+        reads++;
+        return diagnosticsContract.diagnosticsExportSuccess('p1', empty);
+      },
+      export: () => {
+        exports++;
+        return new Promise((r) => {
+          finish = r;
+        });
+      },
+      cancel: async () => {
+        throw Error('unexpected cancel');
+      },
+    },
+  );
+  assert.equal(exports, 0);
+  assert.equal(reads, 0);
+  assert.equal(m.find('device-diagnostics-save').props.disabled, true);
+  m.find('device-diagnostics-read').props.onClick();
+  await flush();
+  assert.equal(reads, 1);
+  assert.equal(m.find('device-diagnostics-save').props.disabled, false);
+  m.find('device-diagnostics-save').props.onClick();
+  m.find('device-diagnostics-save').props.onClick();
+  assert.equal(exports, 1);
+  finish(diagnosticsContract.diagnosticsExportError('p2', 'TIMEOUT'));
+  await flush();
+  assert.equal(m.find('device-diagnostics-save').props.disabled, true);
+  m.find('device-diagnostics-read').props.onClick();
+  await flush();
+  assert.equal(reads, 2);
+  assert.equal(exports, 1);
+  m.dispose();
+});
+
+test('diagnostic UI polls only pending status, supports cancel and stops timers on unmount', async () => {
+  const operationId = '00000000-0000-4000-8000-000000000001';
+  let exports = 0,
+    cancels = 0,
+    reads = 0;
+  let state = {
+    revision: 0,
+    state: 'IDLE',
+    operationId: null,
+    records: 0,
+    dropped: 0,
+    bytes: 0,
+    sha256: null,
+    code: null,
+  };
+  const response = () => diagnosticsContract.diagnosticsExportSuccess('p1', state);
+  const m = mount(
+    { read: async () => contract.settingsError(null, 'SESSION_UNAVAILABLE', null, 'DEGRADED') },
+    1600,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    {
+      get: async () => {
+        reads++;
+        return response();
+      },
+      export: async () => {
+        exports++;
+        state = { ...state, revision: 1, state: 'PENDING', operationId };
+        return response();
+      },
+      cancel: async (id) => {
+        assert.equal(id, operationId);
+        cancels++;
+        state = { ...state, revision: 2, state: 'CANCEL_PENDING' };
+        return response();
+      },
+    },
+  );
+  m.find('device-diagnostics-read').props.onClick();
+  await flush();
+  m.find('device-diagnostics-save').props.onClick();
+  await flush();
+  assert.equal(m.find('device-diagnostics-cancel').props.disabled, false);
+  m.find('device-diagnostics-cancel').props.onClick();
+  await flush();
+  assert.equal(cancels, 1);
+  assert.equal(m.find('device-diagnostics-save').props.disabled, true);
+  m.effects();
+  const before = reads;
+  m.runTimers();
+  await flush();
+  assert.ok(reads > before);
+  assert.equal(exports, 1);
+  m.dispose();
+  assert.equal(m.timers.size, 0);
 });

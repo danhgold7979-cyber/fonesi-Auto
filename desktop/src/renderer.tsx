@@ -1,4 +1,8 @@
 import {
+  parseDiagnosticsExportResponse,
+  type DiagnosticsExportSnapshot,
+} from './diagnostics-report-contract.js';
+import {
   INPUT_ACTIONS,
   parseInputInteractionResponse,
   type InputInteractionSnapshot,
@@ -26,6 +30,12 @@ import { UiShell } from './ui/ui-shell.tsx';
 
 declare global {
   interface Window {
+    deviceDiagnostics: Readonly<{
+      get: () => Promise<string>;
+      export: (revision: unknown) => Promise<string>;
+      cancel: (operationId: unknown) => Promise<string>;
+    }>;
+
     input: Readonly<{
       get: () => Promise<string>;
       press: (
@@ -86,6 +96,75 @@ declare global {
 }
 function Diagnostic() {
   const [status, setStatus] = useState('NOT_READY / UNAVAILABLE');
+  const [diagnosticsSnapshot, setDiagnosticsSnapshot] = useState<DiagnosticsExportSnapshot | null>(
+    null,
+  );
+  const [diagnosticsStatus, setDiagnosticsStatus] = useState(
+    'Chưa xuất dữ liệu. Đọc trạng thái trước khi xuất.',
+  );
+  const [diagnosticsPending, setDiagnosticsPending] = useState(false);
+  const [diagnosticsReconcile, setDiagnosticsReconcile] = useState(true);
+  const diagnosticsInFlight = useRef(false),
+    diagnosticsAlive = useRef(true);
+  const diagnosticsAction = useCallback(
+    async (method: 'get' | 'save' | 'cancel') => {
+      if (diagnosticsInFlight.current || !diagnosticsAlive.current) return;
+      if (method === 'save' && (!diagnosticsSnapshot || diagnosticsReconcile)) return;
+      if (method === 'cancel' && !diagnosticsSnapshot?.operationId) return;
+      diagnosticsInFlight.current = true;
+      setDiagnosticsPending(true);
+      try {
+        const raw = await (method === 'get'
+          ? window.deviceDiagnostics.get()
+          : method === 'save'
+            ? window.deviceDiagnostics.export(diagnosticsSnapshot?.revision)
+            : window.deviceDiagnostics.cancel(diagnosticsSnapshot?.operationId));
+        if (!diagnosticsAlive.current) return;
+        const result = parseDiagnosticsExportResponse(raw);
+        if (!result?.ok) {
+          setDiagnosticsReconcile(true);
+          setDiagnosticsStatus(
+            `${result && !result.ok ? result.code : 'INTERNAL_FAILURE'} / Đọc trạng thái để đối chiếu; không tự xuất lại.`,
+          );
+          return;
+        }
+        setDiagnosticsSnapshot(result.snapshot);
+        setDiagnosticsReconcile(false);
+        setDiagnosticsStatus(
+          `${result.snapshot.state} / ${result.snapshot.records} bản ghi / ${result.snapshot.bytes} byte / ${result.snapshot.dropped} bản ghi không được giữ${result.snapshot.code ? ` / ${result.snapshot.code}` : ''}`,
+        );
+      } catch {
+        if (diagnosticsAlive.current) {
+          setDiagnosticsReconcile(true);
+          setDiagnosticsStatus('UNAVAILABLE / Đọc trạng thái để đối chiếu; không tự xuất lại.');
+        }
+      } finally {
+        diagnosticsInFlight.current = false;
+        if (diagnosticsAlive.current) setDiagnosticsPending(false);
+      }
+    },
+    [diagnosticsSnapshot, diagnosticsReconcile],
+  );
+  useEffect(
+    () => () => {
+      diagnosticsAlive.current = false;
+    },
+    [],
+  );
+  useEffect(() => {
+    if (
+      diagnosticsReconcile ||
+      diagnosticsPending ||
+      !diagnosticsSnapshot ||
+      !['PENDING', 'CANCEL_PENDING'].includes(diagnosticsSnapshot.state)
+    )
+      return;
+    const timer = window.setTimeout(() => {
+      void diagnosticsAction('get');
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [diagnosticsSnapshot, diagnosticsPending, diagnosticsReconcile, diagnosticsAction]);
+
   const [preferences, setPreferences] = useState<PublicSettings | null>(null);
   const [preferenceStatus, setPreferenceStatus] = useState(
     'NOT_READY / READ PERSISTED PREFERENCES',
@@ -941,6 +1020,54 @@ function Diagnostic() {
       }}
       settings={
         <>
+          <section aria-label="Chẩn đoán thiết bị" id="device-diagnostics-panel">
+            <h2>Chẩn đoán thiết bị</h2>
+            <p>
+              Chỉ xuất kết quả lệnh đã lọc trong phiên này. Không gồm ảnh, nội dung màn hình,
+              serial, địa chỉ mạng hay dữ liệu đăng nhập.
+            </p>
+            <button
+              type="button"
+              id="device-diagnostics-read"
+              disabled={diagnosticsPending}
+              onClick={() => {
+                void diagnosticsAction('get');
+              }}
+            >
+              Đọc trạng thái
+            </button>
+            <button
+              type="button"
+              id="device-diagnostics-save"
+              disabled={
+                diagnosticsPending ||
+                diagnosticsReconcile ||
+                !diagnosticsSnapshot ||
+                ['PENDING', 'CANCEL_PENDING'].includes(diagnosticsSnapshot.state)
+              }
+              onClick={() => {
+                void diagnosticsAction('save');
+              }}
+            >
+              Chọn thư mục và xuất
+            </button>
+            <button
+              type="button"
+              id="device-diagnostics-cancel"
+              disabled={diagnosticsPending || diagnosticsSnapshot?.state !== 'PENDING'}
+              onClick={() => {
+                void diagnosticsAction('cancel');
+              }}
+            >
+              Hủy xuất
+            </button>
+            <p id="device-diagnostics-status" aria-live="polite">
+              {diagnosticsStatus}
+            </p>
+            {diagnosticsSnapshot?.state === 'CANCEL_PENDING' && (
+              <p>Đang chờ hộp chọn thư mục hoặc dọn tệp đã tạo kết thúc; chưa xác nhận hủy xong.</p>
+            )}
+          </section>
           <section aria-label="Android Platform Tools setup" id="platform-tools-panel">
             <h2>Android Platform Tools</h2>
             <p>

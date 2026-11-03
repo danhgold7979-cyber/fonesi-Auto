@@ -117,7 +117,8 @@ function snapshot(input: unknown): DeviceDiagnosticInput | null {
     )
       return null;
     if (
-      (v.outcome === 'OBSERVED') !== (v.code === 'OK') ||
+      (v.outcome === 'OBSERVED' && v.code !== 'OK') ||
+      (v.code === 'OK' && !['OBSERVED', 'DISPATCHED_UNCONFIRMED'].includes(v.outcome as string)) ||
       (v.outcome === 'OUTCOME_UNKNOWN' && v.code !== 'OUTCOME_UNKNOWN') ||
       (v.code === 'OUTCOME_UNKNOWN' &&
         !['NOT_DISPATCHED', 'OUTCOME_UNKNOWN'].includes(v.outcome as string))
@@ -126,6 +127,7 @@ function snapshot(input: unknown): DeviceDiagnosticInput | null {
     if (
       v.outcome === 'DISPATCHED_UNCONFIRMED' &&
       ![
+        'OK',
         'OWNER_REVOKED',
         'STALE_BINDING',
         'STALE_DISPLAY',

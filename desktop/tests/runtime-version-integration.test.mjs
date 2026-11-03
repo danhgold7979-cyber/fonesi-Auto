@@ -1,3 +1,5 @@
+import * as diagnosticsClient from '../src/diagnostics-export-client.ts';
+import * as diagnosticsReport from '../src/diagnostics-report-contract.ts';
 import * as inputClient from '../src/input-interaction-client.ts';
 import * as inputContract from '../src/input-interaction-contract.ts';
 import * as associationClient from '../src/association-client.ts';
@@ -164,6 +166,8 @@ test('actual transformed preload shares eight slots with VERSION and exposes no 
     events = [],
     invocations = [];
   const modules = {
+    './diagnostics-export-client.js': diagnosticsClient,
+    './diagnostics-report-contract.js': diagnosticsReport,
     './association-client.js': associationClient,
     './association-contract.js': associationContract,
     './input-interaction-client.js': inputClient,
@@ -325,6 +329,7 @@ function mount(api, width = 1600, fleetApi = null, setupApi = null) {
           }),
         };
       if (name === './association-contract.js') return associationContract;
+      if (name === './diagnostics-report-contract.js') return diagnosticsReport;
       if (name === './input-interaction-contract.js') return inputContract;
       if (name === './metadata-contract.js') return metadataContract;
       if (name === './runtime-version-contract.js') return versionContract;

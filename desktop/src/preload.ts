@@ -1,3 +1,5 @@
+import { createDiagnosticsExportClient } from './diagnostics-export-client.js';
+import { DIAGNOSTICS_EXPORT_CHANNEL } from './diagnostics-report-contract.js';
 import { createInputInteractionClient } from './input-interaction-client.js';
 import { createAssociationClient } from './association-client.js';
 import { createMetadataClient } from './metadata-client.js';
@@ -13,6 +15,19 @@ import { createSettingsClient, createSettingsReadiness } from './settings-client
 
 const budget = createInvocationBudget();
 const readiness = createSettingsReadiness();
+const diagnostics = createDiagnosticsExportClient(
+  (wire) => ipcRenderer.invoke(DIAGNOSTICS_EXPORT_CHANNEL, wire),
+  budget,
+);
+contextBridge.exposeInMainWorld(
+  'deviceDiagnostics',
+  Object.freeze({
+    get: () => diagnostics.get(),
+    export: (revision: unknown) => diagnostics.export(revision),
+    cancel: (operationId: unknown) => diagnostics.cancel(operationId),
+  }),
+);
+
 const ready = () => readiness.signal();
 ipcRenderer.once('foundation:preferences:ready', ready);
 const client = createDiagnosticClient(
@@ -195,6 +210,7 @@ window.addEventListener(
   () => {
     ipcRenderer.removeListener('foundation:preferences:ready', ready);
     readiness.dispose();
+    diagnostics.dispose();
     client.dispose();
     preferences.dispose();
     fleet.dispose();

@@ -170,6 +170,7 @@ async function fixture(extra = {}) {
   });
   const fleetCap = fleet.grant(() => {});
   facade = createDiscoverySessionService({
+    captureDiagnosticObserver: () => extra.captureDiagnosticObserver?.() ?? null,
     fleet,
     logger,
     custody,
@@ -1278,11 +1279,22 @@ test('known logical input receipt keeps all ordinary effects BUSY through actual
       if (count === 2) drained.resolve();
       return result;
     };
-    // Test-only elapsed scheduling: original absolute deadline remains in every request.
-    globalThis.setTimeout = (fn, delay, ...args) =>
-      nativeTimer(fn, delay > 29000 && delay <= 30000 ? 30 : delay, ...args);
+    // Trigger the deadline only after RESULT is held, never during INTENT/fsync.
+    // The real handle remains cancellable and original absolute deadlines are unchanged.
+    let deadline;
+    globalThis.setTimeout = (fn, delay, ...args) => {
+      const handle = nativeTimer(fn, delay, ...args);
+      if (delay > 29000 && delay <= 30000)
+        deadline = () => {
+          clearTimeout(handle);
+          fn(...args);
+        };
+      return handle;
+    };
     await f.input('press', { ...target, expectedRevision: 0, action: 'HOME' });
     await entered.promise;
+    assert.equal(typeof deadline, 'function');
+    deadline();
     const result = await inputTerminal(f);
     assert.equal(result.snapshot.receipt.actor.outcome, 'DISPATCHED_UNCONFIRMED');
     assert.equal(result.snapshot.code, 'OK');
@@ -1457,6 +1469,31 @@ test('pre-owner replacement expiry then Stop advances once and actual drain pres
     globalThis.setTimeout = nativeTimer;
     delete globalThis.__inputReplacementDrain;
     held.resolve();
+    await f.cleanup();
+  }
+});
+
+test('actual input post-result observer retains unconfirmed dispatch and cannot change receipt on throw', async () => {
+  const records = [];
+  const f = await fixture({
+    captureDiagnosticObserver: () => (record) => {
+      records.push(record);
+      throw Error('optional observer');
+    },
+  });
+  try {
+    const target = await inputReady(f);
+    await f.input('press', { ...target, expectedRevision: 0, action: 'HOME' });
+    const done = await inputTerminal(f);
+    assert.equal(done.snapshot.receipt.actor.outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.equal(done.snapshot.receipt.actor.code, 'OK');
+    assert.equal(records.length, 1);
+    assert.equal(records[0].outcome, 'DISPATCHED_UNCONFIRMED');
+    assert.equal(records[0].code, 'OK');
+    assert.equal(records[0].operation, 'HOME');
+    assert.ok(Number.isSafeInteger(records[0].durationMs) && records[0].durationMs >= 0);
+    assert.equal(records[0].health, 'UNKNOWN');
+  } finally {
     await f.cleanup();
   }
 });

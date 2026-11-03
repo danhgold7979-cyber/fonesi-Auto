@@ -208,7 +208,10 @@ test('actual renderer-loss failure uses coordinated quit before cleanup owner in
   runInNewContext(transformSync(code + '\nfail();', { loader: 'ts', format: 'cjs' }).code, context);
   assert.deepEqual(calls, ['quit']);
   assert.equal(context.cleanupComplete, false);
-  assert.match(source, /bridge\.attach\(window, \(\) => discoverySessionService\?\.revoke\(\)\)/);
+  assert.match(
+    source,
+    /bridge\.attach\(window, \(\) => \{\s+retireDiagnostics\(windowDiagnostics\);\s+discoverySessionService\?\.revoke\(\);\s+\}\)/,
+  );
 });
 
 test('main metadata audit forwards actual logger result and absent logger degrades without native builders', async () => {
@@ -218,4 +221,47 @@ test('main metadata audit forwards actual logger result and absent logger degrad
   f.context.logger = undefined;
   assert.equal(await f.captured.facade.metadataAudit({}), 'DEGRADED');
   assert.deepEqual(f.calls, []);
+});
+
+test('actual main diagnostic retirement retains every old window drain until cleanup resolves', async () => {
+  const oldGate = {};
+  oldGate.promise = new Promise((resolve) => {
+    oldGate.resolve = resolve;
+  });
+  const newGate = {};
+  newGate.promise = new Promise((resolve) => {
+    newGate.resolve = resolve;
+  });
+  const old = { close: () => oldGate.promise },
+    fresh = { close: () => newGate.promise };
+  const context = { diagnosticsService: old, cleanupComplete: true };
+  const code = section(
+    'const diagnosticsDrains = new Set<Promise<boolean>>();',
+    'let associationBridge:',
+  );
+  runInNewContext(
+    transformSync(
+      code + ';globalThis.retire=retireDiagnostics;globalThis.drains=diagnosticsDrains;',
+      { loader: 'ts', format: 'cjs' },
+    ).code,
+    context,
+  );
+  context.retire(old);
+  context.diagnosticsService = fresh;
+  context.retire(fresh);
+  context.retire(old);
+  assert.equal(context.drains.size, 2);
+  newGate.resolve(true);
+  await newGate.promise;
+  await new Promise((r) => setImmediate(r));
+  assert.equal(context.drains.size, 1);
+  oldGate.resolve(false);
+  await oldGate.promise;
+  await new Promise((r) => setImmediate(r));
+  assert.equal(context.drains.size, 0);
+  assert.equal(context.cleanupComplete, false);
+  assert.ok(
+    source.indexOf('await Promise.all([...diagnosticsDrains]);') <
+      source.indexOf('await platformToolsLifecycle.stop();', source.indexOf('flush: async')),
+  );
 });

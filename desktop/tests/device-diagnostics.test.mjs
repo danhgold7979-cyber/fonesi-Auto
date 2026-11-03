@@ -228,3 +228,17 @@ test('actual actor queued timeout and post-retirement binary revocation remain e
   assert.equal(r.code, 'BINARY_UNAVAILABLE');
   assert.notEqual(project(r), NO);
 });
+
+test('successful dispatch remains unconfirmed rather than being relabeled observed', () => {
+  const raw = createDeviceDiagnosticEncoder().encode({
+    ...input(),
+    outcome: 'DISPATCHED_UNCONFIRMED',
+    code: 'OK',
+  });
+  assert.notEqual(raw, NO);
+  assert.equal(JSON.parse(raw).outcome, 'DISPATCHED_UNCONFIRMED');
+  assert.equal(
+    createDeviceDiagnosticEncoder().encode({ ...input(), outcome: 'NOT_DISPATCHED', code: 'OK' }),
+    NO,
+  );
+});

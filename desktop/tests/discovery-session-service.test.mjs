@@ -65,6 +65,10 @@ const { createDiscoverySessionService } = await import(
   moduleUrl(
     readFileSync(facadePath, 'utf8')
       .replace("'./adb-server-service.ts'", JSON.stringify(serverUrl))
+      .replace(
+        'const diagnosticNow = performance.now.bind(performance);',
+        'const diagnosticNow = () => globalThis.__diagnosticMonotonic ? globalThis.__diagnosticMonotonic() : performance.now();',
+      )
       .replaceAll("'./adb-discovery-service.ts'", JSON.stringify(ingestUrl))
       .replace("'./owned-transport-metadata.ts'", JSON.stringify(ownerUrl))
       // Explicit test-only capacity injection exercises the actual closed exhaustion branch.
@@ -171,6 +175,7 @@ async function fixture(extra = {}) {
     () => {},
   );
   const facade = createDiscoverySessionService({
+    captureDiagnosticObserver: () => extra.captureDiagnosticObserver?.() ?? null,
     logger,
     custody,
     assertOwnedSync: () => extra.owner?.(),
@@ -1293,3 +1298,150 @@ test('metadata synchronous EXEC diagnostic exhaustion retains immutable PENDING 
     await f.cleanup();
   }
 });
+
+test('actual metadata observer runs after result audit and preserves known outcome when it throws', async () => {
+  const seen = [];
+  let f;
+  f = await fixture({
+    captureDiagnosticObserver: () => (record) => {
+      assert.ok(Object.isFrozen(record));
+      assert.equal(f.metadataEvents.at(-1).phase, 'RESULT');
+      seen.push(record);
+      throw Error('optional diagnostics failed');
+    },
+  });
+  try {
+    const target = await metadataReady(f);
+    await f.metadata('read', metadataFields(target));
+    const result = await f.metadataTerminal();
+    assert.equal(result.snapshot.state, 'READY');
+    assert.equal(result.snapshot.lastOutcome, 'OBSERVED');
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].operation, 'MODEL');
+    assert.equal(seen[0].health, 'UNKNOWN');
+    assert.ok(Number.isSafeInteger(seen[0].durationMs) && seen[0].durationMs >= 0);
+    assert.deepEqual(
+      Object.keys(seen[0]).sort(),
+      [
+        'version',
+        'deviceId',
+        'commandId',
+        'correlationId',
+        'operation',
+        'outcome',
+        'code',
+        'health',
+        'durationMs',
+      ].sort(),
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+test('observer capture failure cannot prevent real metadata operation or fabricate a record', async () => {
+  const f = await fixture({
+    captureDiagnosticObserver: () => {
+      throw Error('optional capture failed');
+    },
+  });
+  try {
+    const target = await metadataReady(f);
+    await f.metadata('read', metadataFields(target));
+    assert.equal((await f.metadataTerminal()).snapshot.state, 'READY');
+  } finally {
+    await f.cleanup();
+  }
+});
+test('delayed metadata result stays with captured origin observer, never replacement window', async () => {
+  const wait = deferred(),
+    seen = [],
+    fresh = [];
+  let selected = (r) => seen.push(r),
+    handoff = false;
+  const f = await fixture({
+    captureDiagnosticObserver: () => selected,
+    metadataQuery: () => {
+      handoff = true;
+      return wait.promise;
+    },
+  });
+  try {
+    const target = await metadataReady(f);
+    await f.metadata('read', metadataFields(target));
+    while (!handoff) await tick();
+    selected = (r) => fresh.push(r);
+    wait.resolve();
+    assert.equal((await f.metadataTerminal()).snapshot.state, 'READY');
+    assert.equal(seen.length, 1);
+    assert.equal(fresh.length, 0);
+  } finally {
+    wait.resolve();
+    await f.cleanup();
+  }
+});
+
+test('metadata observer is captured before deferred admission audit, not selected from later window', async () => {
+  const wait = deferred(),
+    old = [],
+    fresh = [];
+  let selected = (r) => old.push(r),
+    entered = false;
+  const f = await fixture({
+    captureDiagnosticObserver: () => selected,
+    metadataAudit: (e) => {
+      if (e.stage === 'REQUEST' && e.phase === 'INTENT') {
+        entered = true;
+        return wait.promise;
+      }
+      return 'AVAILABLE';
+    },
+  });
+  try {
+    const target = await metadataReady(f),
+      pending = f.metadata('read', metadataFields(target));
+    while (!entered) await tick();
+    selected = (r) => fresh.push(r);
+    wait.resolve('AVAILABLE');
+    await pending;
+    assert.equal((await f.metadataTerminal()).snapshot.state, 'READY');
+    assert.equal(old.length, 1);
+    assert.equal(fresh.length, 0);
+  } finally {
+    wait.resolve('AVAILABLE');
+    await f.cleanup();
+  }
+});
+
+for (const [label, samples, expected] of [
+  ['fractional elapsed', [10.25, 18.99], 8],
+  ['zero elapsed', [12, 12], 0],
+  ['clock regression', [12, 11], null],
+  ['negative zero sample', [-0, 14], null],
+  ['unavailable sample', [NaN, 14], null],
+  ['throwing sample', ['THROW', 14], null],
+  ['unbounded interval', [0, 86400001], null],
+])
+  test(`actual metadata diagnostics report ${label} without changing actor result`, async () => {
+    const seen = [],
+      values = [...samples];
+    globalThis.__diagnosticMonotonic = () => {
+      const v = values.shift();
+      if (v === 'THROW') throw Error('clock');
+      return v;
+    };
+    const f = await fixture({ captureDiagnosticObserver: () => (r) => seen.push(r) });
+    try {
+      const target = await metadataReady(f);
+      await f.metadata('read', metadataFields(target));
+      const terminal = await f.metadataTerminal();
+      assert.equal(terminal.snapshot.state, 'READY');
+      assert.equal(seen.length, 1);
+      assert.equal(seen[0].durationMs, expected);
+      assert.equal(seen[0].health, 'UNKNOWN');
+      assert.equal(seen[0].outcome, 'OBSERVED');
+      assert.equal(values.length, 0);
+    } finally {
+      delete globalThis.__diagnosticMonotonic;
+      await f.cleanup();
+    }
+  });

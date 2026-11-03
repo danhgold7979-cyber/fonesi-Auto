@@ -1,3 +1,5 @@
+import * as diagnosticsClient from '../src/diagnostics-export-client.ts';
+import * as diagnosticsReport from '../src/diagnostics-report-contract.ts';
 import * as inputClient from '../src/input-interaction-client.ts';
 import * as associationClient from '../src/association-client.ts';
 import * as metadataClient from '../src/metadata-client.ts';
@@ -46,6 +48,8 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
       if (name === './preload-client.js') return clients;
       if (name === './settings-client.js') return preferences;
       if (name === './association-client.js') return associationClient;
+      if (name === './diagnostics-export-client.js') return diagnosticsClient;
+      if (name === './diagnostics-report-contract.js') return diagnosticsReport;
       if (name === './input-interaction-client.js') return inputClient;
       if (name === './metadata-client.js') return metadataClient;
       if (name === './discovery-client.js') return discoveryClient;
@@ -60,6 +64,7 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
   });
   assert.deepEqual(Object.keys(exposed).sort(), [
     'association',
+    'deviceDiagnostics',
     'discovery',
     'fleet',
     'foundation',
@@ -75,6 +80,8 @@ test('actual transformed preload exposes only frozen intended wrappers with one 
     'restorePrevious',
     'update',
   ]);
+  assert.deepEqual(Object.keys(exposed.deviceDiagnostics).sort(), ['cancel', 'export', 'get']);
+  assert.ok(Object.isFrozen(exposed.deviceDiagnostics));
   assert.deepEqual(Object.keys(exposed.input).sort(), ['get', 'press']);
   assert.deepEqual(Object.keys(exposed.metadata).sort(), ['get', 'read']);
   assert.deepEqual(Object.keys(exposed.association).sort(), [
