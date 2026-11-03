@@ -13,8 +13,13 @@ Opened `phase-09` at 2026-11-03 21:37:52 UTC from public Phase08 `76efe43d`,
 whose exact source [Windows CI41722369686](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41722369686)
 PASS1781/1781 is independently audited. This supersedes only the older
 pre-publication wording below. Phase08/main remain unchanged, with no acceptance
-or merge. Current active lanes are Phase07 and Phase09. Source-only Phase09
-publication/hosted outcome remains pending; no numerical code percentage is inferred.
+or merge. Current active lanes are Phase07 and Phase09. Source-only Phase09 was published as
+[`8d44f256`](https://github.com/danhgold7979-cyber/fonesi-Auto/commit/8d44f2565a5578dacfa7267a9711f02e1f3fa9c9).
+Exact-head [Windows CI41724885138](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41724885138)
+completed SUCCESS: PASS1802/1802 and DESKTOP_SOURCE_CHECK_PASS, independently read
+from job126226946922 at 2026-11-03 21:56 UTC. Full Phase09 remains blocked on real
+registry/journal, permitted profiles/identity and visual/pilot evidence. No numerical
+code percentage or task/Phase acceptance is inferred.
 
 ## Inherited Phase08 source checkpoint
 

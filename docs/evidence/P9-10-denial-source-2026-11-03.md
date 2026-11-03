@@ -73,11 +73,35 @@ with exit0 on the exact source. No blocking findings. Exact current bytes:
 - Test SHA256 `c8609eb3053ec8c72543c6ba42337d3b9630e984477c81a947072cecbdaa10f8`.
 - Workflow SHA256 `f1ccd519671ac60bd9924ec25c515d8fe14cda30a93aa9c447ac7cc6c881c137`.
 
-Publication and actual hosted source CI are NOT_RUN at this evidence preparation
-checkpoint. The new phase09-only workflow has pinned actions, contents:read,
+Publication and hosted source CI were NOT_RUN at the original evidence preparation
+checkpoint; the verified hosted result below supersedes that pending status.
+The new phase09-only workflow has pinned actions, contents:read,
 credentials/cache disabled, exact LF bytes, finite timeout and only the existing
 scripts-disabled full source runner plus unavailable markers. No artifact upload,
 application/native/device campaign or external capability action.
+
+## Verified public checkpoint and hosted result — 2026-11-03 21:56 UTC
+
+Public `phase-09` commit
+[`8d44f2565a5578dacfa7267a9711f02e1f3fa9c9`](https://github.com/danhgold7979-cyber/fonesi-Auto/commit/8d44f2565a5578dacfa7267a9711f02e1f3fa9c9)
+has tree `d88a39736391cb92939ac5401d88b024c257bf71`, identical to reviewed local
+`6bc52a0f327cec3581fc8bbba6af8dc931cc1a1d`; both retain public Phase08
+`76efe43d071c8fa4566dc1abcc6f229052f56b35` as their sole parent. No main merge or
+history rewrite occurred.
+
+[Windows run41724885138](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41724885138),
+job126226946922, completed SUCCESS. The actual log records image `windows-2022`
+version `20261101.353.1`, exact `SOURCE_HEAD=8d44f2565a5578dacfa7267a9711f02e1f3fa9c9`,
+`TESTS_PASS 1802/1802` and `DESKTOP_SOURCE_CHECK_PASS` at21:50:21 UTC. The exact
+source/build verification step succeeded, followed by `PHASE09_SOURCE_ONLY`,
+`FACEBOOK_CAPABILITIES_DISABLED`, `DEVICE_HARDWARE_NOT_RUN` and
+`P106_CROSS_USER_UNMET_NOT_RERUN`. These are source checks, not runtime/pilot proof.
+
+The continuation rechecked all three SHA256 values above unchanged, inspected the
+public/local tree and parent identity, and reran focused denial tests locally:
+PASS21/21, zero failed/skipped/cancelled/todo. No application source changed during
+this evidence closure. Required full-source checks are attributed to the actual
+public commit, not to this subsequent documentation-only commit.
 
 ## Remaining acceptance
 
