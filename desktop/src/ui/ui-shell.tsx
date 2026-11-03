@@ -1160,8 +1160,10 @@ export function UiShell(p: ShellProps) {
                         }
                       >
                         <div className="android-view">
-                          <span className="screen-order">{index + 1}</span>
-                          <p>{d.name}</p>
+                          <span className="screen-order" style={{ flexShrink: 0 }}>
+                            {index + 1}
+                          </span>
+                          <p style={{ flexShrink: 0 }}>{d.name}</p>
                           {p.video?.view?.deviceId === d.id &&
                           p.video.view.generation === d.generation ? (
                             <>
@@ -1170,12 +1172,15 @@ export function UiShell(p: ShellProps) {
                                 aria-label={`Video ${d.name}`}
                                 style={{
                                   width: '100%',
-                                  height: '100%',
+                                  height: 0,
+                                  minHeight: 0,
+                                  minWidth: 0,
+                                  flex: '1 1 0',
                                   objectFit: 'contain',
                                   pointerEvents: 'none',
                                 }}
                               />
-                              <small>{p.video.view.state}</small>
+                              <small style={{ flexShrink: 0 }}>{p.video.view.state}</small>
                             </>
                           ) : (
                             <small>UNAVAILABLE · không có stream</small>

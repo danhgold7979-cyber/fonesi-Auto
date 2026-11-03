@@ -205,7 +205,7 @@ async function send(kind, fixture) {
   );
 }
 let baselineChrome = null;
-const canvasFacts = `(()=>{const c=document.querySelector('canvas[aria-label="Video Device 0001"]');if(!c)return null;const r=c.getBoundingClientRect(),s=getComputedStyle(c),t=c.closest('.tile-footprint').getBoundingClientRect(),p=c.parentElement.querySelector('p').getBoundingClientRect(),a=c.parentElement.getBoundingClientRect();const px=(x,y)=>Array.from(c.getContext('2d').getImageData(x,y,1,1).data);return {parent:[a.x,a.y,a.width,a.height],dpr:[devicePixelRatio],backingDark:c.width>=32||c.height>=32?px(8,8):null,backingLight:c.width>=32||c.height>=32?px(c.width===32?24:8,c.height===32?24:8):null,geometry:c.dataset.videoGeometry?.slice(0,513)??null,tile:[t.x,t.y,t.width,t.height],chrome:[p.x,p.y,p.width,p.height],width:c.width,height:c.height,x:r.x,y:r.y,w:r.width,h:r.height,fit:s.objectFit,visible:s.visibility==='visible'&&s.display!=='none',state:c.parentElement.querySelector('small')?.textContent,clear:Array.from(c.getContext('2d').getImageData(0,0,1,1).data).every(v=>v===0)};})()`;
+const canvasFacts = `(()=>{const c=document.querySelector('canvas[aria-label="Video Device 0001"]');if(!c)return null;const r=c.getBoundingClientRect(),s=getComputedStyle(c),t=c.closest('.tile-footprint').getBoundingClientRect(),p=c.parentElement.querySelector('p').getBoundingClientRect(),a=c.parentElement.getBoundingClientRect();const aStyle=getComputedStyle(c.parentElement),sx=a.width/c.parentElement.offsetWidth,sy=a.height/c.parentElement.offsetHeight,n=k=>parseFloat(aStyle[k]),left=(n('borderLeftWidth')+n('paddingLeft'))*sx,right=(n('borderRightWidth')+n('paddingRight'))*sx,top=(n('borderTopWidth')+n('paddingTop'))*sy,bottom=(n('borderBottomWidth')+n('paddingBottom'))*sy,q=c.parentElement.querySelector('small').getBoundingClientRect(),qs=getComputedStyle(c.parentElement.querySelector('small'));const px=(x,y)=>Array.from(c.getContext('2d').getImageData(x,y,1,1).data);return {statusVisible:qs.visibility==='visible'&&qs.display!=='none',inner:[a.x+left,a.y+top,a.width-left-right,a.height-top-bottom],status:[q.x,q.y,q.width,q.height],parent:[a.x,a.y,a.width,a.height],dpr:[devicePixelRatio],backingDark:c.width>=32||c.height>=32?px(8,8):null,backingLight:c.width>=32||c.height>=32?px(c.width===32?24:8,c.height===32?24:8):null,geometry:c.dataset.videoGeometry?.slice(0,513)??null,tile:[t.x,t.y,t.width,t.height],chrome:[p.x,p.y,p.width,p.height],width:c.width,height:c.height,x:r.x,y:r.y,w:r.width,h:r.height,fit:s.objectFit,visible:s.visibility==='visible'&&s.display!=='none',state:c.parentElement.querySelector('small')?.textContent,clear:Array.from(c.getContext('2d').getImageData(0,0,1,1).data).every(v=>v===0)};})()`;
 function observeState(v) {
   failureGeometry = null;
   rendererState = VIDEO_DIAGNOSTIC_STATES.includes(v?.state) ? v.state : 'UNRECOGNIZED';
@@ -221,6 +221,33 @@ function observationFacts(facts) {
     const candidate = { ...observation, [key]: value };
     observation[key] = validateVideoObservation(candidate) ? value : null;
   }
+}
+function containedVideoLayout(f) {
+  const rect = (r) =>
+    Array.isArray(r) && r.length === 4 && r.every(Number.isFinite) && r[2] > 0 && r[3] > 0;
+  const inside = (r, p) =>
+    rect(r) &&
+    rect(p) &&
+    r[0] >= p[0] &&
+    r[1] >= p[1] &&
+    r[0] + r[2] <= p[0] + p[2] &&
+    r[1] + r[3] <= p[1] + p[3];
+  const box = [f.x, f.y, f.w, f.h];
+  return (
+    f.statusVisible === true &&
+    inside(box, f.inner) &&
+    inside(f.chrome, f.inner) &&
+    inside(f.status, f.inner) &&
+    f.chrome[1] + f.chrome[3] <= f.y &&
+    f.y + f.h <= f.status[1]
+  );
+}
+function containGeometry(width, height, w, h) {
+  if (![width, height, w, h].every((n) => Number.isFinite(n) && n > 0)) throw Error();
+  const scale = Math.min(w / width, h / height),
+    cw = width * scale,
+    ch = height * scale;
+  return { scale, cw, ch, offsetX: (w - cw) / 2, offsetY: (h - ch) / 2 };
 }
 async function observe(fixture) {
   observation = Object.fromEntries(
@@ -247,6 +274,7 @@ async function observe(fixture) {
   observation.step = 'LAYOUT';
   if (
     !f.visible ||
+    !containedVideoLayout(f) ||
     f.fit !== 'contain' ||
     ![f.x, f.y, f.w, f.h].every(Number.isFinite) ||
     f.x < 0 ||
@@ -258,11 +286,12 @@ async function observe(fixture) {
   )
     throw Error();
   observation.step = 'CONTAIN';
-  const scale = Math.min(f.w / fixture.width, f.h / fixture.height),
-    cw = fixture.width * scale,
-    ch = fixture.height * scale;
-  const offsetX = (f.w - cw) / 2,
-    offsetY = (f.h - ch) / 2;
+  const { scale, cw, ch, offsetX, offsetY } = containGeometry(
+    fixture.width,
+    fixture.height,
+    f.w,
+    f.h,
+  );
   if (Math.abs(cw / ch - fixture.width / fixture.height) > 0.00001 || offsetX < 0 || offsetY < 0)
     throw Error();
   observation.step = 'CHROME';

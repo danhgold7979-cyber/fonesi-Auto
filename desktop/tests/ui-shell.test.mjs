@@ -1379,6 +1379,16 @@ test('explicit video controls are siblings of ACTIVE tile and old Start Stop han
   const start = m.all((n) => n.props?.['aria-label'] === 'Start video Synthetic phone', tree)[0];
   const stop = m.all((n) => n.props?.['aria-label'] === 'Stop video Synthetic phone', tree)[0];
   assert.ok(start && stop);
+  const canvas = m.all((n) => n.type === 'canvas', tree)[0];
+  assert.equal(canvas.props.style.flex, '1 1 0');
+  assert.equal(canvas.props.style.minHeight, 0);
+  assert.equal(canvas.props.style.height, 0);
+  assert.equal(canvas.props.style.width, '100%');
+  assert.equal(canvas.props.style.objectFit, 'contain');
+  const parent = m.all((n) => n.props?.className === 'android-view', tree)[0];
+  for (const child of walk(parent, (n) => ['span', 'p', 'small'].includes(n.type)))
+    assert.equal(child.props.style.flexShrink, 0);
+
   assert.equal(starts, 0);
   const tiles = m.all((n) => n.props?.className?.startsWith('wall-screen'), tree);
   assert.equal(walk(tiles[0], (n) => n !== tiles[0] && n.type === 'button').length, 0);

@@ -389,7 +389,7 @@ test('actual observation records failed chrome or pixel facts before throwing wi
     width: 16,
     height: 32,
     x: 0,
-    y: 0,
+    y: 20,
     w: 160,
     h: 400,
     fit: 'contain',
@@ -397,7 +397,10 @@ test('actual observation records failed chrome or pixel facts before throwing wi
     state: 'DISPLAYING',
     tile: [0, 0, 160, 400],
     chrome: [0, 0, 30, 10],
-    parent: [0, 0, 160, 400],
+    parent: [0, 0, 160, 450],
+    inner: [0, 0, 160, 450],
+    status: [0, 420, 160, 15],
+    statusVisible: true,
     dpr: [1],
     backingDark: [0, 0, 0, 255],
     backingLight: [255, 255, 255, 255],
@@ -436,4 +439,58 @@ test('actual observation records failed chrome or pixel facts before throwing wi
   assert.deepEqual(p.observation.backingLight, facts.backingLight);
   assert.deepEqual(Array.from(p.observation.light), [0, 0, 0, 255]);
   assert.equal(validateVideoObservation(p.observation), true);
+});
+
+test('viewport containment rejects clipping and exact-fit geometry is distinct from required campaign bars', () => {
+  const text = readFileSync(new URL('./video-decoder-probe.mjs', import.meta.url), 'utf8');
+  const source = text.slice(
+    text.indexOf('function containedVideoLayout(f)'),
+    text.indexOf('async function observe(fixture)'),
+  );
+  const ctx = {};
+  runInNewContext(
+    `${source};globalThis.layout=containedVideoLayout;globalThis.geometry=containGeometry;`,
+    ctx,
+  );
+  const f = {
+    statusVisible: true,
+    x: 1,
+    y: 30,
+    w: 148,
+    h: 270,
+    inner: [1, 1, 148, 323],
+    chrome: [1, 10, 148, 18],
+    status: [1, 300, 148, 15],
+  };
+  assert.equal(ctx.layout(f), true);
+  for (const bad of [
+    { ...f, h: 296 },
+    { ...f, y: 20 },
+    { ...f, status: [1, 299, 148, 15] },
+    { ...f, status: [1, 300, 0, 15] },
+    { ...f, inner: [1, 1, 148, 300] },
+    { ...f, w: NaN },
+  ])
+    assert.equal(ctx.layout(bad), false);
+  // A transformed tile uses matching transformed inner bounds, not unscaled borders.
+  const scaled = Object.fromEntries(
+    Object.entries(f).map(([k, v]) => [
+      k,
+      Array.isArray(v) ? v.map((n) => n / 2) : typeof v === 'number' ? v / 2 : v,
+    ]),
+  );
+  assert.equal(ctx.layout(scaled), true);
+  const exactFit = ctx.geometry(16, 32, 148, 296);
+  assert.equal(exactFit.offsetX, 0);
+  assert.equal(exactFit.offsetY, 0);
+  assert.ok(Math.max(exactFit.offsetX, exactFit.offsetY) < 3);
+  for (const [w, h] of [
+    [16, 32],
+    [32, 16],
+  ]) {
+    const g = ctx.geometry(w, h, 148, 270);
+    assert.ok(Math.max(g.offsetX, g.offsetY) >= 3);
+    assert.equal(g.cw / g.ch, w / h);
+  }
+  for (const bad of [0, -1, NaN, Infinity]) assert.throws(() => ctx.geometry(16, 32, 148, bad));
 });
