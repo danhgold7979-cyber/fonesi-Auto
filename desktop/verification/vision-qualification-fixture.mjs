@@ -144,7 +144,9 @@ export function ocrResult(bytes) {
     bytes.readUInt32LE(0) !== bytes.length - 4
   )
     throw Error('OCR_REPLY');
-  const value = flatReplyJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(4)));
+  const value = flatReplyJson(
+    new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes.subarray(4)),
+  );
   const r = ownRecord(value, [
     'version',
     'kind',

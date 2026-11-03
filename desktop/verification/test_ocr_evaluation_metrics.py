@@ -219,7 +219,18 @@ class MetricsTests(unittest.TestCase):
                 metrics.evaluate_json(b" " * (metrics.MAX_INPUT_BYTES + 1))
 
     def test_json_rejects_duplicates_nonfinite_and_bad_utf8(self):
+        # Outer PowerShell-style transport is semantic, not canonical JSON bytes.
+        data = corpus([row(label="Ắ<>&'", text="Ắ<>&'", modelLatencyMs=1e-7)])
+        data['version'] = 2; data['memoryKind'] = 'WINDOWS_PEAK_WORKING_SET'
+        data['rows'][0]['peakWorkingSetBytes'] = data['rows'][0].pop('peakRssBytes')
+        wire = json.dumps(dict(reversed(list(data.items()))), ensure_ascii=True, indent=2)
+        wire = wire.replace('<', r'\u003c').replace('>', r'\u003e').replace('&', r'\u0026')
+        wire = wire.replace("'", r'\u0027').replace('1e-07', '1E-7').replace('\n', '\r\n')
+        encoded = ('\r\n\t' + wire + '\r\n').encode('utf-8')
+        self.assertEqual(metrics.evaluate_json(encoded), metrics.evaluate(data))
         for data, code in [(b'{"version":1,"version":1}', "DUPLICATE_KEY"),
+                           (b'{"scope":1,"sc\\u006fpe":2}', "DUPLICATE_KEY"),
+                           (b'\xef\xbb\xbf' + encoded, "INVALID_JSON"),
                            (b'{"value":NaN}', "INVALID_NUMBER"),
                            (b"\xff", "INVALID_JSON"), (b"{", "INVALID_JSON")]:
             with self.assertRaisesRegex(metrics.MetricsError, code):

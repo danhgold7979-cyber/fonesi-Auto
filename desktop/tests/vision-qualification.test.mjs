@@ -109,6 +109,7 @@ test('strict Windows consumer refuses malformed UTF8, duplicate decoded keys and
     raw.replace('"version":2', '"version":2,"version":2'),
     raw.replace('"version":2', '"version":2,"vers\\u0069on":2'),
     `${raw}x`,
+    `\ufeff${raw}`,
   ])
     assert.throws(() => ocrResult(frame(null, Buffer.alloc(0), bad)));
   const bad = frame(reply());
