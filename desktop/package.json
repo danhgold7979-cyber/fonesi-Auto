@@ -1,0 +1,21 @@
+{
+  "name": "fonesi-auto-desktop-foundation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal authority-free lifecycle foundation, not a release",
+  "main": "build/main.cjs",
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "45.1.0",
+    "esbuild": "0.28.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@js-temporal/polyfill": "0.5.1"
+  }
+}

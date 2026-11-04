@@ -1,0 +1,590 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, realpathSync, readdirSync, rmdirSync, lstatSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createPlatformToolsRuntimeCustody } from '../src/main/platform-tools-runtime-custody.ts';
+import { createPlatformToolsSetupService } from '../src/main/platform-tools-setup-service.ts';
+import { createPlatformToolsSetupNative } from '../src/main/platform-tools-setup-native.ts';
+const uuid = (n) => `${String(n).padStart(8, '0')}-1234-4234-8234-123456789abc`;
+const request = (revision = 0) => ({
+  version: 2,
+  requestId: 'p1',
+  method: 'platformTools.setup.request',
+  expectedRevision: revision,
+});
+const get = { version: 2, requestId: 'p2', method: 'platformTools.get' };
+const selection = Object.freeze({
+  installTargetVersion: '37.0.1',
+  activeVersion: null,
+  previousVersion: null,
+  rollbackAvailable: false,
+});
+const tick = () => new Promise((r) => setImmediate(r));
+async function until(fn) {
+  const stop = Date.now() + 2000;
+  while (!(await fn())) {
+    assert.ok(Date.now() < stop, 'bounded condition not observed');
+    await tick();
+  }
+}
+function fixture(extra = {}) {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'setup-service-')));
+  let n = 1;
+  const events = [];
+  const custody = createPlatformToolsRuntimeCustody({
+    dataRoot: root,
+    storeId: uuid(900),
+    assertOwnedSync: extra.assertOwnedSync ?? (() => {}),
+    assertDataLocation: extra.assertDataLocation ?? ((p) => assert.equal(p, root)),
+  });
+  const service = createPlatformToolsSetupService({
+    dataRoot: root,
+    storeId: uuid(900),
+    assertOwnedSync() {},
+    custody,
+    assertDataLocation(p) {
+      assert.equal(p, root);
+    },
+    clock: () => Date.now(),
+    newId: () => uuid(n++),
+    audit: async (e) => {
+      events.push(e);
+      return 'AVAILABLE';
+    },
+    ...extra,
+    native: {
+      async interact(current, selected, onAction) {
+        // Test adapter for existing synthetic result fixtures, not genuine consent.
+        const answer = await (
+          extra.native?.interact ?? (async () => ({ ok: false, code: 'TERMS_DECLINED' }))
+        )(current, selected, onAction);
+        if (answer.ok) {
+          onAction(answer.kind ?? 'INSTALL');
+          return { ...answer, kind: answer.kind ?? 'INSTALL' };
+        }
+        return { ...answer, action: answer.action ?? null };
+      },
+    },
+  });
+  return {
+    root,
+    service,
+    events,
+    custody,
+    async cleanup() {
+      assert.equal(await service.shutdown(), 'RETIRED');
+      assert.equal(await custody.close(), 'RETIRED');
+      assert.deepEqual(readdirSync(root), []);
+      rmdirSync(root);
+    },
+  };
+}
+test('real core status plus native decline creates no core files; PENDING is not installed', async () => {
+  const f = fixture();
+  await f.service.initialize();
+  const ack = JSON.parse(await f.service.execute(request(), () => true));
+  assert.equal(ack.outcome, 'PENDING');
+  assert.equal(ack.snapshot.state, 'AWAITING_RECIPIENT');
+  await until(
+    async () => JSON.parse(await f.service.execute(get, () => true)).snapshot?.state === 'DECLINED',
+  );
+  const s = JSON.parse(await f.service.execute(get, () => true));
+  assert.equal(s.snapshot.state, 'DECLINED');
+  assert.equal(s.snapshot.installationRevision, 0);
+  assert.equal(f.events[0].phase, 'INTENT');
+  await f.cleanup();
+});
+test('request audit failure refuses before dialog or revision reservation', async () => {
+  let calls = 0;
+  const f = fixture({
+    native: {
+      interact: async () => {
+        calls++;
+        return { ok: false, code: 'TERMS_DECLINED' };
+      },
+    },
+    audit: async () => 'DEGRADED',
+  });
+  await f.service.initialize();
+  assert.equal(
+    JSON.parse(await f.service.execute(request(), () => true)).code,
+    'AUDIT_UNAVAILABLE',
+  );
+  assert.equal(calls, 0);
+  assert.equal(JSON.parse(await f.service.execute(get, () => true)).snapshot.revision, 0);
+  await f.cleanup();
+});
+test('one separate pending native interaction rejects duplicates and shutdown awaits real settlement', async () => {
+  let resolve;
+  const f = fixture({
+    native: {
+      interact: () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    },
+  });
+  await f.service.initialize();
+  await f.service.execute(request(), () => true);
+  assert.equal(JSON.parse(await f.service.execute(request(), () => true)).code, 'BUSY');
+  await until(() => typeof resolve === 'function');
+  let retired = false;
+  const stop = f.service.shutdown().then((x) => {
+    retired = true;
+    return x;
+  });
+  await tick();
+  assert.equal(retired, false);
+  resolve({ ok: false, code: 'TERMS_DECLINED' });
+  assert.equal(await stop, 'RETIRED');
+  await f.cleanup();
+});
+test('session loss during native await prevents grant/core files', async () => {
+  let resolve,
+    current = true;
+  const f = fixture({
+    native: {
+      interact: () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    },
+  });
+  await f.service.initialize();
+  await f.service.execute(request(), () => current);
+  await until(() => typeof resolve === 'function');
+  current = false;
+  resolve({ ok: true, route: 'OFFICIAL_DOWNLOAD', archivePath: null });
+  await tick();
+  assert.equal(JSON.parse(await f.service.execute(get, () => true)).snapshot.code, 'OWNER_REVOKED');
+  await f.cleanup();
+});
+test('PROVISION audit barrier denies accepted injected answers without core files', async () => {
+  const f = fixture({
+    native: { interact: async () => ({ ok: true, route: 'OFFICIAL_DOWNLOAD', archivePath: null }) },
+    audit: async (e) =>
+      e.operation === 'PROVISION' && e.phase === 'INTENT' ? 'DEGRADED' : 'AVAILABLE',
+  });
+  await f.service.initialize();
+  await f.service.execute(request(), () => true);
+  await until(
+    async () =>
+      JSON.parse(await f.service.execute(get, () => true)).snapshot?.code === 'AUDIT_UNAVAILABLE',
+  );
+  assert.equal(
+    JSON.parse(await f.service.execute(get, () => true)).snapshot.code,
+    'AUDIT_UNAVAILABLE',
+  );
+  await f.cleanup();
+});
+test('native sequence requires terms and final confirmation; all dialogs default Cancel', async () => {
+  const seen = [];
+  const answers = [2, 1, 1];
+  const native = createPlatformToolsSetupNative(
+    {
+      showMessageBox: async (o) => {
+        seen.push(o);
+        return { response: answers.shift() };
+      },
+      showOpenDialog: async () => ({ canceled: false, filePaths: ['/synthetic.zip'] }),
+    },
+    async () => assert.fail(),
+  );
+  const result = await native.interact(
+    () => {},
+    selection,
+    () => {},
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    kind: 'INSTALL',
+    route: 'LOCAL_ARCHIVE',
+    archivePath: '/synthetic.zip',
+  });
+  assert.equal(seen.length, 3);
+  assert.ok(seen.every((x) => x.defaultId === 0 && x.cancelId === 0));
+  assert.match(seen[0].detail, /https:\/\/developer.android.com\/studio\/terms/);
+});
+test('opening terms is separate fixed action and does not proceed; await revocation refuses', async () => {
+  const urls = [];
+  let calls = 0;
+  const native = createPlatformToolsSetupNative(
+    { showMessageBox: async () => ({ response: 1 }), showOpenDialog: async () => assert.fail() },
+    async (u) => urls.push(u),
+  );
+  assert.equal(
+    (
+      await native.interact(
+        () => {},
+        selection,
+        () => {},
+      )
+    ).code,
+    'TERMS_REQUIRED',
+  );
+  assert.deepEqual(urls, ['https://developer.android.com/studio/terms']);
+  await assert.rejects(
+    native.interact(
+      () => {
+        if (++calls === 2) throw Error('revoked');
+      },
+      selection,
+      () => {},
+    ),
+  );
+});
+test('ID allocation failure is INTERNAL_FAILURE without audit/dialog effects', async () => {
+  let calls = 0;
+  const f = fixture({
+    newId: () => 'invalid',
+    audit: async () => {
+      calls++;
+      return 'AVAILABLE';
+    },
+  });
+  await f.service.initialize();
+  assert.equal(JSON.parse(await f.service.execute(request(), () => true)).code, 'INTERNAL_FAILURE');
+  assert.equal(calls, 0);
+  await f.cleanup();
+});
+test('shutdown during REQUEST audit waits its settlement and never schedules native', async () => {
+  let release,
+    calls = 0;
+  const f = fixture({
+    audit: () =>
+      new Promise((r) => {
+        release = r;
+      }),
+    native: {
+      interact: async () => {
+        calls++;
+        return { ok: false, code: 'TERMS_DECLINED' };
+      },
+    },
+  });
+  await f.service.initialize();
+  const rpc = f.service.execute(request(), () => true);
+  await until(() => typeof release === 'function');
+  let done = false;
+  const closing = f.service.shutdown().then((x) => {
+    done = true;
+    return x;
+  });
+  await tick();
+  assert.equal(done, false);
+  release('AVAILABLE');
+  assert.equal(JSON.parse(await rpc).code, 'OWNER_REVOKED');
+  assert.equal(await closing, 'RETIRED');
+  assert.equal(calls, 0);
+  await f.cleanup();
+});
+
+test('real failed download settles core revision and explicit second request uses reconciled CAS', async () => {
+  let downloads = 0;
+  const f = fixture({
+    native: { interact: async () => ({ ok: true, route: 'OFFICIAL_DOWNLOAD', archivePath: null }) },
+    readOfficialArchive: async () => {
+      downloads++;
+      throw Error('DOWNLOAD_FAILED');
+    },
+  });
+  await f.service.initialize();
+  async function settle() {
+    for (let i = 0; i < 1000; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      const response = JSON.parse(await f.service.execute(get, () => true));
+      if (response.snapshot.state === 'FAILED') return response.snapshot;
+    }
+    assert.fail('did not settle');
+  }
+  await f.service.execute(request(), () => true);
+  const first = await settle();
+  assert.equal(first.code, 'DOWNLOAD_FAILED');
+  assert.equal(first.installationRevision, 1);
+  assert.equal(
+    JSON.parse(await f.service.execute(request(first.revision), () => true)).outcome,
+    'PENDING',
+  );
+  const second = await settle();
+  assert.equal(second.code, 'DOWNLOAD_FAILED');
+  assert.equal(second.installationRevision, 2);
+  assert.equal(downloads, 2);
+  assert.equal(await f.service.shutdown(), 'RETIRED');
+  const root = join(f.root, 'platform-tools-runtime');
+  assert.deepEqual(readdirSync(root).sort(), [
+    '.platform-tools-owner.json',
+    'operations',
+    'runtimes',
+    'staging',
+  ]);
+  for (const name of ['runtimes', 'staging']) {
+    assert.deepEqual(readdirSync(join(root, name)), []);
+    rmdirSync(join(root, name));
+  }
+  const operations = join(root, 'operations'),
+    names = readdirSync(operations);
+  assert.equal(names.length, 4);
+  for (const name of names) {
+    assert.match(name, /^operation-[0-9a-f-]{36}\.(intent|settled)\.json$/);
+    const file = join(operations, name),
+      stat = lstatSync(file);
+    assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1);
+    unlinkSync(file);
+  }
+  rmdirSync(operations);
+  unlinkSync(join(root, '.platform-tools-owner.json'));
+  rmdirSync(root);
+  await f.cleanup();
+});
+
+test('last session callback cannot revoke owner and still admit a native interaction', async () => {
+  let owned = true,
+    calls = 0,
+    checks = 0;
+  const f = fixture({
+    assertOwnedSync() {
+      if (!owned) throw Error('OWNER_REVOKED');
+    },
+    native: {
+      interact: async () => {
+        calls++;
+        return { ok: false, code: 'TERMS_DECLINED' };
+      },
+    },
+  });
+  await f.service.initialize();
+  const answer = JSON.parse(
+    await f.service.execute(request(), () => {
+      if (++checks === 4) owned = false;
+      return true;
+    }),
+  );
+  assert.equal(answer.code, 'OWNER_REVOKED');
+  assert.equal(calls, 0);
+  owned = true;
+  assert.equal(JSON.parse(await f.service.execute(get, () => true)).snapshot.revision, 0);
+  await f.cleanup();
+});
+test('route, picker and final confirmation cancellations never mint an accepted decision', async () => {
+  for (const scenario of ['route', 'picker', 'final']) {
+    const responses = scenario === 'route' ? [2, 0] : [2, 1, 0];
+    const native = createPlatformToolsSetupNative(
+      {
+        showMessageBox: async () => ({ response: responses.shift() }),
+        showOpenDialog: async () => ({
+          canceled: scenario === 'picker',
+          filePaths: scenario === 'picker' ? [] : ['/synthetic.zip'],
+        }),
+      },
+      async () => assert.fail(),
+    );
+    assert.deepEqual(
+      await native.interact(
+        () => {},
+        selection,
+        () => {},
+      ),
+      { ok: false, code: 'SETUP_CANCELLED', action: 'INSTALL' },
+    );
+  }
+});
+test('stale request never opens native dialog and late REQUEST RESULT audit failure keeps PENDING', async () => {
+  let release,
+    calls = 0;
+  const f = fixture({
+    native: {
+      interact: () => {
+        calls++;
+        return new Promise((r) => {
+          release = r;
+        });
+      },
+    },
+    audit: async (e) =>
+      e.operation === 'REQUEST' && e.phase === 'RESULT' ? 'DEGRADED' : 'AVAILABLE',
+  });
+  await f.service.initialize();
+  assert.equal(JSON.parse(await f.service.execute(request(3), () => true)).code, 'STALE_REVISION');
+  assert.equal(calls, 0);
+  const ack = JSON.parse(await f.service.execute(request(), () => true));
+  assert.equal(ack.outcome, 'PENDING');
+  assert.equal(ack.loggingHealth, 'DEGRADED');
+  await until(() => typeof release === 'function');
+  assert.equal(calls, 1);
+  release({ ok: false, code: 'TERMS_DECLINED' });
+  await tick();
+  await f.cleanup();
+});
+
+test('shared custody contention refuses setup before audit/native and retires exact holder', async () => {
+  const f = fixture();
+  await f.service.initialize();
+  const holder = f.custody.reserveSetup();
+  assert.equal(holder.ok, true);
+  const response = JSON.parse(await f.service.execute(request(), () => true));
+  assert.equal(response.code, 'BUSY');
+  assert.deepEqual(f.events, []);
+  assert.deepEqual(readdirSync(f.root), []);
+  assert.equal(f.custody.releaseSetup(holder.token, true).ok, true);
+  assert.equal(JSON.parse(await f.service.execute(request(), () => true)).outcome, 'PENDING');
+  await tick();
+  await f.cleanup();
+});
+
+test('native pending holds shared custody until real settlement during concurrent shutdown', async () => {
+  let finish;
+  const f = fixture({
+    native: {
+      interact: () =>
+        new Promise((r) => {
+          finish = r;
+        }),
+    },
+  });
+  await f.service.initialize();
+  await f.service.execute(request(), () => true);
+  assert.deepEqual(await f.custody.acquireRead(), { ok: false, code: 'BUSY' });
+  assert.deepEqual(f.custody.reserveSetup(), { ok: false, code: 'BUSY' });
+  await until(() => typeof finish === 'function');
+  const serviceClosing = f.service.shutdown();
+  let retired = false;
+  const custodyClosing = f.custody.close().then((r) => {
+    retired = true;
+    return r;
+  });
+  await tick();
+  assert.equal(retired, false);
+  finish({ ok: false, code: 'TERMS_DECLINED' });
+  assert.deepEqual(await Promise.all([serviceClosing, custodyClosing]), ['RETIRED', 'RETIRED']);
+  assert.equal(f.service.retired, true);
+  assert.equal(f.custody.retired, true);
+  assert.deepEqual(readdirSync(f.root), []);
+  rmdirSync(f.root);
+});
+
+test('completed native decline cannot release custody while REQUEST RESULT audit remains active', async () => {
+  let finish;
+  const f = fixture({
+    audit: (e) =>
+      e.operation === 'REQUEST' && e.phase === 'RESULT'
+        ? new Promise((r) => {
+            finish = r;
+          })
+        : Promise.resolve('AVAILABLE'),
+  });
+  await f.service.initialize();
+  const requestResult = f.service.execute(request(), () => true);
+  await until(() => typeof finish === 'function');
+  assert.equal(f.service.retired, false);
+  assert.deepEqual(f.custody.reserveSetup(), { ok: false, code: 'BUSY' });
+  assert.deepEqual(await f.custody.acquireRead(), { ok: false, code: 'BUSY' });
+  finish('AVAILABLE');
+  assert.equal(JSON.parse(await requestResult).outcome, 'PENDING');
+  await until(() => f.service.retired);
+  const holder = f.custody.reserveSetup();
+  assert.equal(holder.ok, true);
+  assert.equal(f.custody.releaseSetup(holder.token, true).ok, true);
+  await f.cleanup();
+});
+
+test('synthetic admitted prior uses native action choice, genuine terms and separate Cancel-default rollback confirmation', async () => {
+  for (const final of [0, 1]) {
+    const seen = [],
+      chosen = [],
+      answers = [2, 2, final];
+    const native = createPlatformToolsSetupNative(
+      {
+        showMessageBox: async (o) => {
+          seen.push(o);
+          return { response: answers.shift() };
+        },
+        showOpenDialog: async () => assert.fail('rollback must not select archive'),
+      },
+      async () => assert.fail('no implicit browser'),
+    );
+    const result = await native.interact(
+      () => {},
+      { ...selection, activeVersion: '37.0.1', previousVersion: '36.0.0', rollbackAvailable: true },
+      (a) => chosen.push(a),
+    );
+    assert.deepEqual(chosen, ['ROLLBACK']);
+    assert.equal(seen.length, 3);
+    assert.ok(seen.every((o) => o.defaultId === 0 && o.cancelId === 0));
+    assert.match(seen[2].detail, /37\.0\.1.*36\.0\.0/);
+    assert.match(seen[2].detail, /Không tải xuống/);
+    assert.deepEqual(
+      result,
+      final === 1
+        ? { ok: true, kind: 'ROLLBACK', route: 'RETAINED_RUNTIME', archivePath: null }
+        : { ok: false, code: 'SETUP_CANCELLED', action: 'ROLLBACK' },
+    );
+  }
+});
+test('native selected action survives subsequent revocation; unchosen cancel stays null', async () => {
+  let live = true;
+  const selected = [];
+  const native = createPlatformToolsSetupNative(
+    { showMessageBox: async () => ({ response: 2 }), showOpenDialog: async () => assert.fail() },
+    async () => assert.fail(),
+  );
+  await assert.rejects(
+    native.interact(
+      () => {
+        if (!live) throw Error('OWNER_REVOKED');
+      },
+      { ...selection, activeVersion: '37.0.1', previousVersion: '36.0.0', rollbackAvailable: true },
+      (a) => {
+        selected.push(a);
+        live = false;
+      },
+    ),
+  );
+  assert.deepEqual(selected, ['ROLLBACK']);
+  const cancel = createPlatformToolsSetupNative(
+    { showMessageBox: async () => ({ response: 0 }), showOpenDialog: async () => assert.fail() },
+    async () => assert.fail(),
+  );
+  assert.deepEqual(
+    await cancel.interact(
+      () => {},
+      { ...selection, activeVersion: '37.0.1', previousVersion: '36.0.0', rollbackAvailable: true },
+      () => assert.fail(),
+    ),
+    { ok: false, code: 'SETUP_CANCELLED', action: null },
+  );
+  await assert.rejects(
+    cancel.interact(
+      () => {},
+      { ...selection, installTargetVersion: '37.0.1\n' },
+      () => assert.fail(),
+    ),
+  );
+});
+
+test('pre-selection native throw and selected-action revocation retain exact schema8 action facts', async () => {
+  for (const selected of [false, true]) {
+    let current = true;
+    const f = fixture({
+      native: {
+        interact: async (_guard, _selection, onAction) => {
+          if (selected) {
+            onAction('INSTALL');
+            current = false;
+          }
+          throw Error('PRIVATE_NATIVE_FAILURE');
+        },
+      },
+    });
+    await f.service.initialize();
+    await f.service.execute(request(), () => current);
+    await until(() => f.events.some((e) => e.operation === 'PROVISION' && e.phase === 'RESULT'));
+    const result = f.events.find((e) => e.operation === 'PROVISION' && e.phase === 'RESULT');
+    assert.equal(result.action, selected ? 'INSTALL' : null);
+    assert.equal(result.code, selected ? 'OWNER_REVOKED' : 'INTERNAL_FAILURE');
+    assert.equal(result.outcome, 'FAILED');
+    assert.ok(!JSON.stringify(f.events).includes('PRIVATE_NATIVE_FAILURE'));
+    assert.deepEqual(readdirSync(f.root), []);
+    await f.cleanup();
+  }
+});

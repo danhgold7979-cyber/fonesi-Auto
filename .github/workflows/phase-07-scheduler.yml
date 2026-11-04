@@ -1,0 +1,67 @@
+name: Phase 07 scheduler source and explicit runtime observation
+on:
+  workflow_dispatch:
+    inputs:
+      observe_runtime:
+        description: 'Verify exact disposable Electron production/candidate civil/zone/gap corpus; no product admission or device use'
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [phase-07]
+    paths:
+      - '.github/workflows/phase-07-scheduler.yml'
+      - 'desktop/verification/Invoke-ScheduleRuntime.ps1'
+      - 'desktop/verification/schedule-runtime-observer.cjs'
+      - 'desktop/verification/schedule-runtime-contract.cjs'
+      - 'desktop/verification/schedule-runtime-control.cjs'
+      - 'desktop/verification/schedule-runtime-contract.test.cjs'
+permissions:
+  contents: read
+jobs:
+  scheduler-observation:
+    if: github.ref == 'refs/heads/phase-07'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Scripts-disabled restore and full source verification
+        run: |
+          node -e "const fs=require('node:fs'),os=require('node:os');console.log(fs.realpathSync.native(os.tmpdir())===os.tmpdir()?'SCHEDULE_TEMP_CANONICAL':'SCHEDULE_TEMP_ALIAS')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) {
+            $diagnostic = @'
+          const {spawnSync}=require('node:child_process');
+          const r=spawnSync(process.execPath,['--test','--test-reporter=tap','desktop/verification/schedule-runtime-contract.test.cjs'],{encoding:'utf8',timeout:30000,maxBuffer:65536});
+          console.log(r.error?'SCHEDULE_DIAGNOSTIC_PROCESS_FAILED':r.status===0?'SCHEDULE_DIAGNOSTIC_PASS':'SCHEDULE_DIAGNOSTIC_FAIL');
+          const text=(r.stdout||'')+(r.stderr||'');
+          for(const code of ['SCHEDULE_RUNTIME_REJECTED','SCHEDULE_RUNTIME_CONTROL_REJECTED','PACKAGE_REJECTED','AssertionError','ENOENT','EINVAL','EPERM','EACCES'])if(text.includes(code))console.log('SCHEDULE_DIAGNOSTIC_'+code);
+          for(const match of text.matchAll(/^not ok ([0-9]+) /gm))if(Number(match[1])<=32)console.log('SCHEDULE_DIAGNOSTIC_CASE_'+match[1]);
+          '@
+            node -e $diagnostic
+            exit 1
+          }
+      - name: Dedicated observation-only package
+        if: (github.event_name == 'workflow_dispatch' && inputs.observe_runtime == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[schedule-runtime-observe]'))
+        run: |
+          & ./desktop/verification/Invoke-ScheduleRuntime.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain only closed public observation report
+        if: success() && ((github.event_name == 'workflow_dispatch' && inputs.observe_runtime == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[schedule-runtime-observe]')))
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: schedule-production-campaign
+          path: desktop/.schedule-runtime-public/schedule-production-campaign.json
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: true

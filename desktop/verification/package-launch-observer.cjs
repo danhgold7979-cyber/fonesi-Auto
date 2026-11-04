@@ -1,0 +1,295 @@
+'use strict';
+const path = require('node:path'),
+  { createHash } = require('node:crypto');
+const { plain, read, write, exact, uuid, STAGES, VERSIONS } = require('./package-contract.cjs');
+const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const FIELDS = [
+  'version',
+  'stage',
+  'runRoot',
+  'runToken',
+  'packageRoot',
+  'createParent',
+  'managedRoot',
+  'selectedStore',
+  'backupParent',
+  'backupFile',
+  'restoreParent',
+  'retainedLaunchId',
+];
+function seed(raw) {
+  const c = exact(raw, FIELDS);
+  if (
+    c.version !== 1 ||
+    !STAGES.includes(c.stage) ||
+    !uuid(c.runToken) ||
+    !['managedRoot', 'selectedStore', 'backupFile'].every(
+      (k) => c[k] === null || typeof c[k] === 'string',
+    ) ||
+    !(c.retainedLaunchId === null || uuid(c.retainedLaunchId))
+  )
+    throw Error('PACKAGE_CONTROL');
+  for (const k of ['runRoot', 'packageRoot', 'createParent', 'backupParent', 'restoreParent'])
+    if (typeof c[k] !== 'string' || c[k] !== path.resolve(c[k])) throw Error('PACKAGE_CONTROL');
+  for (const k of [
+    'createParent',
+    'backupParent',
+    'restoreParent',
+    'managedRoot',
+    'selectedStore',
+    'backupFile',
+  ])
+    if (c[k] !== null && (c[k] !== path.resolve(c[k]) || !c[k].startsWith(c.runRoot + path.sep)))
+      throw Error('PACKAGE_CONTROL');
+  if (!c.packageRoot.startsWith(c.runRoot + path.sep)) throw Error('PACKAGE_CONTROL');
+  return c;
+}
+const OBSERVER_PHASES = Object.freeze([
+  'ENVIRONMENT',
+  'LAYOUT',
+  'CONTROL',
+  'OWNER',
+  'PROOF_SHAPE',
+  'DERIVED_CORE',
+  'ORIGINALS',
+  'OBSERVERS',
+  'PACKAGE',
+  'ASAR_PHYSICAL',
+  'OUTSIDE',
+  'VERSIONS',
+  'INIT_CONTROL',
+  'INIT_DIALOG',
+  'INIT_REQUIRE',
+  'INIT_RECORD',
+  'MAIN_REQUIRE',
+  'MAIN_OPERATION',
+  'NORMAL_WINDOW_WAIT',
+  'NORMAL_SETTINGS_REQUIRE',
+  'NORMAL_SETTINGS_READ',
+  'NORMAL_OVERVIEW',
+  'NORMAL_ACCOUNTS',
+  'NORMAL_TRACKING',
+  'NORMAL_SETUP',
+  'NORMAL_CALENDAR',
+  'NORMAL_WORKFLOWS',
+  'NORMAL_QUIT',
+  'MAIN_WILL_QUIT',
+  'UNKNOWN',
+]);
+const OBSERVER_REASONS = Object.freeze([
+  'PACKAGE_ENVIRONMENT',
+  'PACKAGE_CONTROL',
+  'PACKAGE_OWNER',
+  'PACKAGE_PROOF',
+  'PACKAGE_VERSION',
+  'PACKAGE_DIALOG',
+  'PACKAGE_BACKUP',
+  'PACKAGE_DOMAIN_ROWS',
+  'PACKAGE_PAGE_NAVIGATION',
+  'PACKAGE_NOTICE',
+  'PACKAGE_OBSERVATION',
+  'PACKAGE_SETTINGS',
+  'PACKAGE_UNEXPECTED_UI',
+  'PACKAGE_WINDOW',
+  'RESTORE_OWNER',
+  'PACKAGE_REJECTED',
+  'PACKAGE_ASAR_WITNESS',
+  'RESTORE_FILE',
+  'RESTORE_LIMIT',
+  'RESTORE_SCHEMA',
+  'RESTORE_READBACK',
+  'ENOENT',
+  'EACCES',
+  'EPERM',
+  'MODULE_NOT_FOUND',
+  'ERR_REQUIRE_ESM',
+  'SYNTAX_ERROR',
+  'TYPE_ERROR',
+  'UNCLASSIFIED',
+]);
+let observedPhase = 'UNKNOWN';
+function phase(value) {
+  observedPhase = OBSERVER_PHASES.includes(value) ? value : 'UNKNOWN';
+}
+function diagnostics(error) {
+  let reason = 'UNCLASSIFIED';
+  try {
+    for (const key of ['message', 'code']) {
+      const d = Object.getOwnPropertyDescriptor(error, key);
+      if (d && Object.hasOwn(d, 'value') && OBSERVER_REASONS.includes(d.value)) {
+        reason = d.value;
+        break;
+      }
+    }
+    if (reason === 'UNCLASSIFIED' && error instanceof SyntaxError) reason = 'SYNTAX_ERROR';
+    if (reason === 'UNCLASSIFIED' && error instanceof TypeError) reason = 'TYPE_ERROR';
+  } catch {}
+  return ['PACKAGE_OBSERVER_PHASE_' + observedPhase, 'PACKAGE_OBSERVER_REASON_' + reason];
+}
+function report(error) {
+  for (const line of diagnostics(error)) console.error(line);
+}
+function archiveWitness(root, manifest, adapter) {
+  const name = 'runtime/electron/resources/default_app.asar';
+  const rows = manifest.files.filter((row) => row.path === name);
+  if (rows.length !== 1) throw Error('PACKAGE_ASAR_WITNESS');
+  const file = path.join(root, ...name.split('/'));
+  const virtual = require('node:fs').lstatSync(file);
+  const physical = require('original-fs').lstatSync(file);
+  const observed = adapter.digest(file);
+  if (
+    !virtual.isDirectory() ||
+    virtual.isSymbolicLink() ||
+    !physical.isFile() ||
+    physical.isSymbolicLink() ||
+    physical.size !== rows[0].bytes ||
+    observed.bytes !== rows[0].bytes ||
+    observed.sha256 !== rows[0].sha256
+  )
+    throw Error('PACKAGE_ASAR_WITNESS');
+}
+function admission(directory) {
+  phase('ENVIRONMENT');
+  if (
+    !process.env.SystemRoot ||
+    process.env.PATH?.toLowerCase() !== path.join(process.env.SystemRoot, 'System32').toLowerCase()
+  )
+    throw Error('PACKAGE_ENVIRONMENT');
+  phase('LAYOUT');
+  plain(directory);
+  phase('CONTROL');
+  const outer = path.dirname(directory),
+    c = seed(read(path.join(outer, 'control.json')));
+  phase('OWNER');
+  plain(c.runRoot);
+  if (
+    read(path.join(c.runRoot, '.owner')) !== c.runToken ||
+    outer !== path.join(c.runRoot, 'package-probe-' + c.stage)
+  )
+    throw Error('PACKAGE_OWNER');
+  phase('PROOF_SHAPE');
+  const proof = exact(read(path.join(outer, 'copy-proof.json')), [
+    'version',
+    'stage',
+    'originalFiles',
+    'derivedCoreSha256',
+    'observerFiles',
+  ]);
+  if (proof.version !== 1 || proof.stage !== c.stage) throw Error('PACKAGE_PROOF');
+  const originals = ['Launch.ps1', 'app/launch/Invoke-Package.ps1', 'app/launch/launch-core.ps1'];
+  const observers = [
+    'package-launch-observer.cjs',
+    'package-launch-init-probe.cjs',
+    'package-launch-main-probe.cjs',
+    'package-contract.cjs',
+    'persistence-restore-contract.cjs',
+  ];
+  if (
+    JSON.stringify(Object.keys(proof.originalFiles)) !== JSON.stringify(originals) ||
+    JSON.stringify(Object.keys(proof.observerFiles)) !== JSON.stringify(observers) ||
+    typeof proof.derivedCoreSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(proof.derivedCoreSha256)
+  )
+    throw Error('PACKAGE_PROOF');
+  phase('DERIVED_CORE');
+  if (
+    hash(Buffer.from(read(path.join(outer, 'app/launch/launch-core.ps1')))) !==
+    proof.derivedCoreSha256
+  )
+    throw Error('PACKAGE_PROOF');
+  phase('ORIGINALS');
+  for (const name of originals) {
+    const digest = proof.originalFiles[name];
+    if (
+      typeof digest !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(digest) ||
+      hash(Buffer.from(read(path.join(c.packageRoot, name)))) !== digest
+    )
+      throw Error('PACKAGE_PROOF');
+    if (
+      name !== 'app/launch/launch-core.ps1' &&
+      hash(Buffer.from(read(path.join(outer, name)))) !== digest
+    )
+      throw Error('PACKAGE_PROOF');
+  }
+
+  phase('OBSERVERS');
+  for (const [name, digest] of Object.entries(proof.observerFiles)) {
+    if (
+      ![
+        'package-launch-observer.cjs',
+        'package-launch-init-probe.cjs',
+        'package-launch-main-probe.cjs',
+        'package-contract.cjs',
+        'persistence-restore-contract.cjs',
+      ].includes(name) ||
+      typeof digest !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(digest) ||
+      hash(Buffer.from(read(path.join(directory, name)))) !== digest
+    )
+      throw Error('PACKAGE_PROOF');
+  }
+  phase('PACKAGE');
+  const adapter = require(path.join(c.packageRoot, 'app/launch/package-admission.cjs'));
+  const { verifyPackage, assertDataOutsidePackage } = adapter;
+  const manifest = verifyPackage(c.packageRoot);
+  phase('ASAR_PHYSICAL');
+  archiveWitness(c.packageRoot, manifest, adapter);
+  phase('OUTSIDE');
+  for (const p of [c.createParent, c.backupParent, c.restoreParent])
+    assertDataOutsidePackage(c.packageRoot, p);
+  phase('VERSIONS');
+  if (
+    JSON.stringify({
+      electron: process.versions.electron,
+      node: process.versions.node,
+      chrome: process.versions.chrome,
+    }) !== JSON.stringify(VERSIONS)
+  )
+    throw Error('PACKAGE_VERSION');
+  return { c, outer };
+}
+function domainEmpty(document, page) {
+  return (
+    document.querySelector('#nav [data-page="' + page + '"]').classList.contains('active') &&
+    !document.getElementById('demo-banner') &&
+    (page !== 'overview' ||
+      document.querySelectorAll('#workspace .device-row.header').length === 1) &&
+    document.querySelectorAll(
+      '#workspace .devlist-scroller .device-row,#workspace .account-row,#workspace .job-block,#workspace tbody .filecol',
+    ).length === 0
+  );
+}
+function witness(c, kind, fields) {
+  return {
+    version: 1,
+    stage: c.stage,
+    kind,
+    ready: false,
+    closed: false,
+    quitRequested: false,
+    opens: 0,
+    confirms: 0,
+    cancelled: false,
+    sixTabsEmpty: false,
+    settingsObserved: false,
+    ...fields,
+  };
+}
+function record(outer, value) {
+  write(path.join(outer, 'observer-' + value.kind + '.json'), value);
+}
+module.exports = {
+  seed,
+  admission,
+  witness,
+  record,
+  FIELDS,
+  archiveWitness,
+  domainEmpty,
+  OBSERVER_PHASES,
+  OBSERVER_REASONS,
+  phase,
+  diagnostics,
+  report,
+};
