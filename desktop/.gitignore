@@ -1,0 +1,32 @@
+node_modules/
+build/
+.runtime/
+.test-output/
+.npm-cache/
+.persistence-runtime/
+
+.settings-runtime/
+
+.ui-runtime/
+
+/demo-build/
+/.demo-runtime/
+/.demo-verification/
+
+/.package-build/
+/.package-runtime/
+
+/.platform-tools-input/
+/.platform-tools-runtime/
+
+/.platform-tools-server-runtime/
+
+# Private fleet/UI development run; only validated outputs are published.
+.fleet-ui-runtime/
+
+# Owned scheduler verification package/profile/captures; only validated report may be published.
+/.schedule-runtime/
+/.schedule-runtime-public/
+
+# Dedicated verification bundles; no production admission.
+/.schedule-corpus-build/

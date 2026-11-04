@@ -1,0 +1,516 @@
+name: Phase 01 foundation and scoped nonsecret settings
+on:
+  workflow_dispatch:
+  push:
+    branches: [phase-01]
+    paths:
+      - '.gitattributes'
+      - 'desktop/**'
+      - 'foundation/**'
+      - 'biome.json'
+      - 'tools/phase-00/HostProbeNative.cs'
+      - 'tools/phase-00/desktop-stack-lab/package-lock.json'
+      - 'tools/phase-00/desktop-stack-lab/dependency-review.json'
+      - '.github/workflows/phase-01-desktop-foundation.yml'
+      - '.github/workflows/phase-01-full-persistence-manual.yml'
+permissions:
+  contents: read
+jobs:
+  owned-windows-foundation:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Named Windows development environment and foundation fixtures
+        run: |
+          Write-Output "WINDOWS_DEVELOPMENT_IMAGE=$env:ImageOS/$env:ImageVersion"
+          Write-Output "SOURCE_HEAD=$env:GITHUB_SHA"
+          node --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $npmVersion = (& npm --version)
+          if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { exit 1 }
+          $npmVersion = ([string]$npmVersion).Trim()
+          Write-Output "ACTUAL_NPM=$npmVersion"
+          node foundation/scripts/verify-bootstrap.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix foundation ci --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --cache=.npm-cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node foundation/scripts/check.mjs $npmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Strict raw-schema synthetic tests
+        run: |
+          & $env:FOUNDATION_PYTHON_EXE -B -c "import sys,unittest; s=unittest.defaultTestLoader.discover('desktop/verification',pattern='test_*.py'); assert s.countTestCases()==157; r=unittest.TextTestRunner(verbosity=2).run(s); sys.exit(0 if r.wasSuccessful() and not r.skipped else 1)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: PowerShell 5.1 marker and ownership regressions
+        run: |
+          try { & ./desktop/verification/Test-WindowsBoundary.ps1 }
+          catch { Write-Output 'FOUNDATION_BOUNDARY_TEST_FAILED'; exit 1 }
+      - name: Syntax-check owned runtime and installer entries
+        run: |
+          node --check desktop/verification/runtime-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/logging-evidence.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/logging-store-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/logging-degraded-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/crash-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/install-electron.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-control.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop/verification/persistence-main-probe.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tokens=$null; $parseErrors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'desktop/verification/Invoke-Persistence.ps1'),[ref]$tokens,[ref]$parseErrors)
+          if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_SUPERVISOR_SYNTAX_FAILED'; exit 1 }
+          foreach ($file in @('desktop/launch/Invoke-Desktop.ps1','desktop/verification/Test-PersistenceProcess.ps1','desktop/verification/Invoke-PersistenceLauncherE2E.ps1','desktop/verification/Test-VaultContext.ps1','desktop/verification/Invoke-Settings.ps1','desktop/verification/Invoke-Ui.ps1','desktop/verification/Invoke-Demo.ps1','desktop/launch/Invoke-Demo.ps1','desktop/launch/Invoke-Package.ps1','desktop/launch/launch-core.ps1','desktop/verification/Invoke-Package.ps1')) {
+            $tokens=$null; $parseErrors=$null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd $file),[ref]$tokens,[ref]$parseErrors)
+            if (@($parseErrors).Count -ne 0) { Write-Output 'PERSISTENCE_LAUNCHER_SYNTAX_FAILED'; exit 1 }
+          }
+          foreach ($file in @('desktop/launch/persistence-initialize.cjs','desktop/launch/persistence-launch-control.cjs','desktop/verification/persistence-matrix-control.cjs','desktop/verification/persistence-store-probe.cjs','desktop/verification/persistence-maintenance-probe.cjs','desktop/verification/persistence-restore-probe.cjs','desktop/verification/persistence-restore-control.cjs','desktop/verification/persistence-restore-contract.cjs','desktop/verification/persistence-launch-e2e-control.cjs','desktop/verification/persistence-launch-init-probe.cjs','desktop/verification/persistence-launch-main-probe.cjs','desktop/verification/vault-probe.cjs','desktop/verification/vault-control.cjs','desktop/verification/vault-owned.cjs','desktop/verification/vault-contract.cjs','desktop/verification/vault-context-contract.cjs','desktop/verification/vault-artifacts.cjs','desktop/verification/vault-denial.cjs','desktop/verification/vault-record-negative.cjs','desktop/verification/settings-contract.cjs','desktop/verification/settings-control.cjs','desktop/verification/settings-native.cjs','desktop/verification/settings-main-probe.cjs','desktop/verification/settings-store-probe.cjs','desktop/verification/settings-recovery-contract.cjs','desktop/verification/settings-recovery-control.cjs','desktop/verification/settings-recovery-probe.cjs','desktop/verification/ui-contract.cjs','desktop/verification/ui-main-probe.cjs','desktop/verification/ui-reference-probe.cjs','desktop/verification/demo-contract.cjs','desktop/verification/demo-control.cjs','desktop/verification/demo-probe.cjs','desktop/verification/demo-production-probe.cjs','desktop/launch/demo-launch-control.cjs','desktop/launch/launch-journal.cjs','desktop/launch/package-admission.cjs','desktop/verification/package-build-entry.mjs','desktop/verification/package-contract.cjs','desktop/verification/package-control.cjs','desktop/verification/package-state-control.cjs','desktop/verification/package-owned-files.cjs','desktop/verification/package-launch-driver.cjs','desktop/verification/package-launch-observer.cjs','desktop/verification/package-launch-init-probe.cjs','desktop/verification/package-launch-main-probe.cjs')) {
+            node --check $file
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Owned interactive-lifetime supervisor regressions
+        timeout-minutes: 3
+        run: |
+          $helper=Join-Path $pwd 'tools/phase-00/HostProbeNative.cs'
+          if ((Get-FileHash $helper -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'b7fdc51aadaebd9733a4634c72c892cb5179a8a6e24e1020e57d0c0d8e8a5d89') { exit 1 }
+          if ('Fonesi.Phase00.NativeProbe' -as [type]) { exit 1 }
+          Add-Type -Path $helper
+          $exe=Join-Path ([Environment]::GetFolderPath('System')) 'WindowsPowerShell/v1.0/powershell.exe'
+          $result=[Fonesi.Phase00.NativeProbe]::Run($exe,[string[]]@('-NoProfile','-NonInteractive','-File',(Join-Path $pwd 'desktop/verification/Test-PersistenceProcess.ps1')),120000,10000,32768)
+          $safeStages=@('INITIALIZE','HELPER','NODE','BASE','FIXTURE','BOUNDED','INTERACTIVE','DESCENDANT','CLEANUP')
+          foreach($stage in $safeStages) {
+            if (@($result.Stdout -split '\r?\n' | Where-Object {$_ -ceq ('PERSISTENCE_PROCESS_STAGE_'+$stage)}).Count -gt 0) {
+              Write-Output ('PERSISTENCE_PROCESS_STAGE_'+$stage)
+            }
+          }
+          if ($result.Status -ne 'SUCCESS' -or $result.ExitCode -ne 0 -or -not $result.CleanupComplete -or $result.StdoutTruncated -or $result.StderrTruncated -or @($result.Stdout -split '\r?\n' | Where-Object {$_ -ceq 'PERSISTENCE_PROCESS_TESTS_PASS 3'}).Count -ne 1) { Write-Output 'PERSISTENCE_PROCESS_TESTS_FAILED'; exit 1 }
+          Write-Output 'PERSISTENCE_PROCESS_TESTS_PASS 3'
+      - name: Owned source-package and typed-negative probes
+        id: probes
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'FOUNDATION_SUPERVISOR_FAILED'; exit 1 }
+      - name: Duplicate-aware validation and fixed-field sanitization
+        id: validation
+        if: always() && steps.probes.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'FOUNDATION_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only this invocation's schema-validated fixed evidence
+        if: always() && steps.validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-foundation-${{ github.sha }}
+          path: desktop/.runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Record scope limits
+        if: always()
+        run: |
+          'Hosted runner only. Original navigation FAIL retained; no full task/Phase, target-host, device, account or future authority acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  owned-windows-settings:
+    needs: owned-windows-foundation
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare verified owned runtime and package without identity invocation
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'SETTINGS_RUNTIME_PREPARE_FAILED'; exit 1 }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned schema3 settings, real UI restart and COMMIT crash verification
+        id: settings
+        run: |
+          try { & ./desktop/verification/Invoke-Settings.ps1 }
+          catch { Write-Output 'SETTINGS_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict settings evidence publication
+        id: settings_validation
+        if: always() && steps.settings.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_settings.py publish)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'SETTINGS_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          if (@($lines | Where-Object {$_ -ceq 'SETTINGS_SCREENSHOTS_BOUND'}).Count -eq 1) {
+            'screenshots=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only fixed settings evidence
+        if: always() && steps.settings_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-settings-${{ github.sha }}
+          path: desktop/.settings-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload only complete metadata-bound synthetic screenshots
+        if: always() && steps.settings_validation.outputs.written == 'true' && steps.settings_validation.outputs.screenshots == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-settings-screenshots-${{ github.sha }}
+          path: |
+            desktop/.settings-runtime/source-light.png
+            desktop/.settings-runtime/source-dark.png
+            desktop/.settings-runtime/package-light.png
+            desktop/.settings-runtime/package-dark.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explicit scope exclusion
+        if: always()
+        run: |
+          'P1-07 scoped settings only. P106_UNMET_NOT_RERUN: cross-user negative remains unmet; no unchanged identity invocation. Injected dialog answers are not genuine widget clicks. No full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  owned-windows-ui:
+    needs: owned-windows-foundation
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare verified owned runtime and package without identity invocation
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'UI_RUNTIME_PREPARE_FAILED'; exit 1 }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned six-page V9 UI, isolated reference and responsive verification
+        id: ui
+        run: |
+          try { & ./desktop/verification/Invoke-Ui.ps1 }
+          catch { Write-Output 'UI_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict UI evidence publication
+        id: ui_validation
+        if: always() && steps.ui.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_ui.py publish)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'UI_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          if (@($lines | Where-Object {$_ -ceq 'UI_SCREENSHOTS_BOUND'}).Count -eq 1) {
+            'screenshots=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only fixed UI evidence
+        if: always() && steps.ui_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-ui-${{ github.sha }}
+          path: desktop/.ui-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload only complete metadata-bound synthetic screenshots
+        if: always() && steps.ui_validation.outputs.written == 'true' && steps.ui_validation.outputs.screenshots == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-ui-screenshots-${{ github.sha }}
+          path: |
+            desktop/.ui-runtime/ui-source-overview-light.png
+            desktop/.ui-runtime/ui-source-accounts-light.png
+            desktop/.ui-runtime/ui-source-tracking-light.png
+            desktop/.ui-runtime/ui-source-setup-light.png
+            desktop/.ui-runtime/ui-source-calendar-light.png
+            desktop/.ui-runtime/ui-source-workflows-light.png
+            desktop/.ui-runtime/ui-source-overview-dark.png
+            desktop/.ui-runtime/ui-source-accounts-dark.png
+            desktop/.ui-runtime/ui-source-tracking-dark.png
+            desktop/.ui-runtime/ui-source-setup-dark.png
+            desktop/.ui-runtime/ui-source-calendar-dark.png
+            desktop/.ui-runtime/ui-source-workflows-dark.png
+            desktop/.ui-runtime/ui-source-overview-light-880.png
+            desktop/.ui-runtime/ui-source-overview-dark-880.png
+            desktop/.ui-runtime/ui-source-overview-light-600.png
+            desktop/.ui-runtime/ui-source-overview-dark-600.png
+            desktop/.ui-runtime/ui-package-overview-light.png
+            desktop/.ui-runtime/ui-package-setup-light.png
+            desktop/.ui-runtime/ui-package-overview-dark.png
+            desktop/.ui-runtime/ui-package-setup-dark.png
+            desktop/.ui-runtime/ui-reference-overview-light.png
+            desktop/.ui-runtime/ui-reference-accounts-light.png
+            desktop/.ui-runtime/ui-reference-tracking-light.png
+            desktop/.ui-runtime/ui-reference-setup-light.png
+            desktop/.ui-runtime/ui-reference-calendar-light.png
+            desktop/.ui-runtime/ui-reference-workflows-light.png
+            desktop/.ui-runtime/ui-reference-overview-dark.png
+            desktop/.ui-runtime/ui-reference-accounts-dark.png
+            desktop/.ui-runtime/ui-reference-tracking-dark.png
+            desktop/.ui-runtime/ui-reference-setup-dark.png
+            desktop/.ui-runtime/ui-reference-calendar-dark.png
+            desktop/.ui-runtime/ui-reference-workflows-dark.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explicit scope exclusion
+        if: always()
+        run: |
+          'P1-08 scoped V9 renderer only; source/package normal app and isolated unchanged reference. Synthetic fixtures are not domain services. P106_UNMET_NOT_RERUN remains unmet; no identity invocation. No full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  owned-windows-demo:
+    needs: owned-windows-foundation
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare verified owned runtime and package without identity invocation
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'DEMO_RUNTIME_PREPARE_FAILED'; exit 1 }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Owned explicit demo boundary and production isolation verification
+        id: demo
+        run: |
+          try { & ./desktop/verification/Invoke-Demo.ps1 }
+          catch { Write-Output 'DEMO_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict demo evidence publication
+        id: demo_validation
+        if: always() && steps.demo.outcome != 'skipped'
+        run: |
+          $lines = @(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_demo.py publish)
+          $code = $LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'DEMO_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          if (@($lines | Where-Object {$_ -ceq 'DEMO_SCREENSHOTS_BOUND'}).Count -eq 1) {
+            'screenshots=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only fixed demo evidence
+        if: always() && steps.demo_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-demo-${{ github.sha }}
+          path: desktop/.demo-verification/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload only complete metadata-bound synthetic screenshots
+        if: always() && steps.demo_validation.outputs.written == 'true' && steps.demo_validation.outputs.screenshots == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-demo-screenshots-${{ github.sha }}
+          path: |
+            desktop/.demo-verification/demo-source-overview-light.png
+            desktop/.demo-verification/demo-source-overview-dark.png
+            desktop/.demo-verification/demo-source-setup-light.png
+            desktop/.demo-verification/demo-package-overview-light.png
+            desktop/.demo-verification/demo-production-overview-light.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explicit scope exclusion
+        if: always()
+        run: |
+          'P1-09 scoped explicit demo build/profile boundary; source/package instrumented demo and actual production empty-state controls. Synthetic fixtures are not domain services. P106_UNMET_NOT_RERUN remains unmet; no identity invocation. No full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  owned-windows-package:
+    needs: owned-windows-foundation
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Select preinstalled Python without installing
+        run: |
+          try {
+            $candidate = Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Directory |
+              Where-Object {$_.Name -match '^3\.12\.\d+$'} |
+              Sort-Object {[version]$_.Name} -Descending | Select-Object -First 1
+            if ($null -eq $candidate) { throw 'PYTHON_MISSING' }
+            $exe = Join-Path $candidate.FullName 'x64/python.exe'
+            $item = Get-Item -LiteralPath $exe -Force
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PYTHON_INVALID' }
+            "FOUNDATION_PYTHON_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } catch { Write-Output 'FOUNDATION_PYTHON_UNAVAILABLE'; exit 1 }
+      - name: Scripts-disabled restore, signed tooling, lint/format and strict source check
+        run: |
+          node desktop/scripts/check.mjs --restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare verified owned runtime and package without identity invocation
+        run: |
+          try { & ./desktop/verification/Invoke-Foundation.ps1 }
+          catch { Write-Output 'PACKAGE_RUNTIME_PREPARE_FAILED'; exit 1 }
+          & $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_hosted.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build exclusive offline internal package candidate
+        run: |
+          try {
+            $base=Join-Path $pwd 'desktop/.package-build'
+            node -e "require('node:fs').mkdirSync(process.argv[1])" $base
+            if ($LASTEXITCODE -ne 0) { throw 'PACKAGE_BASE' }
+            $license=Join-Path $base 'node-LICENSE'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/nodejs/node/v24.22.1/LICENSE' -OutFile $license -MaximumRedirection 0
+            if ((Get-FileHash -LiteralPath $license -Algorithm SHA256).Hash.ToLowerInvariant() -cne '5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace') { throw 'PACKAGE_LICENSE' }
+            $npmVersion=(& npm --version)
+            if ($LASTEXITCODE -ne 0 -or @($npmVersion).Count -ne 1) { throw 'PACKAGE_NPM' }
+            $tree=(& git rev-parse 'HEAD^{tree}')
+            if ($LASTEXITCODE -ne 0 -or @($tree).Count -ne 1 -or $tree -cnotmatch '^[a-f0-9]{40}$') { throw 'PACKAGE_TREE' }
+            node desktop/verification/package-build-entry.mjs ([string]$npmVersion).Trim() $env:GITHUB_SHA ([string]$tree).Trim() $license
+            if ($LASTEXITCODE -ne 0) { throw 'PACKAGE_BUILD' }
+          } catch { Write-Output 'PACKAGE_CANDIDATE_FAILED'; exit 1 }
+      - name: Owned relocated package and known-retired recovery verification
+        id: package
+        run: |
+          try { & ./desktop/verification/Invoke-Package.ps1 }
+          catch { Write-Output 'PACKAGE_SUPERVISOR_FAILED'; exit 1 }
+      - name: Strict package evidence and gated bundle publication
+        id: package_validation
+        if: always() && steps.package.outcome != 'skipped'
+        run: |
+          $lines=@(& $env:FOUNDATION_PYTHON_EXE -B desktop/verification/validate_package.py publish)
+          $code=$LASTEXITCODE
+          foreach ($line in $lines) { Write-Output $line }
+          if (@($lines | Where-Object {$_ -ceq 'PACKAGE_VALIDATION_WRITTEN'}).Count -eq 1) {
+            'written=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          if (@($lines | Where-Object {$_ -ceq 'PACKAGE_PROMOTION_READY'}).Count -eq 1) {
+            'bundle=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          exit $code
+      - name: Upload only fixed package evidence
+        if: always() && steps.package_validation.outputs.written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-package-evidence-${{ github.sha }}
+          path: desktop/.package-runtime/validated.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload only fully verified internal offline bundle
+        if: always() && steps.package_validation.outputs.written == 'true' && steps.package_validation.outputs.bundle == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: phase-01-internal-package-${{ github.sha }}
+          path: |
+            desktop/.package-runtime/Fonesi-Auto.zip
+            desktop/.package-runtime/Fonesi-Auto.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explicit scope exclusion
+        if: always()
+        run: |
+          'P1-10 unsigned internal package and instrumented packaged-launcher recovery only. No installed release, signing or genuine dialog-click claim. P106_UNMET_NOT_RERUN and physical-device gates remain unmet; no identity invocation or full Phase acceptance.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

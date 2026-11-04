@@ -1,0 +1,9 @@
+/* Demo-only reserved banner; never part of the production asset map. */
+:root{--demo-banner-height:72px}
+body{padding-top:var(--demo-banner-height)}
+#demo-banner{position:fixed;inset:0 0 auto 0;height:var(--demo-banner-height);z-index:100000;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:8px 14px;background:#fff3c4;color:#543b00;border-bottom:2px solid #b87800;font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+#demo-banner strong{font-size:12px;letter-spacing:.2px}
+#demo-content .side,#demo-content .wall,#demo-content .topbar{top:var(--demo-banner-height)}
+#demo-content .side,#demo-content .wall{height:calc(100vh - var(--demo-banner-height))}
+#demo-content .dialog-shade{top:var(--demo-banner-height)}
+@media(max-width:600px){:root{--demo-banner-height:96px}#demo-banner{font-size:10px;padding:6px 9px}#demo-banner strong{font-size:11px}#demo-content .side{top:0;height:auto}#demo-content .wall{top:0}}

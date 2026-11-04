@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "scope": "HOSTED_RUNNER_ONLY",
+  "passed": true,
+  "directoryCleanup": true,
+  "installer": {
+    "status": "SUCCESS",
+    "exitCode": 0,
+    "cleanupComplete": true
+  },
+  "runtimes": [
+    {
+      "schemaVersion": 1,
+      "mode": "node",
+      "passed": true,
+      "node": "24.22.1",
+      "electron": null,
+      "sqlite": "3.53.4",
+      "cases": {
+        "runtime": true,
+        "module": true,
+        "engine": true,
+        "parameters": true,
+        "bigint": true,
+        "constraints": true,
+        "rollback": true,
+        "commit": true,
+        "wal_reopen": true,
+        "contention": true,
+        "extensions": true,
+        "finalization": true,
+        "no_renderer": true
+      },
+      "failure": null,
+      "statementExecutions": 43,
+      "cleanupComplete": true,
+      "ownedBytes": 16420
+    },
+    {
+      "schemaVersion": 1,
+      "mode": "electron",
+      "passed": true,
+      "node": "24.22.1",
+      "electron": "45.1.0",
+      "sqlite": "3.53.4",
+      "cases": {
+        "runtime": true,
+        "module": true,
+        "engine": true,
+        "parameters": true,
+        "bigint": true,
+        "constraints": true,
+        "rollback": true,
+        "commit": true,
+        "wal_reopen": true,
+        "contention": true,
+        "extensions": true,
+        "finalization": true,
+        "no_renderer": true
+      },
+      "failure": null,
+      "statementExecutions": 43,
+      "cleanupComplete": true,
+      "ownedBytes": 573844
+    }
+  ]
+}
