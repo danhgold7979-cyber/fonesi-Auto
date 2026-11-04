@@ -59,6 +59,8 @@ export const inputs = [
   'dependency-inventory.json',
   'scripts/dependency-inventory.mjs',
   'scripts/reviewed-license-evidence.mjs',
+  'scripts/reviewed-tool-license-pins.mjs',
+  'reviewed-tool-license-provenance.json',
   'reviewed-license-evidence.json',
   'reviewed-license-notices.txt',
   'tsconfig.json',

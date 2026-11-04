@@ -3,6 +3,7 @@ import { closeSync, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { admittedDependencyInventory, renderDependencyInventory } from './dependency-inventory.mjs';
+import { TOOL_LICENSE_PROVENANCE } from './reviewed-tool-license-pins.mjs';
 import { REACT_LICENSE_SHA, TIMEZONE_LICENSES } from './package-manifest.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const LIMIT = 32768;
@@ -22,7 +23,27 @@ const FILES = [
   ['react', REACT_LICENSE_SHA, 'REACT_LICENSE_SHA'],
   ['react-dom', REACT_LICENSE_SHA, 'REACT_LICENSE_SHA'],
   ['scheduler', REACT_LICENSE_SHA, 'REACT_LICENSE_SHA'],
-];
+].map(([name, expected, pin]) => ({
+  name,
+  expected,
+  path: `node_modules/${name}/LICENSE`,
+  limit: LIMIT,
+  pinSource: `desktop/launch/package-admission.cjs#${pin}`,
+}));
+for (const artifact of JSON.parse(TOOL_LICENSE_PROVENANCE).artifacts) {
+  for (const text of artifact.texts) {
+    FILES.push({
+      name: artifact.name,
+      expected: text.sha256,
+      path: `${artifact.lockPath}/${text.archiveMember.slice('package/'.length)}`,
+      limit: text.readLimitBytes,
+      size: text.sizeBytes,
+      artifact,
+      archiveMember: text.archiveMember,
+      pinSource: 'desktop/scripts/reviewed-tool-license-pins.mjs#TOOL_LICENSE_PROVENANCE',
+    });
+  }
+}
 const reject = () => {
   throw new Error('REVIEWED_LICENSE_EVIDENCE_REJECTED');
 };
@@ -100,9 +121,9 @@ export function renderReviewedLicenseEvidence(manifest, lock, review, licenses) 
   const inventory = JSON.parse(inventoryText),
     reviewedFiles = JSON.parse(review).reviewedFiles;
   if (!Array.isArray(licenses) || licenses.length !== FILES.length) reject();
-  const collected = FILES.map(([name, expected, pin], index) => {
-    const path = `node_modules/${name}/LICENSE`,
-      input = licenses[index];
+  const collected = FILES.map((file, index) => {
+    const { name, expected, path, limit, pinSource } = file;
+    const input = licenses[index];
     if (!input || typeof input !== 'object') reject();
     const descriptors = Object.getOwnPropertyDescriptors(input);
     if (
@@ -114,7 +135,7 @@ export function renderReviewedLicenseEvidence(manifest, lock, review, licenses) 
       descriptors.path.value !== path ||
       !Buffer.isBuffer(descriptors.bytes.value) ||
       descriptors.bytes.value.length < 1 ||
-      descriptors.bytes.value.length > LIMIT
+      descriptors.bytes.value.length > limit
     )
       reject();
     // One owned snapshot supplies the decoded text, digest and byte count together.
@@ -125,17 +146,23 @@ export function renderReviewedLicenseEvidence(manifest, lock, review, licenses) 
       (item) => item.lockPath === `node_modules/${name}` && item.name === name,
     );
     if (matches.length !== 1) reject();
+    if (file.artifact) {
+      if (bytes.length !== file.size) reject();
+      for (const key of ['name', 'version', 'registryArtifact', 'integrity', 'declaredLicense'])
+        if (matches[0][key] !== file.artifact[key]) reject();
+    }
     return {
       lockPath: matches[0].lockPath,
       path: `desktop/${path}`,
       sha256: expected,
       bytes: bytes.length,
-      pinSource: `desktop/launch/package-admission.cjs#${pin}`,
+      pinSource,
+      archiveMember: file.archiveMember ?? null,
       text,
     };
   });
   const packages = inventory.packages.map((item) => {
-    const evidence = collected.find((entry) => entry.lockPath === item.lockPath);
+    const evidence = collected.filter((entry) => entry.lockPath === item.lockPath);
     return {
       lockPath: item.lockPath,
       name: item.name,
@@ -143,23 +170,25 @@ export function renderReviewedLicenseEvidence(manifest, lock, review, licenses) 
       registryArtifact: item.registryArtifact,
       integrity: item.integrity,
       declaredLicense: item.declaredLicense,
-      status: evidence ? 'COLLECTED_REVIEWED_TEXT' : 'NOT_COLLECTED_BY_THIS_TOOL',
-      licenseText: evidence
-        ? {
-            path: evidence.path,
-            sha256: evidence.sha256,
-            bytes: evidence.bytes,
-            pinSource: evidence.pinSource,
-          }
-        : null,
+      status: evidence.length ? 'COLLECTED_REVIEWED_TEXT' : 'NOT_COLLECTED_BY_THIS_TOOL',
+      licenseTexts: evidence.map((entry) => ({
+        path: entry.path,
+        sha256: entry.sha256,
+        bytes: entry.bytes,
+        pinSource: entry.pinSource,
+        archiveMember: entry.archiveMember,
+      })),
     };
   });
   const limitations = [
-    'Only five fixed reviewed source texts are collected; other entries are not assessed by this tool.',
+    'Only twelve fixed reviewed texts across eight package rows are collected; other entries are not assessed by this tool.',
     'This is not complete third-party notices, installed-host or shipped-product inventory, or a full SBOM.',
     'Text and lock metadata do not establish redistribution approval, legal clearance or release acceptance.',
     'Lock identities are not verification of whole installed package contents or source-repository attribution.',
     'Bundled runtimes, models, additional notices and license obligations remain outside this slice.',
+    'Tool artifact rehash and member equality are recorded research, not archive or signature verification by this CLI.',
+    'Biome alternatives and Rome attribution are retained without selecting a license option.',
+    'The nested vscode-jsonrpc text is a TypeScript artifact member, not a separately resolved package.',
     'Digests bind collected bytes and projection inputs, not every existing admission dependency.',
   ];
   const notice =
@@ -176,8 +205,8 @@ export function renderReviewedLicenseEvidence(manifest, lock, review, licenses) 
     JSON.stringify(
       {
         kind: 'FONESI_AUTO_REVIEWED_LICENSE_TEXT_EVIDENCE',
-        schemaVersion: 1,
-        scope: 'FIVE_FIXED_REVIEWED_NPM_LICENSE_TEXTS_ONLY',
+        schemaVersion: 2,
+        scope: 'TWELVE_FIXED_REVIEWED_NPM_LICENSE_TEXTS_ONLY',
         limitations,
         inputs: inventory.inputs,
         inventory: { path: 'desktop/dependency-inventory.json', sha256: sha(inventoryText) },
@@ -186,9 +215,14 @@ export function renderReviewedLicenseEvidence(manifest, lock, review, licenses) 
           sha256: sha(notice),
           bytes: Buffer.byteLength(notice),
         },
+        toolProvenance: {
+          path: 'desktop/reviewed-tool-license-provenance.json',
+          sha256: sha(TOOL_LICENSE_PROVENANCE),
+        },
         packageCount: packages.length,
+        collectedPackageCount: packages.filter((item) => item.licenseTexts.length > 0).length,
         collectedTextCount: collected.length,
-        notCollectedByThisToolCount: packages.length - collected.length,
+        notCollectedPackageCount: packages.filter((item) => item.licenseTexts.length === 0).length,
         packages,
       },
       null,
@@ -205,10 +239,15 @@ export function admittedReviewedLicenseEvidence(npmVersion) {
     decode(readEvidenceFile(root, 'dependency-inventory.json', OUTPUT_LIMIT)) !== inventory
   )
     reject();
-  const licenses = FILES.map(([name]) => {
-    const path = `node_modules/${name}/LICENSE`;
-    return { path, bytes: readEvidenceFile(root, path, LIMIT) };
-  });
+  if (
+    decode(readEvidenceFile(root, 'reviewed-tool-license-provenance.json', 16384)) !==
+    TOOL_LICENSE_PROVENANCE
+  )
+    reject();
+  const licenses = FILES.map(({ path, limit }) => ({
+    path,
+    bytes: readEvidenceFile(root, path, limit),
+  }));
   return renderReviewedLicenseEvidence(...inputs, licenses);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

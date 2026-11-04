@@ -125,3 +125,47 @@ This slice is not complete third-party notices, installed/shipped inventory, ful
 SBOM, redistribution approval, legal clearance or release acceptance. Bundled
 runtimes/models, signing/installer, user Windows/physical hardware, policy and
 P1-06 UNMET remain open and unchanged.
+
+## Adopted tool-text extension — 2026-11-04 00:21 UTC
+
+Coordinator's delegated source entry follows independent provenance/design CLEAR,
+report SHA256 `a81958f944f0562d1f62025b976e77abe89c38dc59ae9fef94f38a0d7a6bb02b`.
+Local base `7cd6b97548036791d50d25d8cf8ea71cbb26008b` and public
+`5e79d66757d22c6c50ae721045ac7011c7d48357` share tree
+`ba788cad66cfbb7c810053ba5540e8121b581931`; predecessor Windows source checks
+passed1868/1868. Both histories remain preserved, main untouched.
+
+Extend only the existing development evidence tool with seven exact texts from
+already-pinned @biomejs/biome2.6.4, esbuild0.28.2 and typescript7.0.2 artifacts.
+Independent read-only archive rehash matches existing lock/review/inventory SHA512;
+all seven member bytes equal recorded and installed files. Record sanitized exact
+artifact URL/integrity/version/member/SHA256/size evidence, pinned by immutable
+serialized source and exact CLI equality. Archive research is not rerun by the CLI.
+No downloaded code is executed, dependencies installed or runtime pins changed.
+
+Schema2 represents an array of texts per lock package and separates80 package rows,
+8 collected package rows,12 collected texts and72 NOT_COLLECTED_BY_THIS_TOOL rows.
+Retain original five pins, all three Biome texts without selecting a license option,
+and TypeScript's nested vscode-jsonrpc license as an artifact member, not a new
+package. Only the fixed48860-byte TypeScript NOTICE receives a65536-byte read bound;
+other text bounds stay32768 and outputs262144. Preserve exact CRLF bytes with a
+narrow `desktop/reviewed-license-notices.txt -text` Git attribute; verify staged blob
+and published-tree bytes, not worktree alone. Existing evidence remains in Git history.
+
+Preserve own-data descriptor validation and one copied Buffer snapshot for decoding,
+hashing and counts; bounded nonlink regular reads, fixed errors, fixed read-only
+CLI and stale-artifact checks remain. Add multi-text/count, exact mapping, mismatched
+pins/metadata/provenance, per-file negative and newline-preservation regressions.
+Build inputs include only the new fixed provenance source/artifact; quality traversal
+increases only by measured entries. Independent implementation review and final
+frozen full aggregate, serialized with Phase03, precede clean commit, phase-11-only
+publication and exact-head hosted source CI. No runtime/package consumer is added.
+
+Only Phase03 and Phase11 remain active; Phase10 is frozen. Full P11-02, complete
+notices/SBOM, redistribution/legal clearance, signatures/attestations, whole installed
+package identity, signing/installer/release and hardware acceptance are not established.
+P1-06 UNMET and all original acceptance gates remain unchanged.
+
+Lane update — 2026-11-04 00:26 UTC: peer/coordinator confirmation replaces the
+paused Phase03 lane with Phase05; only Phase05 and Phase11 are active. Earlier
+00:21 lane wording remains historical. No Phase11 source scope or acceptance changes.

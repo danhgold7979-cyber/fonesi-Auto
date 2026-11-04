@@ -139,3 +139,97 @@ User Windows, physical-device, installation, recovery, load/security and release
 acceptance tests are NOT_RUN. No merge/main/tag/release action is authorized here.
 Rollback is a reviewed forward source change removing this evidence-only checker
 and artifacts, never alteration of existing package admission or Git history.
+
+## Seven-tool-text continuation — 2026-11-04 00:19 UTC onward
+
+The preceding five-text/schema1 result is historical and retained in Git. The
+[00:21 UTC adopted extension](../phases/P11-DEPENDENCY-INVENTORY-SOURCE-ENTRY.md#adopted-tool-text-extension--2026-11-04-0021-utc)
+adds seven exact texts from three existing pinned registry artifacts. Independent
+provenance/design review CLEAR preceded production edits. Original research record
+SHA256 `ca61cc0894a4190aa12b64640b88a6803fdb304eb74caca9443a41707baad6f2` and
+independent design report `a81958f944f0562d1f62025b976e77abe89c38dc59ae9fef94f38a0d7a6bb02b`
+are distinct from the sanitized committed provenance serialization.
+
+Independent cached archive rehash matched exact lock/review/inventory SHA512 for
+Biome2.6.4 (115389 bytes/19 members), esbuild0.28.2 (34207/7) and TypeScript7.0.2
+(365612/416). All442 names were unique/canonical; archive entries were regular
+files/directories, with no links/special members. Seven selected member bytes match
+research and installed files exactly. The case-insensitive legal-filename scan found
+these seven names; it does not establish absence of inline notices elsewhere.
+Public registry downloads were read only, with no downloaded code execution.
+
+[Sanitized provenance](../../desktop/reviewed-tool-license-provenance.json) binds
+exact names/versions/URLs/integrities and seven member hashes/sizes to the fixed
+immutable source string in `desktop/scripts/reviewed-tool-license-pins.mjs`.
+Routine CLI checks that exact provenance file and installed text bytes; it does not
+redownload or rehash archives. No runtime/package-admission/dependency pin changed.
+
+Schema2 replaces singular licenseText with licenseTexts arrays, with empty arrays
+for uncollected rows. The denominator remains80 lock rows:8 collected package rows,
+12 fixed texts and72 NOT_COLLECTED_BY_THIS_TOOL rows. TypeScript's nested
+vscode-jsonrpc license adds no independently resolved package. All Biome Apache/MIT
+and Rome texts are retained, without choosing a license option or legal conclusion.
+Original five text hashes and admission constants remain unchanged.
+
+Only TypeScript NOTICE.txt receives a65536-byte cap for its48860 exact bytes;
+all other license reads retain32768 and total outputs262144. The original bounded
+regular/nonlink reader, fixed error/modes, own-data descriptors and copied Buffer
+snapshot remain. Provenance is bounded16384 bytes, checked exactly. New build
+inputs are fixed provenance source/artifact only. Actual quality inventory measured
+558 entries and445 source files; cap560 retains exactly two additional entries
+for the existing owned quality fixture directory/file pair. Prior559 covered557
+base entries plus the same fixture pair; no blanket limit increase applies.
+
+TypeScript LICENSE retains55 CRLF pairs and NOTICE436, plus upstream trailing
+spaces. The consolidated artifact retains491 CRLF pairs. A single scoped Git
+`-text` attribute prevents normalization. Unscoped `git diff --check` reports these
+authentic upstream bytes as whitespace errors; they are intentionally preserved,
+not fixed or presented as a clean whole-tree whitespace pass. Authored source/docs
+must separately pass `git diff --check -- . ':!desktop/reviewed-license-notices.txt'`.
+Exact worktree/staged/published notice blob equality is required for publication.
+
+Focused local tests initially passed27/27 with no skips/cancellations/todos, covering
+new mappings/counts, all seven changed/oversized/accessor inputs, pinned tuple drift,
+CRLF representation and caller buffer mutation; previous reader/CLI/admission
+regressions remain. Provenance missing/extra/reordered/size-drift negatives were then
+added to the CLI fixture. Independent implementation review, final frozen aggregate,
+staged-byte verification and exact hosted source outcome are recorded below when
+actually available, not inferred from this initial focused pass.
+
+### Reviewed extension verification
+
+Independent implementation review CLEAR on2026-11-04 at00:26 UTC, report SHA256
+`b8b62fa00de296dd1abd3c8de5e6dec84e8694d59e415f10e6ac2be3b0949427`.
+Author and independent final focused checks PASS27/27, fixed checker PASS.
+Sanitized provenance SHA256 is
+`57b881902802a9650358930dd2a812bde7c889839098af19545cb0543d666caf` (3595 bytes).
+JSON evidence SHA256 is
+`7f2d1d5b56cd2c675de0203282c5ef29c6a4d19d3c16f7060063aa74eb4e1b31` (43467 bytes).
+Notice SHA256 is
+`e29d9c899322c8c281b8704a81b8a372472f52aa54826fafe288426104281027` (90921 bytes).
+Actual staged Git blob `3df8e02a135f07747c9c5acc594926bf805b9ba0` equals worktree
+notice bytes, including491 CRLF pairs. Unscoped whitespace check exits2 with491
+notice-only findings; authored-file check excluding that one exact artifact exits0.
+
+At00:26 UTC peer/coordinator confirmed Phase03 paused and Phase05 active alongside
+Phase11. Aggregate ownership is serialized with that peer; earlier lane records
+remain historical. This changes no source scope, dependency gate or acceptance.
+
+First full aggregate (00:29:11–00:30:09 UTC) FAILED at batch13 with101/108
+and seven quality-fixture failures. A too-tight558-entry cap had incorrectly removed
+the existing two-entry fixture allowance. Corrected to measured558+2=560, with the
+existing boundary test still rejecting the third added entry561; updated its stale
+title. This is a bounded source correction, not a skipped test or relaxed fixture.
+The initial review's558-cap recommendation is superseded by this actual test result.
+
+Coordinator correction source/docs review CLEAR at00:31:40 UTC, record SHA256
+`89a2e38d6651b0d12d55fa4d104a68f9e55eba558f90d8e7e264c4f6f1d57cc8`.
+Focused quality PASS13/13 confirms the preserved fixture allowance and overflow
+rejection. Final frozen aggregate ran00:31:01–00:32:25 UTC and PASSED1873/1873
+with DESKTOP_SOURCE_CHECK_PASS, exit0. All ten frozen source/attribute/artifact
+hashes matched afterward. This includes metadata/installed admission, inventory
+and reviewed-text checks, module graph,445-file quality, strict product/demo
+typechecks, product/demo builds, build manifest and the complete fixed source suite.
+Local restore/signature/advisory, foundation/Python standalone, native/device/user
+Windows/installer and release acceptance checks were NOT_RUN in this continuation.
+Hosted source publication/checks remain pending at this local checkpoint.

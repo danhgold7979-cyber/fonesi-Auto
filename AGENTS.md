@@ -265,3 +265,13 @@ permits fixed five-license development evidence and exact-check tooling after
 independent design CLEAR. Package/runtime admission, shipping notices and pins
 remain unchanged. Only Phase03 and Phase11 are active; Phase10 is source-frozen.
 No full notices/SBOM/legal clearance, release or phase acceptance is implied.
+
+## Bounded P11-02 tool-text extension — 2026-11-04 00:21 UTC
+
+The [reviewed extension](docs/phases/P11-DEPENDENCY-INVENTORY-SOURCE-ENTRY.md#adopted-tool-text-extension--2026-11-04-0021-utc)
+adds seven exact recorded tool-artifact texts to development evidence, with schema2
+multi-text rows, separate package/text counts and exact CRLF preservation. Runtime
+pins/admission and all acceptance gates remain unchanged. Only Phase03/11 are active.
+
+Lane update — 2026-11-04 00:26 UTC: Phase03 is paused; confirmed current active
+source lanes are Phase05 and Phase11. Earlier lane wording is historical.
