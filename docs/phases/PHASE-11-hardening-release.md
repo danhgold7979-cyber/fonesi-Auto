@@ -1,6 +1,6 @@
 # PHASE-11 — Hardening and controlled Windows release
 
-> Current bounded development entry: [P11-02 npm inventory tooling](P11-DEPENDENCY-INVENTORY-SOURCE-ENTRY.md),
+> Current bounded development entry: [P11-02 npm inventory and five-text evidence tooling](P11-DEPENDENCY-INVENTORY-SOURCE-ENTRY.md),
 > adopted 2026-11-03. Full-plan acceptance/signing/installer/runtime gates below remain open.
 > No release or device authority follows.
 

@@ -97,7 +97,13 @@ findings and no independent full-suite claim. Reviewed SHA256:
 - Inventory: `07966026d10d570e62207d8e67bfe438e144fa752980237de3ec211f456c539f`.
 - Workflow: `d3ef7e6b87ab8a663ec601eb41d05f309a972e0b298ea71d3ffb5fe769167bc3`.
 
-Publication and exact-head hosted result remain PENDING at this preparation point.
+Publication and exact-head hosted result were verified on 2026-11-03:
+[`ea5f9b4a0da28ea01f81072af0dee122188ae7fc`](https://github.com/danhgold7979-cyber/fonesi-Auto/commit/ea5f9b4a0da28ea01f81072af0dee122188ae7fc)
+is public on phase-11. [Windows CI41729768650](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41729768650)
+completed SUCCESS; job126243762570 logs bind that exact SOURCE_HEAD and show
+TESTS_PASS1846/1846 and DESKTOP_SOURCE_CHECK_PASS at22:21:55UTC. The job's
+scripts-disabled restore/signature/advisory stages passed. This reconciles the
+historical pending wording, not a new runtime/release acceptance.
 The new workflow is restricted to phase-11, read-only, pinned checkout/Node actions,
 Windows2022, 15-minute timeout, no credential persistence/cache/artifact publication.
 It runs only the existing source checker and explicit unavailable-scope markers.

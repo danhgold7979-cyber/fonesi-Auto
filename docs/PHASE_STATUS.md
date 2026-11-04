@@ -4,12 +4,24 @@
 the existing80 resolved packages, including57 optional entries, with exact input
 digests and no installed/shipped/full-SBOM claims. Focused44/44 and independent
 implementation review CLEAR; final frozen aggregate PASS1846/1846 and
-DESKTOP_SOURCE_CHECK_PASS. Hosted verification is pending.
+DESKTOP_SOURCE_CHECK_PASS. Exact public source `ea5f9b4` hosted
+[CI41729768650](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41729768650)
+completed SUCCESS1846/1846; source head and terminal logs verified.
 [Source evidence and limits](evidence/P11-02-npm-inventory-source-2026-11-03.md).
 
+**P11-02 fixed reviewed-text continuation:** five pinned license texts now have
+byte-exact development evidence and a deterministic full80-entry coverage map;
+75 entries are NOT_COLLECTED_BY_THIS_TOOL, not missing/prohibited. Focused22/22,
+independent final implementation review CLEAR and frozen aggregate1868/1868 PASS.
+New exact-head publication/hosted CI is pending. Shipping notices, package/runtime
+admission and pins are unchanged; no full notices/SBOM/legal clearance claim.
+[Reviewed-text evidence](evidence/P11-02-reviewed-license-texts-2026-11-04.md).
+
 `phase-11` uses public Phase09 base `9befe4dcd936fc7b399af0e77190bb0e9a94e47d`.
-Current active lanes are Phase07 and Phase11. Phase09 is parked, and dependent
-Phase10 source remains unstarted. Full P11-02 is partial; Phase11 technical
+Current active source lanes are Phase03 and Phase11. Phase09 is parked;
+Phase10 is source-frozen at public `2f4fa167` with exact hosted1836/1836 PASS.
+The separately reviewed five-license-text continuation follows the
+[adopted entry](phases/P11-DEPENDENCY-INVENTORY-SOURCE-ENTRY.md#adopted-reviewed-text-continuation--2026-11-03-2358-utc). Full P11-02 is partial; Phase11 technical
 acceptance0/10, P1-06 UNMET, installer/signing/runtime/model/hardware/release gates
 remain open. Main/history are unchanged; no completion percentage is inferred.
 

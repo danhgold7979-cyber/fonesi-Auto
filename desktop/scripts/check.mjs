@@ -121,6 +121,10 @@ try {
       'DEPENDENCY_INVENTORY',
       () => run(['scripts/dependency-inventory.mjs', '--check', npmVersion]).ok,
     ],
+    [
+      'REVIEWED_LICENSE_EVIDENCE',
+      () => run(['scripts/reviewed-license-evidence.mjs', '--check', npmVersion]).ok,
+    ],
     ['MODULE_GRAPH', () => run(['scripts/check-module-graph.mjs', npmVersion]).ok],
     ['QUALITY', () => run(['scripts/quality-tool.mjs', '--inventory', npmVersion]).ok],
     [

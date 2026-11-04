@@ -83,3 +83,45 @@ and publication, followed by exact-head hosted source CI. Keep actual failures.
 Hardware/user Windows, runtime/model completeness, signing/legal review, installer,
 release tag/publication and all inherited acceptance gates are NOT_RUN/UNMET as
 applicable. No release percentage or task acceptance is inferred from this slice.
+
+## Adopted reviewed-text continuation — 2026-11-03 23:58 UTC
+
+Independent design review CLEAR; coordinator delegates safe source entry after
+CLEAR under the existing continued-independent-work direction. Base is exact
+local/public `ea5f9b4a0da28ea01f81072af0dee122188ae7fc`, whose Windows source
+CI41729768650/job126243762570 completed SUCCESS with1846/1846 tests and
+DESKTOP_SOURCE_CHECK_PASS. This separately extends the earlier inventory-only
+scope; existing shipping notices, package admission and dependency pins stay unchanged.
+
+Add only development evidence tooling `desktop/scripts/reviewed-license-evidence.mjs`,
+focused tests, `desktop/reviewed-license-evidence.json` and
+`desktop/reviewed-license-notices.txt`, plus source/build/test registration. Collect
+exactly existing fixed LICENSE files for react, react-dom, scheduler,
+@js-temporal/polyfill and jsbi. Existing package-admission constants remain the
+hash authority, with Temporal/jsbi also agreeing with dependency-review reviewedFiles.
+Do not infer legal obligations, source-repository attribution or whole installed
+package identity from the text. All80 lock entries remain represented:5 collected
+and75 NOT_COLLECTED_BY_THIS_TOOL (not missing, unsupported or prohibited).
+
+Fixed CLI --json/--notice/--check <reviewed-npm-version> calls existing inventory
+admission, accepts no caller path and has no write/network/subprocess/dependency
+execution. Pure rendering validates the original manifest/lock/review projection
+and five exact ordered byte inputs. Reject missing/duplicate/reordered inputs,
+changed hashes, empty/oversized/nonregular files, symlink components and malformed
+UTF-8. Bound descriptor reads to32KiB per license with pre/post identity checks;
+preserve BOM and exact text line endings rather than trimming/normalizing. Bound
+metadata/artifact reads and output. Check mode requires exact JSON and notice bytes.
+This is a fixed owned-checkout tool, not a hostile concurrent-editor security boundary.
+
+Test deterministic80/5/75 coverage, text bytes and hashes, invalid metadata,
+missing/changed/oversized/nonregular/symlink/UTF-8 inputs, stale/missing artifacts,
+fixed CLI arguments and unchanged runtime/package consumers. Independent implementation
+review, full source aggregate, phase-11-only publication and exact-head hosted source
+verification remain mandatory. Serialize aggregate/build with Phase03's owner.
+Only Phase03 and Phase11 are active source lanes; Phase10 is source-frozen at
+public2f4fa167 with exact hosted1836/1836 PASS. No main or other phase changes.
+
+This slice is not complete third-party notices, installed/shipped inventory, full
+SBOM, redistribution approval, legal clearance or release acceptance. Bundled
+runtimes/models, signing/installer, user Windows/physical hardware, policy and
+P1-06 UNMET remain open and unchanged.
