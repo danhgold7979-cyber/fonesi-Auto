@@ -80,8 +80,8 @@ Electron runtime, native workflow or installer was used.
 - First aggregate PASS1867/1867 with DESKTOP_SOURCE_CHECK_PASS before the
   accessor regression addition. Final frozen aggregate PASS1868/1868 and
   DESKTOP_SOURCE_CHECK_PASS, exit0, at00:05UTC. All eight frozen source/artifact/
-  registration hashes matched after the run. Publication/exact-head hosted result
-  remains pending at this source-commit preparation point.
+  registration hashes matched after the run. Exact source publication/hosted result
+  is verified in the closure below.
 - Coordinator inspection reproduced an exported-pure-renderer defect: an accessor
   could provide different bytes for decode versus hash. Fixed with exact own-data
   property admission and one copied byte snapshot used for text/digest/count.
@@ -102,6 +102,26 @@ were NOT_RUN in this no-restore continuation; hosted CI performs its own restore
 and registry checks. Foundation/Python standalone suites were NOT_RUN here.
 `git diff --check` PASS. Local work through the verified aggregate took nine minutes
 from23:56UTC; publication monitoring is reported separately.
+
+## Verified source publication — 2026-11-04 00:12 UTC
+
+Reviewed local source commit `5aa817c04ac908c6dd3c20ca1de62388aaa2df31` and public
+[`7425aca3fa4082e6aa201a9e9804176bac1f4915`](https://github.com/danhgold7979-cyber/fonesi-Auto/commit/7425aca3fa4082e6aa201a9e9804176bac1f4915)
+share exact tree `7cccd71dcdf6fdbce50001ae5fab74a17279421b`. Public parent remains
+`ea5f9b4a0da28ea01f81072af0dee122188ae7fc`. Normal git push failed before mutation
+because HTTPS authentication was unavailable; no credentials were acquired.
+Authorized connector publication created the same reviewed tree and a new commit
+on that public parent, then updated only phase-11 with expected-head and force=false.
+Independent ref/commit read-back and fetched Git objects confirmed tree identity;
+local and public commit histories are preserved, with different commit metadata.
+
+[Exact-source Windows CI41744614733](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41744614733)
+completed SUCCESS. Job126294366120 binds SOURCE_HEAD to public7425aca3 and records
+TESTS_PASS1868/1868 and DESKTOP_SOURCE_CHECK_PASS at00:12:00UTC. Pinned
+windows-2022 / Node24.22.1 / npm11.19.1 source verification includes scripts-disabled
+restore, signature/advisory checks and full aggregate. No native workflow,
+installer, device or release acceptance was run. This closure changes documentation
+only; it does not alter the tested source/artifact bytes or widen their claims.
 
 ## Limitations and rollback
 

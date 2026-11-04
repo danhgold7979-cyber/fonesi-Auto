@@ -13,7 +13,9 @@ completed SUCCESS1846/1846; source head and terminal logs verified.
 byte-exact development evidence and a deterministic full80-entry coverage map;
 75 entries are NOT_COLLECTED_BY_THIS_TOOL, not missing/prohibited. Focused22/22,
 independent final implementation review CLEAR and frozen aggregate1868/1868 PASS.
-New exact-head publication/hosted CI is pending. Shipping notices, package/runtime
+Exact public source `7425aca3fa4082e6aa201a9e9804176bac1f4915` and
+[Windows CI41744614733](https://github.com/danhgold7979-cyber/fonesi-Auto/actions/runs/41744614733)
+are verified: SUCCESS1868/1868 and DESKTOP_SOURCE_CHECK_PASS at2026-11-04 00:12UTC. Shipping notices, package/runtime
 admission and pins are unchanged; no full notices/SBOM/legal clearance claim.
 [Reviewed-text evidence](evidence/P11-02-reviewed-license-texts-2026-11-04.md).
 
