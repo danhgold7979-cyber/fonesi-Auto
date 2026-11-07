@@ -1,0 +1,2 @@
+*.zip.* -text -diff -merge
+*.cmd -text whitespace=cr-at-eol

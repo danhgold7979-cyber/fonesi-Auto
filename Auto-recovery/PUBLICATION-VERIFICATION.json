@@ -1,0 +1,36 @@
+{
+  "format": "auto-github-publication-verification-v1",
+  "reviewed_utc": "2026-11-07T06:06:55.619913+00:00",
+  "archive": {
+    "name": "Auto-recovery-20261107T052553Z.zip",
+    "bytes": 682633479,
+    "sha256": "0001e3d6ca2e14dbeefa3b35473bf65c3982562be6029a83c15b14903e2a070f"
+  },
+  "parts": 66,
+  "maximum_part_bytes": 10485760,
+  "parts_manifest_sha256": "516f8275bdcea4bdd530f9eeeb44545b39d8123f6590d905fb2794b7a49ec6bf",
+  "original_source_files": 102400,
+  "original_archive_members": 102403,
+  "zip_crc_and_all_member_sha256": "PASS, original verified packaging report",
+  "all_part_sha256_and_concatenated_sha256": "PASS, exact original archive re-read for GitHub split",
+  "all_uploaded_git_blob_sha": "PASS, every API-returned SHA matched independently computed Git blob identity",
+  "python_restorer_tests": "PASS success, missing-part and corrupted-part fixtures; full-size reconstruction execution was interrupted by environment reset and is not claimed",
+  "windows_wrapper_execution": "NOT_RUN; code-reviewed only",
+  "privacy_review": "Independent CLEAR WITH LIMITS; no identified live-secret blocker in bounded review",
+  "review_limits": [
+    "Pattern screening is not an absolute privacy guarantee.",
+    "208 immutable SQLite base-file reads supersede the initial in-memory SQLite read errors.",
+    "SQLite WAL/SHM received byte-pattern inspection, not full forensic replay.",
+    "Compiled project fixture binaries were inspected, not fully decompiled or executed.",
+    "Recovery snapshot only, not software-release qualification or legal advice."
+  ],
+  "audit_report_sha256": {
+    "scan-findings.json": "61cd09a93a49bffa29999bbc13099368e1b24e39ed2cd643be65dcc92d13b7a4",
+    "pack-findings.json": "65c839d6c31238cbc147626a22cfbedbab1dc2ccb9ea8da405795cd840f1ab63",
+    "sqlite-review.json": "9990fff9eb3d1c7cc0e833ad2eda5bbc79d05c586527e917cd8ac7abcbf0322e",
+    "binary-review.json": "291835ce681c2932d2afc33dd110da444289e26af4cb8b72b31f291c736a0b7a"
+  },
+  "upstream_attribution": "Original license texts, corresponding source archives and notices retained in unchanged ZIP. The third-party dependencies are not all Apache-licensed.",
+  "main_base_commit": "e85d2c0c67a3aefa11dc390739243653d2b1bbf0",
+  "history_policy": "New branch only; no main update, force push, deletion or merge"
+}
